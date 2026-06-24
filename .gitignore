@@ -1,0 +1,10 @@
+.env
+data/
+.venv/
+node_modules/
+mockup/assets/
+mockup/index.html
+dist/
+__pycache__/
+.pytest_cache/
+.DS_Store

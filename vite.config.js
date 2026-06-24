@@ -8,7 +8,7 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: "../mockup",
+    outDir: "../dist",
     emptyOutDir: true,
   },
 });

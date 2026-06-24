@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
-STATIC_DIR = ROOT_DIR / "mockup"
+STATIC_DIR = ROOT_DIR / "dist"
 DATA_DIR = ROOT_DIR / "data"
 DB_PATH = DATA_DIR / "routerchat.sqlite3"
 ENV_PATH = ROOT_DIR / ".env"

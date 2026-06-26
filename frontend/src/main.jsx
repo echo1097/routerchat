@@ -12,6 +12,7 @@ import {
   Check,
   ChevronDown,
   Copy,
+  KeyRound,
   Menu,
   MessageSquarePlus,
   PanelLeftClose,
@@ -20,6 +21,7 @@ import {
   RefreshCw,
   Search,
   Settings2,
+  SlidersHorizontal,
   Square,
   Trash2,
   X,
@@ -29,6 +31,7 @@ import "./styles.css";
 const DEFAULT_MODEL = "anthropic/claude-3.5-sonnet";
 const DEFAULT_SYSTEM_PROMPT =
   "Respond concisely and carefully. Ask only when needed and prefer concrete next steps.";
+const APP_SETTINGS_STORAGE_KEY = "routerchat.appSettings";
 
 const newSettings = {
   model: DEFAULT_MODEL,
@@ -37,14 +40,26 @@ const newSettings = {
   system_prompt: DEFAULT_SYSTEM_PROMPT,
   thinking_enabled: false,
   reasoning_effort: "medium",
+  nitro_mode: false,
 };
 
 const REASONING_EFFORTS = [
   { value: "low", label: "Low" },
   { value: "medium", label: "Medium" },
   { value: "high", label: "High" },
-  { value: "xhigh", label: "Extra high" },
+  { value: "xhigh", label: "Extra high", shortLabel: "Extra" },
 ];
+
+const SETTINGS_PAGES = [
+  { id: "general", label: "API", iconClass: "fi fi-rr-key" },
+  { id: "models", label: "Models", iconClass: "fi fi-rr-bulb" },
+  { id: "ui", label: "UI", iconClass: "fi fi-rr-apps-add" },
+  { id: "advanced", label: "Advanced", icon: SlidersHorizontal },
+];
+
+function rangeProgress(value, min, max) {
+  return `${((Number(value) - min) / (max - min)) * 100}%`;
+}
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -106,6 +121,26 @@ function priceLabel(model) {
   return `$${prompt.toFixed(prompt >= 1 ? 0 : 2)} / $${completion.toFixed(
     completion >= 1 ? 0 : 2,
   )}`;
+}
+
+function isFreeModel(model) {
+  if (String(model.id || "").endsWith(":free")) return true;
+  const prompt = Number(model.pricing?.prompt || 0);
+  const completion = Number(model.pricing?.completion || 0);
+  return prompt === 0 && completion === 0;
+}
+
+function readLocalAppSettings() {
+  try {
+    return JSON.parse(window.localStorage.getItem(APP_SETTINGS_STORAGE_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function writeLocalAppSettings(next) {
+  const merged = { ...readLocalAppSettings(), ...next };
+  window.localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify(merged));
 }
 
 function useRafScroller(streamRef) {
@@ -894,29 +929,44 @@ function SettingsDrawer({
   models,
   settings,
   setSettings,
+  defaultModel,
+  hideFreeModels,
+  nitroMode,
+  smoothStreaming,
   modelLocked,
   onPersist,
   onModelSelected,
+  onSetDefaultModel,
+  onToggleHideFreeModels,
+  onToggleNitroMode,
+  onToggleSmoothStreaming,
 }) {
   const [apiKey, setApiKey] = useState("");
   const [query, setQuery] = useState("");
   const [saving, setSaving] = useState(false);
+  const [activePage, setActivePage] = useState("general");
+  const [openAccordions, setOpenAccordions] = useState({
+    reasoning: true,
+    generation: true,
+  });
   const canThink = supportsThinking(models, settings.model);
   const selectedModel = models.find((model) => model.id === settings.model);
   const selectedModelPrice = selectedModel ? priceLabel(selectedModel) : "";
   const keyConnected = Boolean(keyStatus.has_key);
+  const activePageIndex = SETTINGS_PAGES.findIndex((page) => page.id === activePage) + 1;
 
   const filteredModels = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return models
       .filter((model) => {
+        if (hideFreeModels && isFreeModel(model)) return false;
         if (!normalized) return true;
         return [model.name, model.id, model.description]
           .filter(Boolean)
           .some((value) => value.toLowerCase().includes(normalized));
       })
       .slice(0, 90);
-  }, [models, query]);
+  }, [hideFreeModels, models, query]);
 
   async function saveKey() {
     if (!apiKey.trim()) return;
@@ -945,257 +995,607 @@ function SettingsDrawer({
     onClose();
   }
 
+  function setDefaultModel(event, model) {
+    event.stopPropagation();
+    onSetDefaultModel(model.id);
+  }
+
+  function choosePage(pageId) {
+    setActivePage(pageId);
+  }
+
+  function toggleAccordion(id) {
+    setOpenAccordions((current) => ({
+      ...current,
+      [id]: !current[id],
+    }));
+  }
+
+  const StatusDot = (
+    <span
+      aria-label={keyConnected ? "OpenRouter key connected" : "OpenRouter key not set"}
+      title={keyConnected ? "OpenRouter key connected" : "OpenRouter key not set"}
+      className={cx(
+        "relative top-px inline-block h-2 w-2 rounded-full",
+        keyConnected
+          ? "bg-emerald-300 shadow-[0_0_0_3px_rgba(110,231,183,0.12)]"
+          : "bg-rose-400 shadow-[0_0_0_3px_rgba(251,113,133,0.12)]",
+      )}
+    />
+  );
+
+  const keySection = (
+    <section className="border-b border-white/[0.08] pb-3">
+      <div className="mb-2.5 flex items-center justify-between gap-3">
+        <h2 className="flex items-center gap-2 text-balance text-sm font-semibold text-zinc-100">
+          <KeyRound size={16} />
+          OpenRouter key
+          {StatusDot}
+        </h2>
+      </div>
+      <div className="flex gap-2">
+        <input
+          type="password"
+          value={apiKey}
+          onChange={(event) => setApiKey(event.target.value)}
+          placeholder="sk-or-v1-..."
+          className="h-10 min-w-0 flex-1 rounded-xl bg-black/20 px-3 text-sm text-zinc-100 shadow-[var(--shadow-border)] outline-none transition-[background-color,box-shadow] duration-150 ease-out placeholder:text-zinc-600 focus:bg-black/25 focus:shadow-[0_0_0_1px_rgba(255,255,255,0.16)]"
+        />
+        <button
+          type="button"
+          onClick={saveKey}
+          disabled={saving || !apiKey.trim()}
+          className={cx(
+            "h-10 rounded-xl bg-zinc-100 px-3 text-sm font-semibold text-zinc-950 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500 disabled:shadow-[var(--shadow-border)] disabled:active:scale-100",
+            CONTROL_MOTION,
+          )}
+        >
+          {saving ? "Saving" : "Save"}
+        </button>
+      </div>
+    </section>
+  );
+
+  const modelFilterSection = (
+    <section className="border-b border-white/[0.08] py-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-balance text-sm font-semibold text-zinc-100">
+            Disable free models
+          </h2>
+          <p className="mt-0.5 text-pretty text-xs leading-5 text-zinc-500">
+            Don't show free OpenRouter models in the model picker
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={hideFreeModels}
+          aria-label="Hide free models"
+          onClick={() => onToggleHideFreeModels(!hideFreeModels)}
+          className={cx(
+            "relative h-7 w-12 shrink-0 rounded-full shadow-[var(--shadow-border)] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+            CONTROL_MOTION,
+            hideFreeModels ? "bg-accent/80" : "bg-white/[0.08]",
+          )}
+        >
+          <span
+            className={cx(
+              "absolute left-1 top-1 h-5 w-5 rounded-full bg-zinc-50 transition-transform duration-150 ease-out",
+              hideFreeModels ? "translate-x-5" : "translate-x-0",
+            )}
+          />
+        </button>
+      </div>
+    </section>
+  );
+
+  const turboSection = (
+    <section className="py-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-balance text-sm font-semibold text-zinc-100">
+            Turbo
+          </h2>
+          <p className="mt-0.5 text-pretty text-xs leading-5 text-zinc-500">
+            Prioritize the fastest OpenRouter providers
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={nitroMode}
+          aria-label="Turbo"
+          onClick={() => onToggleNitroMode(!nitroMode)}
+          className={cx(
+            "relative h-7 w-12 shrink-0 rounded-full shadow-[var(--shadow-border)] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+            CONTROL_MOTION,
+            nitroMode ? "bg-accent/80" : "bg-white/[0.08]",
+          )}
+        >
+          <span
+            className={cx(
+              "absolute left-1 top-1 h-5 w-5 rounded-full bg-zinc-50 transition-transform duration-150 ease-out",
+              nitroMode ? "translate-x-5" : "translate-x-0",
+            )}
+          />
+        </button>
+      </div>
+    </section>
+  );
+
+  const smoothTextSection = (
+    <section className="py-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-balance text-sm font-semibold text-zinc-100">
+            Smooth text
+          </h2>
+          <p className="mt-0.5 text-pretty text-xs leading-5 text-zinc-500">
+            Render model responses more smoothly
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={smoothStreaming}
+          aria-label="Smooth text"
+          onClick={() => onToggleSmoothStreaming(!smoothStreaming)}
+          className={cx(
+            "relative h-7 w-12 shrink-0 rounded-full shadow-[var(--shadow-border)] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+            CONTROL_MOTION,
+            smoothStreaming ? "bg-accent/80" : "bg-white/[0.08]",
+          )}
+        >
+          <span
+            className={cx(
+              "absolute left-1 top-1 h-5 w-5 rounded-full bg-zinc-50 transition-transform duration-150 ease-out",
+              smoothStreaming ? "translate-x-5" : "translate-x-0",
+            )}
+          />
+        </button>
+      </div>
+    </section>
+  );
+
+  const modelList = (
+    <section className="flex min-h-0 flex-1 flex-col rounded-2xl bg-white/[0.035] shadow-[var(--shadow-border)]">
+      <div className="p-3 pb-2.5">
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="flex items-center gap-2 text-balance text-sm font-semibold text-zinc-100">
+              Model
+              {modelLocked && (
+                <span className="inline-flex min-h-6 items-center rounded-full bg-white/[0.04] px-2 text-[11px] font-medium text-zinc-500 shadow-[var(--shadow-border)]">
+                  Model locked
+                </span>
+              )}
+            </h2>
+            <p className="mt-0.5 truncate text-xs text-zinc-500">
+              {selectedModel?.name || settings.model}
+            </p>
+          </div>
+          {selectedModelPrice && (
+            <span className="shrink-0 rounded-full bg-accent/10 px-2.5 py-1 text-[11px] font-medium tabular-nums text-blue-200 shadow-[0_0_0_1px_rgba(96,165,250,0.22)]">
+              {selectedModelPrice}
+            </span>
+          )}
+        </div>
+        <div className="flex h-10 items-center gap-2 rounded-xl bg-black/20 px-3 text-zinc-500 shadow-[var(--shadow-border)] transition-[background-color,box-shadow] duration-150 ease-out focus-within:bg-black/25 focus-within:shadow-[0_0_0_1px_rgba(255,255,255,0.16)]">
+          <Search size={15} />
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search models"
+            className="min-w-0 flex-1 bg-transparent text-sm text-zinc-100 outline-none placeholder:text-zinc-600"
+          />
+          <span className="rounded-full bg-white/[0.05] px-2 py-0.5 text-[11px] tabular-nums text-zinc-500">
+            {filteredModels.length}
+          </span>
+        </div>
+        {modelLocked && (
+          <p className="mt-2 text-pretty text-xs leading-5 text-zinc-600">
+            Model selection is locked after the first message in a chat.
+          </p>
+        )}
+      </div>
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 pb-3 pt-1">
+        {filteredModels.length === 0 ? (
+          <div className="rounded-[18px] bg-black/15 p-4 text-pretty text-sm leading-6 text-zinc-500 shadow-[var(--shadow-border)]">
+            {models.length === 0 ? "Save an API key to load models." : "No matching models."}
+          </div>
+        ) : (
+          filteredModels.map((model) => {
+            const isSelected = model.id === settings.model;
+            const isDefault = model.id === defaultModel;
+            return (
+            <div
+              key={model.id}
+              className={cx(
+                "grid min-h-14 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-xl border p-2.5",
+                isSelected
+                  ? "border-accent/55 bg-accent/10 shadow-[inset_0_0_0_1px_rgba(96,165,250,0.18),0_10px_24px_rgba(37,99,235,0.10)]"
+                  : "border-transparent bg-black/15 shadow-[var(--shadow-border)] hover:bg-white/[0.05] hover:shadow-[var(--shadow-border-hover)]",
+              )}
+            >
+              <button
+                type="button"
+                disabled={modelLocked}
+                onClick={() => selectModel(model)}
+                className={cx(
+                  "min-w-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+                  CONTROL_MOTION,
+                  modelLocked && !isSelected && "cursor-not-allowed opacity-45 active:scale-100",
+                )}
+              >
+                <span className="block truncate text-sm font-medium text-zinc-100">
+                  {model.name}
+                </span>
+                <span className="mt-0.5 block truncate text-xs text-zinc-500">
+                  {model.id}
+                </span>
+              </button>
+              <span className="flex shrink-0 items-center gap-2">
+                {priceLabel(model) && (
+                  <span className="rounded-full bg-white/[0.06] px-2 py-1 text-[11px] font-medium tabular-nums text-zinc-500 shadow-[var(--shadow-border)]">
+                    {priceLabel(model)}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  disabled={isDefault}
+                  onClick={(event) => setDefaultModel(event, model)}
+                  className={cx(
+                    "h-7 rounded-lg px-2 text-[11px] font-semibold shadow-[var(--shadow-border)] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 disabled:cursor-default disabled:active:scale-100",
+                    CONTROL_MOTION,
+                    isDefault
+                      ? "bg-accent/12 text-blue-200"
+                      : "bg-white/[0.055] text-zinc-400 hover:bg-white/[0.09] hover:text-zinc-100",
+                  )}
+                >
+                  {isDefault ? "Default" : "Set default"}
+                </button>
+              </span>
+            </div>
+          );
+          })
+        )}
+      </div>
+    </section>
+  );
+
+  const reasoningSection = (
+    <Accordion
+      id="reasoning"
+      title="Reasoning"
+      open={openAccordions.reasoning}
+      onToggle={toggleAccordion}
+      trailing={!canThink ? "Unavailable" : null}
+    >
+      <p className="mb-3 text-pretty text-xs leading-5 text-zinc-500">
+        Choose how much extra reasoning the model should use.
+      </p>
+      <SlidingTabs
+        options={REASONING_EFFORTS}
+        value={settings.reasoning_effort}
+        onChange={(value) => commit({ reasoning_effort: value })}
+        getValue={(effort) => effort.value}
+        getLabel={(effort) => effort.shortLabel || effort.label}
+        ariaLabel="Reasoning effort"
+        disabled={!canThink}
+        className="w-full"
+      />
+    </Accordion>
+  );
+
+  const generationSection = (
+    <Accordion
+      id="generation"
+      title="Generation"
+      open={openAccordions.generation}
+      onToggle={toggleAccordion}
+    >
+      <p className="mb-3 text-pretty text-xs leading-5 text-zinc-500">
+        Tune response variation and the maximum reply budget.
+      </p>
+      <div className="space-y-3">
+        <div className="settings-slider-row">
+          <div className="mb-2.5 flex items-center justify-between text-xs font-medium">
+            <span className="text-zinc-400">Temperature</span>
+            <span className="min-w-9 rounded-full bg-white/[0.055] px-2 py-0.5 text-center tabular-nums text-zinc-200 shadow-[var(--shadow-border)]">
+              {settings.temperature}
+            </span>
+          </div>
+          <input
+            type="range"
+            min="0"
+            max="1.5"
+            step="0.1"
+            value={settings.temperature}
+            onChange={(event) => updateSetting({ temperature: Number(event.target.value) })}
+            onMouseUp={() => onPersist(settings)}
+            onTouchEnd={() => onPersist(settings)}
+            style={{ "--range-progress": rangeProgress(settings.temperature, 0, 1.5) }}
+            className="settings-range"
+          />
+        </div>
+        <div className="settings-slider-row">
+          <div className="mb-2.5 flex items-center justify-between text-xs font-medium">
+            <span className="text-zinc-400">Max tokens</span>
+            <span className="min-w-16 rounded-full bg-white/[0.055] px-2 py-0.5 text-center tabular-nums text-zinc-200 shadow-[var(--shadow-border)]">
+              {settings.max_tokens}
+            </span>
+          </div>
+          <input
+            type="range"
+            min="256"
+            max="128000"
+            step="1000"
+            value={settings.max_tokens}
+            onChange={(event) => updateSetting({ max_tokens: Number(event.target.value) })}
+            onMouseUp={() => onPersist(settings)}
+            onTouchEnd={() => onPersist(settings)}
+            style={{ "--range-progress": rangeProgress(settings.max_tokens, 256, 128000) }}
+            className="settings-range"
+          />
+        </div>
+      </div>
+    </Accordion>
+  );
+
   return (
-    <>
-      <div
+    <div className={cx("fixed inset-0 z-50 grid place-items-center px-3 py-4 sm:px-6", !open && "pointer-events-none")}>
+      <button
+        type="button"
+        aria-label="Close settings"
         className={cx(
-          "fixed inset-0 z-40 bg-black/45 opacity-0 backdrop-blur-sm transition-[opacity,backdrop-filter] duration-200 ease-out",
-          open ? "pointer-events-auto opacity-100" : "pointer-events-none",
+          "absolute inset-0 bg-black/55 transition-[opacity,backdrop-filter] duration-200 ease-out",
+          open ? "pointer-events-auto opacity-100 backdrop-blur-sm" : "pointer-events-none opacity-0 backdrop-blur-none",
         )}
         onClick={onClose}
       />
-      <aside
-        className={cx(
-          "fixed inset-y-0 right-0 z-50 flex w-full max-w-[460px] flex-col bg-[#0d0d10] shadow-[var(--shadow-surface)] transition-transform duration-200 ease-out sm:inset-y-3 sm:right-3 sm:max-h-[calc(100vh-1.5rem)] sm:rounded-[28px]",
-          open ? "translate-x-0" : "translate-x-[calc(100%+1rem)]",
-        )}
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settings-modal-title"
         aria-hidden={!open}
+        className={cx(
+          "t-modal relative z-10 grid h-[min(400px,calc(100vh-2rem))] w-full max-w-[560px] overflow-hidden rounded-[18px] bg-[#202022] text-zinc-100 shadow-[var(--shadow-surface)] md:grid-cols-[132px_minmax(0,1fr)]",
+          open ? "is-open" : "is-closing",
+        )}
       >
-        <div className="p-4 pb-3 sm:p-5 sm:pb-3">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <div className="text-balance text-lg font-semibold tracking-[-0.01em] text-zinc-100">
-                Settings
+        <aside className="hidden min-h-0 border-r border-white/10 p-2 md:flex md:flex-col">
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close settings"
+            className={cx(
+              "mb-2.5 grid h-10 w-10 place-items-center rounded-xl bg-white/[0.06] text-zinc-100 hover:bg-white/[0.09] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+              CONTROL_MOTION,
+            )}
+          >
+            <X size={20} strokeWidth={1.9} />
+          </button>
+          <nav className="space-y-1.5" aria-label="Settings sections">
+            {SETTINGS_PAGES.map((page) => {
+              const Icon = page.icon;
+              const selected = activePage === page.id;
+              return (
+                <button
+                  key={page.id}
+                  type="button"
+                  onClick={() => choosePage(page.id)}
+                  className={cx(
+                    "flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-xs font-medium leading-none focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+                    CONTROL_MOTION,
+                    selected
+                      ? "bg-white/[0.08] text-zinc-50"
+                      : "text-zinc-200 hover:bg-white/[0.045] hover:text-zinc-50",
+                    )}
+                >
+                  <span className="settings-nav-icon" aria-hidden="true">
+                    {page.iconClass ? (
+                      <i className={cx(page.iconClass, "text-[15px] leading-none")} />
+                    ) : (
+                      <Icon size={15} strokeWidth={1.9} />
+                    )}
+                  </span>
+                  <span className="truncate">{page.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+        </aside>
+
+        <div className="flex min-h-0 flex-col">
+          <header className="border-b border-white/10 px-4 py-2.5 md:px-4 md:py-2.5">
+            <div className="flex items-center justify-between gap-4">
+              <h1
+                id="settings-modal-title"
+                className="text-lg font-medium tracking-normal text-zinc-50 md:text-xl"
+              >
+                {SETTINGS_PAGES.find((page) => page.id === activePage)?.label || "Settings"}
+              </h1>
+              <div className="md:hidden">
+                <IconButton label="Close settings" onClick={onClose}>
+                  <X size={17} />
+                </IconButton>
               </div>
             </div>
-            <IconButton label="Close settings" onClick={onClose}>
-              <X size={17} />
-            </IconButton>
+            <SlidingTabs
+              options={SETTINGS_PAGES}
+              value={activePage}
+              onChange={choosePage}
+              getValue={(page) => page.id}
+              getLabel={(page) => page.label}
+              ariaLabel="Settings sections"
+              className="mt-3 flex w-full md:hidden"
+            />
+          </header>
+
+          <div
+            className="settings-page-slide t-page-slide min-h-0 flex-1"
+            data-page={String(activePageIndex)}
+          >
+            <section
+              className="settings-scroll-page t-page space-y-0 overflow-y-auto px-4 py-3 md:px-4 md:py-3"
+              data-page-id="1"
+              aria-label="API settings"
+            >
+              {keySection}
+              {modelFilterSection}
+              {turboSection}
+            </section>
+            <section
+              className="t-page flex min-h-0 flex-col px-4 py-3 md:px-4 md:py-3"
+              data-page-id="2"
+              aria-label="Model settings"
+            >
+              {modelList}
+            </section>
+            <section
+              className="settings-scroll-page t-page space-y-0 overflow-y-auto px-4 py-3 md:px-4 md:py-3"
+              data-page-id="3"
+              aria-label="UI settings"
+            >
+              {smoothTextSection}
+            </section>
+            <section
+              className="settings-scroll-page t-page space-y-0 overflow-y-auto px-4 py-3 md:px-4 md:py-3"
+              data-page-id="4"
+              aria-label="Advanced settings"
+            >
+              {reasoningSection}
+              {generationSection}
+            </section>
           </div>
         </div>
+      </section>
+    </div>
+  );
+}
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-5 sm:px-5">
-          <section className="rounded-[24px] bg-white/[0.035] p-3 shadow-[var(--shadow-border)]">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div>
-                <h2 className="flex items-center gap-2 text-balance text-sm font-semibold text-zinc-100">
-                  OpenRouter key
-                  <span
-                    aria-label={keyConnected ? "OpenRouter key connected" : "OpenRouter key not set"}
-                    title={keyConnected ? "OpenRouter key connected" : "OpenRouter key not set"}
-                    className={cx(
-                      "relative top-px inline-block h-2 w-2 rounded-full",
-                      keyConnected
-                        ? "bg-emerald-300 shadow-[0_0_0_3px_rgba(110,231,183,0.12)]"
-                        : "bg-rose-400 shadow-[0_0_0_3px_rgba(251,113,133,0.12)]",
-                    )}
-                  />
-                </h2>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(event) => setApiKey(event.target.value)}
-                placeholder="sk-or-v1-..."
-                className="h-11 min-w-0 flex-1 rounded-2xl bg-black/20 px-4 text-sm text-zinc-100 shadow-[var(--shadow-border)] outline-none transition-[background-color,box-shadow] duration-150 ease-out placeholder:text-zinc-600 focus:bg-black/25 focus:shadow-[0_0_0_1px_rgba(255,255,255,0.16)]"
-              />
-              <button
-                type="button"
-                onClick={saveKey}
-                disabled={saving || !apiKey.trim()}
-                className={cx(
-                  "h-11 rounded-2xl bg-zinc-100 px-4 text-sm font-semibold text-zinc-950 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500 disabled:shadow-[var(--shadow-border)] disabled:active:scale-100",
-                  CONTROL_MOTION,
-                )}
-              >
-                {saving ? "Saving" : "Save"}
-              </button>
-            </div>
-          </section>
-
-          <section className="rounded-[24px] bg-white/[0.035] shadow-[var(--shadow-border)]">
-            <div className="p-3 pb-2">
-              <div className="mb-3 flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h2 className="flex items-center gap-2 text-balance text-sm font-semibold text-zinc-100">
-                    Model
-                    {modelLocked && (
-                      <span className="inline-flex min-h-6 items-center rounded-full bg-white/[0.04] px-2 text-[11px] font-medium text-zinc-500 shadow-[var(--shadow-border)]">
-                        Model locked
-                      </span>
-                    )}
-                  </h2>
-                  <p className="mt-0.5 truncate text-xs text-zinc-500">
-                    {selectedModel?.name || settings.model}
-                  </p>
-                </div>
-                {selectedModelPrice && (
-                  <span className="shrink-0 rounded-full bg-accent/10 px-2.5 py-1 text-[11px] font-medium tabular-nums text-blue-200 shadow-[0_0_0_1px_rgba(96,165,250,0.22)]">
-                    {selectedModelPrice}
-                  </span>
-                )}
-              </div>
-              <div className="flex h-11 items-center gap-2 rounded-2xl bg-black/20 px-3 text-zinc-500 shadow-[var(--shadow-border)] transition-[background-color,box-shadow] duration-150 ease-out focus-within:bg-black/25 focus-within:shadow-[0_0_0_1px_rgba(255,255,255,0.16)]">
-                <Search size={15} />
-                <input
-                  type="search"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Search models"
-                  className="min-w-0 flex-1 bg-transparent text-sm text-zinc-100 outline-none placeholder:text-zinc-600"
-                />
-                <span className="rounded-full bg-white/[0.05] px-2 py-0.5 text-[11px] tabular-nums text-zinc-500">
-                  {filteredModels.length}
-                </span>
-              </div>
-              {modelLocked && (
-                <p className="mt-2 text-pretty text-xs leading-5 text-zinc-600">
-                  Model selection is locked after the first message in a chat.
-                </p>
-              )}
-            </div>
-            <div className="max-h-[360px] space-y-2 overflow-y-auto px-3 pb-3 pt-1">
-              {filteredModels.length === 0 ? (
-                <div className="rounded-[18px] bg-black/15 p-4 text-pretty text-sm leading-6 text-zinc-500 shadow-[var(--shadow-border)]">
-                  {models.length === 0 ? "Save an API key to load models." : "No matching models."}
-                </div>
-              ) : (
-                filteredModels.map((model) => (
-                  <button
-                    type="button"
-                    key={model.id}
-                    disabled={modelLocked}
-                    onClick={() => selectModel(model)}
-                    className={cx(
-                      "grid min-h-16 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-2xl border p-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
-                      CONTROL_MOTION,
-                      model.id === settings.model
-                        ? "border-accent/55 bg-accent/10 shadow-[inset_0_0_0_1px_rgba(96,165,250,0.18),0_10px_24px_rgba(37,99,235,0.10)]"
-                        : "border-transparent bg-black/15 shadow-[var(--shadow-border)] hover:bg-white/[0.05] hover:shadow-[var(--shadow-border-hover)]",
-                      modelLocked && model.id !== settings.model && "cursor-not-allowed opacity-45 active:scale-100",
-                    )}
-                  >
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-medium text-zinc-100">
-                        {model.name}
-                      </span>
-                      <span className="mt-0.5 block truncate text-xs text-zinc-500">
-                        {model.id}
-                      </span>
-                    </span>
-                    <span className="flex shrink-0 items-center gap-2">
-                      {priceLabel(model) && (
-                        <span className="rounded-full bg-white/[0.06] px-2 py-1 text-[11px] font-medium tabular-nums text-zinc-500 shadow-[var(--shadow-border)]">
-                          {priceLabel(model)}
-                        </span>
-                      )}
-                    </span>
-                  </button>
-                ))
-              )}
-            </div>
-          </section>
-
-          <section className="space-y-4 rounded-[24px] bg-white/[0.035] p-3 shadow-[var(--shadow-border)]">
-            <div>
-              <div className="mb-2 flex items-center justify-between gap-3 text-xs font-medium">
-                <div>
-                  <h2 className="text-balance text-sm font-semibold text-zinc-100">
-                    Reasoning
-                  </h2>
-                  <p className="mt-0.5 text-pretty text-xs leading-5 text-zinc-500">
-                    Choose how much extra reasoning the model should use.
-                  </p>
-                </div>
-                {!canThink && (
-                  <span className="rounded-full bg-white/[0.04] px-2.5 py-1 text-[11px] text-zinc-600 shadow-[var(--shadow-border)]">
-                    Unavailable
-                  </span>
-                )}
-              </div>
-              <div className={cx("grid grid-cols-2 gap-2 sm:grid-cols-4", !canThink && "opacity-55")}>
-                {REASONING_EFFORTS.map((effort) => (
-                  <button
-                    key={effort.value}
-                    type="button"
-                    disabled={!canThink}
-                    onClick={() => commit({ reasoning_effort: effort.value })}
-                    className={cx(
-                      "min-h-10 rounded-full text-xs font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
-                      CONTROL_MOTION,
-                      settings.reasoning_effort === effort.value
-                        ? "bg-accent/15 text-blue-200 shadow-[0_0_0_1px_rgba(96,165,250,0.45)]"
-                        : "bg-white/[0.035] text-zinc-500 shadow-[var(--shadow-border)] hover:bg-white/[0.07] hover:text-zinc-100 hover:shadow-[var(--shadow-border-hover)]",
-                      !canThink && "cursor-not-allowed hover:bg-white/[0.035] hover:text-zinc-500 active:scale-100",
-                    )}
-                  >
-                    {effort.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          <section className="space-y-4 rounded-[24px] bg-white/[0.035] p-3 shadow-[var(--shadow-border)]">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-balance text-sm font-semibold text-zinc-100">
-                  Generation
-                </h2>
-                <p className="mt-0.5 text-pretty text-xs leading-5 text-zinc-500">
-                  Tune response variation and the maximum reply budget.
-                </p>
-              </div>
-            </div>
-            <div className="rounded-[18px] bg-black/15 p-3 shadow-[var(--shadow-border)]">
-              <div className="mb-3 flex items-center justify-between text-xs font-medium">
-                <span className="text-zinc-400">Temperature</span>
-                <span className="rounded-full bg-white/[0.05] px-2 py-0.5 tabular-nums text-zinc-200 shadow-[var(--shadow-border)]">
-                  {settings.temperature}
-                </span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="1.5"
-                step="0.1"
-                value={settings.temperature}
-                onChange={(event) => updateSetting({ temperature: Number(event.target.value) })}
-                onMouseUp={() => onPersist(settings)}
-                onTouchEnd={() => onPersist(settings)}
-                className="w-full accent-accent"
-              />
-            </div>
-            <div className="rounded-[18px] bg-black/15 p-3 shadow-[var(--shadow-border)]">
-              <div className="mb-3 flex items-center justify-between text-xs font-medium">
-                <span className="text-zinc-400">Max tokens</span>
-                <span className="rounded-full bg-white/[0.05] px-2 py-0.5 tabular-nums text-zinc-200 shadow-[var(--shadow-border)]">
-                  {settings.max_tokens}
-                </span>
-              </div>
-              <input
-                type="range"
-                min="256"
-                max="128000"
-                step="1000"
-                value={settings.max_tokens}
-                onChange={(event) => updateSetting({ max_tokens: Number(event.target.value) })}
-                onMouseUp={() => onPersist(settings)}
-                onTouchEnd={() => onPersist(settings)}
-                className="w-full accent-accent"
-              />
-            </div>
-          </section>
+function Accordion({ id, title, open, onToggle, trailing, children }) {
+  return (
+    <section className="t-acc border-b border-white/[0.08] last:border-b-0" data-open={String(open)}>
+      <button
+        type="button"
+        className="t-acc-head flex min-h-10 w-full items-center justify-between gap-4 rounded-xl px-1 py-2 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/35"
+        aria-expanded={open}
+        onClick={() => onToggle(id)}
+      >
+        <span className="flex min-w-0 items-center gap-3">
+          <span className="truncate text-sm font-semibold text-zinc-100">{title}</span>
+          {trailing && (
+            <span className="shrink-0 rounded-full bg-white/[0.04] px-2.5 py-1 text-[11px] text-zinc-600 shadow-[var(--shadow-border)]">
+              {trailing}
+            </span>
+          )}
+        </span>
+        <span className="t-acc-chevron shrink-0 text-zinc-400">
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path
+              d="M4 6.5L8 10.5L12 6.5"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </span>
+      </button>
+      <div className="t-acc-panel">
+        <div className="t-acc-panel-inner px-1 pb-3">
+          {children}
         </div>
-      </aside>
-    </>
+      </div>
+    </section>
+  );
+}
+
+function SlidingTabs({
+  options,
+  value,
+  onChange,
+  getValue,
+  getLabel,
+  ariaLabel,
+  disabled = false,
+  className,
+}) {
+  const barRef = useRef(null);
+  const pillRef = useRef(null);
+  const measuredRef = useRef(false);
+
+  useEffect(() => {
+    const bar = barRef.current;
+    const pill = pillRef.current;
+    if (!bar || !pill) return undefined;
+
+    function moveToActive(animate) {
+      const activeTab =
+        bar.querySelector('[aria-selected="true"]') ||
+        bar.querySelector(".t-tab");
+      if (!activeTab) return;
+
+      if (!animate) {
+        const previousTransition = pill.style.transition;
+        pill.style.transition = "none";
+        pill.style.transform = `translateX(${activeTab.offsetLeft}px)`;
+        pill.style.width = `${activeTab.offsetWidth}px`;
+        void pill.offsetWidth;
+        pill.style.transition = previousTransition;
+        return;
+      }
+
+      pill.style.transform = `translateX(${activeTab.offsetLeft}px)`;
+      pill.style.width = `${activeTab.offsetWidth}px`;
+    }
+
+    function handleResize() {
+      moveToActive(false);
+    }
+
+    requestAnimationFrame(() => {
+      moveToActive(measuredRef.current);
+      measuredRef.current = true;
+    });
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [options, value]);
+
+  return (
+    <div
+      ref={barRef}
+      className={cx("t-tabs", disabled && "is-disabled", className)}
+      role="tablist"
+      aria-label={ariaLabel}
+    >
+      <span ref={pillRef} className="t-tabs-pill" aria-hidden="true" />
+      {options.map((option) => {
+        const optionValue = getValue(option);
+        const selected = optionValue === value;
+        return (
+          <button
+            key={optionValue}
+            type="button"
+            role="tab"
+            aria-selected={selected}
+            disabled={disabled}
+            onClick={() => onChange(optionValue)}
+            className="t-tab min-w-0 flex-1 whitespace-nowrap"
+          >
+            {getLabel(option)}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
 function Toast({ message }) {
-  return <StatusPill message={message ? "Model selected" : ""} />;
+  return <StatusPill message={message || ""} />;
 }
 
 function StatusPill({ message }) {
@@ -1369,11 +1769,16 @@ function ConfirmModal({ dialog, onClose }) {
 }
 
 function App() {
+  const localAppSettings = readLocalAppSettings();
   const [chats, setChats] = useState([]);
   const [messages, setMessages] = useState([]);
   const [models, setModels] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
   const [settings, setSettings] = useState(newSettings);
+  const [defaultModel, setDefaultModel] = useState(DEFAULT_MODEL);
+  const [hideFreeModels, setHideFreeModels] = useState(Boolean(localAppSettings.hide_free_models));
+  const [nitroMode, setNitroMode] = useState(Boolean(localAppSettings.nitro_mode));
+  const [smoothStreaming, setSmoothStreaming] = useState(Boolean(localAppSettings.smooth_streaming));
   const [keyStatus, setKeyStatus] = useState({ has_key: false });
   const [prompt, setPrompt] = useState("");
   const [status, setStatus] = useState("");
@@ -1414,13 +1819,60 @@ function App() {
       const loaded = payload.models || [];
       setModels(loaded);
       setSettings((current) => {
-        if (loaded.some((model) => model.id === current.model)) return current;
-        return { ...current, model: loaded[0]?.id || DEFAULT_MODEL };
+        const currentModel = loaded.find((model) => model.id === current.model);
+        if (
+          currentModel &&
+          (activeChatId || !hideFreeModels || !isFreeModel(currentModel))
+        ) {
+          return current;
+        }
+        const selectableModels = hideFreeModels
+          ? loaded.filter((model) => !isFreeModel(model))
+          : loaded;
+        const fallbackModel = selectableModels.some((model) => model.id === defaultModel)
+          ? defaultModel
+          : selectableModels[0]?.id || loaded[0]?.id || DEFAULT_MODEL;
+        return { ...current, model: fallbackModel };
       });
     } catch (error) {
       setStatus(error.message);
     }
-  }, []);
+  }, [activeChatId, defaultModel, hideFreeModels]);
+
+  const loadAppSettings = useCallback(async () => {
+    try {
+      const payload = await api("/api/settings");
+      const nextDefaultModel = payload.default_model || DEFAULT_MODEL;
+      const nextHideFreeModels =
+        typeof payload.hide_free_models === "boolean"
+          ? payload.hide_free_models
+          : Boolean(readLocalAppSettings().hide_free_models);
+      const nextNitroMode =
+        typeof payload.nitro_mode === "boolean"
+          ? payload.nitro_mode
+          : Boolean(readLocalAppSettings().nitro_mode);
+      const nextSmoothStreaming =
+        typeof payload.smooth_streaming === "boolean"
+          ? payload.smooth_streaming
+          : Boolean(readLocalAppSettings().smooth_streaming);
+      setDefaultModel(nextDefaultModel);
+      setHideFreeModels(nextHideFreeModels);
+      setNitroMode(nextNitroMode);
+      setSmoothStreaming(nextSmoothStreaming);
+      writeLocalAppSettings({
+        hide_free_models: nextHideFreeModels,
+        nitro_mode: nextNitroMode,
+        smooth_streaming: nextSmoothStreaming,
+      });
+      setSettings((current) => (
+        activeChatId
+          ? { ...current, nitro_mode: nextNitroMode }
+          : { ...current, model: nextDefaultModel, nitro_mode: nextNitroMode }
+      ));
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }, [activeChatId]);
 
   const loadKeyStatus = useCallback(async () => {
     try {
@@ -1432,9 +1884,10 @@ function App() {
 
   useEffect(() => {
     loadKeyStatus();
+    loadAppSettings();
     loadModels();
     loadChats();
-  }, [loadChats, loadKeyStatus, loadModels]);
+  }, [loadAppSettings, loadChats, loadKeyStatus, loadModels]);
 
   useEffect(() => {
     scrollToBottom(true);
@@ -1450,6 +1903,7 @@ function App() {
       system_prompt: chat.system_prompt || DEFAULT_SYSTEM_PROMPT,
       thinking_enabled: Boolean(chat.thinking_enabled),
       reasoning_effort: chat.reasoning_effort || "medium",
+      nitro_mode: nitroMode,
     });
   }
 
@@ -1472,14 +1926,107 @@ function App() {
   }
 
   function resetChat() {
+    const selectableModels = hideFreeModels
+      ? models.filter((model) => !isFreeModel(model))
+      : models;
+    const nextModel = selectableModels.some((model) => model.id === defaultModel)
+      ? defaultModel
+      : selectableModels[0]?.id || defaultModel;
     setActiveChatId(null);
     setMessages([]);
     setSettings((current) => ({
       ...newSettings,
-      model: current.model,
+      model: nextModel || current.model,
+      nitro_mode: nitroMode,
     }));
     setPrompt("");
     setStatus("");
+  }
+
+  async function updateDefaultModel(modelId) {
+    try {
+      const payload = await api("/api/settings", {
+        method: "PATCH",
+        body: JSON.stringify({ default_model: modelId }),
+      });
+      const nextDefaultModel = payload.default_model || modelId;
+      setDefaultModel(nextDefaultModel);
+      if (!activeChatId) {
+        setSettings((current) => ({ ...current, model: nextDefaultModel }));
+      }
+      showToast("Default model updated");
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function updateHideFreeModels(value) {
+    setHideFreeModels(value);
+    writeLocalAppSettings({ hide_free_models: value });
+    try {
+      const payload = await api("/api/settings", {
+        method: "PATCH",
+        body: JSON.stringify({ hide_free_models: value }),
+      });
+      const nextValue =
+        typeof payload.hide_free_models === "boolean"
+          ? payload.hide_free_models
+          : value;
+      setHideFreeModels(nextValue);
+      writeLocalAppSettings({ hide_free_models: nextValue });
+      showToast(value ? "Free models hidden" : "Free models shown");
+    } catch (error) {
+      setHideFreeModels(value);
+      writeLocalAppSettings({ hide_free_models: value });
+      setStatus(`Saved locally. Restart the server to sync this setting. ${error.message}`);
+    }
+  }
+
+  async function updateNitroMode(value) {
+    setNitroMode(value);
+    setSettings((current) => ({ ...current, nitro_mode: value }));
+    writeLocalAppSettings({ nitro_mode: value });
+    try {
+      const payload = await api("/api/settings", {
+        method: "PATCH",
+        body: JSON.stringify({ nitro_mode: value }),
+      });
+      const nextValue =
+        typeof payload.nitro_mode === "boolean"
+          ? payload.nitro_mode
+          : value;
+      setNitroMode(nextValue);
+      setSettings((current) => ({ ...current, nitro_mode: nextValue }));
+      writeLocalAppSettings({ nitro_mode: nextValue });
+      showToast(value ? "Turbo enabled" : "Turbo disabled");
+    } catch (error) {
+      setNitroMode(value);
+      setSettings((current) => ({ ...current, nitro_mode: value }));
+      writeLocalAppSettings({ nitro_mode: value });
+      setStatus(`Saved locally. Restart the server to sync this setting. ${error.message}`);
+    }
+  }
+
+  async function updateSmoothStreaming(value) {
+    setSmoothStreaming(value);
+    writeLocalAppSettings({ smooth_streaming: value });
+    try {
+      const payload = await api("/api/settings", {
+        method: "PATCH",
+        body: JSON.stringify({ smooth_streaming: value }),
+      });
+      const nextValue =
+        typeof payload.smooth_streaming === "boolean"
+          ? payload.smooth_streaming
+          : value;
+      setSmoothStreaming(nextValue);
+      writeLocalAppSettings({ smooth_streaming: nextValue });
+      showToast(value ? "Smooth text enabled" : "Smooth text disabled");
+    } catch (error) {
+      setSmoothStreaming(value);
+      writeLocalAppSettings({ smooth_streaming: value });
+      setStatus(`Saved locally. Restart the server to sync this setting. ${error.message}`);
+    }
   }
 
   async function createChat() {
@@ -1550,37 +2097,100 @@ function App() {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffered = "";
+    const smoothBuffers = { content: "", reasoning: "" };
+    let smoothFrame = null;
 
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      followRef.current = followRef.current && isNearBottom();
-      buffered += decoder.decode(value, { stream: true });
-      const lines = buffered.split("\n");
-      buffered = lines.pop() || "";
+    function applyStreamText(nextContent, nextReasoning) {
+      if (!nextContent && !nextReasoning) return;
+      setMessages((current) =>
+        current.map((message) => {
+          if (message.id !== assistantId) return message;
+          return {
+            ...message,
+            content: nextContent
+              ? `${message.content || ""}${nextContent}`
+              : message.content,
+            reasoning: nextReasoning
+              ? `${message.reasoning || ""}${nextReasoning}`
+              : message.reasoning,
+          };
+        }),
+      );
+      scrollToBottom();
+    }
 
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        let event;
-        try {
-          event = JSON.parse(line);
-        } catch {
-          event = { type: "content", value: line };
-        }
-        setMessages((current) =>
-          current.map((message) => {
-            if (message.id !== assistantId) return message;
-            if (event.type === "reasoning") {
-              return { ...message, reasoning: `${message.reasoning || ""}${event.value}` };
-            }
-            if (event.type === "usage") {
-              return { ...message, ...(event.value || {}) };
-            }
-            return { ...message, content: `${message.content || ""}${event.value}` };
-          }),
-        );
-        scrollToBottom();
+    function flushSmoothBuffers() {
+      smoothFrame = null;
+      const nextContent = smoothBuffers.content;
+      const nextReasoning = smoothBuffers.reasoning;
+      smoothBuffers.content = "";
+      smoothBuffers.reasoning = "";
+      applyStreamText(nextContent, nextReasoning);
+    }
+
+    function queueSmoothText(type, value) {
+      smoothBuffers[type] += value;
+      if (smoothFrame) return;
+      smoothFrame = window.requestAnimationFrame(flushSmoothBuffers);
+    }
+
+    function flushNow() {
+      if (smoothFrame) {
+        window.cancelAnimationFrame(smoothFrame);
+        smoothFrame = null;
       }
+      flushSmoothBuffers();
+    }
+
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        followRef.current = followRef.current && isNearBottom();
+        buffered += decoder.decode(value, { stream: true });
+        const lines = buffered.split("\n");
+        buffered = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          let event;
+          try {
+            event = JSON.parse(line);
+          } catch {
+            event = { type: "content", value: line };
+          }
+          if (event.type === "usage") {
+            setMessages((current) =>
+              current.map((message) =>
+                message.id === assistantId ? { ...message, ...(event.value || {}) } : message,
+              ),
+            );
+            continue;
+          }
+          if (event.type === "reasoning") {
+            if (smoothStreaming) {
+              queueSmoothText("reasoning", String(event.value || ""));
+            } else {
+              applyStreamText("", String(event.value || ""));
+            }
+            continue;
+          }
+          if (smoothStreaming) {
+            queueSmoothText("content", String(event.value || ""));
+          } else {
+            applyStreamText(String(event.value || ""), "");
+          }
+        }
+      }
+      if (buffered.trim()) {
+        if (smoothStreaming) {
+          queueSmoothText("content", buffered);
+        } else {
+          applyStreamText(buffered, "");
+        }
+      }
+    } finally {
+      flushNow();
     }
   }
 
@@ -1794,9 +2404,17 @@ function App() {
         models={models}
         settings={settings}
         setSettings={setSettings}
+        defaultModel={defaultModel}
+        hideFreeModels={hideFreeModels}
+        nitroMode={nitroMode}
+        smoothStreaming={smoothStreaming}
         modelLocked={modelLocked}
         onPersist={persistSettings}
-        onModelSelected={(name) => showToast(name)}
+        onModelSelected={(name) => showToast(`Model selected: ${name}`)}
+        onSetDefaultModel={updateDefaultModel}
+        onToggleHideFreeModels={updateHideFreeModels}
+        onToggleNitroMode={updateNitroMode}
+        onToggleSmoothStreaming={updateSmoothStreaming}
       />
       <ConfirmModal
         dialog={confirmDialog}

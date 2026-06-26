@@ -47,6 +47,7 @@ class ChatCreateRequest(BaseModel):
     max_tokens: int = DEFAULT_MAX_TOKENS
     thinking_enabled: bool = False
     reasoning_effort: ReasoningEffort = "medium"
+    nitro_mode: bool = False
 
 
 class ChatPatchRequest(BaseModel):
@@ -59,6 +60,13 @@ class ChatPatchRequest(BaseModel):
     reasoning_effort: ReasoningEffort | None = None
 
 
+class AppSettingsPatchRequest(BaseModel):
+    default_model: str | None = None
+    hide_free_models: bool | None = None
+    nitro_mode: bool | None = None
+    smooth_streaming: bool | None = None
+
+
 class StreamMessageRequest(BaseModel):
     message: str = Field(min_length=1)
     model: str
@@ -67,6 +75,7 @@ class StreamMessageRequest(BaseModel):
     system_prompt: str = DEFAULT_SYSTEM_PROMPT
     thinking_enabled: bool = False
     reasoning_effort: ReasoningEffort = "medium"
+    nitro_mode: bool = False
     regenerate_message_id: str | None = None
 
 
@@ -291,6 +300,47 @@ def cache_models(models: list[dict[str, Any]]) -> None:
         )
 
 
+def read_app_setting(key: str) -> Any:
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT value_json FROM app_settings WHERE key = ?", (key,)
+        ).fetchone()
+    if not row:
+        return None
+    return json.loads(row["value_json"])
+
+
+def write_app_setting(key: str, value: Any) -> None:
+    with get_db() as conn:
+        conn.execute(
+            """
+            INSERT INTO app_settings (key, value_json, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET
+              value_json = excluded.value_json,
+              updated_at = excluded.updated_at
+            """,
+            (key, json.dumps(value), utc_now()),
+        )
+
+
+def app_settings_payload() -> dict[str, Any]:
+    return {
+        "default_model": default_model_id(),
+        "hide_free_models": bool(read_app_setting("hide_free_models")),
+        "nitro_mode": bool(read_app_setting("nitro_mode")),
+        "smooth_streaming": bool(read_app_setting("smooth_streaming")),
+    }
+
+
+def openrouter_request_model(model_id: str, nitro_mode: bool) -> str:
+    if not nitro_mode:
+        return model_id
+    if model_id.endswith(":nitro"):
+        return model_id
+    return f"{model_id}:nitro"
+
+
 async def fetch_models_from_openrouter(api_key: str) -> list[dict[str, Any]]:
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.get(
@@ -356,6 +406,9 @@ def chat_has_messages(conn: sqlite3.Connection, chat_id: str) -> bool:
 def default_model_id() -> str:
     models = cached_models()
     ids = {model["id"] for model in models if model.get("id")}
+    saved_default = read_app_setting("default_model")
+    if isinstance(saved_default, str) and saved_default in ids:
+        return saved_default
     if DEFAULT_MODEL_ID in ids:
         return DEFAULT_MODEL_ID
     return models[0]["id"] if models else DEFAULT_MODEL_ID
@@ -391,6 +444,28 @@ async def save_openrouter_key(payload: ApiKeyRequest) -> dict[str, Any]:
     data = await validate_key(api_key)
     write_openrouter_key(api_key)
     return normalize_key_status(data, True)
+
+
+@app.get("/api/settings")
+def get_app_settings() -> dict[str, Any]:
+    return app_settings_payload()
+
+
+@app.patch("/api/settings")
+def update_app_settings(payload: AppSettingsPatchRequest) -> dict[str, Any]:
+    if payload.default_model is not None:
+        model_id = payload.default_model.strip()
+        ids = {model["id"] for model in cached_models() if model.get("id")}
+        if ids and model_id not in ids:
+            raise HTTPException(status_code=400, detail="Unknown model.")
+        write_app_setting("default_model", model_id)
+    if payload.hide_free_models is not None:
+        write_app_setting("hide_free_models", payload.hide_free_models)
+    if payload.nitro_mode is not None:
+        write_app_setting("nitro_mode", payload.nitro_mode)
+    if payload.smooth_streaming is not None:
+        write_app_setting("smooth_streaming", payload.smooth_streaming)
+    return app_settings_payload()
 
 
 @app.get("/api/models")
@@ -700,7 +775,7 @@ async def stream_openrouter_response(
 
     messages = build_openrouter_messages(chat_id, payload.system_prompt)
     body: dict[str, Any] = {
-        "model": payload.model,
+        "model": openrouter_request_model(payload.model, payload.nitro_mode),
         "messages": messages,
         "temperature": payload.temperature,
         "max_tokens": payload.max_tokens,

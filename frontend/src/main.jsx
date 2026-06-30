@@ -923,7 +923,7 @@ const MessageItem = memo(function MessageItem({
           )}
         >
           {editing ? (
-            <div className="w-full rounded-[24px] bg-blue-500/20 p-3 shadow-[var(--shadow-surface)]">
+            <div className="w-full rounded-[28px] bg-[#2f2f30] px-5 pb-5 pt-4 shadow-[0_0_0_1px_rgba(255,255,255,0.07),0_22px_70px_rgba(0,0,0,0.36)] transition-[background-color,box-shadow] duration-200 ease-out focus-within:bg-[#343435] focus-within:shadow-[0_0_0_1px_rgba(255,255,255,0.11),0_22px_70px_rgba(0,0,0,0.38)]">
               <textarea
                 value={draft}
                 rows={Math.min(8, Math.max(3, draft.split("\n").length))}
@@ -937,14 +937,14 @@ const MessageItem = memo(function MessageItem({
                     cancelEditing();
                   }
                 }}
-                className="max-h-[220px] min-h-[92px] w-full resize-none rounded-xl bg-black/20 px-3 py-2 text-sm leading-6 text-white shadow-[var(--shadow-border)] outline-none transition-[box-shadow] duration-150 ease-out placeholder:text-blue-100/60 focus:shadow-[0_0_0_1px_rgba(255,255,255,0.16)]"
+                className="block max-h-[260px] min-h-[108px] w-full resize-none bg-transparent text-base leading-7 text-zinc-50 outline-none placeholder:text-zinc-500 sm:text-[17px]"
               />
-              <div className="mt-2 flex justify-end gap-2">
+              <div className="mt-5 flex justify-end gap-3">
                 <button
                   type="button"
                   onClick={cancelEditing}
                   className={cx(
-                    "inline-flex min-h-10 items-center rounded-full px-3 text-xs font-medium text-blue-100 shadow-[var(--shadow-border)] hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-200/35",
+                    "inline-flex min-h-11 items-center rounded-full px-5 text-sm font-medium text-zinc-100 shadow-[0_0_0_1px_rgba(255,255,255,0.13)] hover:bg-white/[0.055] hover:shadow-[0_0_0_1px_rgba(255,255,255,0.2)] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
                     CONTROL_MOTION,
                   )}
                 >
@@ -955,11 +955,11 @@ const MessageItem = memo(function MessageItem({
                   disabled={saving || !draft.trim()}
                   onClick={saveEdit}
                   className={cx(
-                    "inline-flex min-h-10 items-center rounded-full bg-white px-3 text-xs font-semibold text-zinc-950 hover:bg-blue-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-100/60 disabled:cursor-not-allowed disabled:bg-white/30 disabled:text-zinc-700 disabled:active:scale-100",
+                    "inline-flex min-h-11 items-center rounded-full bg-white px-6 text-sm font-semibold text-zinc-950 hover:bg-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/45 disabled:cursor-not-allowed disabled:bg-white/35 disabled:text-zinc-700 disabled:active:scale-100",
                     CONTROL_MOTION,
                   )}
                 >
-                  {saving ? "Saving" : "Save"}
+                  {saving ? "Sending" : "Send"}
                 </button>
               </div>
             </div>

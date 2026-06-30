@@ -43,6 +43,15 @@
   --shimmer-highlight: #e4e4e7;
   --shimmer-band: 400%;
   --shimmer-ease: linear;
+  --icon-swap-dur: 250ms;
+  --icon-swap-blur: 2px;
+  --icon-swap-start-scale: 0.25;
+  --icon-swap-ease: ease-in-out;
+  --dropdown-open-dur: 250ms;
+  --dropdown-close-dur: 150ms;
+  --dropdown-pre-scale: 0.97;
+  --dropdown-closing-scale: 0.99;
+  --dropdown-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --clear-dur: 1000ms;
   --clear-out-dur: 400ms;
   --clear-in-dur: 400ms;
@@ -546,6 +555,135 @@ textarea {
   );
 }
 
+.t-icon-swap {
+  position: relative;
+  display: inline-grid;
+}
+.t-icon-swap .t-icon {
+  grid-area: 1 / 1;
+  transition:
+    opacity   var(--icon-swap-dur) var(--icon-swap-ease),
+    filter    var(--icon-swap-dur) var(--icon-swap-ease),
+    transform var(--icon-swap-dur) var(--icon-swap-ease);
+  will-change: opacity, filter, transform;
+}
+.t-icon-swap[data-state="a"] .t-icon[data-icon="a"],
+.t-icon-swap[data-state="b"] .t-icon[data-icon="b"] {
+  opacity: 1;
+  filter: blur(0);
+  transform: scale(1);
+}
+.t-icon-swap[data-state="a"] .t-icon[data-icon="b"],
+.t-icon-swap[data-state="b"] .t-icon[data-icon="a"] {
+  opacity: 0;
+  filter: blur(var(--icon-swap-blur));
+  transform: scale(var(--icon-swap-start-scale));
+}
+
+.t-dropdown {
+  transform-origin: top left;
+  transform: scale(var(--dropdown-pre-scale));
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform var(--dropdown-open-dur) var(--dropdown-ease),
+    opacity   var(--dropdown-open-dur) var(--dropdown-ease);
+  will-change: transform, opacity;
+}
+.t-dropdown[data-origin="top-right"]     { transform-origin: top right; }
+.t-dropdown[data-origin="top-center"]    { transform-origin: top center; }
+.t-dropdown[data-origin="bottom-left"]   { transform-origin: bottom left; }
+.t-dropdown[data-origin="bottom-center"] { transform-origin: bottom center; }
+.t-dropdown[data-origin="bottom-right"]  { transform-origin: bottom right; }
+
+.t-dropdown.is-open {
+  transform: scale(1);
+  opacity: 1;
+  pointer-events: auto;
+}
+.t-dropdown.is-closing {
+  transform: scale(var(--dropdown-closing-scale));
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform var(--dropdown-close-dur) var(--dropdown-ease),
+    opacity   var(--dropdown-close-dur) var(--dropdown-ease);
+}
+
+.response-info {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.response-info-icon {
+  width: 15px;
+  height: 15px;
+  place-items: center;
+  line-height: 1;
+}
+.response-info-icon .t-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+}
+.response-info-icon i {
+  display: block;
+  font-size: 15px;
+  line-height: 1;
+  transform: translateY(1px);
+}
+.response-info-popover {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  z-index: 30;
+  width: min(320px, calc(100vw - 48px));
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(16, 16, 18, 0.98);
+  padding: 10px;
+  color: #e4e4e7;
+  box-shadow:
+    0 14px 42px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+.response-info-title {
+  margin-bottom: 8px;
+  color: #f4f4f5;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.response-info-grid {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+.response-info-row {
+  display: grid;
+  grid-template-columns: minmax(112px, 0.85fr) minmax(0, 1.15fr);
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.25;
+}
+.response-info-row dt {
+  color: #71717a;
+  font-weight: 500;
+}
+.response-info-row dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: #d4d4d8;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
 .t-shimmer {
   position: relative;
   display: inline-block;
@@ -595,6 +733,8 @@ textarea {
   .t-modal { transition: none !important; }
   .t-page-slide .t-page { transition: none !important; }
   .t-tabs-pill, .t-tab { transition: none !important; }
+  .t-icon-swap .t-icon { transition: none !important; }
+  .t-dropdown { transition: none !important; }
   .t-acc-panel, .t-acc-panel-inner, .t-acc-chevron {
     transition: none !important;
   }

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import sqlite3
@@ -167,6 +168,9 @@ def ensure_message_usage_columns(conn: sqlite3.Connection) -> None:
         "reasoning_tokens": "INTEGER",
         "total_tokens": "INTEGER",
         "cost": "REAL",
+        "provider_name": "TEXT",
+        "generation_time": "REAL",
+        "latency": "REAL",
     }
     for column, column_type in usage_columns.items():
         if column not in existing_columns:
@@ -397,6 +401,9 @@ def row_to_message(row: sqlite3.Row) -> dict[str, Any]:
         "reasoning_tokens": row["reasoning_tokens"],
         "total_tokens": row["total_tokens"],
         "cost": row["cost"],
+        "provider_name": row["provider_name"],
+        "generation_time": row["generation_time"],
+        "latency": row["latency"],
         "created_at": row["created_at"],
     }
 
@@ -623,9 +630,10 @@ def import_chats(payload: ChatImportRequest) -> dict[str, Any]:
                 INSERT INTO messages (
                   id, chat_id, role, content, reasoning, model, finish_reason,
                   error, generation_id, prompt_tokens, completion_tokens,
-                  reasoning_tokens, total_tokens, cost, created_at
+                  reasoning_tokens, total_tokens, cost, provider_name,
+                  generation_time, latency, created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     message_id,
@@ -642,6 +650,9 @@ def import_chats(payload: ChatImportRequest) -> dict[str, Any]:
                     int_or_none(item.get("reasoning_tokens")),
                     int_or_none(item.get("total_tokens")),
                     float_or_none(item.get("cost")),
+                    item.get("provider_name"),
+                    float_or_none(item.get("generation_time")),
+                    float_or_none(item.get("latency")),
                     str(item.get("created_at") or now),
                 ),
             )
@@ -881,6 +892,9 @@ def normalize_usage(usage: dict[str, Any] | None) -> dict[str, Any] | None:
         "reasoning_tokens": int_or_none(completion_details.get("reasoning_tokens")),
         "total_tokens": int_or_none(usage.get("total_tokens")),
         "cost": float_or_none(usage.get("cost")),
+        "provider_name": usage.get("provider_name"),
+        "generation_time": float_or_none(usage.get("generation_time")),
+        "latency": float_or_none(usage.get("latency")),
     }
 
 
@@ -904,21 +918,31 @@ def normalize_generation_usage(data: dict[str, Any] | None) -> dict[str, Any] | 
         "reasoning_tokens": int_or_none(data.get("native_tokens_reasoning")),
         "total_tokens": total_tokens,
         "cost": float_or_none(data.get("total_cost") or data.get("usage")),
+        "provider_name": data.get("provider_name"),
+        "generation_time": float_or_none(data.get("generation_time")),
+        "latency": float_or_none(data.get("latency")),
     }
 
 
 async def fetch_generation_usage(
     api_key: str, generation_id: str
 ) -> dict[str, Any] | None:
+    retry_delays = [0.0, 0.35, 0.8, 1.5]
     async with httpx.AsyncClient(timeout=15.0) as client:
-        response = await client.get(
-            f"{OPENROUTER_BASE_URL}/generation",
-            headers=headers_for_key(api_key),
-            params={"id": generation_id},
-        )
-    if response.status_code >= 400:
-        return None
-    return normalize_generation_usage(response.json().get("data"))
+        for delay in retry_delays:
+            if delay:
+                await asyncio.sleep(delay)
+            response = await client.get(
+                f"{OPENROUTER_BASE_URL}/generation",
+                headers=headers_for_key(api_key),
+                params={"id": generation_id},
+            )
+            if response.status_code == 404:
+                continue
+            if response.status_code >= 400:
+                return None
+            return normalize_generation_usage(response.json().get("data"))
+    return None
 
 
 def stream_event(event_type: str, value: Any) -> bytes:
@@ -980,6 +1004,7 @@ async def stream_openrouter_response(
                     assistant_text.append(error_text)
                     yield stream_event("error", error_text)
                     return
+                generation_id = response.headers.get("X-Generation-Id") or generation_id
 
                 async for line in response.aiter_lines():
                     if not line.startswith("data:"):
@@ -991,7 +1016,7 @@ async def stream_openrouter_response(
                         chunk = json.loads(data)
                     except json.JSONDecodeError:
                         continue
-                    generation_id = chunk.get("id") or generation_id
+                    generation_id = generation_id or chunk.get("id")
                     next_usage = normalize_usage(chunk.get("usage"))
                     if next_usage:
                         usage = next_usage
@@ -1012,11 +1037,18 @@ async def stream_openrouter_response(
                         value = str(content)
                         assistant_text.append(value)
                         yield stream_event("content", value)
-                if generation_id and not usage:
-                    usage = await fetch_generation_usage(api_key, generation_id)
+                if generation_id:
+                    generation_usage = await fetch_generation_usage(api_key, generation_id)
+                    if generation_usage:
+                        usage = {**(usage or {}), **generation_usage}
                 if usage:
                     yield stream_event(
-                        "usage", {"generation_id": generation_id, **usage}
+                        "usage",
+                        {
+                            "generation_id": generation_id,
+                            "model": payload.model,
+                            **usage,
+                        },
                     )
     except Exception as exc:  # noqa: BLE001
         error_text = str(exc)
@@ -1031,9 +1063,10 @@ async def stream_openrouter_response(
                 INSERT INTO messages (
                   id, chat_id, role, content, reasoning, model, finish_reason,
                   error, generation_id, prompt_tokens, completion_tokens,
-                  reasoning_tokens, total_tokens, cost, created_at
+                  reasoning_tokens, total_tokens, cost, provider_name,
+                  generation_time, latency, created_at
                 )
-                VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     assistant_message_id,
@@ -1049,6 +1082,9 @@ async def stream_openrouter_response(
                     usage.get("reasoning_tokens") if usage else None,
                     usage.get("total_tokens") if usage else None,
                     usage.get("cost") if usage else None,
+                    usage.get("provider_name") if usage else None,
+                    usage.get("generation_time") if usage else None,
+                    usage.get("latency") if usage else None,
                     utc_now(),
                 ),
             )

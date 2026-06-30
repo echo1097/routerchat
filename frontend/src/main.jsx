@@ -232,6 +232,122 @@ function AssistantActionButton({ label, children, ...props }) {
   );
 }
 
+function ResponseInfoButton({ message }) {
+  const [open, setOpen] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const rootRef = useRef(null);
+  const closeTimerRef = useRef(null);
+  const popoverId = `response-info-${message.id}`;
+
+  const rows = [
+    ["Total input tokens", formatInteger(message.prompt_tokens)],
+    ["Total output tokens", formatInteger(message.completion_tokens)],
+    ["Total tokens", formatInteger(message.total_tokens)],
+    ["Total cost", formatCost(message.cost)],
+    ["Model", message.model || "Unavailable"],
+  ];
+
+  function clearCloseTimer() {
+    if (!closeTimerRef.current) return;
+    window.clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = null;
+  }
+
+  function closePopover() {
+    if (!open) return;
+    clearCloseTimer();
+    setOpen(false);
+    setClosing(true);
+    const closeMs = parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue("--dropdown-close-dur"),
+    ) || 150;
+    closeTimerRef.current = window.setTimeout(() => {
+      setClosing(false);
+      closeTimerRef.current = null;
+    }, closeMs);
+  }
+
+  function togglePopover(event) {
+    event.stopPropagation();
+    if (open) {
+      closePopover();
+      return;
+    }
+    clearCloseTimer();
+    setClosing(false);
+    setOpen(true);
+  }
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    function handlePointerDown(event) {
+      if (rootRef.current?.contains(event.target)) return;
+      closePopover();
+    }
+
+    function handleKeyDown(event) {
+      if (event.key === "Escape") closePopover();
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  useEffect(() => () => clearCloseTimer(), []);
+
+  return (
+    <div ref={rootRef} className="response-info">
+      <button
+        type="button"
+        aria-label={open ? "Close response info" : "Show response info"}
+        title={open ? "Close response info" : "Show response info"}
+        aria-expanded={open}
+        aria-controls={popoverId}
+        onClick={togglePopover}
+        className={cx(
+          "inline-flex h-6 w-6 items-center justify-center rounded-md text-zinc-500 hover:text-zinc-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15",
+          CONTROL_MOTION,
+        )}
+      >
+        <span className="t-icon-swap response-info-icon" data-state={open ? "b" : "a"}>
+          <span className="t-icon" data-icon="a" aria-hidden="true">
+            <i className="fi fi-rc-info" />
+          </span>
+          <span className="t-icon" data-icon="b" aria-hidden="true">
+            <i className="fi fi-br-cross-small" />
+          </span>
+        </span>
+      </button>
+      <div
+        id={popoverId}
+        role="dialog"
+        aria-label="Response information"
+        data-origin="bottom-left"
+        className={cx(
+          "t-dropdown response-info-popover",
+          open && "is-open",
+          closing && "is-closing",
+        )}
+      >
+        <div className="response-info-title">Response info</div>
+        <dl className="response-info-grid">
+          {rows.map(([label, value]) => (
+            <div key={label} className="response-info-row">
+              <dt>{label}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+    </div>
+  );
+}
+
 function ConversationRail({
   chats,
   activeChatId,
@@ -515,10 +631,37 @@ const ThinkingContent = memo(function ThinkingContent({ children }) {
   );
 });
 
-const ThinkingBlock = memo(function ThinkingBlock({ reasoning, streaming }) {
+function formatThoughtDuration(ms) {
+  const seconds = Math.max(1, Math.round(ms / 1000));
+  return `${seconds} ${seconds === 1 ? "second" : "seconds"}`;
+}
+
+function isFiniteNumber(value) {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function formatInteger(value) {
+  if (!isFiniteNumber(value)) return "Unavailable";
+  return new Intl.NumberFormat().format(value);
+}
+
+function formatCost(value) {
+  if (!isFiniteNumber(value)) return "Unavailable";
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: value < 0.01 ? 6 : 4,
+    maximumFractionDigits: value < 0.01 ? 6 : 4,
+  }).format(value);
+}
+
+const ThinkingBlock = memo(function ThinkingBlock({ reasoning, streaming, durationMs }) {
   const [open, setOpen] = useState(false);
 
   if (!reasoning) return null;
+
+  const label =
+    !streaming && durationMs ? `Thought for ${formatThoughtDuration(durationMs)}` : "Thinking";
 
   return (
     <div className="mb-4 max-w-3xl">
@@ -534,8 +677,8 @@ const ThinkingBlock = memo(function ThinkingBlock({ reasoning, streaming }) {
           size={15}
           className={cx("transition-transform duration-150 ease-out", !open && "-rotate-90")}
         />
-        <span className={streaming ? "t-shimmer" : undefined} data-text="Thinking">
-          Thinking
+        <span className={streaming ? "t-shimmer" : undefined} data-text={label}>
+          {label}
         </span>
         {streaming && <span className="h-1.5 w-1.5 rounded-full bg-accent" />}
       </button>
@@ -586,6 +729,8 @@ const MarkdownContent = memo(function MarkdownContent({ children }) {
 const MessageItem = memo(function MessageItem({
   message,
   streaming,
+  reasoningStreaming,
+  reasoningDurationMs,
   onCopy,
   onRegenerate,
   onEditUserMessage,
@@ -738,7 +883,11 @@ const MessageItem = memo(function MessageItem({
 
   return (
     <article className="group max-w-none">
-      <ThinkingBlock reasoning={message.reasoning} streaming={streaming} />
+      <ThinkingBlock
+        reasoning={message.reasoning}
+        streaming={reasoningStreaming}
+        durationMs={reasoningDurationMs}
+      />
       <div className="max-w-3xl text-[15px] leading-7 text-zinc-100">
         {message.content ? (
           <MarkdownContent>{message.content}</MarkdownContent>
@@ -760,6 +909,7 @@ const MessageItem = memo(function MessageItem({
           >
             <RefreshCw size={15} />
           </AssistantActionButton>
+          <ResponseInfoButton message={message} />
         </div>
       )}
     </article>
@@ -776,6 +926,8 @@ function MessageList({
   messages,
   activeChatId,
   streamingMessageId,
+  reasoningStreamingMessageId,
+  reasoningDurations,
   streamRef,
   onScroll,
   onCopy,
@@ -798,6 +950,8 @@ function MessageList({
               key={message.id}
               message={message}
               streaming={message.id === streamingMessageId}
+              reasoningStreaming={message.id === reasoningStreamingMessageId}
+              reasoningDurationMs={reasoningDurations[message.id]}
               onCopy={onCopy}
               onRegenerate={onRegenerate}
               onEditUserMessage={onEditUserMessage}
@@ -2140,9 +2294,12 @@ function App() {
   const [railCollapsed, setRailCollapsed] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingMessageId, setStreamingMessageId] = useState(null);
+  const [reasoningStreamingMessageId, setReasoningStreamingMessageId] = useState(null);
+  const [reasoningDurations, setReasoningDurations] = useState({});
   const [confirmDialog, setConfirmDialog] = useState(null);
   const [toast, setToast] = useState("");
   const abortRef = useRef(null);
+  const reasoningStartedAtRef = useRef({});
   const streamRef = useRef(null);
   const { isNearBottom, markUserScroll, scrollToBottom, followRef } =
     useRafScroller(streamRef);
@@ -2473,7 +2630,7 @@ function App() {
     }
   }
 
-  async function readStream(response, assistantId) {
+  async function readStream(response, assistantId, savedAssistantId = assistantId) {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffered = "";
@@ -2522,6 +2679,31 @@ function App() {
       flushSmoothBuffers();
     }
 
+    function startReasoningTimer() {
+      if (!reasoningStartedAtRef.current[assistantId]) {
+        reasoningStartedAtRef.current[assistantId] = performance.now();
+      }
+    }
+
+    function finishReasoningTimer() {
+      const startedAt = reasoningStartedAtRef.current[assistantId];
+      if (!startedAt) return;
+      const durationMs = performance.now() - startedAt;
+      delete reasoningStartedAtRef.current[assistantId];
+      setReasoningDurations((current) => ({
+        ...current,
+        [assistantId]: durationMs,
+        [savedAssistantId]: durationMs,
+      }));
+    }
+
+    function clearReasoningStreaming() {
+      finishReasoningTimer();
+      setReasoningStreamingMessageId((current) =>
+        current === assistantId ? null : current,
+      );
+    }
+
     try {
       while (true) {
         const { value, done } = await reader.read();
@@ -2540,6 +2722,7 @@ function App() {
             event = { type: "content", value: line };
           }
           if (event.type === "usage") {
+            clearReasoningStreaming();
             setMessages((current) =>
               current.map((message) =>
                 message.id === assistantId ? { ...message, ...(event.value || {}) } : message,
@@ -2548,6 +2731,8 @@ function App() {
             continue;
           }
           if (event.type === "reasoning") {
+            startReasoningTimer();
+            setReasoningStreamingMessageId(assistantId);
             if (smoothStreaming) {
               queueSmoothText("reasoning", String(event.value || ""));
             } else {
@@ -2555,6 +2740,7 @@ function App() {
             }
             continue;
           }
+          clearReasoningStreaming();
           if (smoothStreaming) {
             queueSmoothText("content", String(event.value || ""));
           } else {
@@ -2563,6 +2749,7 @@ function App() {
         }
       }
       if (buffered.trim()) {
+        clearReasoningStreaming();
         if (smoothStreaming) {
           queueSmoothText("content", buffered);
         } else {
@@ -2571,6 +2758,7 @@ function App() {
       }
     } finally {
       flushNow();
+      clearReasoningStreaming();
     }
   }
 
@@ -2604,6 +2792,11 @@ function App() {
 
       followRef.current = true;
       setStreamingMessageId(assistantId);
+      setReasoningDurations((current) => {
+        const next = { ...current };
+        delete next[assistantId];
+        return next;
+      });
       setMessages((current) =>
         shouldAddUser
           ? [...current, userMessage, assistantMessage]
@@ -2627,7 +2820,8 @@ function App() {
         throw new Error(await responseErrorDetail(response));
       }
 
-      await readStream(response, assistantId);
+      const savedAssistantId = response.headers.get("X-Assistant-Message-Id") || assistantId;
+      await readStream(response, assistantId, savedAssistantId);
       await loadChats();
       await loadChat(chatId);
     } catch (error) {
@@ -2646,6 +2840,10 @@ function App() {
     } finally {
       setIsStreaming(false);
       setStreamingMessageId(null);
+      setReasoningStreamingMessageId(null);
+      if (currentAssistantId) {
+        delete reasoningStartedAtRef.current[currentAssistantId];
+      }
       abortRef.current = null;
     }
   }
@@ -2747,6 +2945,8 @@ function App() {
           messages={messages}
           activeChatId={activeChatId}
           streamingMessageId={streamingMessageId}
+          reasoningStreamingMessageId={reasoningStreamingMessageId}
+          reasoningDurations={reasoningDurations}
           streamRef={streamRef}
           onScroll={markUserScroll}
           onCopy={copyMessage}

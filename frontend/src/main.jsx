@@ -69,16 +69,23 @@ async function api(path, options = {}) {
   });
 
   if (!response.ok) {
-    let detail = response.statusText;
-    try {
-      detail = (await response.json()).detail || detail;
-    } catch {
-      detail = await response.text();
-    }
-    throw new Error(detail);
+    throw new Error(await responseErrorDetail(response));
   }
 
   return response.json();
+}
+
+async function responseErrorDetail(response) {
+  const fallback = response.statusText || "Request failed";
+  const body = await response.text();
+  if (!body) return fallback;
+
+  try {
+    const payload = JSON.parse(body);
+    return payload.detail || fallback;
+  } catch {
+    return body;
+  }
 }
 
 function cx(...classes) {
@@ -1030,9 +1037,9 @@ function SettingsDrawer({
     onClose();
   }
 
-  function setDefaultModel(event, model) {
-    event.stopPropagation();
-    onSetDefaultModel(model.id);
+  function setSelectedModelAsDefault() {
+    if (!settings.model || settings.model === defaultModel) return;
+    onSetDefaultModel(settings.model);
   }
 
   function choosePage(pageId) {
@@ -1355,15 +1362,29 @@ function SettingsDrawer({
                 </span>
               )}
             </h2>
-            <p className="mt-0.5 truncate text-xs text-zinc-500">
-              {selectedModel?.name || settings.model}
+            <p className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-zinc-500">
+              <span className="truncate">{selectedModel?.name || settings.model}</span>
+              {selectedModelPrice && (
+                <span className="inline-flex min-h-5 shrink-0 items-center rounded-full bg-white/[0.055] px-2 text-[11px] font-medium leading-none tabular-nums text-zinc-500 shadow-[var(--shadow-border)]">
+                  {selectedModelPrice}
+                </span>
+              )}
+              <button
+                type="button"
+                disabled={!settings.model || settings.model === defaultModel}
+                onClick={setSelectedModelAsDefault}
+                className={cx(
+                  "inline-flex min-h-5 shrink-0 items-center rounded-full px-2 text-[11px] font-medium leading-none shadow-[var(--shadow-border)] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 disabled:cursor-default disabled:active:scale-100",
+                  CONTROL_MOTION,
+                  settings.model === defaultModel
+                    ? "bg-white/[0.045] text-zinc-500"
+                    : "bg-white/[0.065] text-zinc-300 hover:bg-white/[0.1] hover:text-zinc-100",
+                )}
+              >
+                {settings.model === defaultModel ? "Default" : "Set default"}
+              </button>
             </p>
           </div>
-          {selectedModelPrice && (
-            <span className="shrink-0 rounded-full bg-accent/10 px-2.5 py-1 text-[11px] font-medium tabular-nums text-blue-200 shadow-[0_0_0_1px_rgba(96,165,250,0.22)]">
-              {selectedModelPrice}
-            </span>
-          )}
         </div>
         <div className="flex h-10 items-center gap-2 rounded-xl bg-black/20 px-3 text-zinc-500 shadow-[var(--shadow-border)] transition-[background-color,box-shadow] duration-150 ease-out focus-within:bg-black/25 focus-within:shadow-[0_0_0_1px_rgba(255,255,255,0.16)]">
           <Search size={15} />
@@ -1392,14 +1413,14 @@ function SettingsDrawer({
         ) : (
           filteredModels.map((model) => {
             const isSelected = model.id === settings.model;
-            const isDefault = model.id === defaultModel;
+            const modelPrice = priceLabel(model);
             return (
             <div
               key={model.id}
               className={cx(
-                "grid min-h-14 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-xl border p-2.5",
+                "min-h-14 w-full rounded-xl border p-2.5",
                 isSelected
-                  ? "border-accent/55 bg-accent/10 shadow-[inset_0_0_0_1px_rgba(96,165,250,0.18),0_10px_24px_rgba(37,99,235,0.10)]"
+                  ? "border-white/[0.14] bg-white/[0.07] shadow-[var(--shadow-border-hover)]"
                   : "border-transparent bg-black/15 shadow-[var(--shadow-border)] hover:bg-white/[0.05] hover:shadow-[var(--shadow-border-hover)]",
               )}
             >
@@ -1408,39 +1429,23 @@ function SettingsDrawer({
                 disabled={modelLocked}
                 onClick={() => selectModel(model)}
                 className={cx(
-                  "min-w-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+                  "block w-full min-w-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
                   CONTROL_MOTION,
                   modelLocked && !isSelected && "cursor-not-allowed opacity-45 active:scale-100",
                 )}
               >
-                <span className="block truncate text-sm font-medium text-zinc-100">
-                  {model.name}
+                <span className="flex min-w-0 items-center gap-2 text-sm font-medium text-zinc-100">
+                  <span className="truncate">{model.name}</span>
+                  {modelPrice && (
+                    <span className="shrink-0 rounded-full bg-white/[0.06] px-1.5 py-0.5 text-xs font-medium leading-none tabular-nums text-zinc-400 shadow-[var(--shadow-border)]">
+                      {modelPrice}
+                    </span>
+                  )}
                 </span>
                 <span className="mt-0.5 block truncate text-xs text-zinc-500">
                   {model.id}
                 </span>
               </button>
-              <span className="flex shrink-0 items-center gap-2">
-                {priceLabel(model) && (
-                  <span className="rounded-full bg-white/[0.06] px-2 py-1 text-[11px] font-medium tabular-nums text-zinc-500 shadow-[var(--shadow-border)]">
-                    {priceLabel(model)}
-                  </span>
-                )}
-                <button
-                  type="button"
-                  disabled={isDefault}
-                  onClick={(event) => setDefaultModel(event, model)}
-                  className={cx(
-                    "h-7 rounded-lg px-2 text-[11px] font-semibold shadow-[var(--shadow-border)] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 disabled:cursor-default disabled:active:scale-100",
-                    CONTROL_MOTION,
-                    isDefault
-                      ? "bg-accent/12 text-blue-200"
-                      : "bg-white/[0.055] text-zinc-400 hover:bg-white/[0.09] hover:text-zinc-100",
-                  )}
-                >
-                  {isDefault ? "Default" : "Set default"}
-                </button>
-              </span>
             </div>
           );
           })
@@ -1584,7 +1589,13 @@ function SettingsDrawer({
                       : "text-zinc-200 hover:bg-white/[0.045] hover:text-zinc-50",
                     )}
                 >
-                  <span className="settings-nav-icon" aria-hidden="true">
+                  <span
+                    className={cx(
+                      "settings-nav-icon",
+                      page.id === "models" && "-translate-x-0.5",
+                    )}
+                    aria-hidden="true"
+                  >
                     {page.iconClass ? (
                       <i className={cx(page.iconClass, "text-[15px] leading-none")} />
                     ) : (
@@ -2410,13 +2421,7 @@ function App() {
   async function exportChats(chatId, chat) {
     const response = await fetch(`/api/chats/${encodeURIComponent(chatId)}/export`);
     if (!response.ok) {
-      let detail = response.statusText;
-      try {
-        detail = (await response.json()).detail || detail;
-      } catch {
-        detail = await response.text();
-      }
-      throw new Error(detail);
+      throw new Error(await responseErrorDetail(response));
     }
     const blob = await response.blob();
     const url = URL.createObjectURL(blob);
@@ -2619,13 +2624,7 @@ function App() {
       });
 
       if (!response.ok || !response.body) {
-        let detail = response.statusText;
-        try {
-          detail = (await response.json()).detail || detail;
-        } catch {
-          detail = await response.text();
-        }
-        throw new Error(detail);
+        throw new Error(await responseErrorDetail(response));
       }
 
       await readStream(response, assistantId);

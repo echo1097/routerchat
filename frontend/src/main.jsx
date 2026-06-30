@@ -1529,7 +1529,13 @@ function SettingsDrawer({
   );
 
   return (
-    <div className={cx("fixed inset-0 z-50 grid place-items-center px-3 py-4 sm:px-6", !open && "pointer-events-none")}>
+    <div
+      className={cx(
+        "modal-interaction-guard fixed inset-0 z-50 grid place-items-center px-3 py-4 sm:px-6",
+        !open && "is-inert pointer-events-none",
+      )}
+      inert={open ? undefined : ""}
+    >
       <button
         type="button"
         aria-label="Close settings"

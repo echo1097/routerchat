@@ -180,6 +180,11 @@ textarea {
     opacity   var(--modal-close-dur) var(--modal-ease);
 }
 
+.modal-interaction-guard.is-inert,
+.modal-interaction-guard.is-inert * {
+  pointer-events: none !important;
+}
+
 .t-page-slide {
   position: relative;
   overflow: hidden;

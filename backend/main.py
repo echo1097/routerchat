@@ -258,6 +258,7 @@ def normalize_model(model: dict[str, Any]) -> dict[str, Any]:
         "id": model.get("id"),
         "name": model.get("name") or model.get("id"),
         "context_length": model.get("context_length"),
+        "top_provider": model.get("top_provider") or {},
         "architecture": model.get("architecture") or {},
         "pricing": model.get("pricing") or {},
         "supported_parameters": model.get("supported_parameters") or [],
@@ -886,6 +887,12 @@ def normalize_usage(usage: dict[str, Any] | None) -> dict[str, Any] | None:
     if not usage:
         return None
     completion_details = usage.get("completion_tokens_details") or {}
+    # Context meter reference math, kept here for future backend-side use:
+    # prompt_tokens = int_or_none(usage.get("prompt_tokens"))
+    # completion_tokens = int_or_none(usage.get("completion_tokens"))
+    # current_context_tokens = int_or_none(usage.get("total_tokens"))
+    # if current_context_tokens is None and prompt_tokens is not None and completion_tokens is not None:
+    #     current_context_tokens = prompt_tokens + completion_tokens
     return {
         "prompt_tokens": int_or_none(usage.get("prompt_tokens")),
         "completion_tokens": int_or_none(usage.get("completion_tokens")),

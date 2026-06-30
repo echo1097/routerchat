@@ -2,6 +2,7 @@ import React, {
   memo,
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -120,6 +121,49 @@ function supportsThinking(models, id) {
       .find((model) => model.id === id)
       ?.supported_parameters?.includes("reasoning"),
   );
+}
+
+function toFiniteNumber(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function formatTokens(tokens) {
+  if (!Number.isFinite(tokens)) return "Unavailable";
+  if (tokens >= 1_000_000) {
+    return `${(tokens / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  }
+  if (tokens >= 1_000) {
+    return `${Math.round(tokens / 1_000)}k`;
+  }
+  return `${tokens}`;
+}
+
+function getModelContextLimit(model) {
+  const providerLimit = toFiniteNumber(model?.top_provider?.context_length);
+  const modelLimit = toFiniteNumber(model?.context_length);
+  return providerLimit > 0 ? providerLimit : modelLimit > 0 ? modelLimit : null;
+}
+
+function getContextWindowInfo(contextTokens, contextLimit) {
+  if (!Number.isFinite(contextTokens) || !Number.isFinite(contextLimit) || contextLimit <= 0) {
+    return null;
+  }
+  const percentFull = (contextTokens / contextLimit) * 100;
+  const remainingTokens = Math.max(contextLimit - contextTokens, 0);
+
+  return {
+    contextTokens,
+    contextLimit,
+    remainingTokens,
+    percentFull,
+    displayPercent: `${Math.round(percentFull)}% full`,
+    displayUsage: `${formatTokens(contextTokens)} / ${formatTokens(contextLimit)} tokens used`,
+  };
 }
 
 function priceLabel(model) {
@@ -655,6 +699,72 @@ function formatCost(value) {
   }).format(value);
 }
 
+function ContextWindowMeter({ info }) {
+  const tooltipId = useId();
+  const hasInfo = Boolean(info);
+  const percent = hasInfo ? Math.min(Math.max(info.percentFull, 0), 100) : 0;
+  const radius = 8;
+  const circumference = 2 * Math.PI * radius;
+  const dashOffset = circumference * (1 - percent / 100);
+  const ariaLabel = hasInfo
+    ? `Context window ${info.displayPercent}, ${info.displayUsage}`
+    : "Context window unavailable";
+
+  return (
+    <span className="t-tt-wrap context-meter-wrap inline-flex h-[34px] w-[34px] shrink-0 items-center justify-center">
+      <button
+        type="button"
+        aria-label={ariaLabel}
+        aria-describedby={tooltipId}
+        className={cx(
+          "t-tt-trigger grid h-[34px] w-[34px] place-items-center rounded-full text-zinc-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+          CONTROL_MOTION,
+          hasInfo && "text-zinc-400 hover:text-zinc-200",
+        )}
+      >
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 20 20"
+          className="h-[22px] w-[22px] -rotate-90"
+        >
+          <circle
+            cx="10"
+            cy="10"
+            r={radius}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="3"
+            className={hasInfo ? "opacity-20" : "opacity-35"}
+          />
+          {hasInfo && (
+            <circle
+              cx="10"
+              cy="10"
+              r={radius}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeDasharray={circumference}
+              strokeDashoffset={dashOffset}
+              className="opacity-95 transition-[stroke-dashoffset] duration-300 ease-out"
+            />
+          )}
+        </svg>
+      </button>
+      <span
+        id={tooltipId}
+        role="tooltip"
+        className="t-tt context-meter-tooltip"
+      >
+        <span className="block text-zinc-100">
+          {hasInfo ? info.displayUsage : "Context window unavailable"}
+        </span>
+      </span>
+    </span>
+  );
+}
+
 const ThinkingBlock = memo(function ThinkingBlock({ reasoning, streaming, durationMs }) {
   const [open, setOpen] = useState(false);
 
@@ -971,6 +1081,7 @@ function Composer({
   isStreaming,
   settings,
   models,
+  contextWindowInfo,
   modelLocked,
   onSubmit,
   onStop,
@@ -1020,6 +1131,7 @@ function Composer({
           </div>
           <div className="flex items-end gap-2 px-2.5 pb-2.5 pt-1.5">
             <div className="ml-auto" />
+            <ContextWindowMeter info={contextWindowInfo} />
             {canThink && (
               <button
                 type="button"
@@ -2314,6 +2426,31 @@ function App() {
     useRafScroller(streamRef);
 
   const modelLocked = Boolean(activeChatId && messages.length > 0);
+  const contextWindowInfo = useMemo(() => {
+    const selectedModel = models.find((model) => model.id === settings.model);
+    const contextLimit = getModelContextLimit(selectedModel);
+    const latestAssistantWithUsage = [...messages]
+      .reverse()
+      .find((message) => {
+        if (message.role !== "assistant") return false;
+        if (toFiniteNumber(message.total_tokens) !== null) return true;
+        return (
+          toFiniteNumber(message.prompt_tokens) !== null &&
+          toFiniteNumber(message.completion_tokens) !== null
+        );
+      });
+    const totalTokens = toFiniteNumber(latestAssistantWithUsage?.total_tokens);
+    const promptTokens = toFiniteNumber(latestAssistantWithUsage?.prompt_tokens);
+    const completionTokens = toFiniteNumber(latestAssistantWithUsage?.completion_tokens);
+    const contextTokens =
+      totalTokens ?? (
+        promptTokens !== null && completionTokens !== null
+          ? promptTokens + completionTokens
+          : null
+      );
+
+    return getContextWindowInfo(contextTokens, contextLimit);
+  }, [messages, models, settings.model]);
 
   function showToast(message) {
     setToast(message);
@@ -2971,6 +3108,7 @@ function App() {
           isStreaming={isStreaming}
           settings={settings}
           models={models}
+          contextWindowInfo={contextWindowInfo}
           modelLocked={modelLocked}
           onSubmit={() => sendMessage()}
           onStop={stopStream}

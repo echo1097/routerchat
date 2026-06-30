@@ -1000,9 +1000,9 @@ function Composer({
     >
       <div className="mx-auto max-w-4xl">
         <div
-          className="rounded-[28px] bg-lift shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_22px_80px_rgba(0,0,0,0.45)] transition-[background-color,box-shadow] duration-500 ease-[cubic-bezier(0.2,0,0,1)] focus-within:bg-[#19191d] focus-within:shadow-[0_0_0_1px_rgba(255,255,255,0.12),0_20px_72px_rgba(0,0,0,0.42)]"
+          className="rounded-[24px] bg-lift shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_22px_80px_rgba(0,0,0,0.45)] transition-[background-color,box-shadow] duration-500 ease-[cubic-bezier(0.2,0,0,1)] focus-within:bg-[#19191d] focus-within:shadow-[0_0_0_1px_rgba(255,255,255,0.12),0_20px_72px_rgba(0,0,0,0.42)]"
         >
-          <div className="px-5 pt-4">
+          <div className="px-4 pt-3">
             <textarea
               ref={textareaRef}
               value={value}
@@ -1015,17 +1015,17 @@ function Composer({
                 }
               }}
               placeholder="Ask Anything"
-              className="block max-h-[126px] min-h-7 w-full resize-none bg-transparent text-[15px] leading-7 text-zinc-100 outline-none placeholder:text-zinc-600"
+              className="block max-h-[126px] min-h-6 w-full resize-none bg-transparent text-sm leading-6 text-zinc-100 outline-none placeholder:text-zinc-600"
             />
           </div>
-          <div className="flex items-end gap-2 px-3 pb-3 pt-2">
+          <div className="flex items-end gap-2 px-2.5 pb-2.5 pt-1.5">
             <div className="ml-auto" />
             {canThink && (
               <button
                 type="button"
                 onClick={onToggleThinking}
                 className={cx(
-                  "inline-flex h-10 items-center gap-1.5 rounded-full px-3 text-xs font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+                  "relative inline-flex h-[34px] items-center gap-1 rounded-full px-2.5 text-[11px] font-medium before:absolute before:-inset-[3px] before:content-[''] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
                   CONTROL_MOTION,
                   SOFT_SURFACE,
                   settings.thinking_enabled
@@ -1040,12 +1040,12 @@ function Composer({
               type="button"
               onClick={onOpenSettings}
               className={cx(
-                "inline-flex h-10 min-w-0 max-w-[190px] items-center gap-1.5 rounded-full bg-white/[0.035] px-3 text-[11px] font-medium text-zinc-400 hover:bg-white/[0.07] hover:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 sm:max-w-[240px]",
+                "relative inline-flex h-[34px] min-w-0 max-w-[190px] items-center gap-1 rounded-full bg-white/[0.035] px-2.5 text-[11px] font-medium text-zinc-400 before:absolute before:-inset-[3px] before:content-[''] hover:bg-white/[0.07] hover:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 sm:max-w-[240px]",
                 CONTROL_MOTION,
                 SOFT_SURFACE,
               )}
             >
-              <Settings2 size={13} />
+              <Settings2 size={12} />
               <span className="truncate">{promptModelName(models, settings.model)}</span>
               {modelLocked && <span className="text-zinc-600">locked</span>}
             </button>
@@ -1053,11 +1053,11 @@ function Composer({
               type="submit"
               disabled={!isStreaming && (!value.trim() || disabled)}
               className={cx(
-                "relative inline-flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
+                "group relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
                 CONTROL_MOTION,
                 isStreaming
-                  ? "bg-zinc-200 text-zinc-950"
-                  : "bg-accent text-zinc-950 hover:bg-blue-300 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-600 disabled:active:scale-100",
+                  ? "text-zinc-950"
+                  : "text-zinc-950 disabled:cursor-not-allowed disabled:text-zinc-600 disabled:active:scale-100",
               )}
               aria-label={isStreaming ? "Stop" : "Send"}
               title={isStreaming ? "Stop" : "Send"}
@@ -1065,18 +1065,27 @@ function Composer({
               <span
                 aria-hidden="true"
                 className={cx(
-                  "absolute inset-0 grid place-items-center transition-[opacity,filter,scale] duration-300 ease-[cubic-bezier(0.2,0,0,1)]",
+                  "absolute inset-[3px] rounded-full transition-colors duration-150 ease-out",
+                  isStreaming
+                    ? "bg-zinc-200"
+                    : "bg-accent group-hover:bg-blue-300 group-disabled:bg-zinc-800",
+                )}
+              />
+              <span
+                aria-hidden="true"
+                className={cx(
+                  "absolute inset-[3px] grid place-items-center overflow-hidden rounded-full transition-[opacity,filter,scale] duration-300 ease-[cubic-bezier(0.2,0,0,1)]",
                   isStreaming
                     ? "scale-100 opacity-100 blur-0"
                     : "scale-[0.25] opacity-0 blur-[4px]",
                 )}
               >
-                <Square size={15} />
+                <Square size={13} />
               </span>
               <span
                 aria-hidden="true"
                 className={cx(
-                  "absolute inset-0 grid place-items-center transition-[opacity,filter,scale] duration-300 ease-[cubic-bezier(0.2,0,0,1)]",
+                  "absolute inset-[3px] grid place-items-center overflow-hidden rounded-full transition-[opacity,filter,scale] duration-300 ease-[cubic-bezier(0.2,0,0,1)]",
                   isStreaming
                     ? "scale-[0.25] opacity-0 blur-[4px]"
                     : "scale-100 opacity-100 blur-0",

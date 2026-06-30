@@ -95,12 +95,12 @@ textarea {
 
 .send-arrow-icon {
   --send-arrow-x: 0;
-  --send-arrow-y: -0.8px;
-  --send-arrow-stroke: 3px;
+  --send-arrow-y: -0.7px;
+  --send-arrow-stroke: 2.5px;
   position: relative;
   display: block;
-  width: 18px;
-  height: 18px;
+  width: 15px;
+  height: 15px;
   transform: translate(var(--send-arrow-x), var(--send-arrow-y));
 }
 
@@ -113,17 +113,17 @@ textarea {
 }
 
 .send-arrow-icon::before {
-  top: 4px;
+  top: 3.5px;
   width: var(--send-arrow-stroke);
-  height: 12px;
+  height: 10px;
   border-radius: 999px;
   background: currentColor;
 }
 
 .send-arrow-icon::after {
-  top: 3px;
-  width: 10px;
-  height: 10px;
+  top: 2.5px;
+  width: 8.5px;
+  height: 8.5px;
   border-top: var(--send-arrow-stroke) solid currentColor;
   border-left: var(--send-arrow-stroke) solid currentColor;
   border-radius: 2px 0 0;

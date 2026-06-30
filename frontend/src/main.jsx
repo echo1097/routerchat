@@ -2061,7 +2061,7 @@ function ConfirmModal({ dialog, onClose }) {
             id="delete-modal-title"
             className="flex min-w-0 flex-1 items-baseline gap-2 overflow-hidden text-base font-semibold text-zinc-100"
           >
-            <span className="shrink-0">Delete chat</span>
+            <span className="shrink-0">{renderedDialog.title || "Delete chat"}</span>
             {renderedDialog.chatTitle && (
               <span className="delete-chat-name" title={renderedDialog.chatTitle}>
                 <span
@@ -2076,31 +2076,34 @@ function ConfirmModal({ dialog, onClose }) {
               </span>
             )}
           </h2>
-          <div className="flex shrink-0 justify-end gap-2">
-            <button
-              ref={cancelRef}
-              type="button"
-              disabled={busy}
-              onClick={onClose}
-              className={cx(
-                "h-10 rounded-full bg-white/[0.05] px-4 text-sm font-medium text-zinc-300 hover:bg-white/[0.08] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15 disabled:cursor-not-allowed disabled:opacity-55",
-                CONTROL_MOTION,
-              )}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={confirm}
-              className={cx(
-                "h-10 rounded-full bg-red-400 px-4 text-sm font-semibold text-zinc-950 hover:bg-red-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-200/60 disabled:cursor-not-allowed disabled:opacity-55",
-                CONTROL_MOTION,
-              )}
-            >
-              {busy ? "Deleting" : renderedDialog.confirmLabel || "Delete"}
-            </button>
-          </div>
+        </div>
+        {renderedDialog.body && (
+          <p className="mt-2 text-sm text-zinc-400">{renderedDialog.body}</p>
+        )}
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            ref={cancelRef}
+            type="button"
+            disabled={busy}
+            onClick={onClose}
+            className={cx(
+              "h-10 rounded-full bg-white/[0.05] px-4 text-sm font-medium text-zinc-300 hover:bg-white/[0.08] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15 disabled:cursor-not-allowed disabled:opacity-55",
+              CONTROL_MOTION,
+            )}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={confirm}
+            className={cx(
+              "h-10 rounded-full bg-red-400 px-4 text-sm font-semibold text-zinc-950 hover:bg-red-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-200/60 disabled:cursor-not-allowed disabled:opacity-55",
+              CONTROL_MOTION,
+            )}
+          >
+            {busy ? "Deleting" : renderedDialog.confirmLabel || "Delete"}
+          </button>
         </div>
       </section>
     </div>
@@ -2389,7 +2392,7 @@ function App() {
     setConfirmDialog({
       title: "Delete chat?",
       chatTitle: chat.title,
-      body: `Delete "${chat.title}"? This cannot be undone.`,
+      body: "This cannot be undone.",
       confirmLabel: "Delete",
       onConfirm: async () => {
         try {

@@ -220,7 +220,7 @@ def headers_for_key(api_key: str) -> dict[str, str]:
     return {
         "Authorization": f"Bearer {api_key}",
         "HTTP-Referer": "http://127.0.0.1:8000",
-        "X-Title": "RouterChat",
+        "X-OpenRouter-Title": "RouterChat",
     }
 
 
@@ -711,7 +711,22 @@ def delete_chat(chat_id: str) -> dict[str, Any]:
     return {"ok": True}
 
 
-def refresh_chat_after_message_change(conn: sqlite3.Connection, chat_id: str) -> None:
+def refresh_chat_after_message_change(
+    conn: sqlite3.Connection, chat_id: str, previous_first_user_content: str | None
+) -> None:
+    chat = conn.execute("SELECT title FROM chats WHERE id = ?", (chat_id,)).fetchone()
+    if chat is None:
+        return
+    previous_auto_title = (
+        chat_title_from_message(previous_first_user_content)
+        if previous_first_user_content
+        else "New chat"
+    )
+    if chat["title"] != previous_auto_title:
+        # The title was customized (renamed, or no longer matches the message it
+        # was originally derived from) -- leave it alone.
+        conn.execute("UPDATE chats SET updated_at = ? WHERE id = ?", (utc_now(), chat_id))
+        return
     first_user = conn.execute(
         """
         SELECT content FROM messages
@@ -744,6 +759,16 @@ def update_message(
             raise HTTPException(status_code=404, detail="Message not found.")
         if message["role"] != "user":
             raise HTTPException(status_code=400, detail="Only user prompts can be edited.")
+        previous_first_user = conn.execute(
+            """
+            SELECT content FROM messages
+            WHERE chat_id = ? AND role = 'user'
+            ORDER BY created_at ASC
+            LIMIT 1
+            """,
+            (chat_id,),
+        ).fetchone()
+        previous_first_user_content = previous_first_user["content"] if previous_first_user else None
         conn.execute(
             """
             DELETE FROM messages
@@ -755,7 +780,7 @@ def update_message(
             "UPDATE messages SET content = ? WHERE id = ? AND chat_id = ?",
             (content, message_id, chat_id),
         )
-        refresh_chat_after_message_change(conn, chat_id)
+        refresh_chat_after_message_change(conn, chat_id, previous_first_user_content)
     return get_chat(chat_id)
 
 
@@ -770,6 +795,16 @@ def delete_message(chat_id: str, message_id: str) -> dict[str, Any]:
             raise HTTPException(status_code=404, detail="Message not found.")
         if message["role"] != "user":
             raise HTTPException(status_code=400, detail="Only user prompts can be deleted.")
+        previous_first_user = conn.execute(
+            """
+            SELECT content FROM messages
+            WHERE chat_id = ? AND role = 'user'
+            ORDER BY created_at ASC
+            LIMIT 1
+            """,
+            (chat_id,),
+        ).fetchone()
+        previous_first_user_content = previous_first_user["content"] if previous_first_user else None
         conn.execute(
             """
             DELETE FROM messages
@@ -777,7 +812,7 @@ def delete_message(chat_id: str, message_id: str) -> dict[str, Any]:
             """,
             (chat_id, message["created_at"]),
         )
-        refresh_chat_after_message_change(conn, chat_id)
+        refresh_chat_after_message_change(conn, chat_id, previous_first_user_content)
     return get_chat(chat_id)
 
 

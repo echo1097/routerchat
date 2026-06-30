@@ -493,9 +493,9 @@ textarea {
 .delete-chat-name {
   position: relative;
   display: inline-flex;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-width: 0;
-  max-width: none;
+  max-width: 100%;
   overflow: hidden;
   color: #a1a1aa;
   font-weight: 500;
@@ -504,6 +504,8 @@ textarea {
 
 .delete-chat-name-text {
   display: block;
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
@@ -527,6 +529,20 @@ textarea {
     rgba(0, 0, 0, 0.58) calc(100% - 42px),
     rgba(0, 0, 0, 0.18) calc(100% - 14px),
     transparent 100%
+  );
+}
+
+.delete-chat-name:has(.delete-chat-name-text.is-overflowing)::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: min(96px, 38%);
+  background: linear-gradient(
+    90deg,
+    rgba(24, 24, 27, 0),
+    rgba(24, 24, 27, 0.72) 58%,
+    #18181b 100%
   );
 }
 

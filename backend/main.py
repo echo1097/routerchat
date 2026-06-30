@@ -83,6 +83,11 @@ class MessageUpdateRequest(BaseModel):
     content: str = Field(min_length=1)
 
 
+class ChatImportRequest(BaseModel):
+    chats: list[dict[str, Any]] = Field(default_factory=list)
+    messages: list[dict[str, Any]] = Field(default_factory=list)
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -396,6 +401,14 @@ def row_to_message(row: sqlite3.Row) -> dict[str, Any]:
     }
 
 
+def coerce_bool_int(value: Any) -> int:
+    return int(bool(value))
+
+
+def coerce_reasoning_effort(value: Any) -> ReasoningEffort:
+    return value if value in {"low", "medium", "high", "xhigh"} else "medium"
+
+
 def chat_has_messages(conn: sqlite3.Connection, chat_id: str) -> bool:
     row = conn.execute(
         "SELECT 1 FROM messages WHERE chat_id = ? LIMIT 1", (chat_id,)
@@ -526,6 +539,119 @@ def create_chat(payload: ChatCreateRequest) -> dict[str, Any]:
         )
         row = conn.execute("SELECT * FROM chats WHERE id = ?", (chat_id,)).fetchone()
     return {"chat": row_to_chat(row)}
+
+
+@app.get("/api/chats/{chat_id}/export")
+def export_chat(chat_id: str) -> dict[str, Any]:
+    with get_db() as conn:
+        chat = conn.execute("SELECT * FROM chats WHERE id = ?", (chat_id,)).fetchone()
+        if not chat:
+            raise HTTPException(status_code=404, detail="Chat not found.")
+        chat_rows = conn.execute(
+            "SELECT * FROM chats WHERE id = ?",
+            (chat_id,),
+        ).fetchall()
+        message_rows = conn.execute(
+            "SELECT * FROM messages WHERE chat_id = ? ORDER BY created_at ASC",
+            (chat_id,),
+        ).fetchall()
+    return {
+        "schema": "routerchat.chats.v1",
+        "exported_at": utc_now(),
+        "chats": [row_to_chat(row) for row in chat_rows],
+        "messages": [row_to_message(row) for row in message_rows],
+    }
+
+
+@app.post("/api/chats/import")
+def import_chats(payload: ChatImportRequest) -> dict[str, Any]:
+    now = utc_now()
+    chat_id_map: dict[str, str] = {}
+    imported_chat_ids: set[str] = set()
+    imported_messages = 0
+
+    with get_db() as conn:
+        existing_chat_ids = {
+            row["id"] for row in conn.execute("SELECT id FROM chats").fetchall()
+        }
+        existing_message_ids = {
+            row["id"] for row in conn.execute("SELECT id FROM messages").fetchall()
+        }
+
+        for item in payload.chats:
+            source_id = str(item.get("id") or uuid.uuid4())
+            chat_id = source_id
+            if chat_id in existing_chat_ids or chat_id in imported_chat_ids:
+                chat_id = str(uuid.uuid4())
+            chat_id_map[source_id] = chat_id
+            imported_chat_ids.add(chat_id)
+
+            conn.execute(
+                """
+                INSERT INTO chats (
+                  id, title, model, system_prompt, temperature, max_tokens,
+                  thinking_enabled, reasoning_effort, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    chat_id,
+                    str(item.get("title") or "Imported chat")[:120],
+                    str(item.get("model") or default_model_id()),
+                    str(item.get("system_prompt") or DEFAULT_SYSTEM_PROMPT),
+                    float_or_none(item.get("temperature")) or 0.7,
+                    int_or_none(item.get("max_tokens")) or DEFAULT_MAX_TOKENS,
+                    coerce_bool_int(item.get("thinking_enabled")),
+                    coerce_reasoning_effort(item.get("reasoning_effort")),
+                    str(item.get("created_at") or now),
+                    str(item.get("updated_at") or now),
+                ),
+            )
+
+        for item in payload.messages:
+            source_chat_id = str(item.get("chat_id") or "")
+            chat_id = chat_id_map.get(source_chat_id)
+            if not chat_id:
+                continue
+            message_id = str(item.get("id") or uuid.uuid4())
+            if message_id in existing_message_ids:
+                message_id = str(uuid.uuid4())
+            existing_message_ids.add(message_id)
+
+            conn.execute(
+                """
+                INSERT INTO messages (
+                  id, chat_id, role, content, reasoning, model, finish_reason,
+                  error, generation_id, prompt_tokens, completion_tokens,
+                  reasoning_tokens, total_tokens, cost, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    message_id,
+                    chat_id,
+                    str(item.get("role") or "user"),
+                    str(item.get("content") or ""),
+                    item.get("reasoning"),
+                    item.get("model"),
+                    item.get("finish_reason"),
+                    item.get("error"),
+                    item.get("generation_id"),
+                    int_or_none(item.get("prompt_tokens")),
+                    int_or_none(item.get("completion_tokens")),
+                    int_or_none(item.get("reasoning_tokens")),
+                    int_or_none(item.get("total_tokens")),
+                    float_or_none(item.get("cost")),
+                    str(item.get("created_at") or now),
+                ),
+            )
+            imported_messages += 1
+
+    return {
+        "ok": True,
+        "imported_chats": len(imported_chat_ids),
+        "imported_messages": imported_messages,
+    }
 
 
 @app.get("/api/chats/{chat_id}")

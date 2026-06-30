@@ -43,6 +43,18 @@
   --shimmer-highlight: #e4e4e7;
   --shimmer-band: 400%;
   --shimmer-ease: linear;
+  --clear-dur: 1000ms;
+  --clear-out-dur: 400ms;
+  --clear-in-dur: 400ms;
+  --clear-out-fly: 12px;
+  --clear-in-fly: 12px;
+  --clear-out-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --clear-in-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --clear-blur: 2px;
+  --glow-delay: 50ms;
+  --glow-peak-at: 0.15;
+  --glow-opacity: 0.85;
+  --glow-spread: 1.5;
 }
 
 * {
@@ -177,7 +189,8 @@ textarea {
 }
 .t-page-slide .t-page[data-page-id="2"],
 .t-page-slide .t-page[data-page-id="3"],
-.t-page-slide .t-page[data-page-id="4"] {
+.t-page-slide .t-page[data-page-id="4"],
+.t-page-slide .t-page[data-page-id="5"] {
   --t-page-from-x: var(--page-slide-distance);
 }
 .t-page-slide .t-page {
@@ -196,7 +209,8 @@ textarea {
 .t-page-slide[data-page="1"] .t-page[data-page-id="1"],
 .t-page-slide[data-page="2"] .t-page[data-page-id="2"],
 .t-page-slide[data-page="3"] .t-page[data-page-id="3"],
-.t-page-slide[data-page="4"] .t-page[data-page-id="4"] {
+.t-page-slide[data-page="4"] .t-page[data-page-id="4"],
+.t-page-slide[data-page="5"] .t-page[data-page-id="5"] {
   opacity: 1;
   pointer-events: auto;
   transform: translateX(0);
@@ -221,6 +235,62 @@ textarea {
   line-height: 1;
 }
 
+.settings-cloud-icon {
+  display: inline-grid;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  place-items: center;
+  line-height: 1;
+}
+.settings-cloud-icon i,
+.settings-cloud-icon i::before {
+  display: block;
+  line-height: 1;
+}
+
+.t-clear {
+  position: relative;
+  overflow: hidden;
+}
+.t-clear-mirror,
+.t-clear-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  z-index: 2;
+}
+.t-clear-mirror { opacity: 0; }
+.t-clear.has-value .t-clear-mirror,
+.t-clear.is-clearing .t-clear-mirror { opacity: 1; }
+.t-clear.has-value > input,
+.t-clear.is-clearing > input {
+  -webkit-text-fill-color: transparent;
+}
+.t-clear.has-value .t-clear-placeholder { opacity: 0; }
+.t-clear-glow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 3;
+  mix-blend-mode: screen;
+}
+.cloud-search .t-clear-mirror,
+.cloud-search .t-clear-placeholder {
+  left: 38px;
+  right: 42px;
+  color: #71717a;
+  font-size: 0.875rem;
+}
+.cloud-search input::-webkit-search-cancel-button {
+  display: none;
+}
+
 .t-tabs {
   position: relative;
   display: inline-flex;
@@ -229,6 +299,17 @@ textarea {
   padding: 3px;
   border-radius: 48px;
   background: var(--tabs-bar-bg);
+}
+
+.settings-mobile-tabs {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.settings-mobile-tabs::-webkit-scrollbar {
+  display: none;
+}
+.settings-mobile-tabs .t-tab {
+  flex: 0 0 auto;
 }
 .t-tab {
   position: relative;
@@ -496,6 +577,7 @@ textarea {
   .t-acc-panel, .t-acc-panel-inner, .t-acc-chevron {
     transition: none !important;
   }
+  .t-clear-glow { opacity: 0 !important; }
   .settings-range::-webkit-slider-thumb {
     transition: none !important;
   }

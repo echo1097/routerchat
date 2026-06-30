@@ -54,6 +54,7 @@ const SETTINGS_PAGES = [
   { id: "general", label: "API", iconClass: "fi fi-rr-key" },
   { id: "models", label: "Models", iconClass: "fi fi-rr-bulb" },
   { id: "ui", label: "UI", iconClass: "fi fi-rr-apps-add" },
+  { id: "cloud", label: "Cloud", iconClass: "fi fi-rr-cloud-upload-alt" },
   { id: "advanced", label: "Advanced", icon: SlidersHorizontal },
 ];
 
@@ -128,6 +129,15 @@ function isFreeModel(model) {
   const prompt = Number(model.pricing?.prompt || 0);
   const completion = Number(model.pricing?.completion || 0);
   return prompt === 0 && completion === 0;
+}
+
+function exportFileName(chat) {
+  const title = (chat?.title || "chat")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 42) || "chat";
+  return `routerchat-${title}-${new Date().toISOString().slice(0, 10)}.json`;
 }
 
 function readLocalAppSettings() {
@@ -926,6 +936,8 @@ function SettingsDrawer({
   onClose,
   keyStatus,
   onSaveKey,
+  chats,
+  activeChatId,
   models,
   settings,
   setSettings,
@@ -940,20 +952,43 @@ function SettingsDrawer({
   onToggleHideFreeModels,
   onToggleNitroMode,
   onToggleSmoothStreaming,
+  onExportChats,
+  onImportChats,
 }) {
   const [apiKey, setApiKey] = useState("");
   const [query, setQuery] = useState("");
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [transferMessage, setTransferMessage] = useState("");
+  const [selectedCloudChatId, setSelectedCloudChatId] = useState("");
+  const [cloudSearch, setCloudSearch] = useState("");
   const [activePage, setActivePage] = useState("general");
   const [openAccordions, setOpenAccordions] = useState({
+    cloudChats: true,
     reasoning: true,
     generation: true,
   });
+  const fileInputRef = useRef(null);
   const canThink = supportsThinking(models, settings.model);
   const selectedModel = models.find((model) => model.id === settings.model);
   const selectedModelPrice = selectedModel ? priceLabel(selectedModel) : "";
   const keyConnected = Boolean(keyStatus.has_key);
   const activePageIndex = SETTINGS_PAGES.findIndex((page) => page.id === activePage) + 1;
+  const selectedCloudChat = chats.find((chat) => chat.id === selectedCloudChatId);
+  const activeCloudChat = chats.find((chat) => chat.id === activeChatId);
+  const cloudChat = selectedCloudChat || activeCloudChat || chats[0];
+  const cloudChatId = cloudChat?.id || "";
+
+  const filteredCloudChats = useMemo(() => {
+    const normalized = cloudSearch.trim().toLowerCase();
+    if (!normalized) return chats;
+    return chats.filter((chat) => (
+      [chat.title, promptModelName(models, chat.model)]
+        .filter(Boolean)
+        .some((value) => value.toLowerCase().includes(normalized))
+    ));
+  }, [chats, cloudSearch, models]);
 
   const filteredModels = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -1009,6 +1044,40 @@ function SettingsDrawer({
       ...current,
       [id]: !current[id],
     }));
+  }
+
+  async function exportChats() {
+    if (!cloudChatId) return;
+    setTransferMessage("");
+    setExporting(true);
+    try {
+      await onExportChats(cloudChatId, cloudChat);
+      setTransferMessage(`Exported ${cloudChat?.title || "chat"}`);
+    } catch (error) {
+      setTransferMessage(error.message);
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function importChats(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setTransferMessage("");
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text);
+      const result = await onImportChats(payload);
+      setTransferMessage(
+        `Imported ${result.imported_chats || 0} chats and ${result.imported_messages || 0} messages`,
+      );
+    } catch (error) {
+      setTransferMessage(error.message || "Import failed");
+    } finally {
+      setImporting(false);
+    }
   }
 
   const StatusDot = (
@@ -1155,6 +1224,121 @@ function SettingsDrawer({
           />
         </button>
       </div>
+    </section>
+  );
+
+  const importExportSection = (
+    <section>
+      <div className="border-b border-white/[0.08] pb-3">
+        <h2 className="flex items-center gap-2 text-balance text-sm font-semibold text-zinc-100">
+          <span className="settings-cloud-icon" aria-hidden="true">
+            <i className="fi fi-rr-cloud-upload-alt" />
+          </span>
+          Cloud
+        </h2>
+        <p className="mt-1 text-pretty text-xs leading-5 text-zinc-500">
+          Share a selected conversation as a JSON file.
+        </p>
+      </div>
+
+      <Accordion
+        id="cloudChats"
+        title="Chat"
+        open={openAccordions.cloudChats}
+        onToggle={toggleAccordion}
+        trailing={cloudChat ? promptModelName(models, cloudChat.model) : "None"}
+      >
+        <SearchClearField
+          value={cloudSearch}
+          onChange={setCloudSearch}
+          placeholder="Search chats"
+        />
+        <div className="mt-2 max-h-36 space-y-1 overflow-y-auto pr-1">
+          {filteredCloudChats.length === 0 ? (
+            <div className="rounded-xl bg-black/15 px-3 py-3 text-pretty text-xs leading-5 text-zinc-500 shadow-[var(--shadow-border)]">
+              {chats.length === 0 ? "No chats yet." : "No matching chats."}
+            </div>
+          ) : (
+            filteredCloudChats.map((chat) => {
+              const selected = chat.id === cloudChatId;
+              return (
+                <button
+                  key={chat.id}
+                  type="button"
+                  onClick={() => setSelectedCloudChatId(chat.id)}
+                  className={cx(
+                    "grid min-h-10 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-xl px-2.5 py-2 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+                    CONTROL_MOTION,
+                    selected
+                      ? "bg-white/[0.08] text-zinc-100 shadow-[var(--shadow-border)]"
+                      : "text-zinc-300 hover:bg-white/[0.045] hover:text-zinc-100",
+                  )}
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium">
+                      {chat.title}
+                    </span>
+                    <span className="mt-0.5 block truncate text-xs text-zinc-500">
+                      {promptModelName(models, chat.model)}
+                    </span>
+                  </span>
+                  {selected && <Check size={14} className="text-zinc-200" />}
+                </button>
+              );
+            })
+          )}
+        </div>
+      </Accordion>
+
+      <section className="border-b border-white/[0.08] py-3">
+        <div className="flex gap-2">
+          <button
+            type="button"
+            disabled={exporting || importing || !cloudChatId}
+            onClick={exportChats}
+            className={cx(
+              "flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-white/[0.055] px-3 text-xs font-semibold text-zinc-100 shadow-[var(--shadow-border)] hover:bg-white/[0.085] hover:shadow-[var(--shadow-border-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 disabled:cursor-not-allowed disabled:text-zinc-600 disabled:opacity-60 disabled:active:scale-100",
+              CONTROL_MOTION,
+            )}
+          >
+            <i className="fi fi-rr-download text-[13px] leading-none" aria-hidden="true" />
+            {exporting ? "Exporting" : "Export"}
+          </button>
+
+          <button
+            type="button"
+            disabled={exporting || importing}
+            onClick={() => fileInputRef.current?.click()}
+            className={cx(
+              "flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-white/[0.055] px-3 text-xs font-semibold text-zinc-100 shadow-[var(--shadow-border)] hover:bg-white/[0.085] hover:shadow-[var(--shadow-border-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 disabled:cursor-not-allowed disabled:text-zinc-600 disabled:opacity-60 disabled:active:scale-100",
+              CONTROL_MOTION,
+            )}
+          >
+            <i className="fi fi-rr-cloud-upload-alt text-[13px] leading-none" aria-hidden="true" />
+            {importing ? "Importing" : "Import"}
+          </button>
+        </div>
+      </section>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/json,.json"
+        className="hidden"
+        onChange={importChats}
+      />
+
+      <p
+        aria-live="polite"
+        className={cx(
+          "min-h-6 px-1 py-2 text-xs leading-5 text-zinc-500 transition-[opacity,filter,transform] duration-150 ease-out",
+          transferMessage
+            ? "translate-y-0 opacity-100 blur-0"
+            : "-translate-y-1 opacity-0 blur-[2px]",
+        )}
+      >
+        {transferMessage || "\u00a0"}
+      </p>
     </section>
   );
 
@@ -1430,7 +1614,7 @@ function SettingsDrawer({
               getValue={(page) => page.id}
               getLabel={(page) => page.label}
               ariaLabel="Settings sections"
-              className="mt-3 flex w-full md:hidden"
+              className="settings-mobile-tabs mt-3 flex w-full md:hidden"
             />
           </header>
 
@@ -1464,6 +1648,13 @@ function SettingsDrawer({
             <section
               className="settings-scroll-page t-page space-y-0 overflow-y-auto px-4 py-3 md:px-4 md:py-3"
               data-page-id="4"
+              aria-label="Cloud settings"
+            >
+              {importExportSection}
+            </section>
+            <section
+              className="settings-scroll-page t-page space-y-0 overflow-y-auto px-4 py-3 md:px-4 md:py-3"
+              data-page-id="5"
               aria-label="Advanced settings"
             >
               {reasoningSection}
@@ -1590,6 +1781,148 @@ function SlidingTabs({
           </button>
         );
       })}
+    </div>
+  );
+}
+
+function SearchClearField({ value, onChange, placeholder }) {
+  const wrapRef = useRef(null);
+  const inputRef = useRef(null);
+  const mirrorRef = useRef(null);
+  const placeholderRef = useRef(null);
+  const glowRef = useRef(null);
+  const [isClearing, setIsClearing] = useState(false);
+  const clearingRef = useRef(false);
+  const frameRef = useRef(null);
+
+  useEffect(
+    () => () => {
+      if (frameRef.current) cancelAnimationFrame(frameRef.current);
+    },
+    [],
+  );
+
+  function readNumber(name, fallback) {
+    const value = parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue(name),
+    );
+    return Number.isFinite(value) ? value : fallback;
+  }
+
+  function clearSearch() {
+    if (!value || clearingRef.current) return;
+    const wrap = wrapRef.current;
+    const input = inputRef.current;
+    const mirror = mirrorRef.current;
+    const phold = placeholderRef.current;
+    const glow = glowRef.current;
+    if (!wrap || !input || !mirror || !phold || !glow) {
+      onChange("");
+      return;
+    }
+
+    clearingRef.current = true;
+    setIsClearing(true);
+    mirror.textContent = value.replace(/ /g, "\u00a0");
+    wrap.classList.add("is-clearing");
+    onChange("");
+
+    const total = readNumber("--clear-dur", 1000);
+    const outDur = readNumber("--clear-out-dur", 400);
+    const inDur = readNumber("--clear-in-dur", 400);
+    const outFly = readNumber("--clear-out-fly", 12);
+    const inFly = readNumber("--clear-in-fly", 12);
+    const blur = readNumber("--clear-blur", 2);
+    const glowDelay = readNumber("--glow-delay", 50);
+    const glowPeakAt = readNumber("--glow-peak-at", 0.15);
+    const glowOpacity = readNumber("--glow-opacity", 0.85);
+
+    glow.style.background = "radial-gradient(ellipse 70% 18px at 50% 100%, rgba(255,255,255,0.22), transparent)";
+    phold.style.transform = `translateY(-${inFly}px)`;
+    phold.style.opacity = "0.9";
+    phold.style.filter = `blur(${blur}px)`;
+
+    const start = performance.now();
+    function tick(now) {
+      const elapsed = now - start;
+      const outProgress = Math.min(1, elapsed / outDur);
+      const inProgress = Math.min(1, elapsed / inDur);
+      const easedOut = 1 - Math.pow(1 - outProgress, 3);
+      const easedIn = 1 - Math.pow(1 - inProgress, 3);
+
+      mirror.style.transform = `translateY(${(easedOut * outFly).toFixed(1)}px)`;
+      mirror.style.opacity = (1 - easedOut).toFixed(3);
+      mirror.style.filter = `blur(${(easedOut * blur).toFixed(1)}px)`;
+      phold.style.transform = `translateY(${(-inFly + easedIn * inFly).toFixed(1)}px)`;
+      phold.style.opacity = (0.9 + easedIn * 0.1).toFixed(3);
+      phold.style.filter = `blur(${(blur - easedIn * blur).toFixed(1)}px)`;
+
+      let nextGlow = 0;
+      if (elapsed > glowDelay) {
+        const glowProgress = Math.min(1, (elapsed - glowDelay) / Math.max(1, total - glowDelay));
+        nextGlow = glowProgress < glowPeakAt
+          ? glowProgress / glowPeakAt
+          : 1 - (glowProgress - glowPeakAt) / (1 - glowPeakAt);
+      }
+      glow.style.opacity = (nextGlow * glowOpacity).toFixed(3);
+
+      if (elapsed < total) {
+        frameRef.current = requestAnimationFrame(tick);
+        return;
+      }
+
+      frameRef.current = null;
+      wrap.classList.remove("is-clearing");
+      setIsClearing(false);
+      [mirror, phold, glow].forEach((node) => {
+        node.removeAttribute("style");
+      });
+      mirror.textContent = "";
+      clearingRef.current = false;
+      requestAnimationFrame(() => input.focus({ preventScroll: true }));
+    }
+
+    frameRef.current = requestAnimationFrame(tick);
+  }
+
+  return (
+    <div
+      ref={wrapRef}
+      className={cx(
+        "cloud-search t-clear flex h-10 items-center gap-2 rounded-xl bg-black/20 px-3 text-zinc-500 shadow-[var(--shadow-border)] transition-[background-color,box-shadow] duration-150 ease-out focus-within:bg-black/25 focus-within:shadow-[0_0_0_1px_rgba(255,255,255,0.16)]",
+        value && "has-value",
+        isClearing && "is-clearing",
+      )}
+    >
+      <Search size={15} className="relative z-[4] shrink-0" />
+      <input
+        ref={inputRef}
+        type="search"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="relative z-[4] min-w-0 flex-1 bg-transparent text-sm text-zinc-100 outline-none placeholder:text-transparent"
+      />
+      <div ref={mirrorRef} className="t-clear-mirror" aria-hidden="true">
+        {value}
+      </div>
+      <div ref={placeholderRef} className="t-clear-placeholder" aria-hidden="true">
+        {placeholder}
+      </div>
+      <div ref={glowRef} className="t-clear-glow" aria-hidden="true" />
+      <button
+        type="button"
+        aria-label="Clear chat search"
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={clearSearch}
+        className={cx(
+          "t-clear-btn relative z-[4] grid h-7 w-7 shrink-0 place-items-center rounded-full text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+          CONTROL_MOTION,
+          !value && "pointer-events-none opacity-0",
+        )}
+      >
+        <X size={13} />
+      </button>
     </div>
   );
 }
@@ -2065,6 +2398,39 @@ function App() {
     });
   }
 
+  async function exportChats(chatId, chat) {
+    const response = await fetch(`/api/chats/${encodeURIComponent(chatId)}/export`);
+    if (!response.ok) {
+      let detail = response.statusText;
+      try {
+        detail = (await response.json()).detail || detail;
+      } catch {
+        detail = await response.text();
+      }
+      throw new Error(detail);
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = exportFileName(chat);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    showToast("Chat exported");
+  }
+
+  async function importChats(payload) {
+    const result = await api("/api/chats/import", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    await loadChats();
+    showToast("Chats imported");
+    return result;
+  }
+
   async function renameChat(chatId, title) {
     try {
       await api(`/api/chats/${chatId}`, {
@@ -2401,6 +2767,8 @@ function App() {
         onClose={() => setSettingsOpen(false)}
         keyStatus={keyStatus}
         onSaveKey={saveKey}
+        chats={chats}
+        activeChatId={activeChatId}
         models={models}
         settings={settings}
         setSettings={setSettings}
@@ -2415,6 +2783,8 @@ function App() {
         onToggleHideFreeModels={updateHideFreeModels}
         onToggleNitroMode={updateNitroMode}
         onToggleSmoothStreaming={updateSmoothStreaming}
+        onExportChats={exportChats}
+        onImportChats={importChats}
       />
       <ConfirmModal
         dialog={confirmDialog}

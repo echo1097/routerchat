@@ -1,5 +1,5 @@
 # RouterChat
-A local OpenRouter chat interface.
+A 100% free local OpenRouter chat interface. Strictly BYOK. 
 
 ## Disclaimer
 

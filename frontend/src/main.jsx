@@ -1260,9 +1260,15 @@ function SettingsDrawer({
   const modelSearchInputRef = useRef(null);
   const modelSearchRevertRef = useRef(null);
   const modelSearchHadResultsRef = useRef(true);
+  const [editingMaxTokens, setEditingMaxTokens] = useState(false);
+  const [maxTokensDraft, setMaxTokensDraft] = useState("");
   const canThink = supportsThinking(models, settings.model);
   const selectedModel = models.find((model) => model.id === settings.model);
   const selectedModelPrice = selectedModel ? priceLabel(selectedModel) : "";
+  const selectedModelContextLimit = getModelContextLimit(selectedModel);
+  const selectedModelContext = Number.isFinite(selectedModelContextLimit)
+    ? `${formatTokens(selectedModelContextLimit)} context`
+    : "";
   const keyConnected = Boolean(keyStatus.has_key);
   const activePageIndex = SETTINGS_PAGES.findIndex((page) => page.id === activePage) + 1;
   const selectedCloudChat = chats.find((chat) => chat.id === selectedCloudChatId);
@@ -1391,6 +1397,14 @@ function SettingsDrawer({
     const merged = { ...settings, ...next };
     setSettings(merged);
     onPersist(merged);
+  }
+
+  function commitMaxTokensDraft() {
+    const parsed = Math.round(Number(maxTokensDraft));
+    if (Number.isFinite(parsed) && parsed > 0) {
+      commit({ max_tokens: parsed });
+    }
+    setEditingMaxTokens(false);
   }
 
   function selectModel(model) {
@@ -1937,20 +1951,63 @@ function SettingsDrawer({
         <div className="settings-slider-row">
           <div className="mb-2.5 flex items-center justify-between text-xs font-medium">
             <span className="text-zinc-400">Max tokens</span>
-            <span className="min-w-16 rounded-full bg-white/[0.055] px-2 py-0.5 text-center tabular-nums text-zinc-200 shadow-[var(--shadow-border)]">
-              {settings.max_tokens}
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="max-w-[140px] truncate rounded-full bg-white/[0.055] px-2 py-0.5 text-[11px] font-medium leading-normal text-zinc-500 shadow-[var(--shadow-border)]">
+                {selectedModel?.name || settings.model}
+              </span>
+              {selectedModelContext && (
+                <span className="shrink-0 rounded-full bg-white/[0.055] px-2 py-0.5 text-[11px] font-medium leading-normal tabular-nums text-zinc-500 shadow-[var(--shadow-border)]">
+                  {selectedModelContext}
+                </span>
+              )}
+              {editingMaxTokens ? (
+                <input
+                  type="number"
+                  autoFocus
+                  min="1"
+                  step="1"
+                  inputMode="numeric"
+                  value={maxTokensDraft}
+                  onChange={(event) => setMaxTokensDraft(event.target.value)}
+                  onBlur={commitMaxTokensDraft}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      commitMaxTokensDraft();
+                    } else if (event.key === "Escape") {
+                      event.preventDefault();
+                      setEditingMaxTokens(false);
+                    }
+                  }}
+                  className="min-w-16 rounded-full bg-white/[0.08] px-2 py-0.5 text-center tabular-nums text-zinc-100 shadow-[var(--shadow-border)] outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMaxTokensDraft(String(settings.max_tokens));
+                    setEditingMaxTokens(true);
+                  }}
+                  className={cx(
+                    "min-w-16 rounded-full bg-white/[0.055] px-2 py-0.5 text-center tabular-nums text-zinc-200 shadow-[var(--shadow-border)] hover:bg-white/[0.085] hover:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
+                    CONTROL_MOTION,
+                  )}
+                >
+                  {settings.max_tokens}
+                </button>
+              )}
+            </div>
           </div>
           <input
             type="range"
-            min="256"
+            min="1000"
             max="128000"
             step="1000"
             value={settings.max_tokens}
             onChange={(event) => updateSetting({ max_tokens: Number(event.target.value) })}
             onMouseUp={() => onPersist(settings)}
             onTouchEnd={() => onPersist(settings)}
-            style={{ "--range-progress": rangeProgress(settings.max_tokens, 256, 128000) }}
+            style={{ "--range-progress": rangeProgress(settings.max_tokens, 1000, 128000) }}
             className="settings-range"
           />
         </div>

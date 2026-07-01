@@ -1245,6 +1245,7 @@ function SettingsDrawer({
   const [selectedCloudChatId, setSelectedCloudChatId] = useState("");
   const [cloudSearch, setCloudSearch] = useState("");
   const [activePage, setActivePage] = useState("general");
+  const [modelListScrolled, setModelListScrolled] = useState(false);
   const [openAccordions, setOpenAccordions] = useState({
     cloudChats: true,
     reasoning: true,
@@ -1324,6 +1325,10 @@ function SettingsDrawer({
       ...current,
       [id]: !current[id],
     }));
+  }
+
+  function handleModelListScroll(event) {
+    setModelListScrolled(event.currentTarget.scrollTop > 2);
   }
 
   async function exportChats() {
@@ -1682,48 +1687,64 @@ function SettingsDrawer({
         <span>Model</span>
         <span className="text-center">Price</span>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {filteredModels.length === 0 ? (
-          <div className="mt-3 rounded-[18px] bg-black/15 p-4 text-pretty text-sm leading-6 text-zinc-500 shadow-[var(--shadow-border)]">
-            {models.length === 0 ? "Save an API key to load models." : "No matching models."}
-          </div>
-        ) : (
-          filteredModels.map((model) => {
-            const isSelected = model.id === settings.model;
-            const modelPrice = priceLabel(model);
-            return (
-              <div
-                key={model.id}
-                className={cx(
-                  "grid min-h-[52px] grid-cols-[minmax(0,1fr)_82px] items-center rounded-lg px-1 py-2 transition-colors duration-150 ease-out",
-                  isSelected ? "bg-white/[0.045]" : "hover:bg-white/[0.025]",
-                  modelLocked && !isSelected && "opacity-45",
-                )}
-              >
-                <button
-                  type="button"
-                  disabled={modelLocked}
-                  onClick={() => selectModel(model)}
+      <div className="relative min-h-0 flex-1">
+        <div
+          onScroll={handleModelListScroll}
+          className="min-h-0 h-full overflow-y-auto"
+        >
+          {filteredModels.length === 0 ? (
+            <div className="mt-3 rounded-[18px] bg-black/15 p-4 text-pretty text-sm leading-6 text-zinc-500 shadow-[var(--shadow-border)]">
+              {models.length === 0 ? "Save an API key to load models." : "No matching models."}
+            </div>
+          ) : (
+            filteredModels.map((model) => {
+              const isSelected = model.id === settings.model;
+              const modelPrice = priceLabel(model);
+              return (
+                <div
+                  key={model.id}
                   className={cx(
-                    "min-w-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
-                    CONTROL_MOTION,
-                    modelLocked && !isSelected && "cursor-not-allowed active:scale-100",
+                    "grid min-h-[52px] grid-cols-[minmax(0,1fr)_82px] items-center rounded-lg px-1 py-2 transition-colors duration-150 ease-out",
+                    isSelected ? "bg-white/[0.045]" : "hover:bg-white/[0.025]",
+                    modelLocked && !isSelected && "opacity-45",
                   )}
                 >
-                  <span className="block truncate text-sm font-medium text-zinc-100">
-                    {model.name}
+                  <button
+                    type="button"
+                    disabled={modelLocked}
+                    onClick={() => selectModel(model)}
+                    className={cx(
+                      "min-w-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
+                      CONTROL_MOTION,
+                      modelLocked && !isSelected && "cursor-not-allowed active:scale-100",
+                    )}
+                  >
+                    <span className="block truncate text-sm font-medium text-zinc-100">
+                      {model.name}
+                    </span>
+                    <span className="mt-0.5 block truncate text-xs text-zinc-600">
+                      {model.id}
+                    </span>
+                  </button>
+                  <span className="px-1 text-center text-xs tabular-nums text-zinc-500">
+                    {modelPrice || "-"}
                   </span>
-                  <span className="mt-0.5 block truncate text-xs text-zinc-600">
-                    {model.id}
-                  </span>
-                </button>
-                <span className="px-1 text-center text-xs tabular-nums text-zinc-500">
-                  {modelPrice || "-"}
-                </span>
-              </div>
-            );
-          })
-        )}
+                </div>
+              );
+            })
+          )}
+        </div>
+        <div
+          aria-hidden="true"
+          className={cx(
+            "pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-[#202022]/95 to-transparent backdrop-blur-[1px] transition-opacity duration-150 ease-out",
+            modelListScrolled ? "opacity-100" : "opacity-0",
+          )}
+        />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-7 bg-gradient-to-t from-[#202022]/95 to-transparent backdrop-blur-[1px]"
+        />
       </div>
     </section>
   );

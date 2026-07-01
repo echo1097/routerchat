@@ -29,15 +29,13 @@ import {
 import "./styles.css";
 
 const DEFAULT_MODEL = "anthropic/claude-3.5-sonnet";
-const DEFAULT_SYSTEM_PROMPT =
-  "Respond concisely and carefully. Ask only when needed and prefer concrete next steps.";
 const APP_SETTINGS_STORAGE_KEY = "routerchat.appSettings";
 
 const newSettings = {
   model: DEFAULT_MODEL,
   temperature: 0.7,
   max_tokens: 30000,
-  system_prompt: DEFAULT_SYSTEM_PROMPT,
+  system_prompt: "",
   thinking_enabled: false,
   reasoning_effort: "medium",
   nitro_mode: false,
@@ -53,6 +51,7 @@ const REASONING_EFFORTS = [
 const SETTINGS_PAGES = [
   { id: "general", label: "API", iconClass: "fi fi-rr-key" },
   { id: "models", label: "Models", iconClass: "fi fi-rr-bulb" },
+  { id: "system", label: "System", iconClass: "fi fi-rr-settings" },
   { id: "ui", label: "UI", iconClass: "fi fi-rr-apps-add" },
   { id: "cloud", label: "Chats", icon: MessageSquarePlus },
   { id: "advanced", label: "Advanced", icon: SlidersHorizontal },
@@ -1622,6 +1621,46 @@ function SettingsDrawer({
     </section>
   );
 
+  const systemSection = (
+    <section className="flex h-full min-h-0 flex-col">
+      <div className="shrink-0">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-balance text-sm font-semibold text-zinc-100">System prompt</h2>
+          {settings.system_prompt && (
+            <button
+              type="button"
+              onClick={() => {
+                updateSetting({ system_prompt: "" });
+                onPersist({ ...settings, system_prompt: "" });
+              }}
+              className={cx(
+                "flex shrink-0 items-center gap-1 rounded-full bg-white/[0.055] px-2 py-0.5 text-[11px] font-medium leading-normal text-zinc-400 shadow-[var(--shadow-border)] hover:bg-white/[0.085] hover:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
+                CONTROL_MOTION,
+              )}
+            >
+              <X size={11} strokeWidth={2.2} />
+              Clear
+            </button>
+          )}
+        </div>
+        <p className="mt-0.5 mb-3 text-pretty text-xs leading-5 text-zinc-500">
+          Optional instructions sent before every message. Leave blank for no system prompt.
+        </p>
+      </div>
+      <div className="min-h-0 flex-1">
+        <div className="prompt-edit-surface h-full w-full rounded-[22px] px-4 py-3">
+          <textarea
+            value={settings.system_prompt}
+            onChange={(event) => updateSetting({ system_prompt: event.target.value })}
+            onBlur={() => onPersist(settings)}
+            placeholder="No system prompt"
+            className="block h-full w-full resize-none overflow-y-auto bg-transparent text-sm leading-6 text-zinc-100 outline-none placeholder:text-zinc-500"
+          />
+        </div>
+      </div>
+    </section>
+  );
+
   const importExportSection = (
     <section className="flex h-full min-h-0 flex-col">
       <div className="border-b border-white/[0.08] pb-3">
@@ -2140,22 +2179,29 @@ function SettingsDrawer({
               {modelList}
             </section>
             <section
-              className="settings-scroll-page t-page space-y-0 overflow-y-auto px-4 py-3 md:px-4 md:py-3"
+              className="t-page flex min-h-0 flex-col px-4 py-3 md:px-4 md:py-3"
               data-page-id="3"
+              aria-label="System settings"
+            >
+              {systemSection}
+            </section>
+            <section
+              className="settings-scroll-page t-page space-y-0 overflow-y-auto px-4 py-3 md:px-4 md:py-3"
+              data-page-id="4"
               aria-label="UI settings"
             >
               {smoothTextSection}
             </section>
             <section
               className="t-page overflow-hidden px-4 py-3 md:px-4 md:py-3"
-              data-page-id="4"
+              data-page-id="5"
               aria-label="Chats settings"
             >
               {importExportSection}
             </section>
             <section
               className="settings-scroll-page t-page space-y-0 overflow-y-auto px-4 py-3 md:px-4 md:py-3"
-              data-page-id="5"
+              data-page-id="6"
               aria-label="Advanced settings"
             >
               {reasoningSection}
@@ -2765,7 +2811,7 @@ function App() {
       model: chat.model,
       temperature: chat.temperature,
       max_tokens: chat.max_tokens,
-      system_prompt: chat.system_prompt || DEFAULT_SYSTEM_PROMPT,
+      system_prompt: chat.system_prompt || "",
       thinking_enabled: Boolean(chat.thinking_enabled),
       reasoning_effort: chat.reasoning_effort || "medium",
       nitro_mode: nitroMode,

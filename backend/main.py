@@ -25,9 +25,6 @@ DB_PATH = DATA_DIR / "routerchat.sqlite3"
 ENV_PATH = ROOT_DIR / ".env"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_MAX_TOKENS = 30000
-DEFAULT_SYSTEM_PROMPT = (
-    "Respond concisely and carefully. Ask only when needed and prefer concrete next steps."
-)
 DEFAULT_MODEL_ID = "anthropic/claude-3.5-sonnet"
 ReasoningEffort = Literal["low", "medium", "high", "xhigh"]
 
@@ -73,7 +70,7 @@ class StreamMessageRequest(BaseModel):
     model: str
     temperature: float = 0.7
     max_tokens: int = DEFAULT_MAX_TOKENS
-    system_prompt: str = DEFAULT_SYSTEM_PROMPT
+    system_prompt: str = ""
     thinking_enabled: bool = False
     reasoning_effort: ReasoningEffort = "medium"
     nitro_mode: bool = False
@@ -535,7 +532,7 @@ def create_chat(payload: ChatCreateRequest) -> dict[str, Any]:
                 chat_id,
                 payload.title or "New chat",
                 model,
-                payload.system_prompt or DEFAULT_SYSTEM_PROMPT,
+                payload.system_prompt or "",
                 payload.temperature,
                 payload.max_tokens,
                 int(payload.thinking_enabled),
@@ -605,7 +602,7 @@ def import_chats(payload: ChatImportRequest) -> dict[str, Any]:
                     chat_id,
                     str(item.get("title") or "Imported chat")[:120],
                     str(item.get("model") or default_model_id()),
-                    str(item.get("system_prompt") or DEFAULT_SYSTEM_PROMPT),
+                    str(item.get("system_prompt") or ""),
                     float_or_none(item.get("temperature")) or 0.7,
                     int_or_none(item.get("max_tokens")) or DEFAULT_MAX_TOKENS,
                     coerce_bool_int(item.get("thinking_enabled")),

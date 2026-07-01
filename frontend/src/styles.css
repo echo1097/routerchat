@@ -340,7 +340,8 @@ textarea {
 .t-page-slide .t-page[data-page-id="2"],
 .t-page-slide .t-page[data-page-id="3"],
 .t-page-slide .t-page[data-page-id="4"],
-.t-page-slide .t-page[data-page-id="5"] {
+.t-page-slide .t-page[data-page-id="5"],
+.t-page-slide .t-page[data-page-id="6"] {
   --t-page-from-x: var(--page-slide-distance);
 }
 .t-page-slide .t-page {
@@ -360,7 +361,8 @@ textarea {
 .t-page-slide[data-page="2"] .t-page[data-page-id="2"],
 .t-page-slide[data-page="3"] .t-page[data-page-id="3"],
 .t-page-slide[data-page="4"] .t-page[data-page-id="4"],
-.t-page-slide[data-page="5"] .t-page[data-page-id="5"] {
+.t-page-slide[data-page="5"] .t-page[data-page-id="5"],
+.t-page-slide[data-page="6"] .t-page[data-page-id="6"] {
   opacity: 1;
   pointer-events: auto;
   transform: translateX(0);

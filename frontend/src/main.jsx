@@ -1246,12 +1246,14 @@ function SettingsDrawer({
   const [cloudSearch, setCloudSearch] = useState("");
   const [activePage, setActivePage] = useState("general");
   const [modelListScrolled, setModelListScrolled] = useState(false);
+  const [modelListHasMoreBelow, setModelListHasMoreBelow] = useState(false);
   const [openAccordions, setOpenAccordions] = useState({
     cloudChats: true,
     reasoning: true,
     generation: true,
   });
   const fileInputRef = useRef(null);
+  const modelListRef = useRef(null);
   const canThink = supportsThinking(models, settings.model);
   const selectedModel = models.find((model) => model.id === settings.model);
   const selectedModelPrice = selectedModel ? priceLabel(selectedModel) : "";
@@ -1283,6 +1285,20 @@ function SettingsDrawer({
           .some((value) => value.toLowerCase().includes(normalized));
       });
   }, [hideFreeModels, models, query]);
+
+  function updateModelListEdges(element) {
+    const scrollTop = element.scrollTop;
+    const bottomOffset = element.scrollHeight - element.clientHeight - scrollTop;
+    setModelListScrolled(scrollTop > 2);
+    setModelListHasMoreBelow(bottomOffset > 2);
+  }
+
+  useEffect(() => {
+    const modelList = modelListRef.current;
+    if (!modelList) return;
+
+    requestAnimationFrame(() => updateModelListEdges(modelList));
+  }, [filteredModels.length, activePage]);
 
   async function saveKey() {
     if (!apiKey.trim()) return;
@@ -1328,7 +1344,7 @@ function SettingsDrawer({
   }
 
   function handleModelListScroll(event) {
-    setModelListScrolled(event.currentTarget.scrollTop > 2);
+    updateModelListEdges(event.currentTarget);
   }
 
   async function exportChats() {
@@ -1689,6 +1705,7 @@ function SettingsDrawer({
       </div>
       <div className="relative min-h-0 flex-1">
         <div
+          ref={modelListRef}
           onScroll={handleModelListScroll}
           className="min-h-0 h-full overflow-y-auto"
         >
@@ -1743,7 +1760,10 @@ function SettingsDrawer({
         />
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 bottom-0 h-7 bg-gradient-to-t from-[#202022]/95 to-transparent backdrop-blur-[1px]"
+          className={cx(
+            "pointer-events-none absolute inset-x-0 bottom-0 h-7 bg-gradient-to-t from-[#202022]/95 to-transparent backdrop-blur-[1px] transition-opacity duration-150 ease-out",
+            modelListHasMoreBelow ? "opacity-100" : "opacity-0",
+          )}
         />
       </div>
     </section>

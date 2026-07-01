@@ -136,6 +136,7 @@ def init_db() -> None:
               model TEXT,
               finish_reason TEXT,
               error TEXT,
+              message_order INTEGER,
               created_at TEXT NOT NULL,
               FOREIGN KEY(chat_id) REFERENCES chats(id) ON DELETE CASCADE
             );
@@ -153,6 +154,7 @@ def init_db() -> None:
             );
             """
         )
+        ensure_message_order_column(conn)
         ensure_message_usage_columns(conn)
         ensure_chat_settings_columns(conn)
 
@@ -165,6 +167,37 @@ def ensure_chat_settings_columns(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE chats ADD COLUMN reasoning_effort TEXT NOT NULL DEFAULT 'medium'"
         )
+
+
+def ensure_message_order_column(conn: sqlite3.Connection) -> None:
+    existing_columns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(messages)").fetchall()
+    }
+    if "message_order" not in existing_columns:
+        conn.execute("ALTER TABLE messages ADD COLUMN message_order INTEGER")
+
+    chatRows = conn.execute(
+        """
+        SELECT DISTINCT chat_id FROM messages
+        WHERE message_order IS NULL
+        ORDER BY chat_id ASC
+        """
+    ).fetchall()
+    for chatRow in chatRows:
+        messageRows = conn.execute(
+            """
+            SELECT rowid FROM messages
+            WHERE chat_id = ? AND message_order IS NULL
+            ORDER BY created_at ASC, rowid ASC
+            """,
+            (chatRow["chat_id"],),
+        ).fetchall()
+        nextOrder = next_message_order(conn, chatRow["chat_id"])
+        for offset, messageRow in enumerate(messageRows):
+            conn.execute(
+                "UPDATE messages SET message_order = ? WHERE rowid = ?",
+                (nextOrder + offset, messageRow["rowid"]),
+            )
 
 
 def ensure_message_usage_columns(conn: sqlite3.Connection) -> None:
@@ -185,6 +218,22 @@ def ensure_message_usage_columns(conn: sqlite3.Connection) -> None:
     for column, column_type in usage_columns.items():
         if column not in existing_columns:
             conn.execute(f"ALTER TABLE messages ADD COLUMN {column} {column_type}")
+
+
+def next_message_order(conn: sqlite3.Connection, chat_id: str) -> int:
+    row = conn.execute(
+        """
+        SELECT COALESCE(MAX(message_order), -1) + 1 AS next_order
+        FROM messages
+        WHERE chat_id = ?
+        """,
+        (chat_id,),
+    ).fetchone()
+    return int(row["next_order"])
+
+
+def message_order_clause() -> str:
+    return "message_order ASC, created_at ASC, rowid ASC"
 
 
 @app.on_event("startup")
@@ -569,7 +618,7 @@ def export_chat(chat_id: str) -> dict[str, Any]:
             (chat_id,),
         ).fetchall()
         message_rows = conn.execute(
-            "SELECT * FROM messages WHERE chat_id = ? ORDER BY created_at ASC",
+            f"SELECT * FROM messages WHERE chat_id = ? ORDER BY {message_order_clause()}",
             (chat_id,),
         ).fetchall()
     return {
@@ -586,6 +635,7 @@ def import_chats(payload: ChatImportRequest) -> dict[str, Any]:
     chat_id_map: dict[str, str] = {}
     imported_chat_ids: set[str] = set()
     imported_messages = 0
+    nextMessageOrders: dict[str, int] = {}
 
     with get_db() as conn:
         existing_chat_ids = {
@@ -634,6 +684,10 @@ def import_chats(payload: ChatImportRequest) -> dict[str, Any]:
             if message_id in existing_message_ids:
                 message_id = str(uuid.uuid4())
             existing_message_ids.add(message_id)
+            if chat_id not in nextMessageOrders:
+                nextMessageOrders[chat_id] = next_message_order(conn, chat_id)
+            messageOrder = nextMessageOrders[chat_id]
+            nextMessageOrders[chat_id] += 1
 
             conn.execute(
                 """
@@ -641,9 +695,9 @@ def import_chats(payload: ChatImportRequest) -> dict[str, Any]:
                   id, chat_id, role, content, reasoning, model, finish_reason,
                   error, generation_id, prompt_tokens, completion_tokens,
                   reasoning_tokens, total_tokens, cost, provider_name,
-                  generation_time, latency, created_at
+                  generation_time, latency, message_order, created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     message_id,
@@ -663,6 +717,7 @@ def import_chats(payload: ChatImportRequest) -> dict[str, Any]:
                     item.get("provider_name"),
                     float_or_none(item.get("generation_time")),
                     float_or_none(item.get("latency")),
+                    messageOrder,
                     str(item.get("created_at") or now),
                 ),
             )
@@ -682,7 +737,7 @@ def get_chat(chat_id: str) -> dict[str, Any]:
         if not chat:
             raise HTTPException(status_code=404, detail="Chat not found.")
         messages = conn.execute(
-            "SELECT * FROM messages WHERE chat_id = ? ORDER BY created_at ASC",
+            f"SELECT * FROM messages WHERE chat_id = ? ORDER BY {message_order_clause()}",
             (chat_id,),
         ).fetchall()
     return {"chat": row_to_chat(chat), "messages": [row_to_message(row) for row in messages]}
@@ -752,7 +807,7 @@ def refresh_chat_after_message_change(
         """
         SELECT content FROM messages
         WHERE chat_id = ? AND role = 'user'
-        ORDER BY created_at ASC
+        ORDER BY message_order ASC, created_at ASC, rowid ASC
         LIMIT 1
         """,
         (chat_id,),
@@ -784,7 +839,7 @@ def update_message(
             """
             SELECT content FROM messages
             WHERE chat_id = ? AND role = 'user'
-            ORDER BY created_at ASC
+            ORDER BY message_order ASC, created_at ASC, rowid ASC
             LIMIT 1
             """,
             (chat_id,),
@@ -793,9 +848,9 @@ def update_message(
         conn.execute(
             """
             DELETE FROM messages
-            WHERE chat_id = ? AND created_at > ?
+            WHERE chat_id = ? AND message_order > ?
             """,
-            (chat_id, message["created_at"]),
+            (chat_id, message["message_order"]),
         )
         conn.execute(
             "UPDATE messages SET content = ? WHERE id = ? AND chat_id = ?",
@@ -820,7 +875,7 @@ def delete_message(chat_id: str, message_id: str) -> dict[str, Any]:
             """
             SELECT content FROM messages
             WHERE chat_id = ? AND role = 'user'
-            ORDER BY created_at ASC
+            ORDER BY message_order ASC, created_at ASC, rowid ASC
             LIMIT 1
             """,
             (chat_id,),
@@ -829,9 +884,9 @@ def delete_message(chat_id: str, message_id: str) -> dict[str, Any]:
         conn.execute(
             """
             DELETE FROM messages
-            WHERE chat_id = ? AND created_at >= ?
+            WHERE chat_id = ? AND message_order >= ?
             """,
-            (chat_id, message["created_at"]),
+            (chat_id, message["message_order"]),
         )
         refresh_chat_after_message_change(conn, chat_id, previous_first_user_content)
     return get_chat(chat_id)
@@ -846,7 +901,7 @@ def build_openrouter_messages(chat_id: str, system_prompt: str) -> list[dict[str
             """
             SELECT role, content FROM messages
             WHERE chat_id = ? AND error IS NULL
-            ORDER BY created_at ASC
+            ORDER BY message_order ASC, created_at ASC, rowid ASC
             """,
             (chat_id,),
         ).fetchall()
@@ -1080,9 +1135,9 @@ async def stream_openrouter_response(
                   id, chat_id, role, content, reasoning, model, finish_reason,
                   error, generation_id, prompt_tokens, completion_tokens,
                   reasoning_tokens, total_tokens, cost, provider_name,
-                  generation_time, latency, created_at
+                  generation_time, latency, message_order, created_at
                 )
-                VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     assistant_message_id,
@@ -1101,6 +1156,7 @@ async def stream_openrouter_response(
                     usage.get("provider_name") if usage else None,
                     usage.get("generation_time") if usage else None,
                     usage.get("latency") if usage else None,
+                    next_message_order(conn, chat_id),
                     utc_now(),
                 ),
             )
@@ -1134,25 +1190,39 @@ async def stream_message(chat_id: str, payload: StreamMessageRequest) -> Streami
             )
 
         if payload.regenerate_message_id:
+            regenerateMessage = conn.execute(
+                """
+                SELECT message_order FROM messages
+                WHERE id = ? AND chat_id = ?
+                """,
+                (payload.regenerate_message_id, chat_id),
+            ).fetchone()
+            if not regenerateMessage:
+                raise HTTPException(status_code=404, detail="Message not found.")
             conn.execute(
                 """
                 DELETE FROM messages
-                WHERE chat_id = ? AND created_at > (
-                  SELECT created_at FROM messages WHERE id = ? AND chat_id = ?
-                )
+                WHERE chat_id = ? AND message_order > ?
                 """,
-                (chat_id, payload.regenerate_message_id, chat_id),
+                (chat_id, regenerateMessage["message_order"]),
             )
         else:
             conn.execute(
                 """
                 INSERT INTO messages (
                   id, chat_id, role, content, reasoning, model, finish_reason,
-                  error, created_at
+                  error, message_order, created_at
                 )
-                VALUES (?, ?, 'user', ?, NULL, ?, NULL, NULL, ?)
+                VALUES (?, ?, 'user', ?, NULL, ?, NULL, NULL, ?, ?)
                 """,
-                (user_message_id, chat_id, message, payload.model, now),
+                (
+                    user_message_id,
+                    chat_id,
+                    message,
+                    payload.model,
+                    next_message_order(conn, chat_id),
+                    now,
+                ),
             )
 
         title = chat["title"]

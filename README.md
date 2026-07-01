@@ -1,31 +1,11 @@
 # RouterChat
 
-Local single-user OpenRouter chat UI with a FastAPI backend, streaming responses, SQLite conversation history, model loading, and `.env` API key storage.
+Local single-user OpenRouter web interface designed for user experience and privacy, as all data stays on your device. 
 
-## Run
+## How to set up
 
-```sh
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-npm install
-npm run build
-.venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
-```
-
-Open http://127.0.0.1:8000.
-
-## Frontend Development
-
-```sh
-npm run dev
-```
-
-The Vite dev server proxies `/api` to `http://127.0.0.1:8000`. Run the FastAPI
-server in another terminal while developing the React UI.
+Read [setup.md](setup.md)
+For extra support upload [assistant.md](assistant.md) to your favorite AI to turn it into a support bot to help you set up and troubleshoot! 
 
 ## Notes
-
-- Enter an OpenRouter API key in the Connection panel and click `Save key`.
-- The key is validated with OpenRouter before `OPENROUTER_API_KEY` is written to `.env`.
 - Chats and cached model metadata are stored in `data/routerchat.sqlite3`.
-- `.env`, `data/`, and `.venv/` are intentionally ignored by git.

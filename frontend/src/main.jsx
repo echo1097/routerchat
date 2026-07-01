@@ -21,7 +21,6 @@ import {
   Pencil,
   RefreshCw,
   Search,
-  Settings2,
   SlidersHorizontal,
   Square,
   Trash2,
@@ -701,31 +700,30 @@ function formatCost(value) {
 
 function ContextWindowMeter({ info }) {
   const tooltipId = useId();
-  const hasInfo = Boolean(info);
-  const percent = hasInfo ? Math.min(Math.max(info.percentFull, 0), 100) : 0;
+  if (!info) return null;
+
+  const percent = Math.min(Math.max(info.percentFull, 0), 100);
   const radius = 8;
   const circumference = 2 * Math.PI * radius;
   const dashOffset = circumference * (1 - percent / 100);
-  const ariaLabel = hasInfo
-    ? `Context window ${info.displayPercent}, ${info.displayUsage}`
-    : "Context window unavailable";
+  const ariaLabel = `Context window ${info.displayPercent}, ${info.displayUsage}`;
 
   return (
-    <span className="t-tt-wrap context-meter-wrap inline-flex h-[34px] w-[34px] shrink-0 items-center justify-center">
+    <span className="t-tt-wrap context-meter-wrap inline-flex h-[34px] w-[18px] shrink-0 items-center justify-center">
       <button
         type="button"
         aria-label={ariaLabel}
         aria-describedby={tooltipId}
         className={cx(
-          "t-tt-trigger grid h-[34px] w-[34px] place-items-center rounded-full text-zinc-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+          "t-tt-trigger grid h-[34px] w-[18px] place-items-center rounded-full text-zinc-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
           CONTROL_MOTION,
-          hasInfo && "text-zinc-400 hover:text-zinc-200",
+          "text-zinc-400 hover:text-zinc-200",
         )}
       >
         <svg
           aria-hidden="true"
           viewBox="0 0 20 20"
-          className="h-[22px] w-[22px] -rotate-90"
+          className="h-[11px] w-[11px] -rotate-90"
         >
           <circle
             cx="10"
@@ -734,22 +732,20 @@ function ContextWindowMeter({ info }) {
             fill="none"
             stroke="currentColor"
             strokeWidth="3"
-            className={hasInfo ? "opacity-20" : "opacity-35"}
+            className="opacity-20"
           />
-          {hasInfo && (
-            <circle
-              cx="10"
-              cy="10"
-              r={radius}
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="3"
-              strokeLinecap="round"
-              strokeDasharray={circumference}
-              strokeDashoffset={dashOffset}
-              className="opacity-95 transition-[stroke-dashoffset] duration-300 ease-out"
-            />
-          )}
+          <circle
+            cx="10"
+            cy="10"
+            r={radius}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            strokeDashoffset={dashOffset}
+            className="opacity-95 transition-[stroke-dashoffset] duration-300 ease-out"
+          />
         </svg>
       </button>
       <span
@@ -758,7 +754,7 @@ function ContextWindowMeter({ info }) {
         className="t-tt context-meter-tooltip"
       >
         <span className="block text-zinc-100">
-          {hasInfo ? info.displayUsage : "Context window unavailable"}
+          {info.displayUsage}
         </span>
       </span>
     </span>
@@ -1135,7 +1131,7 @@ function Composer({
               className="block max-h-[126px] min-h-6 w-full resize-none bg-transparent text-sm leading-6 text-zinc-100 outline-none placeholder:text-zinc-600"
             />
           </div>
-          <div className="flex items-end gap-2 px-2.5 pb-2.5 pt-1.5">
+          <div className="flex items-center gap-2 px-2.5 pb-2.5 pt-1.5">
             <div className="ml-auto" />
             <ContextWindowMeter info={contextWindowInfo} />
             {canThink && (
@@ -1143,12 +1139,11 @@ function Composer({
                 type="button"
                 onClick={onToggleThinking}
                 className={cx(
-                  "relative inline-flex h-[34px] items-center gap-1 rounded-full px-2.5 text-[11px] font-medium before:absolute before:-inset-[3px] before:content-[''] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+                  "relative inline-flex h-[34px] items-center gap-1 rounded-full px-2.5 text-[11px] font-medium leading-none before:absolute before:-bottom-[3px] before:-right-[3px] before:-top-[3px] before:left-0 before:content-[''] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
                   CONTROL_MOTION,
-                  SOFT_SURFACE,
                   settings.thinking_enabled
-                    ? "bg-accent/15 text-blue-200"
-                    : "bg-white/[0.035] text-zinc-500 hover:text-zinc-200",
+                    ? "text-blue-200"
+                    : "text-zinc-500 hover:text-zinc-200",
                 )}
               >
                 Thinking
@@ -1158,12 +1153,10 @@ function Composer({
               type="button"
               onClick={onOpenSettings}
               className={cx(
-                "relative inline-flex h-[34px] min-w-0 max-w-[190px] items-center gap-1 rounded-full bg-white/[0.035] px-2.5 text-[11px] font-medium text-zinc-400 before:absolute before:-inset-[3px] before:content-[''] hover:bg-white/[0.07] hover:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 sm:max-w-[240px]",
+                "relative inline-flex h-[34px] min-w-0 max-w-[190px] items-center gap-1 rounded-full px-2.5 text-[11px] font-medium leading-none text-zinc-400 before:absolute before:-inset-[3px] before:content-[''] hover:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 sm:max-w-[240px]",
                 CONTROL_MOTION,
-                SOFT_SURFACE,
               )}
             >
-              <Settings2 size={12} />
               <span className="truncate">{promptModelName(models, settings.model)}</span>
               {modelLocked && <span className="text-zinc-600">locked</span>}
             </button>

@@ -317,7 +317,7 @@ Keep the PowerShell window open while using RouterChat. If you close it, the loc
 The easiest path is through the app:
 
 1. Open RouterChat.
-2. Open settings.
+2. Open settings by clicking the model name next to the send button in the prompt bar.
 3. Go to the API page.
 4. Paste your OpenRouter API key.
 5. Save it.
@@ -331,6 +331,36 @@ OPENROUTER_API_KEY=your_key_here
 ```
 
 Keep `.env` private. It is ignored by git.
+
+## Using the UI
+
+Once RouterChat is open in your browser, the main things are:
+
+- Type your message in the prompt box at the bottom.
+- Press Enter to send.
+- Press Shift + Enter to make a new line without sending.
+- Click the round send button to send, or click it while a response is running to stop the response.
+- Click `New chat` in the left sidebar to start a fresh conversation.
+- Click an old chat in the left sidebar to reopen it.
+
+The model name in the prompt bar is also a button. Click the model name to open settings.
+
+Settings has these pages:
+
+- `API`: paste and save your OpenRouter key, hide free models, and turn on Turbo.
+- `Models`: search models, select a model, and set the selected model as the default.
+- `System`: add a system prompt that gets sent before your messages.
+- `UI`: turn smooth text on or off.
+- `Chats`: export or import chats as JSON files.
+- `Advanced`: change reasoning effort, temperature, and max output tokens.
+
+If a chat already has messages, the model may show as `locked`. That means the chat is locked to the model it started with. Start a new chat if you want to use a different model.
+
+Some buttons only show when you hover over a chat or message:
+
+- Hover over a chat in the sidebar to rename or delete it.
+- Hover over your prompt to edit or delete it.
+- Hover over an assistant response to copy it, regenerate it, or view response details.
 
 ## Normal Local Run
 

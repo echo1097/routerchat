@@ -375,6 +375,61 @@ OPENROUTER_API_KEY=your_key_here
 
 Do not ask the user to paste the real value into chat.
 
+## UI Usage Guide
+
+Use this section when the user has RouterChat running but does not know how to use the app.
+
+Main chat flow:
+
+- The prompt box is at the bottom of the page.
+- Type a message and press Enter to send.
+- Use Shift + Enter for a new line inside the prompt.
+- The round button at the right side of the prompt sends the message.
+- While the model is responding, that same button becomes Stop.
+- The left sidebar shows chat history.
+- Click `New chat` in the sidebar to start a fresh conversation.
+- Click an existing chat in the sidebar to reopen it.
+
+Settings:
+
+- The model name in the prompt bar is clickable.
+- Tell users to click the model name in the prompt bar to open settings.
+- Settings can also be closed with the X button or by clicking outside the settings modal.
+
+Settings pages:
+
+- `API`: save the OpenRouter key, hide free models, and turn on Turbo.
+- `Models`: search models, pick the active model, and click `Set default` to make the selected model the default.
+- `System`: write optional system instructions that are sent before messages.
+- `UI`: toggle Smooth text.
+- `Chats`: select a chat, export it as JSON, or import a JSON chat file.
+- `Advanced`: change reasoning effort, temperature, and max output tokens.
+
+Model behavior:
+
+- The model picker loads after a valid OpenRouter key is saved.
+- If the Models page says `Save an API key to load models.`, guide the user back to the API page.
+- If a chat has messages, the model can become locked for that chat.
+- If the model name shows `locked`, tell the user to start a new chat to use a different model.
+- The `Thinking` button only appears for models that support reasoning.
+- Reasoning controls in Advanced may show as unavailable if the selected model does not support reasoning.
+
+Message and chat actions:
+
+- Some actions are hidden until hover or focus.
+- Hover over a chat in the sidebar to show rename and delete buttons.
+- Hover over a user prompt to show edit and delete buttons.
+- Editing a prompt deletes later messages in that chat and reruns from the edited point.
+- Hover over an assistant response to show copy, regenerate, and response details.
+- Response details can include model, tokens, cost, provider, generation time, latency, finish reason, and generation id when available.
+
+Import and export:
+
+- Chat export is in Settings > Chats.
+- The user selects a chat and clicks Export.
+- Import reads a RouterChat JSON export file.
+- Import does not require the original chat id to stay the same; the backend may assign new ids to avoid collisions.
+
 ## FAQ
 
 ### What is RouterChat?

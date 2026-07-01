@@ -3169,9 +3169,10 @@ function App() {
     setStatus("");
     abortRef.current = new AbortController();
     let currentAssistantId = null;
+    let chatId = null;
 
     try {
-      const chatId = await ensureChat();
+      chatId = await ensureChat();
       const shouldAddUser = !regenerateMessageId;
       const userMessage = {
         id: `local-user-${crypto.randomUUID()}`,
@@ -3228,6 +3229,11 @@ function App() {
     } catch (error) {
       if (error.name === "AbortError") {
         setStatus("Response stopped");
+        if (chatId) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          await loadChats();
+          await loadChat(chatId);
+        }
       } else {
         setStatus(error.message);
         setMessages((current) =>

@@ -1902,7 +1902,7 @@ function SettingsDrawer({
       trailing={!canThink ? "Unavailable" : null}
     >
       <p className="mb-3 text-pretty text-xs leading-5 text-zinc-500">
-        Choose how much extra reasoning the model should use.
+        Select model reasoning effort
       </p>
       <SlidingTabs
         options={REASONING_EFFORTS}
@@ -1912,7 +1912,7 @@ function SettingsDrawer({
         getLabel={(effort) => effort.shortLabel || effort.label}
         ariaLabel="Reasoning effort"
         disabled={!canThink}
-        className="w-full"
+        className="reasoning-tabs w-full"
       />
     </Accordion>
   );
@@ -1925,7 +1925,7 @@ function SettingsDrawer({
       onToggle={toggleAccordion}
     >
       <p className="mb-3 text-pretty text-xs leading-5 text-zinc-500">
-        Tune response variation and the maximum reply budget.
+        Customize model outputs
       </p>
       <div className="space-y-3">
         <div className="settings-slider-row">
@@ -1950,7 +1950,7 @@ function SettingsDrawer({
         </div>
         <div className="settings-slider-row">
           <div className="mb-2.5 flex items-center justify-between text-xs font-medium">
-            <span className="text-zinc-400">Max tokens</span>
+            <span className="text-zinc-400">Max output tokens</span>
             <div className="flex items-center gap-1.5">
               <span className="max-w-[140px] truncate rounded-full bg-white/[0.055] px-2 py-0.5 text-[11px] font-medium leading-normal text-zinc-500 shadow-[var(--shadow-border)]">
                 {selectedModel?.name || settings.model}
@@ -1962,13 +1962,15 @@ function SettingsDrawer({
               )}
               {editingMaxTokens ? (
                 <input
-                  type="number"
+                  type="text"
                   autoFocus
-                  min="1"
-                  step="1"
                   inputMode="numeric"
+                  pattern="[0-9]*"
                   value={maxTokensDraft}
-                  onChange={(event) => setMaxTokensDraft(event.target.value)}
+                  onChange={(event) => {
+                    const digitsOnly = event.target.value.replace(/[^0-9]/g, "");
+                    setMaxTokensDraft(digitsOnly);
+                  }}
                   onBlur={commitMaxTokensDraft}
                   onKeyDown={(event) => {
                     if (event.key === "Enter") {
@@ -1979,7 +1981,7 @@ function SettingsDrawer({
                       setEditingMaxTokens(false);
                     }
                   }}
-                  className="min-w-16 rounded-full bg-white/[0.08] px-2 py-0.5 text-center tabular-nums text-zinc-100 shadow-[var(--shadow-border)] outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                  className="w-16 shrink-0 rounded-full bg-white/[0.08] px-2 py-0.5 text-center tabular-nums text-zinc-100 shadow-[var(--shadow-border)] outline-none focus-visible:ring-2 focus-visible:ring-white/20"
                 />
               ) : (
                 <button
@@ -1989,7 +1991,7 @@ function SettingsDrawer({
                     setEditingMaxTokens(true);
                   }}
                   className={cx(
-                    "min-w-16 rounded-full bg-white/[0.055] px-2 py-0.5 text-center tabular-nums text-zinc-200 shadow-[var(--shadow-border)] hover:bg-white/[0.085] hover:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
+                    "w-16 shrink-0 rounded-full bg-white/[0.055] px-2 py-0.5 text-center tabular-nums text-zinc-200 shadow-[var(--shadow-border)] hover:bg-white/[0.085] hover:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
                     CONTROL_MOTION,
                   )}
                 >

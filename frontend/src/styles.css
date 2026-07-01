@@ -447,6 +447,21 @@ textarea {
 .settings-mobile-tabs .t-tab {
   flex: 0 0 auto;
 }
+.reasoning-tabs.t-tabs {
+  padding: 2px;
+}
+.reasoning-tabs .t-tab {
+  height: 24px;
+  padding: 2px 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+.reasoning-tabs .t-tabs-pill {
+  top: 2px;
+  height: 24px;
+}
 .t-tab {
   position: relative;
   appearance: none;

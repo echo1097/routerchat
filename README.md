@@ -1,4 +1,5 @@
 # RouterChat
+A local OpenRouter chat interface.
 
 ## Disclaimer
 
@@ -8,7 +9,7 @@ RouterChat is licensed under the [MIT License](LICENSE).
 
 ## AI usage disclaimer
 
-I used AI to support my development of this project, as I am not the most adept web developer. AI was used to help me write the documentation for this project as well. 
+AI was used to support development and documentation for this project. All code and documentation were reviewed by myself before being published.
 
 ## How to set up
 
@@ -21,7 +22,7 @@ For extra support, upload [assistant.md](assistant.md) to your favorite AI to tu
 
 ## Bug reporting and contributing
 - To report a bug open an issue and provide as much context and information as you can so I can reproduce and fix it. 
-- AI slop pull requests will not be merged. If you are using AI to assist your development, clean it up and debug it manually.
+- AI slop pull requests will not be merged. If you are using AI to assist your development, clean it up and review the code manually and be transparent in your usage of AI.
 
 ## Notes
 - Chats and cached model metadata are stored in `data/routerchat.sqlite3`.

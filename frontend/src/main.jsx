@@ -922,52 +922,58 @@ const MessageItem = memo(function MessageItem({
               : "max-w-[78%] items-end sm:max-w-[68%]",
           )}
         >
-          {editing ? (
-            <div className="w-full rounded-[28px] bg-[#2f2f30] px-5 pb-5 pt-4 shadow-[0_0_0_1px_rgba(255,255,255,0.07),0_22px_70px_rgba(0,0,0,0.36)] transition-[background-color,box-shadow] duration-200 ease-out focus-within:bg-[#343435] focus-within:shadow-[0_0_0_1px_rgba(255,255,255,0.11),0_22px_70px_rgba(0,0,0,0.38)]">
-              <textarea
-                value={draft}
-                rows={Math.min(8, Math.max(3, draft.split("\n").length))}
-                onChange={(event) => setDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && event.metaKey) {
-                    event.preventDefault();
-                    saveEdit();
-                  }
-                  if (event.key === "Escape") {
-                    cancelEditing();
-                  }
-                }}
-                className="block max-h-[260px] min-h-[108px] w-full resize-none bg-transparent text-base leading-7 text-zinc-50 outline-none placeholder:text-zinc-500 sm:text-[17px]"
-              />
-              <div className="mt-5 flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={cancelEditing}
-                  className={cx(
-                    "inline-flex min-h-11 items-center rounded-full px-5 text-sm font-medium text-zinc-100 shadow-[0_0_0_1px_rgba(255,255,255,0.13)] hover:bg-white/[0.055] hover:shadow-[0_0_0_1px_rgba(255,255,255,0.2)] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
-                    CONTROL_MOTION,
-                  )}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={saving || !draft.trim()}
-                  onClick={saveEdit}
-                  className={cx(
-                    "inline-flex min-h-11 items-center rounded-full bg-white px-6 text-sm font-semibold text-zinc-950 hover:bg-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/45 disabled:cursor-not-allowed disabled:bg-white/35 disabled:text-zinc-700 disabled:active:scale-100",
-                    CONTROL_MOTION,
-                  )}
-                >
-                  {saving ? "Sending" : "Send"}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="whitespace-pre-wrap rounded-[22px] bg-blue-500/85 px-4 py-3 text-pretty text-sm leading-6 text-white shadow-lg shadow-blue-950/20">
-              {message.content}
-            </div>
-          )}
+          <div
+            className={cx(
+              editing
+                ? "prompt-edit-surface w-full rounded-[28px] px-5 pb-5 pt-4"
+                : "whitespace-pre-wrap rounded-[22px] bg-blue-500/85 px-4 py-3 text-pretty text-sm leading-6 text-white shadow-lg shadow-blue-950/20",
+            )}
+          >
+            {editing ? (
+              <>
+                <textarea
+                  value={draft}
+                  rows={Math.min(8, Math.max(3, draft.split("\n").length))}
+                  onChange={(event) => setDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && event.metaKey) {
+                      event.preventDefault();
+                      saveEdit();
+                    }
+                    if (event.key === "Escape") {
+                      cancelEditing();
+                    }
+                  }}
+                  className="block max-h-[260px] min-h-[108px] w-full resize-none bg-transparent text-base leading-7 text-zinc-50 outline-none placeholder:text-zinc-500 sm:text-[17px]"
+                />
+                <div className="mt-5 flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={cancelEditing}
+                    className={cx(
+                      "inline-flex min-h-11 items-center rounded-full px-5 text-sm font-medium text-zinc-100 shadow-[0_0_0_1px_rgba(255,255,255,0.13)] hover:bg-white/[0.055] hover:shadow-[0_0_0_1px_rgba(255,255,255,0.2)] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
+                      CONTROL_MOTION,
+                    )}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={saving || !draft.trim()}
+                    onClick={saveEdit}
+                    className={cx(
+                      "inline-flex min-h-11 items-center rounded-full bg-white px-6 text-sm font-semibold text-zinc-950 hover:bg-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/45 disabled:cursor-not-allowed disabled:bg-white/35 disabled:text-zinc-700 disabled:active:scale-100",
+                      CONTROL_MOTION,
+                    )}
+                  >
+                    {saving ? "Sending" : "Send"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              message.content
+            )}
+          </div>
           {!editing && (
             <div className={cx("flex gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100", FADE_MOTION)}>
               <IconButton

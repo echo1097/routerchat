@@ -14,6 +14,7 @@ AI was used to support development and documentation for this project. All code 
 ## How to set up
 
 Read [setup.md](setup.md)
+
 For extra support, upload [assistant.md](assistant.md) to your favorite AI to turn it into a support bot to help you set up and troubleshoot!
 
 ## Current plans

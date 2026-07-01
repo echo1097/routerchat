@@ -709,15 +709,15 @@ function ContextWindowMeter({ info }) {
   const ariaLabel = `Context window ${info.displayPercent}, ${info.displayUsage}`;
 
   return (
-    <span className="t-tt-wrap context-meter-wrap inline-flex h-[34px] w-[18px] shrink-0 items-center justify-center">
+    <span className="t-tt-wrap context-meter-wrap -mr-1 inline-flex h-[34px] w-[18px] shrink-0 items-center justify-center">
       <button
         type="button"
         aria-label={ariaLabel}
         aria-describedby={tooltipId}
         className={cx(
-          "t-tt-trigger grid h-[34px] w-[18px] place-items-center rounded-full text-zinc-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+          "t-tt-trigger grid h-[34px] w-[18px] place-items-center rounded-full text-zinc-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
           CONTROL_MOTION,
-          "text-zinc-400 hover:text-zinc-200",
+          "hover:text-zinc-100",
         )}
       >
         <svg
@@ -732,7 +732,7 @@ function ContextWindowMeter({ info }) {
             fill="none"
             stroke="currentColor"
             strokeWidth="3"
-            className="opacity-20"
+            className="opacity-35"
           />
           <circle
             cx="10"
@@ -744,7 +744,7 @@ function ContextWindowMeter({ info }) {
             strokeLinecap="round"
             strokeDasharray={circumference}
             strokeDashoffset={dashOffset}
-            className="opacity-95 transition-[stroke-dashoffset] duration-300 ease-out"
+            className="opacity-80 transition-[stroke-dashoffset] duration-300 ease-out"
           />
         </svg>
       </button>
@@ -1011,7 +1011,7 @@ const MessageItem = memo(function MessageItem({
         )}
       </div>
       {message.content && (
-        <div className={cx("mt-3 flex -translate-x-1 gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100", FADE_MOTION)}>
+        <div className={cx("mt-3 flex max-w-3xl justify-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100", FADE_MOTION)}>
           <AssistantActionButton label="Copy" onClick={() => onCopy(message)}>
             <Copy size={15} />
           </AssistantActionButton>

@@ -1011,7 +1011,7 @@ const MessageItem = memo(function MessageItem({
         )}
       </div>
       {message.content && (
-        <div className={cx("mt-3 flex max-w-3xl justify-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100", FADE_MOTION)}>
+        <div className={cx("mt-3 flex max-w-3xl justify-start gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100", FADE_MOTION)}>
           <AssistantActionButton label="Copy" onClick={() => onCopy(message)}>
             <Copy size={15} />
           </AssistantActionButton>
@@ -1127,7 +1127,7 @@ function Composer({
                   isStreaming ? onStop() : onSubmit();
                 }
               }}
-              placeholder="Ask Anything"
+              placeholder={`Ask ${promptModelName(models, settings.model)} anything`}
               className="block max-h-[126px] min-h-6 w-full resize-none bg-transparent text-sm leading-6 text-zinc-100 outline-none placeholder:text-zinc-600"
             />
           </div>
@@ -1280,8 +1280,7 @@ function SettingsDrawer({
         return [model.name, model.id, model.description]
           .filter(Boolean)
           .some((value) => value.toLowerCase().includes(normalized));
-      })
-      .slice(0, 90);
+      });
   }, [hideFreeModels, models, query]);
 
   async function saveKey() {
@@ -1624,8 +1623,8 @@ function SettingsDrawer({
   );
 
   const modelList = (
-    <section className="flex min-h-0 flex-1 flex-col rounded-2xl bg-white/[0.035] shadow-[var(--shadow-border)]">
-      <div className="p-3 pb-2.5">
+    <section className="flex min-h-0 flex-1 flex-col">
+      <div className="pb-2.5">
         <div className="mb-3 flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="flex items-center gap-2 text-balance text-sm font-semibold text-zinc-100">
@@ -1679,9 +1678,13 @@ function SettingsDrawer({
           </p>
         )}
       </div>
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 pb-3 pt-1">
+      <div className="grid grid-cols-[minmax(0,1fr)_82px] items-center px-1 pb-2 pt-1 text-[11px] font-medium uppercase tracking-[0.08em] text-zinc-600">
+        <span>Model</span>
+        <span className="text-center">Price</span>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {filteredModels.length === 0 ? (
-          <div className="rounded-[18px] bg-black/15 p-4 text-pretty text-sm leading-6 text-zinc-500 shadow-[var(--shadow-border)]">
+          <div className="mt-3 rounded-[18px] bg-black/15 p-4 text-pretty text-sm leading-6 text-zinc-500 shadow-[var(--shadow-border)]">
             {models.length === 0 ? "Save an API key to load models." : "No matching models."}
           </div>
         ) : (
@@ -1689,39 +1692,36 @@ function SettingsDrawer({
             const isSelected = model.id === settings.model;
             const modelPrice = priceLabel(model);
             return (
-            <div
-              key={model.id}
-              className={cx(
-                "min-h-14 w-full rounded-xl border p-2.5",
-                isSelected
-                  ? "border-white/[0.14] bg-white/[0.07] shadow-[var(--shadow-border-hover)]"
-                  : "border-transparent bg-black/15 shadow-[var(--shadow-border)] hover:bg-white/[0.05] hover:shadow-[var(--shadow-border-hover)]",
-              )}
-            >
-              <button
-                type="button"
-                disabled={modelLocked}
-                onClick={() => selectModel(model)}
+              <div
+                key={model.id}
                 className={cx(
-                  "block w-full min-w-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
-                  CONTROL_MOTION,
-                  modelLocked && !isSelected && "cursor-not-allowed opacity-45 active:scale-100",
+                  "grid min-h-[52px] grid-cols-[minmax(0,1fr)_82px] items-center rounded-lg px-1 py-2 transition-colors duration-150 ease-out",
+                  isSelected ? "bg-white/[0.045]" : "hover:bg-white/[0.025]",
+                  modelLocked && !isSelected && "opacity-45",
                 )}
               >
-                <span className="flex min-w-0 items-center gap-2 text-sm font-medium text-zinc-100">
-                  <span className="truncate">{model.name}</span>
-                  {modelPrice && (
-                    <span className="shrink-0 rounded-full bg-white/[0.06] px-1.5 py-0.5 text-xs font-medium leading-none tabular-nums text-zinc-400 shadow-[var(--shadow-border)]">
-                      {modelPrice}
-                    </span>
+                <button
+                  type="button"
+                  disabled={modelLocked}
+                  onClick={() => selectModel(model)}
+                  className={cx(
+                    "min-w-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
+                    CONTROL_MOTION,
+                    modelLocked && !isSelected && "cursor-not-allowed active:scale-100",
                   )}
+                >
+                  <span className="block truncate text-sm font-medium text-zinc-100">
+                    {model.name}
+                  </span>
+                  <span className="mt-0.5 block truncate text-xs text-zinc-600">
+                    {model.id}
+                  </span>
+                </button>
+                <span className="px-1 text-center text-xs tabular-nums text-zinc-500">
+                  {modelPrice || "-"}
                 </span>
-                <span className="mt-0.5 block truncate text-xs text-zinc-500">
-                  {model.id}
-                </span>
-              </button>
-            </div>
-          );
+              </div>
+            );
           })
         )}
       </div>

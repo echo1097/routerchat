@@ -27,3 +27,17 @@ For extra support, upload [assistant.md](assistant.md) to your favorite AI to tu
 
 ## Notes
 - Chats and cached model metadata are stored in `data/routerchat.sqlite3`.
+
+## Media
+UI
+<img width="1503" height="821" alt="Screenshot 2026-07-01 at 12 49 19 AM" src="https://github.com/user-attachments/assets/83fe456d-097b-4ab6-ac44-b54ebf68f142" />
+Settings
+<img width="597" height="434" alt="Screenshot 2026-07-01 at 12 49 30 AM" src="https://github.com/user-attachments/assets/557e1ba9-607b-4de6-8594-7a3940c94d30" />
+Model picker
+<img width="624" height="454" alt="Screenshot 2026-07-01 at 12 49 45 AM" src="https://github.com/user-attachments/assets/6d829113-3bbf-4ec9-b631-9a8c0c2eca46" />
+Sample response
+<img width="1512" height="828" alt="Screenshot 2026-07-01 at 12 50 45 AM" src="https://github.com/user-attachments/assets/028ce3c2-2c92-4a0a-801d-e395cce84870" />
+
+
+
+

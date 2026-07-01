@@ -266,18 +266,17 @@ def normalize_model(model: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def is_text_only_model(model: dict[str, Any]) -> bool:
+def outputs_text_model(model: dict[str, Any]) -> bool:
     architecture = model.get("architecture") or {}
-    input_modalities = set(architecture.get("input_modalities") or [])
     output_modalities = set(architecture.get("output_modalities") or [])
 
-    if input_modalities or output_modalities:
-        return input_modalities == {"text"} and output_modalities == {"text"}
+    if output_modalities:
+        return "text" in output_modalities
 
     modality = architecture.get("modality")
     if isinstance(modality, str) and "->" in modality:
-        source, target = modality.split("->", 1)
-        return set(source.split("+")) == {"text"} and set(target.split("+")) == {"text"}
+        _, target = modality.split("->", 1)
+        return "text" in set(target.split("+"))
 
     # Older cached entries may not include OpenRouter architecture metadata.
     searchable = " ".join(
@@ -293,7 +292,7 @@ def cached_models() -> list[dict[str, Any]]:
         ).fetchone()
     if not row:
         return []
-    return [model for model in json.loads(row["payload_json"]) if is_text_only_model(model)]
+    return [model for model in json.loads(row["payload_json"]) if outputs_text_model(model)]
 
 
 def cache_models(models: list[dict[str, Any]]) -> None:
@@ -366,7 +365,7 @@ async def fetch_models_from_openrouter(api_key: str) -> list[dict[str, Any]]:
     models = [
         normalize_model(item)
         for item in response.json().get("data", [])
-        if is_text_only_model(item)
+        if outputs_text_model(item)
     ]
     return [model for model in models if model.get("id")]
 

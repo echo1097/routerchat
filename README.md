@@ -20,6 +20,8 @@ For extra support, upload [assistant.md](assistant.md) to your favorite AI to tu
 ## Current plans
 - UI improvements
 - Support for more API providers
+- Memory
+- RAG 
 
 ## Bug reporting and contributing
 - To report a bug open an issue and provide as much context and information as you can so I can reproduce and fix it. 

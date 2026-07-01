@@ -13,7 +13,7 @@ from typing import Any, AsyncIterator, Literal
 import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -31,6 +31,19 @@ ReasoningEffort = Literal["low", "medium", "high", "xhigh"]
 load_dotenv(ENV_PATH)
 
 app = FastAPI(title="RouterChat", version="0.1.0")
+
+
+def configure_static_files(target_app: FastAPI, static_dir: Path) -> None:
+    if static_dir.is_dir():
+        target_app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
+        return
+
+    @target_app.get("/", include_in_schema=False)
+    def missing_frontend_build() -> PlainTextResponse:
+        return PlainTextResponse(
+            "frontend build missing, run npm run build",
+            status_code=503,
+        )
 
 
 class ApiKeyRequest(BaseModel):
@@ -1175,4 +1188,4 @@ async def stream_message(chat_id: str, payload: StreamMessageRequest) -> Streami
     )
 
 
-app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+configure_static_files(app, STATIC_DIR)

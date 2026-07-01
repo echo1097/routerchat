@@ -54,7 +54,7 @@ const SETTINGS_PAGES = [
   { id: "general", label: "API", iconClass: "fi fi-rr-key" },
   { id: "models", label: "Models", iconClass: "fi fi-rr-bulb" },
   { id: "ui", label: "UI", iconClass: "fi fi-rr-apps-add" },
-  { id: "cloud", label: "Cloud", iconClass: "fi fi-rr-cloud-upload-alt" },
+  { id: "cloud", label: "Chats", icon: MessageSquarePlus },
   { id: "advanced", label: "Advanced", icon: SlidersHorizontal },
 ];
 
@@ -1247,13 +1247,19 @@ function SettingsDrawer({
   const [activePage, setActivePage] = useState("general");
   const [modelListScrolled, setModelListScrolled] = useState(false);
   const [modelListHasMoreBelow, setModelListHasMoreBelow] = useState(false);
+  const [chatListScrolled, setChatListScrolled] = useState(false);
+  const [chatListHasMoreBelow, setChatListHasMoreBelow] = useState(false);
   const [openAccordions, setOpenAccordions] = useState({
-    cloudChats: true,
     reasoning: true,
     generation: true,
   });
   const fileInputRef = useRef(null);
   const modelListRef = useRef(null);
+  const chatListRef = useRef(null);
+  const modelSearchWrapRef = useRef(null);
+  const modelSearchInputRef = useRef(null);
+  const modelSearchRevertRef = useRef(null);
+  const modelSearchHadResultsRef = useRef(true);
   const canThink = supportsThinking(models, settings.model);
   const selectedModel = models.find((model) => model.id === settings.model);
   const selectedModelPrice = selectedModel ? priceLabel(selectedModel) : "";
@@ -1293,12 +1299,78 @@ function SettingsDrawer({
     setModelListHasMoreBelow(bottomOffset > 2);
   }
 
+  function updateChatListEdges(element) {
+    const scrollTop = element.scrollTop;
+    const bottomOffset = element.scrollHeight - element.clientHeight - scrollTop;
+    setChatListScrolled(scrollTop > 2);
+    setChatListHasMoreBelow(bottomOffset > 2);
+  }
+
   useEffect(() => {
     const modelList = modelListRef.current;
     if (!modelList) return;
 
     requestAnimationFrame(() => updateModelListEdges(modelList));
   }, [filteredModels.length, activePage]);
+
+  useEffect(() => {
+    const chatList = chatListRef.current;
+    if (!chatList) return;
+
+    requestAnimationFrame(() => updateChatListEdges(chatList));
+  }, [filteredCloudChats.length, activePage]);
+
+  useEffect(() => {
+    const hasQuery = query.trim().length > 0;
+    const hasResults = filteredModels.length > 0;
+    const shouldShake = hasQuery && !hasResults && modelSearchHadResultsRef.current;
+    const shakeActive = modelSearchInputRef.current?.classList.contains("is-shaking");
+
+    modelSearchHadResultsRef.current = hasResults || !hasQuery;
+
+    if (!shouldShake) {
+      if (hasResults || !hasQuery) {
+        if (shakeActive) {
+          return;
+        }
+        modelSearchWrapRef.current?.classList.remove("is-error");
+        modelSearchInputRef.current?.classList.remove("is-error");
+      }
+      return;
+    }
+
+    const wrap = modelSearchWrapRef.current;
+    const input = modelSearchInputRef.current;
+    if (!wrap || !input) return;
+
+    wrap.classList.add("is-error");
+    input.classList.add("is-error");
+
+    input.classList.remove("is-shaking");
+    void input.offsetWidth;
+    input.classList.add("is-shaking");
+
+    const style = getComputedStyle(document.documentElement);
+    const readMs = (name, fallback) => {
+      const value = Number.parseFloat(style.getPropertyValue(name));
+      return Number.isFinite(value) ? value : fallback;
+    };
+    const shakeMs = readMs("--shake-dur-a", 80) * 2 + readMs("--shake-dur-b", 60) * 2;
+    const holdMs = readMs("--revert-hold", 3000);
+
+    window.clearTimeout(modelSearchRevertRef.current);
+    window.setTimeout(() => {
+      input.classList.remove("is-shaking");
+      if (filteredModels.length > 0 || !query.trim()) {
+        wrap.classList.remove("is-error");
+        input.classList.remove("is-error");
+      }
+    }, shakeMs + 20);
+    modelSearchRevertRef.current = window.setTimeout(() => {
+      wrap.classList.remove("is-error");
+      input.classList.remove("is-error");
+    }, shakeMs + holdMs);
+  }, [filteredModels.length, query]);
 
   async function saveKey() {
     if (!apiKey.trim()) return;
@@ -1345,6 +1417,14 @@ function SettingsDrawer({
 
   function handleModelListScroll(event) {
     updateModelListEdges(event.currentTarget);
+  }
+
+  function handleChatListScroll(event) {
+    updateChatListEdges(event.currentTarget);
+  }
+
+  function handleModelSearchChange(event) {
+    setQuery(event.target.value);
   }
 
   async function exportChats() {
@@ -1529,69 +1609,91 @@ function SettingsDrawer({
   );
 
   const importExportSection = (
-    <section>
+    <section className="flex h-full min-h-0 flex-col">
       <div className="border-b border-white/[0.08] pb-3">
-        <h2 className="flex items-center gap-2 text-balance text-sm font-semibold text-zinc-100">
-          <span className="settings-cloud-icon" aria-hidden="true">
-            <i className="fi fi-rr-cloud-upload-alt" />
-          </span>
-          Cloud
-        </h2>
         <p className="mt-1 text-pretty text-xs leading-5 text-zinc-500">
           Share a selected conversation as a JSON file.
         </p>
       </div>
 
-      <Accordion
-        id="cloudChats"
-        title="Chat"
-        open={openAccordions.cloudChats}
-        onToggle={toggleAccordion}
-        trailing={cloudChat ? promptModelName(models, cloudChat.model) : "None"}
-      >
-        <SearchClearField
-          value={cloudSearch}
-          onChange={setCloudSearch}
-          placeholder="Search chats"
-        />
-        <div className="mt-2 max-h-36 space-y-1 overflow-y-auto pr-1">
-          {filteredCloudChats.length === 0 ? (
-            <div className="rounded-xl bg-black/15 px-3 py-3 text-pretty text-xs leading-5 text-zinc-500 shadow-[var(--shadow-border)]">
-              {chats.length === 0 ? "No chats yet." : "No matching chats."}
-            </div>
-          ) : (
-            filteredCloudChats.map((chat) => {
-              const selected = chat.id === cloudChatId;
-              return (
-                <button
-                  key={chat.id}
-                  type="button"
-                  onClick={() => setSelectedCloudChatId(chat.id)}
-                  className={cx(
-                    "grid min-h-10 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-xl px-2.5 py-2 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
-                    CONTROL_MOTION,
-                    selected
-                      ? "bg-white/[0.08] text-zinc-100 shadow-[var(--shadow-border)]"
-                      : "text-zinc-300 hover:bg-white/[0.045] hover:text-zinc-100",
-                  )}
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-medium">
-                      {chat.title}
-                    </span>
-                    <span className="mt-0.5 block truncate text-xs text-zinc-500">
-                      {promptModelName(models, chat.model)}
-                    </span>
+      <section className="min-h-0 px-1 py-3">
+        <h2 className="text-balance text-sm font-semibold text-zinc-100">
+          Select Chat
+        </h2>
+        <div className="mt-2 space-y-2">
+          <SearchClearField
+            value={cloudSearch}
+            onChange={setCloudSearch}
+            placeholder="Search chats"
+          />
+          <div className="relative">
+            <div
+              ref={chatListRef}
+              onScroll={handleChatListScroll}
+              className="settings-chat-list max-h-36 min-h-0 space-y-1 overflow-y-auto"
+            >
+              {filteredCloudChats.length === 0 ? (
+                <div className="grid min-h-10 w-full grid-cols-[18px_minmax(0,1fr)_14px] items-center gap-2 rounded-xl bg-black/15 px-3 py-3 text-pretty text-xs leading-5 text-zinc-500 shadow-[var(--shadow-border)]">
+                  <span className="col-start-2 min-w-0">
+                    {chats.length === 0 ? "No chats yet." : "No matching chats."}
                   </span>
-                  {selected && <Check size={14} className="text-zinc-200" />}
-                </button>
-              );
-            })
-          )}
+                </div>
+              ) : (
+                filteredCloudChats.map((chat) => {
+                  const selected = chat.id === cloudChatId;
+                  return (
+                    <button
+                      key={chat.id}
+                      type="button"
+                      onClick={() => setSelectedCloudChatId(chat.id)}
+                      className={cx(
+                        "grid min-h-10 w-full grid-cols-[18px_minmax(0,1fr)_14px] items-center gap-2 rounded-xl px-3 py-2 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+                        CONTROL_MOTION,
+                        selected
+                          ? "bg-white/[0.08] text-zinc-100 shadow-[var(--shadow-border)]"
+                          : "text-zinc-300 hover:bg-white/[0.045] hover:text-zinc-100",
+                      )}
+                    >
+                      <span className="col-start-2 min-w-0">
+                        <span className="block truncate text-sm font-medium">
+                          {chat.title}
+                        </span>
+                        <span className="mt-0.5 block truncate text-xs text-zinc-500">
+                          {promptModelName(models, chat.model)}
+                        </span>
+                      </span>
+                      <Check
+                        size={14}
+                        aria-hidden="true"
+                        className={cx(
+                          "col-start-3 justify-self-end text-zinc-200",
+                          selected ? "opacity-100" : "opacity-0",
+                        )}
+                      />
+                    </button>
+                  );
+                })
+              )}
+            </div>
+            <div
+              aria-hidden="true"
+              className={cx(
+                "pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-[#202022]/95 to-transparent backdrop-blur-[1px] transition-opacity duration-150 ease-out",
+                chatListScrolled ? "opacity-100" : "opacity-0",
+              )}
+            />
+            <div
+              aria-hidden="true"
+              className={cx(
+                "pointer-events-none absolute inset-x-0 bottom-0 h-7 bg-gradient-to-t from-[#202022]/95 to-transparent backdrop-blur-[1px] transition-opacity duration-150 ease-out",
+                chatListHasMoreBelow ? "opacity-100" : "opacity-0",
+              )}
+            />
+          </div>
         </div>
-      </Accordion>
+      </section>
 
-      <section className="border-b border-white/[0.08] py-3">
+      <section className="mt-auto pb-1 pt-6">
         <div className="flex gap-2">
           <button
             type="button"
@@ -1632,10 +1734,10 @@ function SettingsDrawer({
       <p
         aria-live="polite"
         className={cx(
-          "min-h-6 px-1 py-2 text-xs leading-5 text-zinc-500 transition-[opacity,filter,transform] duration-150 ease-out",
+          "px-1 text-xs leading-5 text-zinc-500 transition-[opacity,filter,transform] duration-150 ease-out",
           transferMessage
-            ? "translate-y-0 opacity-100 blur-0"
-            : "-translate-y-1 opacity-0 blur-[2px]",
+            ? "min-h-6 translate-y-0 py-2 opacity-100 blur-0"
+            : "h-0 min-h-0 -translate-y-1 overflow-hidden py-0 opacity-0 blur-[2px]",
         )}
       >
         {transferMessage || "\u00a0"}
@@ -1680,18 +1782,26 @@ function SettingsDrawer({
             </p>
           </div>
         </div>
-        <div className="flex h-10 items-center gap-2 rounded-xl bg-black/20 px-3 text-zinc-500 shadow-[var(--shadow-border)] transition-[background-color,box-shadow] duration-150 ease-out focus-within:bg-black/25 focus-within:shadow-[0_0_0_1px_rgba(255,255,255,0.16)]">
+        <div
+          ref={modelSearchWrapRef}
+          className="t-input-wrap"
+        >
+          <div
+            ref={modelSearchInputRef}
+            className="t-input model-search-input flex h-10 items-center gap-2 rounded-xl bg-black/20 px-3 text-zinc-500 shadow-[var(--shadow-border)] transition-[background-color,box-shadow] duration-150 ease-out focus-within:bg-black/25 focus-within:shadow-[0_0_0_1px_rgba(255,255,255,0.16)]"
+          >
           <Search size={15} />
           <input
             type="search"
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={handleModelSearchChange}
             placeholder="Search models"
             className="min-w-0 flex-1 bg-transparent text-sm text-zinc-100 outline-none placeholder:text-zinc-600"
           />
           <span className="rounded-full bg-white/[0.05] px-2 py-0.5 text-[11px] tabular-nums text-zinc-500">
             {filteredModels.length}
           </span>
+          </div>
         </div>
         {modelLocked && (
           <p className="mt-2 text-pretty text-xs leading-5 text-zinc-600">
@@ -1978,9 +2088,9 @@ function SettingsDrawer({
               {smoothTextSection}
             </section>
             <section
-              className="settings-scroll-page t-page space-y-0 overflow-y-auto px-4 py-3 md:px-4 md:py-3"
+              className="t-page overflow-hidden px-4 py-3 md:px-4 md:py-3"
               data-page-id="4"
-              aria-label="Cloud settings"
+              aria-label="Chats settings"
             >
               {importExportSection}
             </section>

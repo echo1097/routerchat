@@ -22,7 +22,7 @@ For extra support, upload [assistant.md](assistant.md) to your favorite AI to tu
 
 ## Bug reporting and contributing
 - To report a bug open an issue and provide as much context and information as you can so I can reproduce and fix it. 
-- AI slop pull requests will not be merged. If you are using AI to assist your development, clean it up and review the code manually and be transparent in your usage of AI.
+- AI slop pull requests will not be merged. If you are using AI to assist your development, clean up and review the code manually and be transparent in your usage of AI.
 
 ## Notes
 - Chats and cached model metadata are stored in `data/routerchat.sqlite3`.

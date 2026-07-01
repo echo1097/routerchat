@@ -1263,6 +1263,7 @@ function SettingsDrawer({
   const [maxTokensDraft, setMaxTokensDraft] = useState("");
   const canThink = supportsThinking(models, settings.model);
   const selectedModel = models.find((model) => model.id === settings.model);
+  const selectedModelOutputName = promptModelName(models, settings.model);
   const selectedModelPrice = selectedModel ? priceLabel(selectedModel) : "";
   const selectedModelContextLimit = getModelContextLimit(selectedModel);
   const selectedModelContext = Number.isFinite(selectedModelContextLimit)
@@ -1992,7 +1993,7 @@ function SettingsDrawer({
             <span className="text-zinc-400">Max output tokens</span>
             <div className="flex items-center gap-1.5">
               <span className="max-w-[140px] truncate rounded-full bg-white/[0.055] px-2 py-0.5 text-[11px] font-medium leading-normal text-zinc-500 shadow-[var(--shadow-border)]">
-                {selectedModel?.name || settings.model}
+                {selectedModelOutputName}
               </span>
               {selectedModelContext && (
                 <span className="shrink-0 rounded-full bg-white/[0.055] px-2 py-0.5 text-[11px] font-medium leading-normal tabular-nums text-zinc-500 shadow-[var(--shadow-border)]">

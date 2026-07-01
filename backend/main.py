@@ -1192,13 +1192,18 @@ async def stream_message(chat_id: str, payload: StreamMessageRequest) -> Streami
         if payload.regenerate_message_id:
             regenerateMessage = conn.execute(
                 """
-                SELECT message_order FROM messages
+                SELECT * FROM messages
                 WHERE id = ? AND chat_id = ?
                 """,
                 (payload.regenerate_message_id, chat_id),
             ).fetchone()
             if not regenerateMessage:
                 raise HTTPException(status_code=404, detail="Message not found.")
+            if regenerateMessage["role"] != "user":
+                raise HTTPException(
+                    status_code=400,
+                    detail="Only user prompts can be regenerated.",
+                )
             conn.execute(
                 """
                 DELETE FROM messages

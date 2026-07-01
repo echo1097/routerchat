@@ -210,6 +210,51 @@ class MessageOrderingTest(unittest.TestCase):
         self.assertEqual(response.headers["X-User-Message-Id"], "prompt")
         self.assertEqual(self.messageIds(), ["prompt"])
 
+    def test_regeneration_rejects_missing_message_id(self) -> None:
+        self.insertChat()
+        self.insertMessage("prompt", "user", "prompt", 0)
+        self.insertMessage("reply", "assistant", "reply", 1)
+        main.read_openrouter_key = lambda: "test-key"
+
+        with self.assertRaises(main.HTTPException) as error:
+            asyncio.run(
+                main.stream_message(
+                    "chat",
+                    main.StreamMessageRequest(
+                        message="prompt",
+                        model="model-a",
+                        regenerate_message_id="missing",
+                    ),
+                )
+            )
+
+        self.assertEqual(error.exception.status_code, 404)
+        self.assertEqual(error.exception.detail, "Message not found.")
+        self.assertEqual(self.messageIds(), ["prompt", "reply"])
+
+    def test_regeneration_rejects_assistant_message_id(self) -> None:
+        self.insertChat()
+        self.insertMessage("prompt", "user", "prompt", 0)
+        self.insertMessage("reply", "assistant", "reply", 1)
+        self.insertMessage("later", "user", "later", 2)
+        main.read_openrouter_key = lambda: "test-key"
+
+        with self.assertRaises(main.HTTPException) as error:
+            asyncio.run(
+                main.stream_message(
+                    "chat",
+                    main.StreamMessageRequest(
+                        message="reply",
+                        model="model-a",
+                        regenerate_message_id="reply",
+                    ),
+                )
+            )
+
+        self.assertEqual(error.exception.status_code, 400)
+        self.assertEqual(error.exception.detail, "Only user prompts can be regenerated.")
+        self.assertEqual(self.messageIds(), ["prompt", "reply", "later"])
+
 
 if __name__ == "__main__":
     unittest.main()

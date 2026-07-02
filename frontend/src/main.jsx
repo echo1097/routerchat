@@ -26,9 +26,11 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import packageInfo from "../../package.json";
 import "./styles.css";
 
 const DEFAULT_MODEL = "anthropic/claude-3.5-sonnet";
+const APP_VERSION = packageInfo.version;
 const APP_SETTINGS_STORAGE_KEY = "routerchat.appSettings";
 
 const newSettings = {
@@ -657,6 +659,10 @@ function ConversationRail({
           >
             {historyItems}
           </nav>
+
+          <div className="mt-4 shrink-0 px-3 pb-1 text-left text-[11px] font-medium leading-none text-zinc-700">
+            RouterChat v{APP_VERSION}
+          </div>
         </div>
       </aside>
     </>
@@ -1870,17 +1876,17 @@ function SettingsDrawer({
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-balance text-sm font-semibold text-zinc-100">
-            Prompt rail
+            Navigation bar
           </h2>
           <p className="mt-0.5 text-pretty text-xs leading-5 text-zinc-500">
-            Show a right-side prompt navigator on desktop
+            Show a navigation bar for easily navigating long chats
           </p>
         </div>
         <button
           type="button"
           role="switch"
           aria-checked={showPromptNavigationRail}
-          aria-label="Prompt rail"
+          aria-label="Navigation bar"
           onClick={() => onTogglePromptNavigationRail(!showPromptNavigationRail)}
           className={cx(
             "relative h-7 w-12 shrink-0 rounded-full shadow-[var(--shadow-border)] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
@@ -3233,7 +3239,7 @@ function App() {
   function updatePromptNavigationRail(value) {
     setShowPromptNavigationRail(value);
     writeLocalAppSettings({ show_prompt_navigation_rail: value });
-    showToast(value ? "Prompt rail shown" : "Prompt rail hidden");
+    showToast(value ? "Nav bar shown" : "Nav bar hidden");
   }
 
   async function createChat() {

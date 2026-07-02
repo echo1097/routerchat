@@ -19,7 +19,7 @@ For extra support, upload [assistant.md](assistant.md) to your favorite AI to tu
 
 ## Roadmap
 - UI improvements
-    - Nav bar 
+    - ~~Nav bar ~~
     - Folders/Projects
     - Warn when context getting full (already have a context meter in place but will improve w this)
     - Show model context 
@@ -32,7 +32,6 @@ For extra support, upload [assistant.md](assistant.md) to your favorite AI to tu
     - Claude API
 - Memory
 - RAG 
-- 
 
 ## Bug reporting and contributing
 - To report a bug open an issue and provide as much context and information as you can so I can reproduce and fix it. 

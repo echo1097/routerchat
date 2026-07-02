@@ -141,6 +141,12 @@ function formatTokens(tokens) {
   return `${tokens}`;
 }
 
+function truncatePromptText(value, maxLength = 96) {
+  const compact = String(value || "").replace(/\s+/g, " ").trim();
+  if (compact.length <= maxLength) return compact || "Empty prompt";
+  return `${compact.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
 function getModelContextLimit(model) {
   const providerLimit = toFiniteNumber(model?.top_provider?.context_length);
   const modelLimit = toFiniteNumber(model?.context_length);
@@ -688,6 +694,187 @@ function SidebarRevealButton({ visible, onClick }) {
   );
 }
 
+function PromptNavigationRail({ messages, streamRef, visible, activeChatId }) {
+  const railRef = useRef(null);
+  const frameRef = useRef(null);
+  const [railItems, setRailItems] = useState([]);
+  const [activePromptId, setActivePromptId] = useState(null);
+  const [previewPromptId, setPreviewPromptId] = useState(null);
+
+  const promptMessages = useMemo(
+    () => messages.filter((message) => message.role === "user"),
+    [messages],
+  );
+
+  const measureRail = useCallback(() => {
+    frameRef.current = null;
+
+    const scroller = streamRef.current;
+    const rail = railRef.current;
+    if (!visible || !activeChatId || !scroller || !rail || promptMessages.length === 0) {
+      setRailItems([]);
+      setActivePromptId(null);
+      return;
+    }
+
+    const railPadding = 12;
+    const railHeight = Math.max(rail.clientHeight - railPadding * 2, 1);
+    const railCenter = railPadding + railHeight / 2;
+    const promptGap = 8;
+    const maxScroll = Math.max(scroller.scrollHeight - scroller.clientHeight, 1);
+    const activeLine = scroller.scrollTop + scroller.clientHeight * 0.5;
+
+    const messageNodes = Array.from(scroller.querySelectorAll("[data-message-id]"));
+
+    const baseItems = promptMessages.map((message, index) => {
+      const node = messageNodes.find(
+        (messageNode) => messageNode.dataset.messageId === String(message.id),
+      );
+      const scrollTop = Math.min(Math.max((node?.offsetTop || 0) - 24, 0), maxScroll);
+      const previewText = truncatePromptText(message.content);
+
+      return {
+        id: message.id,
+        index,
+        scrollTop,
+        previewText,
+      };
+    });
+
+    let activeIndex = 0;
+    let nextActiveId = baseItems[0]?.id || null;
+    for (const item of baseItems) {
+      if (item.scrollTop <= activeLine) {
+        nextActiveId = item.id;
+        activeIndex = item.index;
+      }
+    }
+
+    const maxVisibleCount = Math.max(
+      Math.floor((railHeight - railPadding) / promptGap),
+      1,
+    );
+    const oddVisibleCount = maxVisibleCount % 2 === 0
+      ? maxVisibleCount - 1
+      : maxVisibleCount;
+    const visibleCount = Math.max(
+      Math.min(
+        baseItems.length % 2 === 0 ? baseItems.length - 1 : baseItems.length,
+        oddVisibleCount,
+      ),
+      1,
+    );
+    const visibleRadius = Math.floor(visibleCount / 2);
+    const maxStartIndex = Math.max(baseItems.length - visibleCount, 0);
+    const startIndex = Math.min(
+      Math.max(activeIndex - visibleRadius, 0),
+      maxStartIndex,
+    );
+    const visibleItems = baseItems.slice(startIndex, startIndex + visibleCount);
+
+    const nextItems = visibleItems.map((item, visibleIndex) => ({
+      ...item,
+      top: railCenter + (visibleIndex - visibleRadius) * promptGap,
+    }));
+
+    setRailItems(nextItems);
+    setActivePromptId(nextActiveId);
+  }, [activeChatId, promptMessages, streamRef, visible]);
+
+  const scheduleMeasure = useCallback(() => {
+    if (frameRef.current) return;
+    frameRef.current = requestAnimationFrame(measureRail);
+  }, [measureRail]);
+
+  useEffect(() => {
+    scheduleMeasure();
+  }, [messages, scheduleMeasure]);
+
+  useEffect(() => {
+    const scroller = streamRef.current;
+    const rail = railRef.current;
+    if (!visible || !scroller || !rail) return undefined;
+
+    const observer = new ResizeObserver(scheduleMeasure);
+    observer.observe(scroller);
+    observer.observe(rail);
+
+    scroller.addEventListener("scroll", scheduleMeasure, { passive: true });
+    window.addEventListener("resize", scheduleMeasure);
+
+    return () => {
+      observer.disconnect();
+      scroller.removeEventListener("scroll", scheduleMeasure);
+      window.removeEventListener("resize", scheduleMeasure);
+    };
+  }, [scheduleMeasure, streamRef, visible]);
+
+  useEffect(
+    () => () => {
+      if (frameRef.current) cancelAnimationFrame(frameRef.current);
+    },
+    [],
+  );
+
+  if (!visible || promptMessages.length === 0) return null;
+
+  function jumpToPrompt(item) {
+    const scroller = streamRef.current;
+    if (!scroller) return;
+
+    scroller.scrollTo({
+      top: item.scrollTop,
+      behavior: "smooth",
+    });
+  }
+
+  return (
+    <nav className="prompt-nav-rail-wrap" aria-label="Prompt navigation">
+      <div
+        ref={railRef}
+        className="prompt-nav-rail"
+        onMouseLeave={() => {
+          setPreviewPromptId(null);
+        }}
+      >
+        {railItems.map((item) => {
+          const active = item.id === activePromptId;
+          const previewing = item.id === previewPromptId;
+
+          return (
+            <button
+              key={item.id}
+              type="button"
+              aria-label={`Jump to prompt ${item.index + 1}: ${item.previewText}`}
+              onClick={() => jumpToPrompt(item)}
+              onMouseEnter={() => setPreviewPromptId(item.id)}
+              onMouseLeave={() => setPreviewPromptId(null)}
+              onFocus={() => setPreviewPromptId(item.id)}
+              onBlur={() => setPreviewPromptId(null)}
+              className={cx(
+                "prompt-nav-tick",
+                active && "is-active",
+                previewing && "is-previewing",
+              )}
+              style={{ top: `${item.top}px` }}
+            >
+              <span aria-hidden="true" className="prompt-nav-line" />
+              <span
+                className={cx(
+                  "prompt-nav-preview",
+                  previewing && "is-open",
+                )}
+              >
+                {item.previewText}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
+
 const ThinkingContent = memo(function ThinkingContent({ children }) {
   return (
     <ReactMarkdown
@@ -949,6 +1136,8 @@ const MessageItem = memo(function MessageItem({
     return (
       <article
         ref={articleRef}
+        data-message-id={message.id}
+        data-message-role={message.role}
         className={cx("group flex", editing ? "justify-stretch" : "justify-end")}
       >
         <div
@@ -1035,7 +1224,11 @@ const MessageItem = memo(function MessageItem({
   }
 
   return (
-    <article className="group max-w-none">
+    <article
+      data-message-id={message.id}
+      data-message-role={message.role}
+      className="group max-w-none"
+    >
       <ThinkingBlock
         reasoning={message.reasoning}
         streaming={reasoningStreaming}
@@ -1273,6 +1466,7 @@ function SettingsDrawer({
   hideFreeModels,
   nitroMode,
   smoothStreaming,
+  showPromptNavigationRail,
   modelLocked,
   onPersist,
   onModelSelected,
@@ -1280,6 +1474,7 @@ function SettingsDrawer({
   onToggleHideFreeModels,
   onToggleNitroMode,
   onToggleSmoothStreaming,
+  onTogglePromptNavigationRail,
   onExportChats,
   onImportChats,
 }) {
@@ -1663,6 +1858,40 @@ function SettingsDrawer({
             className={cx(
               "absolute left-1 top-1 h-5 w-5 rounded-full bg-zinc-50 transition-transform duration-150 ease-out",
               smoothStreaming ? "translate-x-5" : "translate-x-0",
+            )}
+          />
+        </button>
+      </div>
+    </section>
+  );
+
+  const promptNavigationSection = (
+    <section className="border-b border-white/[0.08] py-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-balance text-sm font-semibold text-zinc-100">
+            Prompt rail
+          </h2>
+          <p className="mt-0.5 text-pretty text-xs leading-5 text-zinc-500">
+            Show a right-side prompt navigator on desktop
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={showPromptNavigationRail}
+          aria-label="Prompt rail"
+          onClick={() => onTogglePromptNavigationRail(!showPromptNavigationRail)}
+          className={cx(
+            "relative h-7 w-12 shrink-0 rounded-full shadow-[var(--shadow-border)] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+            CONTROL_MOTION,
+            showPromptNavigationRail ? "bg-accent/80" : "bg-white/[0.08]",
+          )}
+        >
+          <span
+            className={cx(
+              "absolute left-1 top-1 h-5 w-5 rounded-full bg-zinc-50 transition-transform duration-150 ease-out",
+              showPromptNavigationRail ? "translate-x-5" : "translate-x-0",
             )}
           />
         </button>
@@ -2239,6 +2468,7 @@ function SettingsDrawer({
               data-page-id="4"
               aria-label="UI settings"
             >
+              {promptNavigationSection}
               {smoothTextSection}
             </section>
             <section
@@ -2711,6 +2941,9 @@ function App() {
   const [hideFreeModels, setHideFreeModels] = useState(Boolean(localAppSettings.hide_free_models));
   const [nitroMode, setNitroMode] = useState(Boolean(localAppSettings.nitro_mode));
   const [smoothStreaming, setSmoothStreaming] = useState(Boolean(localAppSettings.smooth_streaming));
+  const [showPromptNavigationRail, setShowPromptNavigationRail] = useState(
+    localAppSettings.show_prompt_navigation_rail !== false,
+  );
   const [keyStatus, setKeyStatus] = useState({ has_key: false });
   const [prompt, setPrompt] = useState("");
   const [status, setStatus] = useState("");
@@ -2995,6 +3228,12 @@ function App() {
       writeLocalAppSettings({ smooth_streaming: value });
       setStatus(`Saved locally. Restart the server to sync this setting. ${error.message}`);
     }
+  }
+
+  function updatePromptNavigationRail(value) {
+    setShowPromptNavigationRail(value);
+    writeLocalAppSettings({ show_prompt_navigation_rail: value });
+    showToast(value ? "Prompt rail shown" : "Prompt rail hidden");
   }
 
   async function createChat() {
@@ -3422,6 +3661,13 @@ function App() {
           onDeleteUserMessage={deleteUserMessage}
         />
 
+        <PromptNavigationRail
+          messages={messages}
+          streamRef={streamRef}
+          visible={showPromptNavigationRail}
+          activeChatId={activeChatId}
+        />
+
         <Composer
           value={prompt}
           setValue={setPrompt}
@@ -3452,6 +3698,7 @@ function App() {
         hideFreeModels={hideFreeModels}
         nitroMode={nitroMode}
         smoothStreaming={smoothStreaming}
+        showPromptNavigationRail={showPromptNavigationRail}
         modelLocked={modelLocked}
         onPersist={persistSettings}
         onModelSelected={(name) => showToast(`Model selected: ${name}`)}
@@ -3459,6 +3706,7 @@ function App() {
         onToggleHideFreeModels={updateHideFreeModels}
         onToggleNitroMode={updateNitroMode}
         onToggleSmoothStreaming={updateSmoothStreaming}
+        onTogglePromptNavigationRail={updatePromptNavigationRail}
         onExportChats={exportChats}
         onImportChats={importChats}
       />

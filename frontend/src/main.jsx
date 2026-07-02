@@ -205,6 +205,7 @@ function writeLocalAppSettings(next) {
 function useRafScroller(streamRef) {
   const followRef = useRef(true);
   const rafRef = useRef(null);
+  const touchYRef = useRef(null);
 
   const isNearBottom = useCallback(() => {
     const node = streamRef.current;
@@ -212,9 +213,41 @@ function useRafScroller(streamRef) {
     return node.scrollHeight - node.scrollTop - node.clientHeight < 120;
   }, [streamRef]);
 
+  const cancelScrollFrame = useCallback(() => {
+    if (!rafRef.current) return;
+    cancelAnimationFrame(rafRef.current);
+    rafRef.current = null;
+  }, []);
+
+  const pauseAutoFollow = useCallback(() => {
+    followRef.current = false;
+    cancelScrollFrame();
+  }, [cancelScrollFrame]);
+
   const markUserScroll = useCallback(() => {
     followRef.current = isNearBottom();
   }, [isNearBottom]);
+
+  const markWheelIntent = useCallback(
+    (event) => {
+      if (event.deltaY < 0) pauseAutoFollow();
+    },
+    [pauseAutoFollow],
+  );
+
+  const markTouchStart = useCallback((event) => {
+    touchYRef.current = event.touches?.[0]?.clientY ?? null;
+  }, []);
+
+  const markTouchMove = useCallback(
+    (event) => {
+      const nextY = event.touches?.[0]?.clientY;
+      if (typeof nextY !== "number" || typeof touchYRef.current !== "number") return;
+      if (nextY > touchYRef.current) pauseAutoFollow();
+      touchYRef.current = nextY;
+    },
+    [pauseAutoFollow],
+  );
 
   const scrollToBottom = useCallback(
     (force = false) => {
@@ -222,6 +255,7 @@ function useRafScroller(streamRef) {
       if (rafRef.current) return;
       rafRef.current = requestAnimationFrame(() => {
         rafRef.current = null;
+        if (!force && !followRef.current) return;
         const node = streamRef.current;
         if (node) node.scrollTop = node.scrollHeight;
       });
@@ -236,7 +270,15 @@ function useRafScroller(streamRef) {
     [],
   );
 
-  return { isNearBottom, markUserScroll, scrollToBottom, followRef };
+  return {
+    isNearBottom,
+    markUserScroll,
+    markWheelIntent,
+    markTouchStart,
+    markTouchMove,
+    scrollToBottom,
+    followRef,
+  };
 }
 
 function IconButton({ label, children, className, ...props }) {
@@ -1041,6 +1083,9 @@ function MessageList({
   reasoningDurations,
   streamRef,
   onScroll,
+  onWheel,
+  onTouchStart,
+  onTouchMove,
   onCopy,
   onRegenerate,
   onEditUserMessage,
@@ -1050,6 +1095,9 @@ function MessageList({
     <section
       ref={streamRef}
       onScroll={onScroll}
+      onWheel={onWheel}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
       className="min-h-0 overflow-y-auto overscroll-contain px-4 py-8 sm:px-8 lg:px-10"
     >
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-8">
@@ -2678,7 +2726,15 @@ function App() {
   const abortRef = useRef(null);
   const reasoningStartedAtRef = useRef({});
   const streamRef = useRef(null);
-  const { isNearBottom, markUserScroll, scrollToBottom, followRef } =
+  const {
+    isNearBottom,
+    markUserScroll,
+    markWheelIntent,
+    markTouchStart,
+    markTouchMove,
+    scrollToBottom,
+    followRef,
+  } =
     useRafScroller(streamRef);
 
   const modelLocked = Boolean(activeChatId && messages.length > 0);
@@ -3357,6 +3413,9 @@ function App() {
           reasoningDurations={reasoningDurations}
           streamRef={streamRef}
           onScroll={markUserScroll}
+          onWheel={markWheelIntent}
+          onTouchStart={markTouchStart}
+          onTouchMove={markTouchMove}
           onCopy={copyMessage}
           onRegenerate={regenerate}
           onEditUserMessage={editUserMessage}

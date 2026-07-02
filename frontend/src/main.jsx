@@ -1268,7 +1268,7 @@ const MessageItem = memo(function MessageItem({
 
 function EmptyChatState() {
   return (
-    <div className="min-h-[54vh]" aria-hidden="true" />
+    <div className="min-h-[100dvh]" aria-hidden="true" />
   );
 }
 
@@ -1333,19 +1333,21 @@ function Composer({
   onStop,
   onOpenSettings,
   onToggleThinking,
+  variant = "default",
 }) {
   const canThink = supportsThinking(models, settings.model);
   const textareaRef = useRef(null);
+  const isEmptyVariant = variant === "empty";
 
   useEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
     textarea.style.height = "auto";
-    const maxHeight = 126;
+    const maxHeight = isEmptyVariant ? 184 : 126;
     const nextHeight = Math.min(textarea.scrollHeight, maxHeight);
     textarea.style.height = `${nextHeight}px`;
     textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
-  }, [value]);
+  }, [isEmptyVariant, value]);
 
   return (
     <form
@@ -1353,13 +1355,22 @@ function Composer({
         event.preventDefault();
         isStreaming ? onStop() : onSubmit();
       }}
-      className="bg-[#08080a]/90 px-4 py-4 backdrop-blur-xl sm:px-8 lg:px-10"
+      className={cx(
+        isEmptyVariant
+          ? "pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-4 pb-[12vh] pt-20 sm:px-8 lg:px-10"
+          : "bg-[#08080a]/90 px-4 py-4 backdrop-blur-xl sm:px-8 lg:px-10",
+      )}
     >
-      <div className="mx-auto max-w-4xl">
+      <div className={cx("mx-auto w-full", isEmptyVariant ? "pointer-events-auto max-w-[760px]" : "max-w-4xl")}>
         <div
-          className="rounded-[24px] bg-lift shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_22px_80px_rgba(0,0,0,0.45)] transition-[background-color,box-shadow] duration-500 ease-[cubic-bezier(0.2,0,0,1)] focus-within:bg-[#19191d] focus-within:shadow-[0_0_0_1px_rgba(255,255,255,0.12),0_20px_72px_rgba(0,0,0,0.42)]"
+          className={cx(
+            "transition-[background-color,box-shadow] duration-500 ease-[cubic-bezier(0.2,0,0,1)]",
+            isEmptyVariant
+              ? "rounded-[30px] bg-[#18181a] shadow-[0_0_0_1px_rgba(255,255,255,0.105),0_24px_72px_rgba(0,0,0,0.34)] focus-within:bg-[#1b1b1e] focus-within:shadow-[0_0_0_1px_rgba(255,255,255,0.15),0_26px_78px_rgba(0,0,0,0.38)]"
+              : "rounded-[24px] bg-lift shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_22px_80px_rgba(0,0,0,0.45)] focus-within:bg-[#19191d] focus-within:shadow-[0_0_0_1px_rgba(255,255,255,0.12),0_20px_72px_rgba(0,0,0,0.42)]",
+          )}
         >
-          <div className="px-4 pt-3">
+          <div className={cx(isEmptyVariant ? "px-6 pt-5 sm:px-7 sm:pt-6" : "px-4 pt-3")}>
             <textarea
               ref={textareaRef}
               value={value}
@@ -1371,12 +1382,24 @@ function Composer({
                   isStreaming ? onStop() : onSubmit();
                 }
               }}
-              placeholder={`Ask ${promptModelName(models, settings.model)} anything`}
-              className="block max-h-[126px] min-h-6 w-full resize-none bg-transparent text-sm leading-6 text-zinc-100 outline-none placeholder:text-zinc-600"
+              placeholder={isEmptyVariant ? "How can I help you today?" : `Ask ${promptModelName(models, settings.model)} anything`}
+              className={cx(
+                "block w-full resize-none bg-transparent text-zinc-100 outline-none",
+                isEmptyVariant
+                  ? "max-h-[184px] min-h-[72px] text-[17px] leading-7 placeholder:text-zinc-500 sm:text-xl sm:leading-8"
+                  : "max-h-[126px] min-h-6 text-sm leading-6 placeholder:text-zinc-600",
+              )}
             />
           </div>
-          <div className="flex items-center gap-2 px-2.5 pb-2.5 pt-1.5">
-            <div className="ml-auto" />
+          <div
+            className={cx(
+              "flex items-center gap-2",
+              isEmptyVariant
+                ? "flex-wrap justify-end px-4 pb-3 pt-1.5 sm:flex-nowrap sm:px-5"
+                : "px-2.5 pb-2.5 pt-1.5",
+            )}
+          >
+            {!isEmptyVariant && <div className="ml-auto" />}
             <ContextWindowMeter info={contextWindowInfo} />
             {canThink && (
               <button
@@ -2974,6 +2997,7 @@ function App() {
   } =
     useRafScroller(streamRef);
 
+  const isEmptyChat = !activeChatId && messages.length === 0;
   const modelLocked = Boolean(activeChatId && messages.length > 0);
   const contextWindowInfo = useMemo(() => {
     const selectedModel = models.find((model) => model.id === settings.model);
@@ -3672,20 +3696,38 @@ function App() {
           activeChatId={activeChatId}
         />
 
-        <Composer
-          value={prompt}
-          setValue={setPrompt}
-          disabled={!keyStatus.has_key}
-          isStreaming={isStreaming}
-          settings={settings}
-          models={models}
-          contextWindowInfo={contextWindowInfo}
-          modelLocked={modelLocked}
-          onSubmit={() => sendMessage()}
-          onStop={stopStream}
-          onOpenSettings={() => setSettingsOpen(true)}
-          onToggleThinking={toggleThinking}
-        />
+        {isEmptyChat ? (
+          <Composer
+            value={prompt}
+            setValue={setPrompt}
+            disabled={!keyStatus.has_key}
+            isStreaming={isStreaming}
+            settings={settings}
+            models={models}
+            contextWindowInfo={contextWindowInfo}
+            modelLocked={modelLocked}
+            onSubmit={() => sendMessage()}
+            onStop={stopStream}
+            onOpenSettings={() => setSettingsOpen(true)}
+            onToggleThinking={toggleThinking}
+            variant="empty"
+          />
+        ) : (
+          <Composer
+            value={prompt}
+            setValue={setPrompt}
+            disabled={!keyStatus.has_key}
+            isStreaming={isStreaming}
+            settings={settings}
+            models={models}
+            contextWindowInfo={contextWindowInfo}
+            modelLocked={modelLocked}
+            onSubmit={() => sendMessage()}
+            onStop={stopStream}
+            onOpenSettings={() => setSettingsOpen(true)}
+            onToggleThinking={toggleThinking}
+          />
+        )}
       </main>
 
       <SettingsDrawer

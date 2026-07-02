@@ -9,7 +9,7 @@ RouterChat is licensed under the [MIT License](LICENSE).
 
 ## AI usage disclaimer
 
-AI was used to support development and documentation for this project. All code and documentation were reviewed by myself before being published.
+AI was used to support development and documentation for this project. All code and documentation were reviewed by myself before being published. The primary use of AI durring development was debugging and refining the UI. 
 
 ## How to set up
 

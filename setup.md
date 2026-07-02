@@ -184,16 +184,18 @@ If those commands work, npm is installed.
 
 You need the RouterChat folder on your computer before running the setup commands.
 
-To download the project as a .zip file click the green `Code` button on the Github page and at the bottom of the drop down select `Download ZIP`. 
+The recommended way to get RouterChat is with Git. Git makes future updates much easier because you can update the project with `git pull` instead of downloading a fresh copy.
 
-If you downloaded the project as a zip, unzip it somewhere easy to find, then open Terminal or PowerShell inside that folder.
-
-If you use git, clone it and move into the folder:
+Clone the project and move into the folder:
 
 ```sh
 git clone https://github.com/echo1097/routerchat.git
 cd routerchat
 ```
+
+If you do not want to use Git, you can still download the project as a .zip file. Click the green `Code` button on the Github page, then choose `Download ZIP`.
+
+If you downloaded the project as a zip, unzip it somewhere easy to find, then open Terminal or PowerShell inside that folder. ZIP installs work, but updates are more manual.
 
 ## macOS Setup
 

@@ -144,6 +144,7 @@ Follow these rules when helping:
 - Do not tell them to delete `data/routerchat.sqlite3` unless they understand that it deletes local chat history.
 - Prefer creating or fixing `.venv` over installing Python packages globally.
 - Prefer `npm install` because this repo has `package-lock.json`.
+- Prefer Git clone for new installs because it makes future updates easier.
 - If the user downloaded the ZIP instead of using Git, do not tell them to run `git clone`. Help them open Terminal or PowerShell inside the unzipped folder.
 - If a command fails, ask for the full error text.
 
@@ -151,17 +152,17 @@ Follow these rules when helping:
 
 Users may have the project in one of two ways:
 
-- ZIP download from GitHub.
-- Git clone from the repository.
+- Git clone from the repository. This is the recommended method.
+- ZIP download from GitHub. This works, but updates are more manual.
 
-If they downloaded the ZIP, tell them to unzip it somewhere easy to find. Then help them open Terminal or PowerShell inside that unzipped folder. Do not tell ZIP users to run `git clone`.
-
-If they want to use Git, the repository is:
+For a new install, recommend Git first:
 
 ```sh
 git clone https://github.com/echo1097/routerchat.git
 cd routerchat
 ```
+
+If they downloaded the ZIP, tell them to unzip it somewhere easy to find. Then help them open Terminal or PowerShell inside that unzipped folder. Do not tell ZIP users to run `git clone` unless they ask to switch to the recommended Git install.
 
 ## Correct Normal Setup Flow
 

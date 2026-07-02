@@ -17,7 +17,7 @@ Read [setup.md](setup.md)
 
 For extra support, upload [assistant.md](assistant.md) to your favorite AI to turn it into a support bot to help you set up and troubleshoot!
 
-## Current plans
+## Roadmap
 - UI improvements
     - Nav bar 
     - Folders/Projects

@@ -1207,21 +1207,19 @@ const MessageItem = memo(function MessageItem({
             )}
           </div>
           {!editing && (
-            <div className={cx("flex gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100", FADE_MOTION)}>
-              <IconButton
+            <div className={cx("flex justify-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100", FADE_MOTION)}>
+              <AssistantActionButton
                 label="Edit prompt"
-                className="border-blue-300/20 bg-blue-400/10 text-blue-100 hover:bg-blue-300/20 hover:text-white"
                 onClick={startEditing}
               >
-                <Pencil size={14} />
-              </IconButton>
-              <IconButton
+                <Pencil size={15} />
+              </AssistantActionButton>
+              <AssistantActionButton
                 label="Delete prompt"
-                className="border-blue-300/20 bg-blue-400/10 text-blue-100 hover:bg-red-500/20 hover:text-red-100"
                 onClick={() => onDeleteUserMessage(message)}
               >
-                <Trash2 size={14} />
-              </IconButton>
+                <Trash2 size={15} />
+              </AssistantActionButton>
             </div>
           )}
         </div>

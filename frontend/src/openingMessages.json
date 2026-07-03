@@ -1,0 +1,26 @@
+{
+  "morning": [
+    "How do you like your coffee?",
+    "What are we starting with?",
+    "What is first on the list?",
+    "What are we making happen today?"
+  ],
+  "afternoon": [
+    "What needs a second look?",
+    "What are we handling this afternoon?",
+    "What should we push forward?",
+    "What is worth fixing before the day runs away?"
+  ],
+  "evening": [
+    "What are we wrapping up?",
+    "What still needs a little attention?",
+    "What are we solving before the day clocks out?",
+    "What should we clean up tonight?"
+  ],
+  "lateNight": [
+    "Night owl?",
+    "What are we doing up this late?",
+    "What is the midnight mission?",
+    "What are we fixing while everyone else is asleep?"
+  ]
+}

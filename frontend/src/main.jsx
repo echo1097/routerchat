@@ -27,11 +27,13 @@ import {
   X,
 } from "lucide-react";
 import packageInfo from "../../package.json";
+import openingMessages from "./openingMessages.json";
 import "./styles.css";
 
 const DEFAULT_MODEL = "anthropic/claude-3.5-sonnet";
 const APP_VERSION = packageInfo.version;
 const APP_SETTINGS_STORAGE_KEY = "routerchat.appSettings";
+const OPENING_MESSAGE_STORAGE_KEY = "routerchat.lastOpeningMessage";
 
 const newSettings = {
   model: DEFAULT_MODEL,
@@ -61,6 +63,33 @@ const SETTINGS_PAGES = [
 
 function rangeProgress(value, min, max) {
   return `${((Number(value) - min) / (max - min)) * 100}%`;
+}
+
+function pickOpeningMessage() {
+  const runTime = new Date().getHours();
+  const timeKey =
+    runTime >= 22 || runTime < 5
+      ? "lateNight"
+      : runTime < 12
+        ? "morning"
+        : runTime < 17
+          ? "afternoon"
+          : "evening";
+
+  const timeMessages = Array.isArray(openingMessages[timeKey]) ? openingMessages[timeKey] : [];
+  const messages = timeMessages.filter((message) => typeof message === "string" && message.trim());
+  if (messages.length === 0) return "Where should we begin?";
+
+  const lastMessage =
+    typeof window !== "undefined" ? window.localStorage.getItem(OPENING_MESSAGE_STORAGE_KEY) : null;
+  const choices = messages.length > 1 ? messages.filter((message) => message !== lastMessage) : messages;
+  const nextMessage = choices[Math.floor(Math.random() * choices.length)];
+
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(OPENING_MESSAGE_STORAGE_KEY, nextMessage);
+  }
+
+  return nextMessage;
 }
 
 async function api(path, options = {}) {
@@ -1400,6 +1429,7 @@ function Composer({
   onStop,
   onOpenSettings,
   onToggleThinking,
+  openingMessage,
   variant = "default",
 }) {
   const canThink = supportsThinking(models, settings.model);
@@ -1429,6 +1459,11 @@ function Composer({
       )}
     >
       <div className={cx("mx-auto w-full", isEmptyVariant ? "pointer-events-auto max-w-[760px]" : "max-w-4xl")}>
+        {isEmptyVariant && openingMessage && (
+          <div className="mb-8 text-center text-[22px] font-medium leading-tight text-zinc-200 sm:text-3xl">
+            {openingMessage}
+          </div>
+        )}
         <div
           className={cx(
             "transition-[background-color,box-shadow] duration-500 ease-[cubic-bezier(0.2,0,0,1)]",
@@ -1449,7 +1484,7 @@ function Composer({
                   isStreaming ? onStop() : onSubmit();
                 }
               }}
-              placeholder={isEmptyVariant ? "How can I help you today?" : `Ask ${promptModelName(models, settings.model)} anything`}
+              placeholder={isEmptyVariant ? "Ask anything" : `Ask ${promptModelName(models, settings.model)} anything`}
               className={cx(
                 "block w-full resize-none bg-transparent text-zinc-100 outline-none",
                 isEmptyVariant
@@ -3042,6 +3077,7 @@ function App() {
   );
   const [keyStatus, setKeyStatus] = useState({ has_key: false });
   const [prompt, setPrompt] = useState("");
+  const [openingMessage] = useState(() => pickOpeningMessage());
   const [status, setStatus] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [railOpen, setRailOpen] = useState(false);
@@ -3923,6 +3959,7 @@ function App() {
             onStop={stopStream}
             onOpenSettings={() => setSettingsOpen(true)}
             onToggleThinking={toggleThinking}
+            openingMessage={openingMessage}
             variant="empty"
           />
         ) : (

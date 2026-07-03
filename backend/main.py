@@ -16,6 +16,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -33,9 +34,19 @@ load_dotenv(ENV_PATH)
 app = FastAPI(title="RouterChat", version="0.1.0")
 
 
+class FrontendStaticFiles(StaticFiles):
+    async def get_response(self, path: str, scope: dict[str, Any]) -> Any:
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code == 404:
+                return await super().get_response("index.html", scope)
+            raise
+
+
 def configure_static_files(target_app: FastAPI, static_dir: Path) -> None:
     if static_dir.is_dir():
-        target_app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
+        target_app.mount("/", FrontendStaticFiles(directory=static_dir, html=True), name="static")
         return
 
     @target_app.get("/", include_in_schema=False)
@@ -59,6 +70,7 @@ class ChatCreateRequest(BaseModel):
     thinking_enabled: bool = False
     reasoning_effort: ReasoningEffort = "medium"
     nitro_mode: bool = False
+    temporary: bool = False
 
 
 class ChatPatchRequest(BaseModel):
@@ -123,6 +135,7 @@ def init_db() -> None:
               max_tokens INTEGER NOT NULL,
               thinking_enabled INTEGER NOT NULL,
               reasoning_effort TEXT NOT NULL DEFAULT 'medium',
+              temporary INTEGER NOT NULL DEFAULT 0,
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
             );
@@ -167,6 +180,8 @@ def ensure_chat_settings_columns(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE chats ADD COLUMN reasoning_effort TEXT NOT NULL DEFAULT 'medium'"
         )
+    if "temporary" not in existing_columns:
+        conn.execute("ALTER TABLE chats ADD COLUMN temporary INTEGER NOT NULL DEFAULT 0")
 
 
 def ensure_message_order_column(conn: sqlite3.Connection) -> None:
@@ -239,6 +254,14 @@ def message_order_clause() -> str:
 @app.on_event("startup")
 def on_startup() -> None:
     init_db()
+    with get_db() as conn:
+        conn.execute(
+            """
+            DELETE FROM messages
+            WHERE chat_id IN (SELECT id FROM chats WHERE temporary = 1)
+            """
+        )
+        conn.execute("DELETE FROM chats WHERE temporary = 1")
 
 
 def read_openrouter_key() -> str | None:
@@ -439,6 +462,7 @@ def row_to_chat(row: sqlite3.Row) -> dict[str, Any]:
         "max_tokens": row["max_tokens"],
         "thinking_enabled": bool(row["thinking_enabled"]),
         "reasoning_effort": row["reasoning_effort"],
+        "temporary": bool(row["temporary"]),
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
@@ -571,7 +595,11 @@ async def get_models() -> dict[str, Any]:
 def list_chats() -> dict[str, Any]:
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT * FROM chats ORDER BY updated_at DESC, created_at DESC"
+            """
+            SELECT * FROM chats
+            WHERE temporary = 0
+            ORDER BY updated_at DESC, created_at DESC
+            """
         ).fetchall()
     return {"chats": [row_to_chat(row) for row in rows]}
 
@@ -586,9 +614,9 @@ def create_chat(payload: ChatCreateRequest) -> dict[str, Any]:
             """
             INSERT INTO chats (
               id, title, model, system_prompt, temperature, max_tokens,
-              thinking_enabled, reasoning_effort, created_at, updated_at
+              thinking_enabled, reasoning_effort, temporary, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 chat_id,
@@ -599,6 +627,7 @@ def create_chat(payload: ChatCreateRequest) -> dict[str, Any]:
                 payload.max_tokens,
                 int(payload.thinking_enabled),
                 payload.reasoning_effort,
+                int(payload.temporary),
                 now,
                 now,
             ),
@@ -784,6 +813,21 @@ def delete_chat(chat_id: str) -> dict[str, Any]:
         result = conn.execute("DELETE FROM chats WHERE id = ?", (chat_id,))
     if result.rowcount == 0:
         raise HTTPException(status_code=404, detail="Chat not found.")
+    return {"ok": True}
+
+
+@app.post("/api/chats/{chat_id}/close")
+def close_chat(chat_id: str) -> dict[str, Any]:
+    with get_db() as conn:
+        chat = conn.execute(
+            "SELECT temporary FROM chats WHERE id = ?", (chat_id,)
+        ).fetchone()
+        if not chat:
+            return {"ok": True}
+        if not bool(chat["temporary"]):
+            return {"ok": True}
+        conn.execute("DELETE FROM messages WHERE chat_id = ?", (chat_id,))
+        conn.execute("DELETE FROM chats WHERE id = ?", (chat_id,))
     return {"ok": True}
 
 
@@ -1166,7 +1210,10 @@ async def stream_openrouter_response(
 
 
 @app.post("/api/chats/{chat_id}/messages/stream")
-async def stream_message(chat_id: str, payload: StreamMessageRequest) -> StreamingResponse:
+async def stream_message(
+    chat_id: str,
+    payload: StreamMessageRequest,
+) -> StreamingResponse:
     if not read_openrouter_key():
         raise HTTPException(status_code=401, detail="Add an OpenRouter API key first.")
     message = payload.message.strip()

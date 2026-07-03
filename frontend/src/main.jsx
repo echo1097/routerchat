@@ -197,6 +197,32 @@ function exportFileName(chat) {
   return `routerchat-${title}-${new Date().toISOString().slice(0, 10)}.json`;
 }
 
+function chatRoute(chat) {
+  if (!chat?.id) return { page: "home" };
+  return {
+    page: chat.temporary ? "temp" : "chat",
+    chatId: chat.id,
+  };
+}
+
+function routePath(route) {
+  if (!route || route.page === "home") return "/";
+  const prefix = route.page === "temp" ? "temp" : "chat";
+  return `/${prefix}/${encodeURIComponent(route.chatId)}`;
+}
+
+function parseRoute(pathname = window.location.pathname) {
+  const parts = pathname.split("/").filter(Boolean);
+  if (parts.length === 0) return { page: "home" };
+  if ((parts[0] === "chat" || parts[0] === "temp") && parts[1]) {
+    return {
+      page: parts[0],
+      chatId: decodeURIComponent(parts[1]),
+    };
+  }
+  return { page: "home" };
+}
+
 function readLocalAppSettings() {
   try {
     return JSON.parse(window.localStorage.getItem(APP_SETTINGS_STORAGE_KEY) || "{}");
@@ -1269,6 +1295,47 @@ const MessageItem = memo(function MessageItem({
 function EmptyChatState() {
   return (
     <div className="min-h-[100dvh]" aria-hidden="true" />
+  );
+}
+
+function TemporaryChatButton({ active, onClick }) {
+  return (
+    <button
+      type="button"
+      aria-label={active ? "Temporary chat on" : "Temporary chat off"}
+      title={active ? "Temporary chat on" : "Temporary chat off"}
+      aria-pressed={active}
+      onClick={onClick}
+      className={cx(
+        "pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-full text-[17px] leading-none focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
+        CONTROL_MOTION,
+        active
+          ? "text-zinc-100"
+          : "text-zinc-400 hover:text-zinc-100",
+      )}
+    >
+      <span className="t-icon-swap temp-chat-toggle-icon" data-state={active ? "b" : "a"}>
+        <span className="t-icon" data-icon="a" aria-hidden="true">
+          <i className="fi fi-rr-ghost" />
+        </span>
+        <span className="t-icon" data-icon="b" aria-hidden="true">
+          <i className="fi fi-sr-ghost" />
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function TemporaryChatMarker({ visible }) {
+  if (!visible) return null;
+
+  return (
+    <div
+      className="pointer-events-none absolute left-4 top-16 z-20 flex h-10 w-10 items-center justify-center text-[18px] leading-none text-zinc-100 sm:left-8 sm:top-4 lg:left-10"
+      aria-hidden="true"
+    >
+      <i className="fi fi-rs-ghost" />
+    </div>
   );
 }
 
@@ -2963,6 +3030,8 @@ function App() {
   const [messages, setMessages] = useState([]);
   const [models, setModels] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
+  const [temporaryChat, setTemporaryChat] = useState(false);
+  const [tempChatId, setTempChatId] = useState(null);
   const [settings, setSettings] = useState(newSettings);
   const [defaultModel, setDefaultModel] = useState(DEFAULT_MODEL);
   const [hideFreeModels, setHideFreeModels] = useState(Boolean(localAppSettings.hide_free_models));
@@ -2984,6 +3053,9 @@ function App() {
   const [confirmDialog, setConfirmDialog] = useState(null);
   const [toast, setToast] = useState("");
   const abortRef = useRef(null);
+  const routeRef = useRef(parseRoute());
+  const initialRouteHandledRef = useRef(false);
+  const tempChatIdRef = useRef(null);
   const reasoningStartedAtRef = useRef({});
   const streamRef = useRef(null);
   const {
@@ -2996,6 +3068,31 @@ function App() {
     followRef,
   } =
     useRafScroller(streamRef);
+
+  useEffect(() => {
+    tempChatIdRef.current = tempChatId;
+  }, [tempChatId]);
+
+  function writeRoute(route, { replace = false } = {}) {
+    const nextPath = routePath(route);
+    routeRef.current = route;
+    if (window.location.pathname === nextPath) return;
+    window.history[replace ? "replaceState" : "pushState"]({ route }, "", nextPath);
+  }
+
+  async function closeTempForRouteChange(nextRoute) {
+    const currentRoute = routeRef.current;
+    const chatId = tempChatIdRef.current;
+    if (currentRoute?.page !== "temp" || !chatId) return;
+    if (nextRoute?.page === "temp" && nextRoute.chatId === chatId) return;
+    await closeTemporaryChat(chatId);
+  }
+
+  async function navigateToChat(chat, { replace = false } = {}) {
+    const nextRoute = chatRoute(chat);
+    await closeTempForRouteChange(nextRoute);
+    writeRoute(nextRoute, { replace });
+  }
 
   const isEmptyChat = !activeChatId && messages.length === 0;
   const modelLocked = Boolean(activeChatId && messages.length > 0);
@@ -3123,6 +3220,9 @@ function App() {
   }, [activeChatId, scrollToBottom]);
 
   function applyChat(chat, nextMessages) {
+    const isTemporary = Boolean(chat.temporary);
+    setTemporaryChat(isTemporary);
+    setTempChatId(isTemporary ? chat.id : null);
     setActiveChatId(chat.id);
     setMessages(nextMessages || []);
     setSettings({
@@ -3136,9 +3236,41 @@ function App() {
     });
   }
 
-  async function loadChat(chatId) {
-    const payload = await api(`/api/chats/${chatId}`);
-    applyChat(payload.chat, payload.messages || []);
+  async function closeTemporaryChat(chatId = tempChatIdRef.current) {
+    if (!chatId) return;
+    try {
+      await api(`/api/chats/${chatId}/close`, { method: "POST" });
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  useEffect(() => {
+    function closeTempOnPageExit() {
+      const chatId = tempChatIdRef.current;
+      if (!chatId || routeRef.current?.page !== "temp") return;
+      navigator.sendBeacon?.(`/api/chats/${chatId}/close`);
+    }
+
+    window.addEventListener("pagehide", closeTempOnPageExit);
+    return () => {
+      closeTempOnPageExit();
+      window.removeEventListener("pagehide", closeTempOnPageExit);
+    };
+  }, []);
+
+  async function loadChat(chatId, { replace = false, fromRoute = false } = {}) {
+    try {
+      const payload = await api(`/api/chats/${chatId}`);
+      await navigateToChat(payload.chat, { replace: replace || fromRoute });
+      applyChat(payload.chat, payload.messages || []);
+    } catch (error) {
+      if (fromRoute) {
+        await resetChat({ replace: true });
+      } else {
+        setStatus(error.message);
+      }
+    }
   }
 
   async function persistSettings(nextSettings = settings) {
@@ -3154,7 +3286,10 @@ function App() {
     }
   }
 
-  function resetChat() {
+  async function resetChat({ replace = false } = {}) {
+    const nextRoute = { page: "home" };
+    await closeTempForRouteChange(nextRoute);
+    writeRoute(nextRoute, { replace });
     const selectableModels = hideFreeModels
       ? models.filter((model) => !isFreeModel(model))
       : models;
@@ -3162,6 +3297,8 @@ function App() {
       ? defaultModel
       : selectableModels[0]?.id || defaultModel;
     setActiveChatId(null);
+    setTemporaryChat(false);
+    setTempChatId(null);
     setMessages([]);
     setSettings((current) => ({
       ...newSettings,
@@ -3171,6 +3308,33 @@ function App() {
     setPrompt("");
     setStatus("");
   }
+
+  useEffect(() => {
+    if (initialRouteHandledRef.current) return;
+    initialRouteHandledRef.current = true;
+
+    const route = parseRoute();
+    routeRef.current = route;
+    if (route.page === "chat" || route.page === "temp") {
+      void loadChat(route.chatId, { replace: true, fromRoute: true });
+    } else {
+      writeRoute({ page: "home" }, { replace: true });
+    }
+  }, []);
+
+  useEffect(() => {
+    function handlePopState() {
+      const nextRoute = parseRoute();
+      if (nextRoute.page === "chat" || nextRoute.page === "temp") {
+        void loadChat(nextRoute.chatId, { replace: true, fromRoute: true });
+        return;
+      }
+      void resetChat({ replace: true });
+    }
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   async function updateDefaultModel(modelId) {
     try {
@@ -3264,19 +3428,40 @@ function App() {
     showToast(value ? "Nav bar shown" : "Nav bar hidden");
   }
 
-  async function createChat() {
+  async function createChat({ temporary = false } = {}) {
     const payload = await api("/api/chats", {
       method: "POST",
-      body: JSON.stringify(settings),
+      body: JSON.stringify({
+        ...settings,
+        ...(temporary ? { title: "Temporary chat", temporary: true } : {}),
+      }),
     });
     applyChat(payload.chat, []);
-    await loadChats();
+    await navigateToChat(payload.chat);
+    if (!temporary) {
+      await loadChats();
+    }
     return payload.chat;
   }
 
   async function ensureChat() {
     if (activeChatId) return activeChatId;
     return (await createChat()).id;
+  }
+
+  async function ensureTemporaryChat() {
+    if (tempChatId) return tempChatId;
+    if (temporaryChat && activeChatId) return activeChatId;
+    return (await createChat({ temporary: true })).id;
+  }
+
+  function toggleTemporaryChat() {
+    if (isStreaming) return;
+    if (temporaryChat) {
+      void resetChat();
+      return;
+    }
+    setTemporaryChat(true);
   }
 
   async function deleteChat(chatId) {
@@ -3290,7 +3475,7 @@ function App() {
       onConfirm: async () => {
         try {
           await api(`/api/chats/${chatId}`, { method: "DELETE" });
-          if (chatId === activeChatId) resetChat();
+          if (chatId === activeChatId) await resetChat();
           await loadChats();
           setStatus("Chat deleted");
         } catch (error) {
@@ -3329,11 +3514,14 @@ function App() {
 
   async function renameChat(chatId, title) {
     try {
-      await api(`/api/chats/${chatId}`, {
+      const payload = await api(`/api/chats/${chatId}`, {
         method: "PATCH",
         body: JSON.stringify({ title }),
       });
       await loadChats();
+      if (chatId === activeChatId && payload.chat) {
+        await navigateToChat(payload.chat, { replace: true });
+      }
     } catch (error) {
       setStatus(error.message);
       throw error;
@@ -3494,9 +3682,12 @@ function App() {
     abortRef.current = new AbortController();
     let currentAssistantId = null;
     let chatId = null;
+    let currentTempMode = false;
 
     try {
-      chatId = await ensureChat();
+      const tempMode = temporaryChat && (!activeChatId || activeChatId === tempChatId);
+      currentTempMode = tempMode;
+      chatId = tempMode ? await ensureTemporaryChat() : await ensureChat();
       const shouldAddUser = !regenerateMessageId;
       const userMessage = {
         id: `local-user-${crypto.randomUUID()}`,
@@ -3505,6 +3696,7 @@ function App() {
         content: text,
         created_at: new Date().toISOString(),
       };
+
       const assistantId = `local-assistant-${crypto.randomUUID()}`;
       currentAssistantId = assistantId;
       const assistantMessage = {
@@ -3531,16 +3723,19 @@ function App() {
       setPrompt("");
       scrollToBottom(true);
 
-      const response = await fetch(`/api/chats/${chatId}/messages/stream`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: abortRef.current.signal,
-        body: JSON.stringify({
-          ...settings,
-          message: text,
-          regenerate_message_id: regenerateMessageId,
-        }),
-      });
+      const response = await fetch(
+        `/api/chats/${chatId}/messages/stream`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: abortRef.current.signal,
+          body: JSON.stringify({
+            ...settings,
+            message: text,
+            regenerate_message_id: regenerateMessageId,
+          }),
+        },
+      );
 
       if (!response.ok || !response.body) {
         throw new Error(await responseErrorDetail(response));
@@ -3548,15 +3743,21 @@ function App() {
 
       const savedAssistantId = response.headers.get("X-Assistant-Message-Id") || assistantId;
       await readStream(response, assistantId, savedAssistantId);
-      await loadChats();
-      await loadChat(chatId);
+      if (tempMode) {
+        await loadChat(chatId, { replace: true });
+      } else {
+        await loadChats();
+        await loadChat(chatId, { replace: true });
+      }
     } catch (error) {
       if (error.name === "AbortError") {
         setStatus("Response stopped");
         if (chatId) {
           await new Promise((resolve) => setTimeout(resolve, 100));
-          await loadChats();
-          await loadChat(chatId);
+          if (!currentTempMode) {
+            await loadChats();
+          }
+          await loadChat(chatId, { replace: true });
         }
       } else {
         setStatus(error.message);
@@ -3604,6 +3805,7 @@ function App() {
         body: JSON.stringify({ content }),
       });
       applyChat(payload.chat, payload.messages || []);
+      await navigateToChat(payload.chat, { replace: true });
       setStatus("Prompt updated. Regenerating...");
       void sendMessage(content, message.id);
     } catch (error) {
@@ -3624,6 +3826,7 @@ function App() {
             method: "DELETE",
           });
           applyChat(payload.chat, payload.messages || []);
+          await navigateToChat(payload.chat, { replace: true });
           await loadChats();
           setStatus("Prompt deleted");
         } catch (error) {
@@ -3670,7 +3873,17 @@ function App() {
           >
             <Menu size={18} />
           </IconButton>
+          {isEmptyChat && (
+            <div className="ml-auto">
+              <TemporaryChatButton
+                active={temporaryChat}
+                onClick={toggleTemporaryChat}
+              />
+            </div>
+          )}
         </header>
+
+        <TemporaryChatMarker visible={temporaryChat && activeChatId === tempChatId && messages.length > 0} />
 
         <MessageList
           messages={messages}

@@ -8,8 +8,7 @@
   "afternoon": [
     "What needs a second look?",
     "What are we handling this afternoon?",
-    "What should we push forward?",
-    "What is worth fixing before the day runs away?"
+    "What is worth fixing before the day gets away?"
   ],
   "evening": [
     "What are we wrapping up?",
@@ -18,9 +17,9 @@
     "What should we clean up tonight?"
   ],
   "lateNight": [
-    "Night owl?",
+    "Hey there, night owl!",
     "What are we doing up this late?",
     "What is the midnight mission?",
-    "What are we fixing while everyone else is asleep?"
+    "What are we working on while everyone else is asleep?"
   ]
 }

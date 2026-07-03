@@ -1488,7 +1488,7 @@ function Composer({
               className={cx(
                 "block w-full resize-none bg-transparent text-zinc-100 outline-none",
                 isEmptyVariant
-                  ? "max-h-[184px] min-h-[72px] text-[17px] leading-7 placeholder:text-zinc-500 sm:text-xl sm:leading-8"
+                  ? "max-h-[184px] min-h-[72px] text-base leading-7 placeholder:text-zinc-500 sm:text-lg sm:leading-8"
                   : "max-h-[126px] min-h-6 text-sm leading-6 placeholder:text-zinc-600",
               )}
             />

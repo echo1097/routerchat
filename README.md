@@ -23,7 +23,7 @@ For extra support, upload [assistant.md](assistant.md) to your favorite AI to tu
     - Folders/Projects
     - Warn when context getting full (already have a context meter in place but will improve w this)
     - Show model context 
-    - Temporary chats 
+    - Temporary chats (DONE)
     - Generate chat names instead of just being first message
     - Pin chats
 - Support for more providers 

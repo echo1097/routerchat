@@ -1056,6 +1056,11 @@ textarea {
   .sidebar-reveal-button {
     transition: none !important;
   }
+
+  .tour-spotlight,
+  .tour-popover {
+    transition: none !important;
+  }
 }
 
 ::-webkit-scrollbar {
@@ -1098,3 +1103,47 @@ textarea {
   border: 3px solid transparent;
   background-clip: content-box;
 }
+
+/* help tour overlay, spotlight, and popover */
+
+.tour-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+}
+
+.tour-backdrop {
+  position: fixed;
+  inset: 0;
+  pointer-events: auto;
+  background: transparent;
+}
+
+.tour-spotlight {
+  position: fixed;
+  pointer-events: none;
+  border-radius: 16px;
+  outline: 2px solid rgba(255, 255, 255, 0.35);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.62);
+  transition:
+    top var(--modal-open-dur) var(--modal-ease),
+    left var(--modal-open-dur) var(--modal-ease),
+    width var(--modal-open-dur) var(--modal-ease),
+    height var(--modal-open-dur) var(--modal-ease);
+}
+
+.tour-popover {
+  position: fixed;
+  pointer-events: auto;
+  border-radius: 18px;
+  background: #18181a;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.1),
+    0 20px 60px rgba(0, 0, 0, 0.5);
+  padding: 16px;
+  transition:
+    top var(--modal-open-dur) var(--modal-ease),
+    left var(--modal-open-dur) var(--modal-ease);
+}
+

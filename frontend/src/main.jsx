@@ -29,6 +29,10 @@ import {
 } from "lucide-react";
 import packageInfo from "../../package.json";
 import openingMessages from "./openingMessages.json";
+import { cx, CONTROL_MOTION, SOFT_SURFACE, FADE_MOTION } from "./uiShared.js";
+import HelpTourButton from "./HelpTourButton.jsx";
+import TourOverlay from "./tour/TourOverlay.jsx";
+import { useTour } from "./tour/useTour.js";
 import "./styles.css";
 
 const DEFAULT_MODEL = "anthropic/claude-3.5-sonnet";
@@ -118,16 +122,6 @@ async function responseErrorDetail(response) {
     return body;
   }
 }
-
-function cx(...classes) {
-  return classes.filter(Boolean).join(" ");
-}
-
-const CONTROL_MOTION =
-  "transition-[background-color,border-color,box-shadow,color,scale] duration-150 ease-out active:scale-[0.96]";
-const SOFT_SURFACE =
-  "shadow-[var(--shadow-border)] hover:shadow-[var(--shadow-border-hover)]";
-const FADE_MOTION = "transition-opacity duration-150 ease-out";
 
 function formatThinkingMarkdown(value) {
   return (value || "")
@@ -496,7 +490,7 @@ function ResponseInfoButton({ message }) {
   );
 }
 
-function ChatHistoryActions({ chat, onRename, onDelete, onExport }) {
+function ChatHistoryActions({ chat, isFirst, forceVisible, onRename, onDelete, onExport }) {
   const [open, setOpen] = useState(false);
   const [closing, setClosing] = useState(false);
   const [menuStyle, setMenuStyle] = useState({});
@@ -637,12 +631,17 @@ function ChatHistoryActions({ chat, onRename, onDelete, onExport }) {
   return (
     <div
       ref={rootRef}
-      className="chat-history-actions relative flex opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+      className={cx(
+        "chat-history-actions relative flex",
+
+        forceVisible ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
+      )}
     >
       <button
         ref={buttonRef}
         type="button"
         title="Chat actions"
+        data-tour={isFirst ? "chat-actions-button" : undefined}
         aria-label={`Chat actions for ${chat.title}`}
         aria-expanded={open}
         aria-controls={menuId}
@@ -676,6 +675,7 @@ function ConversationRail({
   onCloseMobile,
   collapsed,
   onCollapse,
+  highlightFirstChatActions,
 }) {
   const [railScrolling, setRailScrolling] = useState(false);
   const [renamingChatId, setRenamingChatId] = useState(null);
@@ -735,7 +735,7 @@ function ConversationRail({
         Your conversations will appear here.
       </div>
     ) : (
-      chats.map((chat) => {
+      chats.map((chat, chatIndex) => {
         const renaming = renamingChatId === chat.id;
 
         return (
@@ -790,6 +790,8 @@ function ConversationRail({
             )}
             <ChatHistoryActions
               chat={chat}
+              isFirst={chatIndex === 0}
+              forceVisible={chatIndex === 0 && highlightFirstChatActions}
               onRename={startRename}
               onDelete={onDeleteChat}
               onExport={onExportChat}
@@ -843,6 +845,7 @@ function ConversationRail({
             <IconButton
               label="Collapse sidebar"
               className="hidden lg:inline-flex"
+              data-tour="collapse-sidebar-button"
               onClick={onCollapse}
             >
               <PanelLeftClose size={17} />
@@ -1488,6 +1491,7 @@ function TemporaryChatButton({ active, onClick }) {
   return (
     <button
       type="button"
+      data-tour="temp-chat-button"
       aria-label={active ? "Temporary chat on" : "Temporary chat off"}
       title={active ? "Temporary chat on" : "Temporary chat off"}
       aria-pressed={active}
@@ -1588,8 +1592,9 @@ function Composer({
   onToggleThinking,
   openingMessage,
   variant = "default",
+  forceShowThinking = false,
 }) {
-  const canThink = supportsThinking(models, settings.model);
+  const canThink = supportsThinking(models, settings.model) || forceShowThinking;
   const textareaRef = useRef(null);
   const isEmptyVariant = variant === "empty";
 
@@ -1655,14 +1660,14 @@ function Composer({
               "flex items-center gap-2",
               isEmptyVariant
                 ? "flex-wrap justify-end px-4 pb-3 pt-1.5 sm:flex-nowrap sm:px-5"
-                : "px-2.5 pb-2.5 pt-1.5",
+                : "justify-end px-2.5 pb-2.5 pt-1.5",
             )}
           >
-            {!isEmptyVariant && <div className="ml-auto" />}
             <ContextWindowMeter info={contextWindowInfo} />
             {canThink && (
               <button
                 type="button"
+                data-tour="thinking-button"
                 onClick={onToggleThinking}
                 className={cx(
                   "relative inline-flex h-[34px] items-center gap-1 rounded-full px-2.5 text-[11px] font-medium leading-none before:absolute before:-bottom-[3px] before:-right-[3px] before:-top-[3px] before:left-0 before:content-[''] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
@@ -1677,6 +1682,7 @@ function Composer({
             )}
             <button
               type="button"
+              data-tour="model-button"
               onClick={onOpenSettings}
               className={cx(
                 "relative inline-flex h-[34px] min-w-0 max-w-[190px] items-center gap-1 rounded-full px-2.5 text-[11px] font-medium leading-none text-zinc-400 before:absolute before:-inset-[3px] before:content-[''] hover:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 sm:max-w-[240px]",
@@ -1688,6 +1694,7 @@ function Composer({
             </button>
             <button
               type="submit"
+              data-tour="send-button"
               disabled={!isStreaming && (!value.trim() || disabled)}
               className={cx(
                 "group relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
@@ -3245,12 +3252,16 @@ function App() {
   const [reasoningDurations, setReasoningDurations] = useState({});
   const [confirmDialog, setConfirmDialog] = useState(null);
   const [toast, setToast] = useState("");
+  const tour = useTour();
+  const [tourForceThinking, setTourForceThinking] = useState(false);
+  const [tourSampleChatActive, setTourSampleChatActive] = useState(false);
   const abortRef = useRef(null);
   const routeRef = useRef(parseRoute());
   const initialRouteHandledRef = useRef(false);
   const tempChatIdRef = useRef(null);
   const reasoningStartedAtRef = useRef({});
   const streamRef = useRef(null);
+  const previousRailStateRef = useRef(null);
   const {
     isNearBottom,
     markUserScroll,
@@ -3265,6 +3276,30 @@ function App() {
   useEffect(() => {
     tempChatIdRef.current = tempChatId;
   }, [tempChatId]);
+
+  useEffect(() => {
+    if (tour.isActive) {
+      previousRailStateRef.current = { collapsed: railCollapsed, open: railOpen };
+      setRailCollapsed(false);
+      setRailOpen(true);
+      if (chats.length === 0) setTourSampleChatActive(true);
+      return;
+    }
+
+    setTourForceThinking(false);
+    setTourSampleChatActive(false);
+
+    const previousRailState = previousRailStateRef.current;
+    if (previousRailState) {
+      setRailCollapsed(previousRailState.collapsed);
+      setRailOpen(previousRailState.open);
+      previousRailStateRef.current = null;
+    }
+  }, [tour.isActive]);
+
+  useEffect(() => {
+    setTourForceThinking(Boolean(tour.currentStep?.forceThinkingVisible));
+  }, [tour.currentStep]);
 
   function writeRoute(route, { replace = false } = {}) {
     const nextPath = routePath(route);
@@ -3289,6 +3324,14 @@ function App() {
 
   const isEmptyChat = !activeChatId && messages.length === 0;
   const modelLocked = Boolean(activeChatId && messages.length > 0);
+
+
+  
+  const sidebarChats =
+    tourSampleChatActive && chats.length === 0
+      ? [{ id: "__tour_sample_chat__", title: "Sample chat", model: settings.model }]
+      : chats;
+
   const contextWindowInfo = useMemo(() => {
     const selectedModel = models.find((model) => model.id === settings.model);
     const contextLimit = getModelContextLimit(selectedModel);
@@ -4049,7 +4092,7 @@ function App() {
   return (
     <div className="flex h-screen overflow-hidden bg-[#070708] text-ink">
       <ConversationRail
-        chats={chats}
+        chats={sidebarChats}
         activeChatId={activeChatId}
         models={models}
         onNewChat={resetChat}
@@ -4061,6 +4104,7 @@ function App() {
         onCloseMobile={() => setRailOpen(false)}
         collapsed={railCollapsed}
         onCollapse={() => setRailCollapsed(true)}
+        highlightFirstChatActions={tour.currentStep?.id === "chatActions"}
       />
       <SidebarRevealButton
         visible={railCollapsed}
@@ -4077,7 +4121,8 @@ function App() {
             <Menu size={18} />
           </IconButton>
           {isEmptyChat && (
-            <div className="ml-auto">
+            <div className="ml-auto flex items-center gap-2">
+              <HelpTourButton onClick={tour.start} />
               <TemporaryChatButton
                 active={temporaryChat}
                 onClick={toggleTemporaryChat}
@@ -4128,6 +4173,7 @@ function App() {
             onToggleThinking={toggleThinking}
             openingMessage={openingMessage}
             variant="empty"
+            forceShowThinking={tourForceThinking}
           />
         ) : (
           <Composer
@@ -4179,6 +4225,17 @@ function App() {
       />
       <StatusPill message={status} />
       <Toast message={toast} />
+      {tour.isActive && tour.currentStep && (
+        <TourOverlay
+          step={tour.currentStep}
+          stepNumber={tour.stepIndex + 1}
+          stepCount={tour.stepCount}
+          isLastStep={tour.isLastStep}
+          onNext={tour.isLastStep ? tour.finish : tour.next}
+          onPrevious={tour.previous}
+          onClose={tour.finish}
+        />
+      )}
     </div>
   );
 }

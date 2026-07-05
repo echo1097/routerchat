@@ -7,6 +7,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
 import ReactMarkdown from "react-markdown";
 import {
@@ -495,6 +496,173 @@ function ResponseInfoButton({ message }) {
   );
 }
 
+function ChatHistoryActions({ chat, onRename, onDelete, onExport }) {
+  const [open, setOpen] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const [menuStyle, setMenuStyle] = useState({});
+  const rootRef = useRef(null);
+  const buttonRef = useRef(null);
+  const menuRef = useRef(null);
+  const closeTimerRef = useRef(null);
+  const menuId = `chat-actions-${chat.id}`;
+
+  function updateMenuPosition() {
+    const button = buttonRef.current;
+    if (!button) return;
+
+    const rect = button.getBoundingClientRect();
+    const menuWidth = 156;
+    const left = Math.min(rect.left, window.innerWidth - menuWidth - 12);
+
+    setMenuStyle({
+      left: `${Math.max(12, left)}px`,
+      top: `${rect.bottom + 6}px`,
+    });
+  }
+
+  function clearCloseTimer() {
+    if (!closeTimerRef.current) return;
+    window.clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = null;
+  }
+
+  function closeMenu() {
+    if (!open) return;
+    clearCloseTimer();
+    setOpen(false);
+    setClosing(true);
+    const closeMs = parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue("--dropdown-close-dur"),
+    ) || 150;
+    closeTimerRef.current = window.setTimeout(() => {
+      setClosing(false);
+      closeTimerRef.current = null;
+    }, closeMs);
+  }
+
+  function toggleMenu(event) {
+    event.stopPropagation();
+    if (open) {
+      closeMenu();
+      return;
+    }
+    clearCloseTimer();
+    setClosing(false);
+    updateMenuPosition();
+    setOpen(true);
+  }
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    function handlePointerDown(event) {
+      if (rootRef.current?.contains(event.target)) return;
+      if (menuRef.current?.contains(event.target)) return;
+      closeMenu();
+    }
+
+    function handleKeyDown(event) {
+      if (event.key === "Escape") closeMenu();
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
+    };
+  }, [open]);
+
+  useEffect(() => () => clearCloseTimer(), []);
+
+  const menu = (open || closing) && typeof document !== "undefined"
+    ? createPortal(
+        <div
+          ref={menuRef}
+          id={menuId}
+          role="menu"
+          data-origin="top-left"
+          style={menuStyle}
+          className={cx(
+            "t-dropdown chat-history-menu",
+            open && "is-open",
+            closing && "is-closing",
+          )}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              closeMenu();
+              onRename(chat);
+            }}
+            className="chat-history-menu-item text-zinc-200 hover:bg-white/[0.07] focus:bg-white/[0.07] focus:outline-none"
+          >
+            <Pencil size={14} />
+            Edit name
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              closeMenu();
+              onExport(chat);
+            }}
+            className="chat-history-menu-item text-zinc-200 hover:bg-white/[0.07] focus:bg-white/[0.07] focus:outline-none"
+          >
+            <i className="fi fi-rr-file-export text-[14px] leading-none" aria-hidden="true" />
+            Export chat
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              closeMenu();
+              onDelete(chat.id);
+            }}
+            className="chat-history-menu-item text-red-300 hover:bg-red-500/10 focus:bg-red-500/10 focus:outline-none"
+          >
+            <Trash2 size={14} />
+            Delete chat
+          </button>
+        </div>,
+        document.body,
+      )
+    : null;
+
+  return (
+    <div
+      ref={rootRef}
+      className="chat-history-actions relative flex opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+    >
+      <button
+        ref={buttonRef}
+        type="button"
+        title="Chat actions"
+        aria-label={`Chat actions for ${chat.title}`}
+        aria-expanded={open}
+        aria-controls={menuId}
+        aria-haspopup="menu"
+        onClick={toggleMenu}
+        className={cx(
+          "chat-history-menu-button grid h-7 w-7 place-items-center rounded-full bg-transparent text-zinc-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15",
+          CONTROL_MOTION,
+          open
+            ? "text-zinc-200"
+            : "hover:text-zinc-200",
+        )}
+      >
+        <i className="fi fi-bs-menu-dots" aria-hidden="true" />
+      </button>
+      {menu}
+    </div>
+  );
+}
+
 function ConversationRail({
   chats,
   activeChatId,
@@ -503,6 +671,7 @@ function ConversationRail({
   onLoadChat,
   onRenameChat,
   onDeleteChat,
+  onExportChat,
   mobileOpen,
   onCloseMobile,
   collapsed,
@@ -573,14 +742,14 @@ function ConversationRail({
           <div
             key={chat.id}
             className={cx(
-              "group grid select-none grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-2xl border border-transparent px-2 py-2 transition-[background-color,border-color,box-shadow] duration-150 ease-out",
+              "group relative grid select-none grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-2xl border border-transparent px-2 py-1 transition-[background-color,border-color,box-shadow] duration-150 ease-out",
               chat.id === activeChatId
                 ? "bg-white/[0.08] shadow-[var(--shadow-border)]"
                 : "hover:bg-white/[0.045] hover:shadow-[var(--shadow-border)]",
             )}
           >
             {renaming ? (
-              <div className="min-h-10 min-w-0 rounded-xl px-1 py-1">
+              <div className="min-h-8 min-w-0 rounded-xl px-1 py-0.5">
                 <input
                   autoFocus
                   value={renameDraft}
@@ -595,7 +764,7 @@ function ConversationRail({
                   }}
                   className="block h-6 w-full min-w-0 rounded-md bg-white/[0.06] px-1.5 text-sm font-medium text-zinc-100 outline-none shadow-[var(--shadow-border)]"
                 />
-                <div className="mt-0.5 truncate text-xs text-zinc-500">
+                <div className="truncate text-[11px] leading-3 text-zinc-500">
                   {promptModelName(models, chat.model)}
                 </div>
               </div>
@@ -607,46 +776,24 @@ function ConversationRail({
                   onCloseMobile();
                 }}
                 className={cx(
-                  "min-h-10 min-w-0 rounded-xl px-1 py-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15",
+                  "min-h-8 min-w-0 rounded-xl px-1 py-0.5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15",
                   CONTROL_MOTION,
                 )}
               >
-                <div className="truncate text-balance text-sm font-medium text-zinc-100">
+                <div className="truncate text-balance text-sm font-medium leading-4 text-zinc-100">
                   {chat.title}
                 </div>
-                <div className="mt-0.5 truncate text-xs text-zinc-500">
+                <div className="truncate text-[11px] leading-3 text-zinc-500">
                   {promptModelName(models, chat.model)}
                 </div>
               </button>
             )}
-            <div className="flex opacity-0 group-hover:opacity-100 group-focus-within:opacity-100">
-              <button
-                type="button"
-                title="Rename chat"
-                aria-label={`Rename ${chat.title}`}
-                onClick={() => startRename(chat)}
-                className={cx(
-                  "grid h-8 w-8 place-items-center rounded-full text-zinc-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15",
-                  CONTROL_MOTION,
-                  "hover:bg-white/[0.06] hover:text-zinc-200",
-                )}
-              >
-                <Pencil size={14} />
-              </button>
-              <button
-                type="button"
-                title="Delete chat"
-                aria-label={`Delete ${chat.title}`}
-                onClick={() => onDeleteChat(chat.id)}
-                className={cx(
-                  "grid h-8 w-8 place-items-center rounded-full text-zinc-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400/30",
-                  CONTROL_MOTION,
-                  "hover:bg-red-500/10 hover:text-red-300",
-                )}
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
+            <ChatHistoryActions
+              chat={chat}
+              onRename={startRename}
+              onDelete={onDeleteChat}
+              onExport={onExportChat}
+            />
           </div>
         );
       })
@@ -979,11 +1126,21 @@ function formatInteger(value) {
 
 function formatCost(value) {
   if (!isFiniteNumber(value)) return "Unavailable";
+  if (value > 0 && value < 1) {
+    const cents = value * 100;
+    const centsText = new Intl.NumberFormat(undefined, {
+      minimumFractionDigits: cents < 0.1 ? 3 : 1,
+      maximumFractionDigits: cents < 0.1 ? 3 : 1,
+    }).format(cents);
+
+    return `${centsText}¢`;
+  }
+
   return new Intl.NumberFormat(undefined, {
     style: "currency",
     currency: "USD",
-    minimumFractionDigits: value < 0.01 ? 6 : 4,
-    maximumFractionDigits: value < 0.01 ? 6 : 4,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: value >= 1 ? 2 : 6,
   }).format(value);
 }
 
@@ -3538,6 +3695,15 @@ function App() {
     showToast("Chat exported");
   }
 
+  async function exportChatFromMenu(chat) {
+    if (!chat?.id) return;
+    try {
+      await exportChats(chat.id, chat);
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
   async function importChats(payload) {
     const result = await api("/api/chats/import", {
       method: "POST",
@@ -3890,6 +4056,7 @@ function App() {
         onLoadChat={loadChat}
         onRenameChat={renameChat}
         onDeleteChat={deleteChat}
+        onExportChat={exportChatFromMenu}
         mobileOpen={railOpen}
         onCloseMobile={() => setRailOpen(false)}
         collapsed={railCollapsed}

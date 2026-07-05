@@ -755,6 +755,49 @@ textarea {
     opacity   var(--dropdown-close-dur) var(--dropdown-ease);
 }
 
+.chat-history-actions {
+  transition: opacity 150ms ease-out;
+}
+
+.chat-history-menu-button i {
+  display: block;
+  font-size: 15px;
+  line-height: 1;
+  transform: translateY(1px);
+}
+
+.chat-history-menu {
+  position: fixed;
+  z-index: 50;
+  min-width: 156px;
+  padding: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
+  background: rgba(24, 24, 27, 0.98);
+  box-shadow: var(--shadow-surface);
+  backdrop-filter: blur(18px);
+}
+
+.chat-history-menu-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 150ms ease-out,
+    color 150ms ease-out;
+}
+
 .response-info {
   position: relative;
   display: inline-flex;

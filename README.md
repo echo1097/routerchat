@@ -21,12 +21,12 @@ For extra support, upload [assistant.md](assistant.md) to your favorite AI to tu
 - UI improvements
     - Nav bar (DONE)
     - Folders/Projects
-    - Warn when context getting full (already have a context meter in place but will improve w this)
-    - Show model context 
+    - Warn when context getting full (DONE)
+    - Show model context (DONE)
     - Temporary chats (DONE)
-    - Generate chat names instead of just being first message
+    - Generate chat names instead of just being first message 
     - Pin chats
-- Support for more providers 
+- Support for more providers (will take time)
     - Gemini API
     - OpenAI API
     - Claude API

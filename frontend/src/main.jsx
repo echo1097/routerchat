@@ -12,7 +12,6 @@ import { createRoot } from "react-dom/client";
 import ReactMarkdown from "react-markdown";
 import {
   ArrowLeft,
-  BookOpen,
   Check,
   ChevronDown,
   Copy,
@@ -2391,7 +2390,7 @@ function StoryWorkspace({
                   CONTROL_MOTION,
                 )}
               >
-                <BookOpen size={14} />
+                <i className="fi fi-rr-book-alt text-sm leading-none" aria-hidden="true" />
                 Lorebook
               </button>
             </div>
@@ -2541,7 +2540,7 @@ function StoryLorebookMockup({ story, entries, onBack }) {
                   {visibleEntries[0]?.name || "New lore entry"}
                 </div>
               </div>
-              <BookOpen size={20} className="text-zinc-500" />
+              <i className="fi fi-rr-book-alt text-xl leading-none text-zinc-500" aria-hidden="true" />
             </div>
             <textarea
               defaultValue={visibleEntries[0]?.content || ""}
@@ -4486,6 +4485,143 @@ function ConfirmModal({ dialog, onClose }) {
   );
 }
 
+function NewStoryModal({ open, onClose, onCreate }) {
+  const [rendered, setRendered] = useState(open);
+  const [phase, setPhase] = useState(open ? "open" : "closed");
+  const [title, setTitle] = useState("");
+  const [busy, setBusy] = useState(false);
+  const titleInputId = useId();
+  const titleRef = useRef(null);
+
+  useEffect(() => {
+    if (open) {
+      setRendered(true);
+      setPhase("open");
+      setTitle("");
+      setBusy(false);
+      requestAnimationFrame(() => titleRef.current?.focus());
+      return undefined;
+    }
+
+    if (!rendered) return undefined;
+
+    setPhase("closing");
+    const closeMs =
+      parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue("--modal-close-dur"),
+      ) || 150;
+    const timeoutId = window.setTimeout(() => {
+      setRendered(false);
+      setPhase("closed");
+      setBusy(false);
+    }, closeMs);
+    return () => window.clearTimeout(timeoutId);
+  }, [open, rendered]);
+
+  useEffect(() => {
+    if (!rendered) return undefined;
+
+    function handleKeyDown(event) {
+      if (event.key === "Escape" && !busy) onClose();
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [busy, onClose, rendered]);
+
+  if (!rendered) return null;
+
+  const storyTitle = title.trim();
+  const canCreate = storyTitle.length > 0 && !busy;
+  const isOpen = phase === "open";
+
+  async function createStory(event) {
+    event.preventDefault();
+    if (!canCreate) return;
+
+    setBusy(true);
+    try {
+      await onCreate(storyTitle);
+      onClose();
+    } catch {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[80] grid place-items-center px-4 py-6">
+      <button
+        type="button"
+        aria-label="Close new story dialog"
+        className={cx(
+          "absolute inset-0 bg-black/60 backdrop-blur-sm transition-[opacity,backdrop-filter] duration-150 ease-out",
+          isOpen ? "opacity-100" : "opacity-0",
+        )}
+        onClick={() => {
+          if (!busy) onClose();
+        }}
+      />
+      <form
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="new-story-modal-title"
+        onSubmit={createStory}
+        className={cx(
+          "t-modal relative z-10 w-full max-w-[420px] rounded-[24px] bg-[#18181b] p-4 text-zinc-100 shadow-[var(--shadow-surface)]",
+          isOpen ? "is-open" : "is-closing",
+        )}
+      >
+        <div>
+          <h2
+            id="new-story-modal-title"
+            className="text-balance text-base font-semibold text-zinc-100"
+          >
+            Name your new story
+          </h2>
+          <p className="mt-2 text-pretty text-sm leading-6 text-zinc-400">
+            You can rename your story from the sidebar at any time
+          </p>
+        </div>
+        <input
+          ref={titleRef}
+          id={titleInputId}
+          type="text"
+          value={title}
+          disabled={busy}
+          maxLength={120}
+          onChange={(event) => setTitle(event.target.value)}
+          placeholder="Story name"
+          aria-label="Story name"
+          className="mt-4 h-11 w-full rounded-2xl bg-black/25 px-3.5 text-sm font-medium text-zinc-100 shadow-[var(--shadow-border)] outline-none placeholder:text-zinc-600 focus:shadow-[var(--shadow-border-hover)] disabled:cursor-not-allowed disabled:opacity-60"
+        />
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onClose}
+            className={cx(
+              "h-10 rounded-full bg-white/[0.05] px-4 text-sm font-medium text-zinc-300 hover:bg-white/[0.08] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15 disabled:cursor-not-allowed disabled:opacity-55",
+              CONTROL_MOTION,
+            )}
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={!canCreate}
+            className={cx(
+              "h-10 rounded-full bg-zinc-100 px-4 text-sm font-semibold text-zinc-950 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:cursor-not-allowed disabled:opacity-55",
+              CONTROL_MOTION,
+            )}
+          >
+            {busy ? "Creating" : "Create story"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function App() {
   const localAppSettings = readLocalAppSettings();
   const [chats, setChats] = useState([]);
@@ -4531,6 +4667,7 @@ function App() {
   const [reasoningStreamingMessageId, setReasoningStreamingMessageId] = useState(null);
   const [reasoningDurations, setReasoningDurations] = useState({});
   const [confirmDialog, setConfirmDialog] = useState(null);
+  const [newStoryDialogOpen, setNewStoryDialogOpen] = useState(false);
   const [toast, setToast] = useState("");
   const tour = useTour();
   const [tourForceThinking, setTourForceThinking] = useState(false);
@@ -4862,6 +4999,7 @@ function App() {
       await api(`/api/chats/${chatId}/close`, { method: "POST" });
     } catch (error) {
       setStatus(error.message);
+      throw error;
     }
   }
 
@@ -5515,11 +5653,11 @@ function App() {
     void resetChat({ mode });
   }
 
-  async function startNewStory() {
+  async function startNewStory(title = "New story") {
     if (isStreaming) return;
     try {
       const story = await storyApi.createStory({
-        title: "New story",
+        title: title.trim() || "New story",
         model: settings.model,
         system_prompt: settings.system_prompt,
         temperature: settings.temperature,
@@ -5851,7 +5989,7 @@ function App() {
         writeRoute(storyRoute(activeStoryId, activeChapter.id, "chapter"), { replace: true });
       }
       setStoryGenerationStatus("");
-      showToast("Chapter updated");
+      showToast("Finished chapter");
     } catch (error) {
       if (error.name === "AbortError") {
         setStatus("Response stopped");
@@ -6013,7 +6151,9 @@ function App() {
             <WriteLanding
               openingMessage={landingMessage}
               stories={stories}
-              onStartNew={startNewStory}
+              onStartNew={() => {
+                if (!isStreaming) setNewStoryDialogOpen(true);
+              }}
               onContinue={continueStory}
             />
           ) : (
@@ -6086,6 +6226,11 @@ function App() {
       <ConfirmModal
         dialog={confirmDialog}
         onClose={() => setConfirmDialog(null)}
+      />
+      <NewStoryModal
+        open={newStoryDialogOpen}
+        onClose={() => setNewStoryDialogOpen(false)}
+        onCreate={startNewStory}
       />
       <StatusPill message={status} />
       <Toast message={toast} />

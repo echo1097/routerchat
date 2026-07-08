@@ -2582,7 +2582,7 @@ function StoryWorkspace({
                 type="button"
                 onClick={onOpenLorebook}
                 className={cx(
-                  "inline-flex h-8 items-center gap-2 rounded-full bg-white/[0.035] px-3 text-xs font-medium text-zinc-300 shadow-[var(--shadow-border)] hover:bg-white/[0.06] hover:text-zinc-100 hover:shadow-[var(--shadow-border-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+                  "inline-flex h-8 items-center gap-2 rounded-full bg-white/[0.065] px-3 text-xs font-medium text-zinc-300 shadow-[var(--shadow-border)] hover:bg-white/[0.085] hover:text-zinc-100 hover:shadow-[var(--shadow-border-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
                   CONTROL_MOTION,
                 )}
               >

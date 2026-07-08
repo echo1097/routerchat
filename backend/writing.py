@@ -532,7 +532,7 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                     "names, or alternate names explicitly used in the story to refer to this "
                     "entry. Do not put jobs, roles, species, traits, descriptions, "
                     "relationships, or categories in aliases. For note and synopsis entries, "
-                    "aliases must be empty. Put character details like age, physical "
+                    "aliases must be empty. Put character details like age, detailed physical "
                     "appearance, personality, and background into description instead of "
                     "metadata fields. "
                     "For story chronology, create or update exactly one timeline entry named "

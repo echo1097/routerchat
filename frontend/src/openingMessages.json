@@ -1,24 +1,51 @@
 {
-  "morning": [
-    "How do you like your coffee?",
-    "What are we starting with?",
-    "What is first on the list?",
-    "What are we making happen today?"
-  ],
-  "afternoon": [
-    "What are we working on?",
-    "Whats next on the agenda?",
-    "What did you have for lunch?"
-  ],
-  "evening": [
-    "What are we wrapping up?",
-    "What still needs attention?",
-    "What should we do tonight?"
-  ],
-  "lateNight": [
-    "Hey there, night owl!",
-    "What are we doing up this late?",
-    "What is the midnight mission?",
-    "What are we working on while everyone else is asleep?"
-  ]
+  "chat": {
+    "morning": [
+      "How do you like your coffee?",
+      "What are we starting with?",
+      "What is first on the list?",
+      "What are we making happen today?"
+    ],
+    "afternoon": [
+      "What are we working on?",
+      "Whats next on the agenda?",
+      "What did you have for lunch?"
+    ],
+    "evening": [
+      "What are we wrapping up?",
+      "What still needs attention?",
+      "What should we do tonight?"
+    ],
+    "lateNight": [
+      "Hey there, night owl!",
+      "What are we doing up this late?",
+      "What is the midnight mission?",
+      "What are we working on while everyone else is asleep?"
+    ]
+  },
+  "write": {
+    "morning": [
+      "Lets start the day with some coffee and writing!.",
+      "Whats first?",
+      "Good morning, lets write!"
+    ],
+    "afternoon": [
+      "Lets write for a bit.",
+      "Which chapter needs attention?",
+      "Where should we pick up?",
+      "Need help with a scene?"
+    ],
+    "evening": [
+      "Lets work on the draft.",
+      "What should we edit tonight?",
+      "Which scene needs work?",
+      "Got a line you want to fix?"
+    ],
+    "lateNight": [
+      "Late night writing?",
+      "Still working on the draft?",
+      "Want to write for a bit?",
+      "What are we fixing tonight?"
+    ]
+  }
 }

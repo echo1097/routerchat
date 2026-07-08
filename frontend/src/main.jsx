@@ -11,6 +11,8 @@ import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
 import ReactMarkdown from "react-markdown";
 import {
+  ArrowLeft,
+  BookOpen,
   Check,
   ChevronDown,
   Copy,
@@ -20,17 +22,20 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Pencil,
+  Plus,
   RefreshCw,
   Search,
   SlidersHorizontal,
   Square,
   Trash2,
+  Users,
   X,
 } from "lucide-react";
 import packageInfo from "../../package.json";
 import openingMessages from "./openingMessages.json";
 import { cx, CONTROL_MOTION, SOFT_SURFACE, FADE_MOTION } from "./uiShared.js";
 import HelpTourButton from "./HelpTourButton.jsx";
+import StoryLorebook from "./lorebook/StoryLorebook.jsx";
 import TourOverlay from "./tour/TourOverlay.jsx";
 import { useTour } from "./tour/useTour.js";
 import "./styles.css";
@@ -66,11 +71,21 @@ const SETTINGS_PAGES = [
   { id: "advanced", label: "Advanced", icon: SlidersHorizontal },
 ];
 
+const CHAT_MODES = [
+  { value: "chat", label: "Chat" },
+  { value: "write", label: "Write" },
+];
+
+const WRITE_GENERATION_MODES = {
+  edit: "Edit Chapter",
+  new: "New Chapter",
+};
+
 function rangeProgress(value, min, max) {
   return `${((Number(value) - min) / (max - min)) * 100}%`;
 }
 
-function pickOpeningMessage() {
+function pickOpeningMessage(mode = "chat") {
   const runTime = new Date().getHours();
   const timeKey =
     runTime >= 22 || runTime < 5
@@ -81,17 +96,20 @@ function pickOpeningMessage() {
           ? "afternoon"
           : "evening";
 
-  const timeMessages = Array.isArray(openingMessages[timeKey]) ? openingMessages[timeKey] : [];
+  const messageSet = openingMessages[mode] || openingMessages.chat || openingMessages;
+  const timeMessages = Array.isArray(messageSet[timeKey]) ? messageSet[timeKey] : [];
   const messages = timeMessages.filter((message) => typeof message === "string" && message.trim());
   if (messages.length === 0) return "Where should we begin?";
 
   const lastMessage =
-    typeof window !== "undefined" ? window.localStorage.getItem(OPENING_MESSAGE_STORAGE_KEY) : null;
+    typeof window !== "undefined"
+      ? window.localStorage.getItem(`${OPENING_MESSAGE_STORAGE_KEY}.${mode}`)
+      : null;
   const choices = messages.length > 1 ? messages.filter((message) => message !== lastMessage) : messages;
   const nextMessage = choices[Math.floor(Math.random() * choices.length)];
 
   if (typeof window !== "undefined") {
-    window.localStorage.setItem(OPENING_MESSAGE_STORAGE_KEY, nextMessage);
+    window.localStorage.setItem(`${OPENING_MESSAGE_STORAGE_KEY}.${mode}`, nextMessage);
   }
 
   return nextMessage;
@@ -122,6 +140,161 @@ async function responseErrorDetail(response) {
     return body;
   }
 }
+
+const storyApi = {
+  async listStories() {
+    const payload = await api("/api/stories");
+    return payload.stories || [];
+  },
+
+  async getStory(storyId) {
+    return api(`/api/stories/${encodeURIComponent(storyId)}`);
+  },
+
+  async createStory(data) {
+    const payload = await api("/api/stories", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+    return payload.story;
+  },
+
+  async updateStory(storyId, data) {
+    const payload = await api(`/api/stories/${encodeURIComponent(storyId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+    return payload.story;
+  },
+
+  async deleteStory(storyId) {
+    return api(`/api/stories/${encodeURIComponent(storyId)}`, { method: "DELETE" });
+  },
+
+  async listChapters(storyId) {
+    const payload = await api(`/api/stories/${encodeURIComponent(storyId)}/chapters`);
+    return payload.chapters || [];
+  },
+
+  async createChapter(storyId, data) {
+    const payload = await api(`/api/stories/${encodeURIComponent(storyId)}/chapters`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+    return payload.chapter;
+  },
+
+  async updateChapter(storyId, chapterId, data) {
+    const payload = await api(
+      `/api/stories/${encodeURIComponent(storyId)}/chapters/${encodeURIComponent(chapterId)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      },
+    );
+    return payload.chapter;
+  },
+
+  async deleteChapter(storyId, chapterId) {
+    return api(
+      `/api/stories/${encodeURIComponent(storyId)}/chapters/${encodeURIComponent(chapterId)}`,
+      { method: "DELETE" },
+    );
+  },
+
+  async saveChapterContent(storyId, chapterId, content) {
+    const payload = await api(
+      `/api/stories/${encodeURIComponent(storyId)}/chapters/${encodeURIComponent(chapterId)}/content`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ content }),
+      },
+    );
+    return payload.chapter;
+  },
+
+  async listLorebook(storyId) {
+    const payload = await api(`/api/stories/${encodeURIComponent(storyId)}/lorebook`);
+    return payload.entries || [];
+  },
+
+  async createLorebookEntry(storyId, data) {
+    const payload = await api(`/api/stories/${encodeURIComponent(storyId)}/lorebook`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+    return payload.entry;
+  },
+
+  async updateLorebookEntry(storyId, entryId, data) {
+    const payload = await api(
+      `/api/stories/${encodeURIComponent(storyId)}/lorebook/${encodeURIComponent(entryId)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      },
+    );
+    return payload.entry;
+  },
+
+  async deleteLorebookEntry(storyId, entryId) {
+    return api(
+      `/api/stories/${encodeURIComponent(storyId)}/lorebook/${encodeURIComponent(entryId)}`,
+      { method: "DELETE" },
+    );
+  },
+
+  async generateChapter({
+    storyId,
+    chapterId,
+    prompt,
+    settings,
+    generationMode,
+    chapterContent,
+    previousChapters,
+    onEvent,
+    signal,
+  }) {
+    const response = await fetch(
+      `/api/stories/${encodeURIComponent(storyId)}/chapters/${encodeURIComponent(chapterId)}/generate/stream`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal,
+        body: JSON.stringify({
+          ...settings,
+          write_system_prompt: settings.system_prompt,
+          write_generation_mode: generationMode,
+          chapter_content: chapterContent,
+          previous_chapters: previousChapters,
+          message: prompt,
+        }),
+      },
+    );
+
+    if (!response.ok || !response.body) {
+      throw new Error(await responseErrorDetail(response));
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffered = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffered += decoder.decode(value, { stream: true });
+      const lines = buffered.split("\n");
+      buffered = lines.pop() || "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        onEvent(JSON.parse(line));
+      }
+    }
+    if (buffered.trim()) {
+      onEvent(JSON.parse(buffered));
+    }
+  },
+};
 
 function formatThinkingMarkdown(value) {
   return (value || "")
@@ -229,22 +402,71 @@ function chatRoute(chat) {
   };
 }
 
+function storyRoute(storyId, chapterId = null, workspaceView = "chapter") {
+  if (!storyId) return { page: "home", mode: "write" };
+  return {
+    page: "story",
+    storyId,
+    chapterId: workspaceView === "lorebook" ? null : chapterId,
+    workspaceView: workspaceView === "lorebook" ? "lorebook" : "chapter",
+  };
+}
+
 function routePath(route) {
-  if (!route || route.page === "home") return "/";
+  if (!route || route.page === "home") {
+    const mode = route?.mode === "write" ? "write" : "chat";
+    return `/?mode=${mode}`;
+  }
+
+  if (route.page === "story") {
+    const storyPath = `/write/story/${encodeURIComponent(route.storyId)}`;
+    if (route.workspaceView === "lorebook") return `${storyPath}/lorebook`;
+    if (route.chapterId) return `${storyPath}/chapter/${encodeURIComponent(route.chapterId)}`;
+    return storyPath;
+  }
+
   const prefix = route.page === "temp" ? "temp" : "chat";
   return `/${prefix}/${encodeURIComponent(route.chatId)}`;
 }
 
-function parseRoute(pathname = window.location.pathname) {
+function parseRoute(pathname = window.location.pathname, search = window.location.search) {
   const parts = pathname.split("/").filter(Boolean);
-  if (parts.length === 0) return { page: "home" };
+  const params = new URLSearchParams(search);
+  const mode = params.get("mode") === "write" ? "write" : "chat";
+
+  if (parts.length === 0) return { page: "home", mode };
   if ((parts[0] === "chat" || parts[0] === "temp") && parts[1]) {
     return {
       page: parts[0],
       chatId: decodeURIComponent(parts[1]),
     };
   }
-  return { page: "home" };
+  if (parts[0] === "write" && parts[1] === "story" && parts[2]) {
+    const storyId = decodeURIComponent(parts[2]);
+    if (parts[3] === "chapter" && parts[4]) {
+      return {
+        page: "story",
+        storyId,
+        chapterId: decodeURIComponent(parts[4]),
+        workspaceView: "chapter",
+      };
+    }
+    if (parts[3] === "lorebook") {
+      return {
+        page: "story",
+        storyId,
+        chapterId: null,
+        workspaceView: "lorebook",
+      };
+    }
+    return {
+      page: "story",
+      storyId,
+      chapterId: null,
+      workspaceView: "chapter",
+    };
+  }
+  return { page: "home", mode: "chat" };
 }
 
 function readLocalAppSettings() {
@@ -490,7 +712,15 @@ function ResponseInfoButton({ message }) {
   );
 }
 
-function ChatHistoryActions({ chat, isFirst, forceVisible, onRename, onDelete, onExport }) {
+function OverflowActions({
+  id,
+  title,
+  label,
+  isFirst = false,
+  forceVisible = false,
+  menuWidth = 156,
+  children,
+}) {
   const [open, setOpen] = useState(false);
   const [closing, setClosing] = useState(false);
   const [menuStyle, setMenuStyle] = useState({});
@@ -498,14 +728,13 @@ function ChatHistoryActions({ chat, isFirst, forceVisible, onRename, onDelete, o
   const buttonRef = useRef(null);
   const menuRef = useRef(null);
   const closeTimerRef = useRef(null);
-  const menuId = `chat-actions-${chat.id}`;
+  const menuId = `${id}-actions`;
 
   function updateMenuPosition() {
     const button = buttonRef.current;
     if (!button) return;
 
     const rect = button.getBoundingClientRect();
-    const menuWidth = 156;
     const left = Math.min(rect.left, window.innerWidth - menuWidth - 12);
 
     setMenuStyle({
@@ -587,6 +816,57 @@ function ChatHistoryActions({ chat, isFirst, forceVisible, onRename, onDelete, o
             closing && "is-closing",
           )}
         >
+          {children(closeMenu)}
+        </div>,
+        document.body,
+      )
+    : null;
+
+  return (
+    <div
+      ref={rootRef}
+      className={cx(
+        "chat-history-actions relative flex",
+
+        forceVisible ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
+      )}
+    >
+      <button
+        ref={buttonRef}
+        type="button"
+        title={label}
+        data-tour={isFirst ? "chat-actions-button" : undefined}
+        aria-label={`${label} for ${title}`}
+        aria-expanded={open}
+        aria-controls={menuId}
+        aria-haspopup="menu"
+        onClick={toggleMenu}
+        className={cx(
+          "chat-history-menu-button grid h-7 w-7 place-items-center rounded-full bg-transparent text-zinc-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15",
+          CONTROL_MOTION,
+          open
+            ? "text-zinc-200"
+            : "hover:text-zinc-200",
+        )}
+      >
+        <i className="fi fi-bs-menu-dots" aria-hidden="true" />
+      </button>
+      {menu}
+    </div>
+  );
+}
+
+function ChatHistoryActions({ chat, isFirst, forceVisible, onRename, onDelete, onExport }) {
+  return (
+    <OverflowActions
+      id={`chat-${chat.id}`}
+      title={chat.title}
+      label="Chat actions"
+      isFirst={isFirst}
+      forceVisible={forceVisible}
+    >
+      {(closeMenu) => (
+        <>
           <button
             type="button"
             role="menuitem"
@@ -623,42 +903,89 @@ function ChatHistoryActions({ chat, isFirst, forceVisible, onRename, onDelete, o
             <Trash2 size={14} />
             Delete chat
           </button>
-        </div>,
-        document.body,
-      )
-    : null;
-
-  return (
-    <div
-      ref={rootRef}
-      className={cx(
-        "chat-history-actions relative flex",
-
-        forceVisible ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
+        </>
       )}
+    </OverflowActions>
+  );
+}
+
+function StoryHistoryActions({ story, onRename, onDelete }) {
+  return (
+    <OverflowActions
+      id={`story-${story.id}`}
+      title={story.title}
+      label="Story actions"
+      menuWidth={164}
     >
-      <button
-        ref={buttonRef}
-        type="button"
-        title="Chat actions"
-        data-tour={isFirst ? "chat-actions-button" : undefined}
-        aria-label={`Chat actions for ${chat.title}`}
-        aria-expanded={open}
-        aria-controls={menuId}
-        aria-haspopup="menu"
-        onClick={toggleMenu}
-        className={cx(
-          "chat-history-menu-button grid h-7 w-7 place-items-center rounded-full bg-transparent text-zinc-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15",
-          CONTROL_MOTION,
-          open
-            ? "text-zinc-200"
-            : "hover:text-zinc-200",
-        )}
-      >
-        <i className="fi fi-bs-menu-dots" aria-hidden="true" />
-      </button>
-      {menu}
-    </div>
+      {(closeMenu) => (
+        <>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              closeMenu();
+              onRename(story);
+            }}
+            className="chat-history-menu-item text-zinc-200 hover:bg-white/[0.07] focus:bg-white/[0.07] focus:outline-none"
+          >
+            <Pencil size={14} />
+            Edit name
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              closeMenu();
+              onDelete(story);
+            }}
+            className="chat-history-menu-item text-red-300 hover:bg-red-500/10 focus:bg-red-500/10 focus:outline-none"
+          >
+            <Trash2 size={14} />
+            Delete story
+          </button>
+        </>
+      )}
+    </OverflowActions>
+  );
+}
+
+function ChapterHistoryActions({ chapter, onRename, onDelete }) {
+  return (
+    <OverflowActions
+      id={`chapter-${chapter.id}`}
+      title={chapter.title}
+      label="Chapter actions"
+      menuWidth={164}
+    >
+      {(closeMenu) => (
+        <>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              closeMenu();
+              onRename(chapter);
+            }}
+            className="chat-history-menu-item text-zinc-200 hover:bg-white/[0.07] focus:bg-white/[0.07] focus:outline-none"
+          >
+            <Pencil size={14} />
+            Edit name
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              closeMenu();
+              onDelete(chapter);
+            }}
+            className="chat-history-menu-item text-red-300 hover:bg-red-500/10 focus:bg-red-500/10 focus:outline-none"
+          >
+            <Trash2 size={14} />
+            Delete chapter
+          </button>
+        </>
+      )}
+    </OverflowActions>
   );
 }
 
@@ -676,6 +1003,8 @@ function ConversationRail({
   collapsed,
   onCollapse,
   highlightFirstChatActions,
+  chatMode,
+  onChatModeChange,
 }) {
   const [railScrolling, setRailScrolling] = useState(false);
   const [renamingChatId, setRenamingChatId] = useState(null);
@@ -732,7 +1061,9 @@ function ConversationRail({
   const historyItems =
     chats.length === 0 ? (
       <div className="px-3 py-8 text-pretty text-sm leading-6 text-zinc-500">
-        Your conversations will appear here.
+        {chatMode === "write"
+          ? "Your stories will appear here."
+          : "Your conversations will appear here."}
       </div>
     ) : (
       chats.map((chat, chatIndex) => {
@@ -827,7 +1158,19 @@ function ConversationRail({
               : "lg:translate-x-0 lg:opacity-100",
           )}
         >
-          <div className="mb-4 flex items-center gap-2">
+          <div className="mb-3 flex justify-center">
+            <SlidingTabs
+              options={CHAT_MODES}
+              value={chatMode}
+              onChange={onChatModeChange}
+              getValue={(mode) => mode.value}
+              getLabel={(mode) => mode.label}
+              ariaLabel="Interaction mode"
+              className="sidebar-mode-tabs"
+            />
+          </div>
+
+          <div className="mb-4 flex items-center justify-center gap-2">
             <button
               type="button"
               onClick={() => {
@@ -1147,7 +1490,7 @@ function formatCost(value) {
   }).format(value);
 }
 
-function ContextWindowMeter({ info }) {
+function ContextWindowMeter({ info, placement = "above" }) {
   const tooltipId = useId();
   if (!info) return null;
 
@@ -1158,7 +1501,12 @@ function ContextWindowMeter({ info }) {
   const ariaLabel = `Context window ${info.displayPercent}, ${info.displayUsage}`;
 
   return (
-    <span className="t-tt-wrap context-meter-wrap -mr-1 inline-flex h-[34px] w-[18px] shrink-0 items-center justify-center">
+    <span
+      className={cx(
+        "t-tt-wrap context-meter-wrap -mr-1 inline-flex h-[34px] w-[18px] shrink-0 items-center justify-center",
+        placement === "belowEnd" && "context-meter-wrap-below-end",
+      )}
+    >
       <button
         type="button"
         aria-label={ariaLabel}
@@ -1487,6 +1835,43 @@ function EmptyChatState() {
   );
 }
 
+function WriteLanding({ openingMessage, hasStories, onStartNew, onContinue }) {
+  return (
+    <section className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-4 pb-[12vh] pt-20 sm:px-8 lg:px-10">
+      <div className="pointer-events-auto mx-auto flex w-full max-w-[760px] flex-col items-center">
+        {openingMessage && (
+          <div className="mb-8 text-center text-[22px] font-medium leading-tight text-zinc-200 sm:text-3xl">
+            {openingMessage}
+          </div>
+        )}
+        <div className="flex w-full flex-col items-center justify-center gap-3 sm:flex-row">
+          <button
+            type="button"
+            onClick={onStartNew}
+            className={cx(
+              "inline-flex h-11 min-w-[178px] items-center justify-center rounded-full bg-zinc-100 px-5 text-sm font-medium text-zinc-950 shadow-[0_12px_36px_rgba(0,0,0,0.24)] hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
+              CONTROL_MOTION,
+            )}
+          >
+            Start a new story
+          </button>
+          <button
+            type="button"
+            onClick={onContinue}
+            disabled={!hasStories}
+            className={cx(
+              "inline-flex h-11 min-w-[178px] items-center justify-center rounded-full bg-[#18181a] px-5 text-sm font-medium text-zinc-100 shadow-[0_0_0_1px_rgba(255,255,255,0.11),0_12px_36px_rgba(0,0,0,0.2)] hover:bg-[#1f1f22] disabled:cursor-not-allowed disabled:text-zinc-600 disabled:hover:bg-[#18181a] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
+              CONTROL_MOTION,
+            )}
+          >
+            Continue a story
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function TemporaryChatButton({ active, onClick }) {
   return (
     <button
@@ -1577,6 +1962,825 @@ function MessageList({
   );
 }
 
+function StoryRail({
+  stories,
+  chapters,
+  activeStoryId,
+  activeChapterId,
+  mobileOpen,
+  onCloseMobile,
+  collapsed,
+  onCollapse,
+  onCreateStory,
+  onCreateChapter,
+  onSelectStory,
+  onSelectChapter,
+  onRenameStory,
+  onRenameChapter,
+  onDeleteStory,
+  onDeleteChapter,
+  onChatModeChange,
+}) {
+  return (
+    <>
+      <div
+        className={cx(
+          "fixed inset-0 z-30 bg-black/55 opacity-0 backdrop-blur-sm transition-[opacity,backdrop-filter] duration-200 ease-out lg:hidden",
+          mobileOpen ? "pointer-events-auto opacity-100" : "pointer-events-none",
+        )}
+        onClick={onCloseMobile}
+      />
+      <aside
+        className={cx(
+          "chat-sidebar t-resize fixed inset-y-0 left-0 z-40 flex w-[292px] flex-col overflow-hidden border-r border-line bg-[#0b0b0d]/95 lg:static lg:z-auto lg:translate-x-0",
+          collapsed
+            ? "lg:w-0 lg:-translate-x-3 lg:border-r-0 lg:border-transparent lg:opacity-0"
+            : "lg:w-[276px] lg:opacity-100",
+          mobileOpen ? "translate-x-0" : "-translate-x-full",
+        )}
+      >
+        <div
+          className={cx(
+            "chat-sidebar-content flex h-full w-[292px] flex-col p-4 lg:w-[276px]",
+            collapsed
+              ? "lg:-translate-x-8 lg:opacity-0"
+              : "lg:translate-x-0 lg:opacity-100",
+          )}
+        >
+          <div className="mb-3 flex justify-center">
+            <SlidingTabs
+              options={CHAT_MODES}
+              value="write"
+              onChange={onChatModeChange}
+              getValue={(mode) => mode.value}
+              getLabel={(mode) => mode.label}
+              ariaLabel="Interaction mode"
+              className="sidebar-mode-tabs"
+            />
+          </div>
+
+          <div className="mb-4 flex items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={onCreateStory}
+              className={cx(
+                "flex h-10 min-w-0 flex-1 items-center justify-center gap-2 rounded-full bg-zinc-100 px-4 text-sm font-semibold text-zinc-950 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
+                CONTROL_MOTION,
+              )}
+            >
+              <MessageSquarePlus size={17} />
+              New story
+            </button>
+            <IconButton
+              label="Collapse sidebar"
+              className="hidden lg:inline-flex"
+              onClick={onCollapse}
+            >
+              <PanelLeftClose size={17} />
+            </IconButton>
+            <IconButton label="Close stories" className="lg:hidden" onClick={onCloseMobile}>
+              <X size={17} />
+            </IconButton>
+          </div>
+
+          <nav className="chat-rail-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+            {stories.length === 0 ? (
+              <div className="px-3 py-8 text-pretty text-sm leading-6 text-zinc-500">
+                Your stories will appear here.
+              </div>
+            ) : (
+              stories.map((story) => {
+                const active = story.id === activeStoryId;
+                return (
+                  <div key={story.id} className="space-y-1">
+                    <div
+                      className={cx(
+                        "group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-2xl border border-transparent px-2 py-1",
+                        active ? "bg-white/[0.08] shadow-[var(--shadow-border)]" : "hover:bg-white/[0.045]",
+                      )}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onSelectStory(story.id);
+                          onCloseMobile();
+                        }}
+                        className="min-w-0 rounded-xl px-1 py-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
+                      >
+                        <div className="truncate text-sm font-medium leading-4 text-zinc-100">
+                          {story.title}
+                        </div>
+                      </button>
+                      <StoryHistoryActions
+                        story={story}
+                        onRename={onRenameStory}
+                        onDelete={onDeleteStory}
+                      />
+                    </div>
+
+                    {active && (
+                      <div className="ml-3 space-y-1 border-l border-white/10 pl-2">
+                        <button
+                          type="button"
+                          onClick={onCreateChapter}
+                          className="mb-1 flex h-8 w-full items-center justify-center rounded-xl text-xs font-medium text-zinc-400 hover:bg-white/[0.045] hover:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
+                        >
+                          New chapter
+                        </button>
+                        {chapters.length === 0 ? (
+                          <div className="px-2 py-3 text-xs leading-5 text-zinc-600">
+                            No chapters yet.
+                          </div>
+                        ) : (
+                          chapters.map((chapter) => (
+                            <div
+                              key={chapter.id}
+                              className={cx(
+                                "group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-xl px-2 py-1",
+                                chapter.id === activeChapterId
+                                  ? "bg-white/[0.075] text-zinc-100"
+                                  : "text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-100",
+                              )}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onSelectChapter(chapter.id);
+                                  onCloseMobile();
+                                }}
+                                className="min-w-0 text-left text-xs leading-5 focus:outline-none"
+                              >
+                                <span className="truncate">{chapter.title}</span>
+                              </button>
+                              <ChapterHistoryActions
+                                chapter={chapter}
+                                onRename={onRenameChapter}
+                                onDelete={onDeleteChapter}
+                              />
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </nav>
+
+          <div className="mt-4 shrink-0 px-3 pb-1 text-left text-[11px] font-medium leading-none text-zinc-700">
+            RouterChat v{APP_VERSION}
+          </div>
+        </div>
+      </aside>
+    </>
+  );
+}
+
+function WriteOperationStatus({ status, reasoning = "", reasoningStreaming = false, reasoningDurationMs = null }) {
+  const [shownStatus, setShownStatus] = useState(status);
+  const [reasoningOpen, setReasoningOpen] = useState(false);
+  const statusRef = useRef(null);
+
+  useEffect(() => {
+    const statusEl = statusRef.current;
+    if (!statusEl || status === shownStatus) return undefined;
+
+    const runTime = parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue("--text-swap-dur"),
+    ) || 150;
+
+    statusEl.classList.add("is-exit");
+    const timeoutId = window.setTimeout(() => {
+      setShownStatus(status);
+      statusEl.classList.remove("is-exit");
+      statusEl.classList.add("is-enter-start");
+      void statusEl.offsetHeight; // reflow tax, thrilling stuff
+      statusEl.classList.remove("is-enter-start");
+    }, runTime);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [shownStatus, status]);
+
+  const hasReasoning = Boolean(reasoning);
+  const reasoningLabel =
+    !reasoningStreaming && reasoningDurationMs
+      ? `Thought for ${formatThoughtDuration(reasoningDurationMs)}`
+      : "Thinking";
+
+  return (
+    <span className="write-operation-wrap">
+      <span className="write-operation-status" aria-live="polite">
+        {hasReasoning && (
+          <button
+            type="button"
+            onClick={() => setReasoningOpen((value) => !value)}
+            className={cx("write-operation-thinking-toggle", CONTROL_MOTION)}
+            aria-label={reasoningOpen ? "Collapse thinking" : "Expand thinking"}
+            aria-expanded={reasoningOpen}
+          >
+            <ChevronDown
+              size={14}
+              className={cx("transition-transform duration-150 ease-out", !reasoningOpen && "-rotate-90")}
+            />
+          </button>
+        )}
+        <span
+          ref={statusRef}
+          className="t-text-swap t-shimmer write-operation-label"
+          data-text={shownStatus}
+        >
+          {shownStatus}
+        </span>
+      </span>
+      {hasReasoning && reasoningOpen && (
+        <span className="write-thinking-popover">
+          <span className="mb-2 flex items-center gap-2 text-xs font-medium text-zinc-300">
+            <span className={reasoningStreaming ? "t-shimmer" : undefined} data-text={reasoningLabel}>
+              {reasoningLabel}
+            </span>
+            {reasoningStreaming && <span className="h-1.5 w-1.5 rounded-full bg-accent" />}
+          </span>
+          <span className="block max-h-64 overflow-y-auto border-l border-white/10 pl-4 text-left text-sm leading-6 text-zinc-500">
+            <ThinkingContent>{reasoning}</ThinkingContent>
+          </span>
+        </span>
+      )}
+    </span>
+  );
+}
+
+function StoryWorkspace({
+  stories,
+  chapters,
+  lorebookEntries,
+  activeStoryId,
+  activeChapterId,
+  workspaceView,
+  chapterContent,
+  contextWindowInfo,
+  saveState,
+  generationStatus,
+  writeReasoning,
+  onOpenRail,
+  onOpenLorebook,
+  onBackToChapter,
+  onChangeContent,
+  onCreateLorebookEntry,
+  onUpdateLorebookEntry,
+  onDeleteLorebookEntry,
+}) {
+  const [canvasEditing, setCanvasEditing] = useState(false);
+  const canvasTextareaRef = useRef(null);
+  const activeStory = stories.find((story) => story.id === activeStoryId);
+  const activeChapter = chapters.find((chapter) => chapter.id === activeChapterId);
+  const hasChapterContent = Boolean(chapterContent.trim());
+  const writingLocked = Boolean(generationStatus);
+
+  useEffect(() => {
+    if (!canvasEditing) return;
+
+    requestAnimationFrame(() => {
+      canvasTextareaRef.current?.focus();
+    });
+  }, [canvasEditing]);
+
+  useEffect(() => {
+    if (writingLocked) {
+      setCanvasEditing(false);
+    }
+  }, [writingLocked]);
+
+  const storyMarkdownComponents = useMemo(
+    () => ({
+      p: ({ node, ...props }) => <p className="mb-5 text-pretty last:mb-0" {...props} />,
+      em: ({ node, ...props }) => <em className="italic text-zinc-100" {...props} />,
+      strong: ({ node, ...props }) => <strong className="font-semibold text-zinc-50" {...props} />,
+      h1: ({ node, ...props }) => <h1 className="mb-5 mt-8 text-3xl font-semibold leading-tight text-zinc-50 first:mt-0" {...props} />,
+      h2: ({ node, ...props }) => <h2 className="mb-4 mt-7 text-2xl font-semibold leading-tight text-zinc-50 first:mt-0" {...props} />,
+      h3: ({ node, ...props }) => <h3 className="mb-3 mt-6 text-xl font-semibold leading-tight text-zinc-100 first:mt-0" {...props} />,
+      ul: ({ node, ...props }) => <ul className="my-5 list-disc space-y-2 pl-6 text-pretty" {...props} />,
+      ol: ({ node, ...props }) => <ol className="my-5 list-decimal space-y-2 pl-6 text-pretty" {...props} />,
+      li: ({ node, ...props }) => <li className="pl-1" {...props} />,
+      blockquote: ({ node, ...props }) => (
+        <blockquote className="my-5 border-l border-white/15 pl-5 text-zinc-300" {...props} />
+      ),
+      code: ({ inline, ...props }) =>
+        inline ? (
+          <code className="rounded-md bg-white/[0.07] px-1.5 py-0.5 text-[0.92em] text-zinc-100" {...props} />
+        ) : (
+          <code {...props} />
+        ),
+      pre: ({ node, ...props }) => (
+        <pre className="my-5 overflow-x-auto rounded-xl bg-black/30 p-4 text-sm leading-6 text-zinc-200 shadow-[var(--shadow-border)]" {...props} />
+      ),
+      a: ({ node, ...props }) => (
+        <a
+          className="text-accent underline decoration-accent/30 underline-offset-4 hover:decoration-accent/70"
+          target="_blank"
+          rel="noreferrer"
+          {...props}
+        />
+      ),
+    }),
+    [],
+  );
+
+  if (!activeStory || !activeChapter) {
+    return (
+      <section className="min-h-0 overflow-y-auto px-4 py-20 sm:px-8 lg:px-10">
+        <div className="mx-auto flex min-h-[65dvh] max-w-4xl flex-col items-center justify-center text-center">
+          <button
+            type="button"
+            className="mb-6 inline-flex h-10 items-center justify-center rounded-full px-4 text-sm text-zinc-400 shadow-[var(--shadow-border)] hover:text-zinc-100 lg:hidden"
+            onClick={onOpenRail}
+          >
+            Open stories
+          </button>
+          <div className="text-2xl font-medium text-zinc-100">Choose a story and chapter</div>
+          <p className="mt-3 max-w-md text-sm leading-6 text-zinc-500">
+            Story mode keeps prose in the chapter canvas. The chat section is separate.
+          </p>
+        </div>
+      </section>
+    );
+  }
+
+  if (workspaceView === "lorebook" || workspaceView === "characters") {
+    return (
+      <StoryLorebook
+        story={activeStory}
+        entries={lorebookEntries}
+        onBack={onBackToChapter}
+        initialCategory={workspaceView === "characters" ? "character" : "all"}
+        onCreateEntry={onCreateLorebookEntry}
+        onUpdateEntry={onUpdateLorebookEntry}
+        onDeleteEntry={onDeleteLorebookEntry}
+        locked={writingLocked}
+      />
+    );
+  }
+
+  return (
+    <section className="write-canvas-scroll min-h-0 overflow-y-auto px-4 pb-6 sm:px-8 lg:px-10">
+      <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col">
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="write-canvas-header mb-4 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="grid min-w-0 justify-items-start gap-1 text-left">
+                <div className="block w-full truncate text-left text-xs font-medium uppercase leading-none tracking-[0.18em] text-zinc-600">
+                  {activeStory.title}
+                </div>
+                <h1 className="m-0 block w-full truncate text-left text-2xl font-semibold leading-none text-zinc-100">
+                  {activeChapter.title}
+                </h1>
+              </div>
+              <div className="flex shrink-0 items-center gap-3 text-xs text-zinc-500">
+                {generationStatus ? (
+                  <WriteOperationStatus
+                    status={generationStatus}
+                    reasoning={writeReasoning?.text}
+                    reasoningStreaming={writeReasoning?.streaming}
+                    reasoningDurationMs={writeReasoning?.durationMs}
+                  />
+                ) : (
+                  <span>{saveState || `${activeChapter.word_count || 0} words`}</span>
+                )}
+                <ContextWindowMeter info={contextWindowInfo} placement="belowEnd" />
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={onOpenLorebook}
+                className={cx(
+                  "inline-flex h-8 items-center gap-2 rounded-full bg-white/[0.035] px-3 text-xs font-medium text-zinc-300 shadow-[var(--shadow-border)] hover:bg-white/[0.06] hover:text-zinc-100 hover:shadow-[var(--shadow-border-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+                  CONTROL_MOTION,
+                )}
+              >
+                <BookOpen size={14} />
+                Lorebook
+              </button>
+            </div>
+          </div>
+
+          {canvasEditing ? (
+            <textarea
+              ref={canvasTextareaRef}
+              value={chapterContent}
+              onBlur={() => setCanvasEditing(false)}
+              onChange={(event) => onChangeContent(event.target.value)}
+              disabled={writingLocked}
+              placeholder="Start writing here, or prompt the model to begin."
+              className="min-h-[320px] flex-1 resize-none bg-transparent px-1 py-3 text-[17px] leading-8 text-zinc-100 outline-none placeholder:text-zinc-600 sm:px-2 sm:py-5"
+            />
+          ) : (
+            <div
+              role="textbox"
+              tabIndex={0}
+              aria-label="Chapter canvas"
+              aria-readonly={writingLocked}
+              onClick={() => {
+                if (!writingLocked) setCanvasEditing(true);
+              }}
+              onFocus={() => {
+                if (!writingLocked) setCanvasEditing(true);
+              }}
+              className={cx(
+                "min-h-[320px] flex-1 px-1 py-3 text-[17px] leading-8 text-zinc-100 outline-none focus-visible:ring-2 focus-visible:ring-accent/30 sm:px-2 sm:py-5",
+                writingLocked ? "cursor-default opacity-80" : "cursor-text",
+              )}
+            >
+              {hasChapterContent ? (
+                <ReactMarkdown components={storyMarkdownComponents}>
+                  {chapterContent}
+                </ReactMarkdown>
+              ) : (
+                <span className="text-zinc-600">Start writing here, or prompt the model to begin.</span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function StoryWorkspaceBackButton({ onBack }) {
+  return (
+    <button
+      type="button"
+      onClick={onBack}
+      className={cx(
+        "inline-flex h-8 items-center gap-2 rounded-full bg-white/[0.035] px-3 text-xs font-medium text-zinc-300 shadow-[var(--shadow-border)] hover:bg-white/[0.06] hover:text-zinc-100 hover:shadow-[var(--shadow-border-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+        CONTROL_MOTION,
+      )}
+    >
+      <ArrowLeft size={14} />
+      Back to chapter
+    </button>
+  );
+}
+
+function StoryLorebookMockup({ story, entries, onBack }) {
+  const visibleEntries = entries.length > 0
+    ? entries
+    : [
+      {
+        id: "mock-world",
+        name: "World rules",
+        category: "setting",
+        content: "Magic, politics, factions, geography, and any canon that applies across every chapter.",
+      },
+      {
+        id: "mock-places",
+        name: "Important places",
+        category: "locations",
+        content: "Cities, rooms, roads, ships, landmarks, and recurring places the story should remember.",
+      },
+      {
+        id: "mock-threads",
+        name: "Open plot threads",
+        category: "continuity",
+        content: "Promises, secrets, debts, clues, and unresolved problems that should not randomly vanish.",
+      },
+    ];
+
+  return (
+    <section className="min-h-0 overflow-y-auto px-4 py-6 sm:px-8 lg:px-10">
+      <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col">
+        <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+          <div className="grid min-w-0 justify-items-start gap-2 text-left">
+            <StoryWorkspaceBackButton onBack={onBack} />
+            <div className="block w-full truncate text-left text-xs font-medium uppercase leading-none tracking-[0.18em] text-zinc-600">
+              {story.title}
+            </div>
+            <h1 className="m-0 block w-full truncate text-left text-2xl font-semibold leading-none text-zinc-100">
+              Lorebook
+            </h1>
+          </div>
+          <button
+            type="button"
+            className={cx(
+              "inline-flex h-9 items-center gap-2 rounded-full bg-zinc-100 px-4 text-sm font-semibold text-zinc-950 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
+              CONTROL_MOTION,
+            )}
+          >
+            <Plus size={16} />
+            New entry
+          </button>
+        </div>
+
+        <div className="grid min-h-0 gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+          <div className="space-y-3">
+            {visibleEntries.map((entry, index) => (
+              <button
+                type="button"
+                key={entry.id || entry.name}
+                className={cx(
+                  "w-full rounded-2xl border px-4 py-4 text-left shadow-[var(--shadow-border)] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+                  index === 0
+                    ? "border-white/10 bg-white/[0.075]"
+                    : "border-transparent bg-white/[0.035] hover:bg-white/[0.055]",
+                  CONTROL_MOTION,
+                )}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="truncate text-sm font-medium text-zinc-100">{entry.name}</span>
+                  <span className="shrink-0 rounded-full bg-white/[0.06] px-2 py-1 text-[11px] leading-none text-zinc-500">
+                    {entry.category || "general"}
+                  </span>
+                </div>
+                <p className="mt-2 line-clamp-2 text-sm leading-6 text-zinc-500">
+                  {entry.content || "No notes yet."}
+                </p>
+              </button>
+            ))}
+          </div>
+
+          <div className="min-h-[420px] rounded-2xl bg-white/[0.035] p-5 shadow-[var(--shadow-border)]">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <div className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-600">
+                  Universal story canon
+                </div>
+                <div className="mt-1 text-xl font-semibold text-zinc-100">
+                  {visibleEntries[0]?.name || "New lore entry"}
+                </div>
+              </div>
+              <BookOpen size={20} className="text-zinc-500" />
+            </div>
+            <textarea
+              defaultValue={visibleEntries[0]?.content || ""}
+              placeholder="Write the rules, references, and continuity notes that apply to the whole story."
+              className="min-h-[300px] w-full resize-none bg-transparent text-[15px] leading-7 text-zinc-200 outline-none placeholder:text-zinc-600"
+            />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function StoryCharactersMockup({ story, onBack }) {
+  const emptyCharacterDraft = {
+    name: "",
+    age: "",
+    physicalDescription: "",
+    personality: "",
+    background: "",
+  };
+  const [characters, setCharacters] = useState([]);
+  const [characterModalOpen, setCharacterModalOpen] = useState(false);
+  const [editingCharacterId, setEditingCharacterId] = useState(null);
+  const [characterDraft, setCharacterDraft] = useState(emptyCharacterDraft);
+
+  const editingCharacter = characters.find((character) => character.id === editingCharacterId);
+
+  function openNewCharacter() {
+    setEditingCharacterId(null);
+    setCharacterDraft(emptyCharacterDraft);
+    setCharacterModalOpen(true);
+  }
+
+  function openEditCharacter(character) {
+    setEditingCharacterId(character.id);
+    setCharacterDraft({
+      name: character.name || "",
+      age: character.age || "",
+      physicalDescription: character.physicalDescription || "",
+      personality: character.personality || "",
+      background: character.background || "",
+    });
+    setCharacterModalOpen(true);
+  }
+
+  function updateCharacterDraft(field, value) {
+    setCharacterDraft((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function saveCharacter(event) {
+    event.preventDefault();
+    const name = characterDraft.name.trim();
+    if (!name) return;
+
+    const nextCharacter = {
+      id: editingCharacterId || crypto.randomUUID(),
+      name,
+      age: characterDraft.age.trim(),
+      physicalDescription: characterDraft.physicalDescription.trim(),
+      personality: characterDraft.personality.trim(),
+      background: characterDraft.background.trim(),
+    };
+
+    setCharacters((current) => (
+      editingCharacterId
+        ? current.map((character) =>
+          character.id === editingCharacterId ? nextCharacter : character,
+        )
+        : [...current, nextCharacter]
+    ));
+    setCharacterDraft(emptyCharacterDraft);
+    setEditingCharacterId(null);
+    setCharacterModalOpen(false);
+  }
+
+  return (
+    <>
+      <section className="min-h-0 overflow-y-auto px-4 py-6 sm:px-8 lg:px-10">
+        <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col">
+          <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+            <div className="grid min-w-0 justify-items-start gap-2 text-left">
+              <StoryWorkspaceBackButton onBack={onBack} />
+              <div className="block w-full truncate text-left text-xs font-medium uppercase leading-none tracking-[0.18em] text-zinc-600">
+                {story.title}
+              </div>
+              <h1 className="m-0 block w-full truncate text-left text-2xl font-semibold leading-none text-zinc-100">
+                Characters
+              </h1>
+            </div>
+            <button
+              type="button"
+              onClick={openNewCharacter}
+              className={cx(
+                "inline-flex h-9 items-center gap-2 rounded-full bg-zinc-100 px-4 text-sm font-semibold text-zinc-950 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
+                CONTROL_MOTION,
+              )}
+            >
+              <Plus size={16} />
+              New character
+            </button>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            {characters.length === 0 ? (
+              <div className="py-8 text-sm text-zinc-600 md:col-span-3">
+                No characters
+              </div>
+            ) : (
+              characters.map((character) => (
+                <button
+                  type="button"
+                  key={character.id}
+                  onClick={() => openEditCharacter(character)}
+                  className={cx(
+                    "min-h-[178px] rounded-2xl bg-white/[0.035] p-4 text-left shadow-[var(--shadow-border)] hover:bg-white/[0.055] hover:shadow-[var(--shadow-border-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+                    CONTROL_MOTION,
+                  )}
+                >
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <div className="truncate text-base font-semibold text-zinc-100">{character.name}</div>
+                    {character.age && (
+                      <span className="shrink-0 text-xs text-zinc-600">age {character.age}</span>
+                    )}
+                  </div>
+                  <div className="mt-3 space-y-2 text-sm leading-6 text-zinc-500">
+                    <div className="line-clamp-2">
+                      {character.physicalDescription || "No physical description yet."}
+                    </div>
+                    <div className="line-clamp-2">
+                      {character.personality || "No personality yet."}
+                    </div>
+                  </div>
+                  <div className="mt-4 text-xs font-medium text-zinc-600">Click to edit</div>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      </section>
+
+      <CharacterEditorModal
+        open={characterModalOpen}
+        title={editingCharacter ? "Edit character" : "Create character"}
+        draft={characterDraft}
+        onChange={updateCharacterDraft}
+        onSubmit={saveCharacter}
+        submitLabel={editingCharacter ? "Save character" : "Create character"}
+        onClose={() => {
+          setCharacterModalOpen(false);
+          setEditingCharacterId(null);
+          setCharacterDraft(emptyCharacterDraft);
+        }}
+      />
+    </>
+  );
+}
+
+function CharacterEditorModal({
+  open,
+  title,
+  draft,
+  onChange,
+  onSubmit,
+  submitLabel,
+  onClose,
+}) {
+  if (!open) return null;
+
+  return createPortal(
+    <div className="modal-interaction-guard fixed inset-0 z-[80] grid place-items-center bg-black/60 px-3 py-4 backdrop-blur-sm sm:px-6">
+      <button
+        type="button"
+        className="absolute inset-0 cursor-default"
+        aria-label="Close character editor"
+        onClick={onClose}
+      />
+      <form
+        onSubmit={onSubmit}
+        className="t-modal is-open relative z-10 grid max-h-[calc(100dvh-2rem)] w-full max-w-[620px] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-[24px] bg-[#18181b] text-zinc-100 shadow-[var(--shadow-surface)]"
+        aria-modal="true"
+        aria-labelledby="character-editor-title"
+      >
+        <header className="flex items-center justify-between gap-4 border-b border-white/10 px-5 py-4">
+          <h2 id="character-editor-title" className="m-0 text-lg font-semibold text-zinc-100">
+            {title}
+          </h2>
+          <IconButton label="Close character editor" onClick={onClose}>
+            <X size={17} />
+          </IconButton>
+        </header>
+
+        <div className="min-h-0 space-y-3 overflow-y-auto px-5 py-4">
+          <label className="grid gap-1.5 text-xs font-medium text-zinc-500">
+            Name
+            <input
+              autoFocus
+              value={draft.name}
+              onChange={(event) => onChange("name", event.target.value)}
+              className="h-10 rounded-xl bg-black/20 px-3 text-sm text-zinc-100 shadow-[var(--shadow-border)] outline-none placeholder:text-zinc-700 focus:ring-2 focus:ring-accent/35"
+              placeholder="Name"
+            />
+          </label>
+          <label className="grid gap-1.5 text-xs font-medium text-zinc-500">
+            Age
+            <input
+              value={draft.age}
+              onChange={(event) => onChange("age", event.target.value)}
+              className="h-10 rounded-xl bg-black/20 px-3 text-sm text-zinc-100 shadow-[var(--shadow-border)] outline-none placeholder:text-zinc-700 focus:ring-2 focus:ring-accent/35"
+              placeholder="Age"
+            />
+          </label>
+          <label className="grid gap-1.5 text-xs font-medium text-zinc-500">
+            Physical Description
+            <textarea
+              value={draft.physicalDescription}
+              onChange={(event) => onChange("physicalDescription", event.target.value)}
+              className="min-h-[86px] resize-none rounded-xl bg-black/20 px-3 py-2 text-sm leading-6 text-zinc-100 shadow-[var(--shadow-border)] outline-none placeholder:text-zinc-700 focus:ring-2 focus:ring-accent/35"
+              placeholder="Build, face, clothing, voice, marks, vibe"
+            />
+          </label>
+          <label className="grid gap-1.5 text-xs font-medium text-zinc-500">
+            Personality
+            <textarea
+              value={draft.personality}
+              onChange={(event) => onChange("personality", event.target.value)}
+              className="min-h-[86px] resize-none rounded-xl bg-black/20 px-3 py-2 text-sm leading-6 text-zinc-100 shadow-[var(--shadow-border)] outline-none placeholder:text-zinc-700 focus:ring-2 focus:ring-accent/35"
+              placeholder="Temper, habits, values, flaws, humor"
+            />
+          </label>
+          <label className="grid gap-1.5 text-xs font-medium text-zinc-500">
+            Background
+            <textarea
+              value={draft.background}
+              onChange={(event) => onChange("background", event.target.value)}
+              className="min-h-[104px] resize-none rounded-xl bg-black/20 px-3 py-2 text-sm leading-6 text-zinc-100 shadow-[var(--shadow-border)] outline-none placeholder:text-zinc-700 focus:ring-2 focus:ring-accent/35"
+              placeholder="History, relationships, secrets, why they matter"
+            />
+          </label>
+        </div>
+
+        <footer className="flex justify-end gap-2 border-t border-white/10 px-5 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className={cx(
+              "inline-flex h-10 items-center justify-center rounded-full px-4 text-sm font-medium text-zinc-300 hover:bg-white/[0.06] hover:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+              CONTROL_MOTION,
+            )}
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className={cx(
+              "inline-flex h-10 items-center justify-center rounded-full bg-zinc-100 px-4 text-sm font-semibold text-zinc-950 hover:bg-white disabled:cursor-not-allowed disabled:bg-white/30 disabled:text-zinc-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
+              CONTROL_MOTION,
+            )}
+            disabled={!draft.name.trim()}
+          >
+            {submitLabel}
+          </button>
+        </footer>
+      </form>
+    </div>,
+    document.body,
+  );
+}
+
 function Composer({
   value,
   setValue,
@@ -1593,6 +2797,9 @@ function Composer({
   openingMessage,
   variant = "default",
   forceShowThinking = false,
+  showContextMeter = true,
+  writeGenerationMode = null,
+  onToggleWriteGenerationMode,
 }) {
   const canThink = supportsThinking(models, settings.model) || forceShowThinking;
   const textareaRef = useRef(null);
@@ -1663,35 +2870,52 @@ function Composer({
                 : "justify-end px-2.5 pb-2.5 pt-1.5",
             )}
           >
-            <ContextWindowMeter info={contextWindowInfo} />
-            {canThink && (
+            {showContextMeter && <ContextWindowMeter info={contextWindowInfo} />}
+            <div className="flex min-w-0 items-center gap-2">
+              {writeGenerationMode && (
+                <button
+                  type="button"
+                  onClick={onToggleWriteGenerationMode}
+                  className={cx(
+                    "relative inline-flex h-[34px] shrink-0 items-center gap-1 rounded-full px-2.5 text-[11px] font-medium leading-none before:absolute before:-bottom-[3px] before:-right-[3px] before:-top-[3px] before:left-0 before:content-[''] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+                    CONTROL_MOTION,
+                    writeGenerationMode === "new"
+                      ? "text-blue-200"
+                      : "text-zinc-500 hover:text-zinc-200",
+                  )}
+                >
+                  {WRITE_GENERATION_MODES[writeGenerationMode]}
+                </button>
+              )}
+              {canThink && (
+                <button
+                  type="button"
+                  data-tour="thinking-button"
+                  onClick={onToggleThinking}
+                  className={cx(
+                    "relative inline-flex h-[34px] shrink-0 items-center gap-1 rounded-full px-2.5 text-[11px] font-medium leading-none before:absolute before:-bottom-[3px] before:-right-[3px] before:-top-[3px] before:left-0 before:content-[''] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+                    CONTROL_MOTION,
+                    settings.thinking_enabled
+                      ? "text-blue-200"
+                      : "text-zinc-500 hover:text-zinc-200",
+                  )}
+                >
+                  Thinking
+                </button>
+              )}
               <button
                 type="button"
-                data-tour="thinking-button"
-                onClick={onToggleThinking}
+                data-tour="model-button"
+                onClick={onOpenSettings}
                 className={cx(
-                  "relative inline-flex h-[34px] items-center gap-1 rounded-full px-2.5 text-[11px] font-medium leading-none before:absolute before:-bottom-[3px] before:-right-[3px] before:-top-[3px] before:left-0 before:content-[''] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+                  "relative inline-flex h-[34px] min-w-0 max-w-[190px] items-center gap-1 rounded-full px-2.5 text-[11px] font-medium leading-none text-zinc-400 before:absolute before:-inset-[3px] before:content-[''] hover:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 sm:max-w-[240px]",
                   CONTROL_MOTION,
-                  settings.thinking_enabled
-                    ? "text-blue-200"
-                    : "text-zinc-500 hover:text-zinc-200",
                 )}
               >
-                Thinking
+                <span className="truncate">{promptModelName(models, settings.model)}</span>
+                {modelLocked && <span className="text-zinc-600">locked</span>}
               </button>
-            )}
-            <button
-              type="button"
-              data-tour="model-button"
-              onClick={onOpenSettings}
-              className={cx(
-                "relative inline-flex h-[34px] min-w-0 max-w-[190px] items-center gap-1 rounded-full px-2.5 text-[11px] font-medium leading-none text-zinc-400 before:absolute before:-inset-[3px] before:content-[''] hover:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 sm:max-w-[240px]",
-                CONTROL_MOTION,
-              )}
-            >
-              <span className="truncate">{promptModelName(models, settings.model)}</span>
-              {modelLocked && <span className="text-zinc-600">locked</span>}
-            </button>
+            </div>
             <button
               type="submit"
               data-tour="send-button"
@@ -1753,6 +2977,7 @@ function SettingsDrawer({
   chats,
   activeChatId,
   models,
+  chatMode,
   settings,
   setSettings,
   defaultModel,
@@ -1811,6 +3036,7 @@ function SettingsDrawer({
   const activeCloudChat = chats.find((chat) => chat.id === activeChatId);
   const cloudChat = selectedCloudChat || activeCloudChat || chats[0];
   const cloudChatId = cloudChat?.id || "";
+  const promptModeName = chatMode === "write" ? "Write" : "Chat";
 
   const filteredCloudChats = useMemo(() => {
     const normalized = cloudSearch.trim().toLowerCase();
@@ -2196,7 +3422,9 @@ function SettingsDrawer({
     <section className="flex h-full min-h-0 flex-col">
       <div className="shrink-0">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-balance text-sm font-semibold text-zinc-100">System prompt</h2>
+          <h2 className="text-balance text-sm font-semibold text-zinc-100">
+            {promptModeName} system prompt
+          </h2>
           {settings.system_prompt && (
             <button
               type="button"
@@ -2215,7 +3443,9 @@ function SettingsDrawer({
           )}
         </div>
         <p className="mt-0.5 mb-3 text-pretty text-xs leading-5 text-zinc-500">
-          Optional instructions sent before every message. Leave blank for no system prompt.
+          {promptModeName === "Write"
+            ? "Optional instructions sent before every write-mode message. Chat mode has its own system prompt."
+            : "Optional instructions sent before every chat-mode message. Write mode has its own system prompt."}
         </p>
       </div>
       <div className="min-h-0 flex-1">
@@ -2224,7 +3454,7 @@ function SettingsDrawer({
             value={settings.system_prompt}
             onChange={(event) => updateSetting({ system_prompt: event.target.value })}
             onBlur={() => onPersist(settings)}
-            placeholder="No system prompt"
+            placeholder={`No ${promptModeName.toLowerCase()} system prompt`}
             className="block h-full w-full resize-none overflow-y-auto bg-transparent text-sm leading-6 text-zinc-100 outline-none placeholder:text-zinc-500"
           />
         </div>
@@ -3227,6 +4457,18 @@ function App() {
   const localAppSettings = readLocalAppSettings();
   const [chats, setChats] = useState([]);
   const [messages, setMessages] = useState([]);
+  const [stories, setStories] = useState([]);
+  const [chapters, setChapters] = useState([]);
+  const [lorebookEntries, setLorebookEntries] = useState([]);
+  const [activeStoryId, setActiveStoryId] = useState(null);
+  const [activeChapterId, setActiveChapterId] = useState(null);
+  const [storyWorkspaceView, setStoryWorkspaceView] = useState("chapter");
+  const [chapterContent, setChapterContent] = useState("");
+  const [chapterSaveState, setChapterSaveState] = useState("");
+  const [storyGenerationStatus, setStoryGenerationStatus] = useState("");
+  const [writeReasoning, setWriteReasoning] = useState({ text: "", streaming: false, durationMs: null });
+  const [latestStoryGeneration, setLatestStoryGeneration] = useState(null);
+  const [writeGenerationMode, setWriteGenerationMode] = useState("edit");
   const [models, setModels] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
   const [temporaryChat, setTemporaryChat] = useState(false);
@@ -3242,9 +4484,14 @@ function App() {
   const [keyStatus, setKeyStatus] = useState({ has_key: false });
   const [prompt, setPrompt] = useState("");
   const [openingMessage] = useState(() => pickOpeningMessage());
+  const [writingOpeningMessage] = useState(() => pickOpeningMessage("write"));
   const [status, setStatus] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [railOpen, setRailOpen] = useState(false);
+  const [chatMode, setChatMode] = useState(() => {
+    const route = parseRoute();
+    return route.page === "story" ? "write" : route.mode || "chat";
+  });
   const [railCollapsed, setRailCollapsed] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingMessageId, setStreamingMessageId] = useState(null);
@@ -3258,10 +4505,15 @@ function App() {
   const abortRef = useRef(null);
   const routeRef = useRef(parseRoute());
   const initialRouteHandledRef = useRef(false);
+  const skipNextStoryAutoloadRef = useRef(false);
   const tempChatIdRef = useRef(null);
   const reasoningStartedAtRef = useRef({});
+  const writeReasoningStartedAtRef = useRef(null);
+  const writeReasoningStreamingRef = useRef(false);
   const streamRef = useRef(null);
   const previousRailStateRef = useRef(null);
+  const chapterSaveTimeoutRef = useRef(null);
+  const chapterContentRef = useRef("");
   const {
     isNearBottom,
     markUserScroll,
@@ -3304,7 +4556,8 @@ function App() {
   function writeRoute(route, { replace = false } = {}) {
     const nextPath = routePath(route);
     routeRef.current = route;
-    if (window.location.pathname === nextPath) return;
+    const currentPath = `${window.location.pathname}${window.location.search}`;
+    if (currentPath === nextPath) return;
     window.history[replace ? "replaceState" : "pushState"]({ route }, "", nextPath);
   }
 
@@ -3320,34 +4573,41 @@ function App() {
     const nextRoute = chatRoute(chat);
     await closeTempForRouteChange(nextRoute);
     writeRoute(nextRoute, { replace });
+    setChatMode("chat");
   }
 
   const isEmptyChat = !activeChatId && messages.length === 0;
-  const modelLocked = Boolean(activeChatId && messages.length > 0);
+  const isWritingMode = chatMode === "write";
+  const isEmptyWriting = !activeStoryId || !activeChapterId;
+  const activeMessages = isWritingMode ? [] : messages;
+  const activeConversationId = isWritingMode ? activeStoryId : activeChatId;
+  const activeModelLocked = Boolean(!isWritingMode && activeConversationId && activeMessages.length > 0);
 
 
   
   const sidebarChats =
-    tourSampleChatActive && chats.length === 0
+    !isWritingMode && tourSampleChatActive && chats.length === 0
       ? [{ id: "__tour_sample_chat__", title: "Sample chat", model: settings.model }]
       : chats;
 
   const contextWindowInfo = useMemo(() => {
     const selectedModel = models.find((model) => model.id === settings.model);
     const contextLimit = getModelContextLimit(selectedModel);
-    const latestAssistantWithUsage = [...messages]
-      .reverse()
-      .find((message) => {
-        if (message.role !== "assistant") return false;
-        if (toFiniteNumber(message.total_tokens) !== null) return true;
-        return (
-          toFiniteNumber(message.prompt_tokens) !== null &&
-          toFiniteNumber(message.completion_tokens) !== null
-        );
-      });
-    const totalTokens = toFiniteNumber(latestAssistantWithUsage?.total_tokens);
-    const promptTokens = toFiniteNumber(latestAssistantWithUsage?.prompt_tokens);
-    const completionTokens = toFiniteNumber(latestAssistantWithUsage?.completion_tokens);
+    const latestItemWithUsage = isWritingMode
+      ? latestStoryGeneration
+      : [...activeMessages]
+          .reverse()
+          .find((message) => {
+            if (message.role !== "assistant") return false;
+            if (toFiniteNumber(message.total_tokens) !== null) return true;
+            return (
+              toFiniteNumber(message.prompt_tokens) !== null &&
+              toFiniteNumber(message.completion_tokens) !== null
+            );
+          });
+    const totalTokens = toFiniteNumber(latestItemWithUsage?.total_tokens);
+    const promptTokens = toFiniteNumber(latestItemWithUsage?.prompt_tokens);
+    const completionTokens = toFiniteNumber(latestItemWithUsage?.completion_tokens);
     const contextTokens =
       totalTokens ?? (
         promptTokens !== null && completionTokens !== null
@@ -3355,8 +4615,11 @@ function App() {
           : null
       );
 
-    return getContextWindowInfo(contextTokens, contextLimit);
-  }, [messages, models, settings.model]);
+    return getContextWindowInfo(
+      isWritingMode && contextTokens === null ? 0 : contextTokens,
+      contextLimit,
+    );
+  }, [activeMessages, isWritingMode, latestStoryGeneration, models, settings.model]);
 
   function showToast(message) {
     setToast(message);
@@ -3375,6 +4638,69 @@ function App() {
     setChats(payload.chats || []);
   }, []);
 
+  const loadStories = useCallback(async () => {
+    const nextStories = await storyApi.listStories();
+    setStories(nextStories);
+    return nextStories;
+  }, []);
+
+  async function loadStoryBundle(storyId, preferredChapterId = null, options = {}) {
+    const payload = await storyApi.getStory(storyId);
+    const nextStory = payload.story;
+    const nextChapters = payload.chapters || [];
+    const nextLorebook = payload.lorebook || [];
+    const nextGeneration = payload.latest_generation || null;
+    const preferredChapter = nextChapters.find((chapter) => chapter.id === preferredChapterId);
+    if (options.requirePreferredChapter && preferredChapterId && !preferredChapter) {
+      throw new Error("Chapter not found.");
+    }
+    const nextChapter =
+      preferredChapter ||
+      nextChapters[0] ||
+      null;
+
+    setActiveStoryId(nextStory.id);
+    setChapters(nextChapters);
+    setLorebookEntries(nextLorebook);
+    setLatestStoryGeneration(nextGeneration);
+    setActiveChapterId(nextChapter?.id || null);
+    setChapterContent(nextChapter?.content || "");
+    chapterContentRef.current = nextChapter?.content || "";
+    setChapterSaveState("");
+    setSettings({
+      model: nextStory.model,
+      temperature: nextStory.temperature,
+      max_tokens: nextStory.max_tokens,
+      system_prompt: nextStory.system_prompt || "",
+      thinking_enabled: Boolean(nextStory.thinking_enabled),
+      reasoning_effort: nextStory.reasoning_effort || "medium",
+      nitro_mode: nitroMode,
+    });
+    return { story: nextStory, chapters: nextChapters, chapter: nextChapter };
+  }
+
+  async function loadStoryRoute(route, { replace = false, fromRoute = false } = {}) {
+    try {
+      setChatMode("write");
+      const result = await loadStoryBundle(route.storyId, route.chapterId, {
+        requirePreferredChapter: Boolean(route.chapterId),
+      });
+      const workspaceView = route.workspaceView === "lorebook" ? "lorebook" : "chapter";
+      setStoryWorkspaceView(workspaceView);
+      const routeChapterId = route.chapterId ? result.chapter?.id || null : null;
+      const nextRoute = storyRoute(result.story.id, routeChapterId, workspaceView);
+      await closeTempForRouteChange(nextRoute);
+      writeRoute(nextRoute, { replace: replace || fromRoute });
+    } catch (error) {
+      if (fromRoute) {
+        skipNextStoryAutoloadRef.current = true;
+        await resetChat({ replace: true, mode: "write" });
+      } else {
+        setStatus(error.message);
+      }
+    }
+  }
+
   const loadModels = useCallback(async () => {
     try {
       const payload = await api("/api/models");
@@ -3384,7 +4710,7 @@ function App() {
         const currentModel = loaded.find((model) => model.id === current.model);
         if (
           currentModel &&
-          (activeChatId || !hideFreeModels || !isFreeModel(currentModel))
+          (activeChatId || activeStoryId || !hideFreeModels || !isFreeModel(currentModel))
         ) {
           return current;
         }
@@ -3399,7 +4725,7 @@ function App() {
     } catch (error) {
       setStatus(error.message);
     }
-  }, [activeChatId, defaultModel, hideFreeModels]);
+  }, [activeChatId, activeStoryId, defaultModel, hideFreeModels]);
 
   const loadAppSettings = useCallback(async () => {
     try {
@@ -3427,14 +4753,14 @@ function App() {
         smooth_streaming: nextSmoothStreaming,
       });
       setSettings((current) => (
-        activeChatId
+        activeChatId || activeStoryId
           ? { ...current, nitro_mode: nextNitroMode }
           : { ...current, model: nextDefaultModel, nitro_mode: nextNitroMode }
       ));
     } catch (error) {
       setStatus(error.message);
     }
-  }, [activeChatId]);
+  }, [activeChatId, activeStoryId]);
 
   const loadKeyStatus = useCallback(async () => {
     try {
@@ -3449,11 +4775,35 @@ function App() {
     loadAppSettings();
     loadModels();
     loadChats();
-  }, [loadAppSettings, loadChats, loadKeyStatus, loadModels]);
+    loadStories();
+  }, [loadAppSettings, loadChats, loadKeyStatus, loadModels, loadStories]);
 
   useEffect(() => {
     scrollToBottom(true);
-  }, [activeChatId, scrollToBottom]);
+  }, [activeChatId, activeStoryId, activeChapterId, scrollToBottom]);
+
+  useEffect(
+    () => () => {
+      window.clearTimeout(chapterSaveTimeoutRef.current);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!isWritingMode || activeStoryId || stories.length === 0) return;
+    if (routeRef.current?.page === "story") return;
+    if (skipNextStoryAutoloadRef.current) {
+      skipNextStoryAutoloadRef.current = false;
+      return;
+    }
+    void loadStoryBundle(stories[0].id).then((result) => {
+      writeRoute(storyRoute(result.story.id, null, "chapter"), {
+        replace: true,
+      });
+    }).catch((error) => {
+      setStatus(error.message);
+    });
+  }, [activeStoryId, isWritingMode, stories]);
 
   function applyChat(chat, nextMessages) {
     const isTemporary = Boolean(chat.temporary);
@@ -3510,6 +4860,17 @@ function App() {
   }
 
   async function persistSettings(nextSettings = settings) {
+    if (isWritingMode) {
+      if (!activeStoryId) return;
+      try {
+        await storyApi.updateStory(activeStoryId, nextSettings);
+        await loadStories();
+      } catch (error) {
+        setStatus(error.message);
+      }
+      return;
+    }
+
     if (!activeChatId) return;
     try {
       await api(`/api/chats/${activeChatId}`, {
@@ -3522,10 +4883,12 @@ function App() {
     }
   }
 
-  async function resetChat({ replace = false } = {}) {
-    const nextRoute = { page: "home" };
+  async function resetChat({ replace = false, mode = chatMode } = {}) {
+    const nextMode = mode === "write" ? "write" : "chat";
+    const nextRoute = { page: "home", mode: nextMode };
     await closeTempForRouteChange(nextRoute);
     writeRoute(nextRoute, { replace });
+    setChatMode(nextMode);
     const selectableModels = hideFreeModels
       ? models.filter((model) => !isFreeModel(model))
       : models;
@@ -3536,6 +4899,16 @@ function App() {
     setTemporaryChat(false);
     setTempChatId(null);
     setMessages([]);
+    setActiveStoryId(null);
+    setActiveChapterId(null);
+    setChapters([]);
+    setLorebookEntries([]);
+    setLatestStoryGeneration(null);
+    setChapterContent("");
+    chapterContentRef.current = "";
+    setChapterSaveState("");
+    setStoryGenerationStatus("");
+    setStoryWorkspaceView("chapter");
     setSettings((current) => ({
       ...newSettings,
       model: nextModel || current.model,
@@ -3552,9 +4925,13 @@ function App() {
     const route = parseRoute();
     routeRef.current = route;
     if (route.page === "chat" || route.page === "temp") {
+      setChatMode("chat");
       void loadChat(route.chatId, { replace: true, fromRoute: true });
+    } else if (route.page === "story") {
+      void loadStoryRoute(route, { replace: true, fromRoute: true });
     } else {
-      writeRoute({ page: "home" }, { replace: true });
+      setChatMode(route.mode || "chat");
+      writeRoute({ page: "home", mode: route.mode || "chat" }, { replace: true });
     }
   }, []);
 
@@ -3562,10 +4939,15 @@ function App() {
     function handlePopState() {
       const nextRoute = parseRoute();
       if (nextRoute.page === "chat" || nextRoute.page === "temp") {
+        setChatMode("chat");
         void loadChat(nextRoute.chatId, { replace: true, fromRoute: true });
         return;
       }
-      void resetChat({ replace: true });
+      if (nextRoute.page === "story") {
+        void loadStoryRoute(nextRoute, { replace: true, fromRoute: true });
+        return;
+      }
+      void resetChat({ replace: true, mode: nextRoute.mode || "chat" });
     }
 
     window.addEventListener("popstate", handlePopState);
@@ -3669,6 +5051,7 @@ function App() {
       method: "POST",
       body: JSON.stringify({
         ...settings,
+        chat_system_prompt: settings.system_prompt,
         ...(temporary ? { title: "Temporary chat", temporary: true } : {}),
       }),
     });
@@ -3788,7 +5171,7 @@ function App() {
     }
   }
 
-  async function readStream(response, assistantId, savedAssistantId = assistantId) {
+  async function readStream(response, assistantId, savedAssistantId = assistantId, setMessageList = setMessages) {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffered = "";
@@ -3797,7 +5180,7 @@ function App() {
 
     function applyStreamText(nextContent, nextReasoning) {
       if (!nextContent && !nextReasoning) return;
-      setMessages((current) =>
+      setMessageList((current) =>
         current.map((message) => {
           if (message.id !== assistantId) return message;
           return {
@@ -3926,17 +5309,17 @@ function App() {
     setStatus("");
     abortRef.current = new AbortController();
     let currentAssistantId = null;
-    let chatId = null;
+    let conversationId = null;
     let currentTempMode = false;
 
     try {
       const tempMode = temporaryChat && (!activeChatId || activeChatId === tempChatId);
       currentTempMode = tempMode;
-      chatId = tempMode ? await ensureTemporaryChat() : await ensureChat();
+      conversationId = tempMode ? await ensureTemporaryChat() : await ensureChat();
       const shouldAddUser = !regenerateMessageId;
       const userMessage = {
         id: `local-user-${crypto.randomUUID()}`,
-        chat_id: chatId,
+        chat_id: conversationId,
         role: "user",
         content: text,
         created_at: new Date().toISOString(),
@@ -3946,7 +5329,7 @@ function App() {
       currentAssistantId = assistantId;
       const assistantMessage = {
         id: assistantId,
-        chat_id: chatId,
+        chat_id: conversationId,
         role: "assistant",
         content: "",
         reasoning: "",
@@ -3968,41 +5351,41 @@ function App() {
       setPrompt("");
       scrollToBottom(true);
 
-      const response = await fetch(
-        `/api/chats/${chatId}/messages/stream`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          signal: abortRef.current.signal,
-          body: JSON.stringify({
-            ...settings,
-            message: text,
-            regenerate_message_id: regenerateMessageId,
-          }),
-        },
-      );
+      const response = await fetch(`/api/chats/${conversationId}/messages/stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: abortRef.current.signal,
+        body: JSON.stringify({
+          ...settings,
+          chat_system_prompt: settings.system_prompt,
+          message: text,
+          regenerate_message_id: regenerateMessageId,
+        }),
+      });
 
       if (!response.ok || !response.body) {
         throw new Error(await responseErrorDetail(response));
       }
 
       const savedAssistantId = response.headers.get("X-Assistant-Message-Id") || assistantId;
-      await readStream(response, assistantId, savedAssistantId);
+      await readStream(response, assistantId, savedAssistantId, setMessages);
       if (tempMode) {
-        await loadChat(chatId, { replace: true });
+        await loadChat(conversationId, { replace: true });
       } else {
         await loadChats();
-        await loadChat(chatId, { replace: true });
+        await loadChat(conversationId, { replace: true });
       }
     } catch (error) {
       if (error.name === "AbortError") {
         setStatus("Response stopped");
-        if (chatId) {
+        if (conversationId) {
           await new Promise((resolve) => setTimeout(resolve, 100));
           if (!currentTempMode) {
             await loadChats();
+            await loadChat(conversationId, { replace: true });
+          } else {
+            await loadChat(conversationId, { replace: true });
           }
-          await loadChat(chatId, { replace: true });
         }
       } else {
         setStatus(error.message);
@@ -4084,28 +5467,429 @@ function App() {
   function toggleThinking() {
     setSettings((current) => {
       const next = { ...current, thinking_enabled: !current.thinking_enabled };
-      if (activeChatId) persistSettings(next);
+      if (activeConversationId) persistSettings(next);
       return next;
     });
   }
 
+  function toggleWriteGenerationMode() {
+    setWriteGenerationMode((current) => (current === "new" ? "edit" : "new"));
+  }
+
+  function changeChatMode(nextMode) {
+    const mode = nextMode === "write" ? "write" : "chat";
+    void resetChat({ mode });
+  }
+
+  async function startNewStory() {
+    if (isStreaming) return;
+    try {
+      const story = await storyApi.createStory({
+        title: "New story",
+        model: settings.model,
+        system_prompt: settings.system_prompt,
+        temperature: settings.temperature,
+        max_tokens: settings.max_tokens,
+        thinking_enabled: settings.thinking_enabled,
+        reasoning_effort: settings.reasoning_effort,
+      });
+      await loadStories();
+      const chapter = await storyApi.createChapter(story.id, { title: "Chapter 1" });
+      await loadStoryBundle(story.id, chapter.id);
+      setStoryWorkspaceView("chapter");
+      writeRoute(storyRoute(story.id, null, "chapter"));
+      showToast("Story created");
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function continueStory() {
+    if (isStreaming) return;
+    const nextStory = stories[0] || (await loadStories())[0];
+    if (!nextStory) return;
+    const result = await loadStoryBundle(nextStory.id);
+    setStoryWorkspaceView("chapter");
+    writeRoute(storyRoute(result.story.id, null, "chapter"));
+  }
+
+  async function selectStory(storyId) {
+    try {
+      const result = await loadStoryBundle(storyId);
+      setStoryWorkspaceView("chapter");
+      writeRoute(storyRoute(result.story.id, null, "chapter"));
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  function selectChapter(chapterId) {
+    const chapter = chapters.find((item) => item.id === chapterId);
+    if (!chapter) return;
+    setActiveChapterId(chapter.id);
+    setChapterContent(chapter.content || "");
+    chapterContentRef.current = chapter.content || "";
+    setChapterSaveState("");
+    setStoryWorkspaceView("chapter");
+    writeRoute(storyRoute(activeStoryId, chapter.id, "chapter"));
+  }
+
+  async function createStoryChapter() {
+    if (!activeStoryId) return;
+    try {
+      const chapter = await storyApi.createChapter(activeStoryId, {
+        title: `Chapter ${chapters.length + 1}`,
+      });
+      const nextChapters = await storyApi.listChapters(activeStoryId);
+      setChapters(nextChapters);
+      setActiveChapterId(chapter.id);
+      setChapterContent(chapter.content || "");
+      chapterContentRef.current = chapter.content || "";
+      setStoryWorkspaceView("chapter");
+      writeRoute(storyRoute(activeStoryId, chapter.id, "chapter"));
+      showToast("Chapter created");
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function renameStoryItem(story) {
+    const title = window.prompt("rename story", story.title);
+    if (!title?.trim()) return;
+    try {
+      await storyApi.updateStory(story.id, { title: title.trim() });
+      await loadStories();
+      if (story.id === activeStoryId) await loadStoryBundle(story.id, activeChapterId);
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function renameChapterItem(chapter) {
+    const title = window.prompt("rename chapter", chapter.title);
+    if (!title?.trim() || !activeStoryId) return;
+    try {
+      const updated = await storyApi.updateChapter(activeStoryId, chapter.id, {
+        title: title.trim(),
+      });
+      setChapters((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function deleteStoryItem(story) {
+    setConfirmDialog({
+      title: "Delete story?",
+      chatTitle: story.title,
+      body: "This deletes its chapters and lorebook. This cannot be undone.",
+      confirmLabel: "Delete",
+      onConfirm: async () => {
+        try {
+          await storyApi.deleteStory(story.id);
+          const nextStories = await loadStories();
+          const nextStory = nextStories.find((item) => item.id !== story.id) || nextStories[0];
+          if (nextStory) {
+            const result = await loadStoryBundle(nextStory.id);
+            setStoryWorkspaceView("chapter");
+            writeRoute(storyRoute(result.story.id, null, "chapter"), {
+              replace: true,
+            });
+          } else {
+            setActiveStoryId(null);
+            setActiveChapterId(null);
+            setChapters([]);
+            setLorebookEntries([]);
+            setLatestStoryGeneration(null);
+            setChapterContent("");
+            setStoryWorkspaceView("chapter");
+            writeRoute({ page: "home", mode: "write" }, { replace: true });
+          }
+          setStatus("Story deleted");
+        } catch (error) {
+          setStatus(error.message);
+        }
+      },
+    });
+  }
+
+  async function deleteChapterItem(chapter) {
+    if (!activeStoryId) return;
+    setConfirmDialog({
+      title: "Delete chapter?",
+      chatTitle: chapter.title,
+      body: "This cannot be undone.",
+      confirmLabel: "Delete",
+      onConfirm: async () => {
+        try {
+          await storyApi.deleteChapter(activeStoryId, chapter.id);
+          const nextChapters = await storyApi.listChapters(activeStoryId);
+          setChapters(nextChapters);
+          const nextChapter = nextChapters[0] || null;
+          setActiveChapterId(nextChapter?.id || null);
+          setChapterContent(nextChapter?.content || "");
+          chapterContentRef.current = nextChapter?.content || "";
+          setStoryWorkspaceView("chapter");
+          writeRoute(storyRoute(activeStoryId, nextChapter?.id || null, "chapter"), {
+            replace: true,
+          });
+          setStatus("Chapter deleted");
+        } catch (error) {
+          setStatus(error.message);
+        }
+      },
+    });
+  }
+
+  async function createLorebookEntry(data) {
+    if (!activeStoryId) throw new Error("No active story.");
+
+    const entry = await storyApi.createLorebookEntry(activeStoryId, data);
+    setLorebookEntries((currentEntries) => [entry, ...currentEntries]);
+    showToast("Lorebook entry created");
+    return entry;
+  }
+
+  async function updateLorebookEntry(entryId, data) {
+    if (!activeStoryId) throw new Error("No active story.");
+
+    const entry = await storyApi.updateLorebookEntry(activeStoryId, entryId, data);
+    setLorebookEntries((currentEntries) =>
+      currentEntries.map((currentEntry) => (currentEntry.id === entry.id ? entry : currentEntry)),
+    );
+    showToast("Lorebook entry updated");
+    return entry;
+  }
+
+  async function deleteLorebookEntry(entryId) {
+    if (!activeStoryId) throw new Error("No active story.");
+
+    await storyApi.deleteLorebookEntry(activeStoryId, entryId);
+    setLorebookEntries((currentEntries) => currentEntries.filter((entry) => entry.id !== entryId));
+    showToast("Lorebook entry deleted");
+  }
+
+  function updateChapterCanvasContent(content) {
+    setChapterContent(content);
+    chapterContentRef.current = content;
+    if (!activeStoryId || !activeChapterId) return;
+    setChapterSaveState("Saving");
+    window.clearTimeout(chapterSaveTimeoutRef.current);
+    chapterSaveTimeoutRef.current = window.setTimeout(async () => {
+      try {
+        const saved = await storyApi.saveChapterContent(
+          activeStoryId,
+          activeChapterId,
+          chapterContentRef.current,
+        );
+        setChapters((current) =>
+          current.map((chapter) => (chapter.id === saved.id ? saved : chapter)),
+        );
+        setChapterSaveState("Saved");
+        window.setTimeout(() => setChapterSaveState(""), 1200);
+      } catch (error) {
+        setChapterSaveState("Save failed");
+        setStatus(error.message);
+      }
+    }, 600);
+  }
+
+  async function generateStoryChapter(text = prompt.trim()) {
+    if (isStreaming || !text || !activeStoryId || !activeChapterId) return;
+    setIsStreaming(true);
+    setStoryGenerationStatus("Writing");
+    setWriteReasoning({ text: "", streaming: false, durationMs: null });
+    writeReasoningStartedAtRef.current = null;
+    writeReasoningStreamingRef.current = false;
+    setStatus("");
+    abortRef.current = new AbortController();
+    let generatedText = "";
+    let targetChapterId = activeChapterId;
+    let targetChapterContent = chapterContentRef.current;
+    let previousChapters = chapters.map((chapter) => ({
+      id: chapter.id,
+      title: chapter.title,
+      content: chapter.content || "",
+      word_count: chapter.word_count || 0,
+    }));
+
+    try {
+      setPrompt("");
+      if (writeGenerationMode === "new") {
+        const chapter = await storyApi.createChapter(activeStoryId, {
+          title: `Chapter ${chapters.length + 1}`,
+        });
+        const nextChapters = await storyApi.listChapters(activeStoryId);
+        targetChapterId = chapter.id;
+        targetChapterContent = "";
+        previousChapters = nextChapters
+          .filter((item) => item.id !== chapter.id)
+          .map((item) => ({
+            id: item.id,
+            title: item.title,
+            content: item.content || "",
+            word_count: item.word_count || 0,
+          }));
+        setChapters(nextChapters);
+        setActiveChapterId(chapter.id);
+        setChapterContent("");
+        chapterContentRef.current = "";
+        setStoryWorkspaceView("chapter");
+        writeRoute(storyRoute(activeStoryId, chapter.id, "chapter"));
+      }
+
+      await storyApi.generateChapter({
+        storyId: activeStoryId,
+        chapterId: targetChapterId,
+        prompt: text,
+        settings,
+        generationMode: writeGenerationMode,
+        chapterContent: targetChapterContent,
+        previousChapters,
+        signal: abortRef.current.signal,
+        onEvent: (event) => {
+          if (event.type === "reasoning") {
+            if (!writeReasoningStartedAtRef.current) {
+              writeReasoningStartedAtRef.current = performance.now();
+            }
+            writeReasoningStreamingRef.current = true;
+            setStoryGenerationStatus("Thinking");
+            setWriteReasoning((current) => ({
+              ...current,
+              text: `${current.text || ""}${String(event.value || "")}`,
+              streaming: true,
+              durationMs: null,
+            }));
+            return;
+          }
+          if (event.type === "content") {
+            const value = String(event.value || "");
+            if (writeReasoningStreamingRef.current && writeReasoningStartedAtRef.current) {
+              const durationMs = performance.now() - writeReasoningStartedAtRef.current;
+              writeReasoningStreamingRef.current = false;
+              setWriteReasoning((current) => ({
+                ...current,
+                streaming: false,
+                durationMs,
+              }));
+            }
+            setStoryGenerationStatus("Writing");
+            generatedText += value;
+            setChapterContent((current) => {
+              const base = generatedText === value && current.trim() ? `${current}\n\n` : current;
+              const nextContent = `${base}${value}`;
+              chapterContentRef.current = nextContent;
+              return nextContent;
+            });
+            return;
+          }
+          if (event.type === "lorebook_start") {
+            setStoryGenerationStatus("Editing Lorebook");
+            return;
+          }
+          if (event.type === "lorebook") {
+            const result = event.value || {};
+            const appliedUpdates = Array.isArray(result.applied) ? result.applied : [];
+            if (result.error || appliedUpdates.length === 0) {
+              setStatus("Lorebook update skipped");
+            }
+            void storyApi.listLorebook(activeStoryId).then(setLorebookEntries).catch((error) => {
+              setStatus(error.message);
+            });
+          }
+          if (event.type === "usage") {
+            setLatestStoryGeneration(event.value || null);
+          }
+          if (event.type === "error") {
+            setStatus(String(event.value || "Story generation failed"));
+          }
+        },
+      });
+      const nextChapters = await storyApi.listChapters(activeStoryId);
+      setChapters(nextChapters);
+      const activeChapter = nextChapters.find((chapter) => chapter.id === targetChapterId);
+      if (activeChapter) {
+        setActiveChapterId(activeChapter.id);
+        setChapterContent(activeChapter.content || "");
+        chapterContentRef.current = activeChapter.content || "";
+        writeRoute(storyRoute(activeStoryId, activeChapter.id, "chapter"), { replace: true });
+      }
+      setStoryGenerationStatus("");
+      showToast("Chapter updated");
+    } catch (error) {
+      if (error.name === "AbortError") {
+        setStatus("Response stopped");
+      } else {
+        setStatus(error.message);
+      }
+    } finally {
+      setIsStreaming(false);
+      setStoryGenerationStatus("");
+      setWriteReasoning((current) => ({
+        ...current,
+        streaming: false,
+        durationMs:
+          current.durationMs ||
+          (writeReasoningStartedAtRef.current
+            ? performance.now() - writeReasoningStartedAtRef.current
+            : null),
+      }));
+      writeReasoningStartedAtRef.current = null;
+      writeReasoningStreamingRef.current = false;
+      abortRef.current = null;
+    }
+  }
+
+  const landingMessage = isWritingMode ? writingOpeningMessage : openingMessage;
+  const visibleMessages = activeMessages;
+  const visibleActiveChatId = activeConversationId;
+  const showLandingComposer = isWritingMode ? isEmptyWriting : isEmptyChat;
+  const showComposer =
+    !(isWritingMode && ["lorebook", "characters"].includes(storyWorkspaceView) && !showLandingComposer);
+
   return (
     <div className="flex h-screen overflow-hidden bg-[#070708] text-ink">
-      <ConversationRail
-        chats={sidebarChats}
-        activeChatId={activeChatId}
-        models={models}
-        onNewChat={resetChat}
-        onLoadChat={loadChat}
-        onRenameChat={renameChat}
-        onDeleteChat={deleteChat}
-        onExportChat={exportChatFromMenu}
-        mobileOpen={railOpen}
-        onCloseMobile={() => setRailOpen(false)}
-        collapsed={railCollapsed}
-        onCollapse={() => setRailCollapsed(true)}
-        highlightFirstChatActions={tour.currentStep?.id === "chatActions"}
-      />
+      {isWritingMode ? (
+        <StoryRail
+          stories={stories}
+          chapters={chapters}
+          activeStoryId={activeStoryId}
+          activeChapterId={activeChapterId}
+          mobileOpen={railOpen}
+          onCloseMobile={() => setRailOpen(false)}
+          collapsed={railCollapsed}
+          onCollapse={() => setRailCollapsed(true)}
+          onCreateStory={startNewStory}
+          onCreateChapter={createStoryChapter}
+          onSelectStory={selectStory}
+          onSelectChapter={selectChapter}
+          onRenameStory={renameStoryItem}
+          onRenameChapter={renameChapterItem}
+          onDeleteStory={deleteStoryItem}
+          onDeleteChapter={deleteChapterItem}
+          onChatModeChange={changeChatMode}
+        />
+      ) : (
+        <ConversationRail
+          chats={sidebarChats}
+          activeChatId={visibleActiveChatId}
+          models={models}
+          onNewChat={() => resetChat({ mode: chatMode })}
+          onLoadChat={loadChat}
+          onRenameChat={renameChat}
+          onDeleteChat={deleteChat}
+          onExportChat={exportChatFromMenu}
+          mobileOpen={railOpen}
+          onCloseMobile={() => setRailOpen(false)}
+          collapsed={railCollapsed}
+          onCollapse={() => setRailCollapsed(true)}
+          highlightFirstChatActions={tour.currentStep?.id === "chatActions"}
+          chatMode={chatMode}
+          onChatModeChange={changeChatMode}
+        />
+      )}
       <SidebarRevealButton
         visible={railCollapsed}
         onClick={() => setRailCollapsed(false)}
@@ -4120,7 +5904,7 @@ function App() {
           >
             <Menu size={18} />
           </IconButton>
-          {isEmptyChat && (
+          {showLandingComposer && !isWritingMode && (
             <div className="ml-auto flex items-center gap-2">
               <HelpTourButton onClick={tour.start} />
               <TemporaryChatButton
@@ -4131,50 +5915,92 @@ function App() {
           )}
         </header>
 
-        <TemporaryChatMarker visible={temporaryChat && activeChatId === tempChatId && messages.length > 0} />
+        <TemporaryChatMarker visible={!isWritingMode && temporaryChat && activeChatId === tempChatId && messages.length > 0} />
 
-        <MessageList
-          messages={messages}
-          activeChatId={activeChatId}
-          streamingMessageId={streamingMessageId}
-          reasoningStreamingMessageId={reasoningStreamingMessageId}
-          reasoningDurations={reasoningDurations}
-          streamRef={streamRef}
-          onScroll={markUserScroll}
-          onWheel={markWheelIntent}
-          onTouchStart={markTouchStart}
-          onTouchMove={markTouchMove}
-          onCopy={copyMessage}
-          onRegenerate={regenerate}
-          onEditUserMessage={editUserMessage}
-          onDeleteUserMessage={deleteUserMessage}
-        />
-
-        <PromptNavigationRail
-          messages={messages}
-          streamRef={streamRef}
-          visible={showPromptNavigationRail}
-          activeChatId={activeChatId}
-        />
-
-        {isEmptyChat ? (
-          <Composer
-            value={prompt}
-            setValue={setPrompt}
-            disabled={!keyStatus.has_key}
-            isStreaming={isStreaming}
-            settings={settings}
-            models={models}
+        {isWritingMode && !showLandingComposer ? (
+          <StoryWorkspace
+            stories={stories}
+            chapters={chapters}
+            lorebookEntries={lorebookEntries}
+            activeStoryId={activeStoryId}
+            activeChapterId={activeChapterId}
+            workspaceView={storyWorkspaceView}
+            chapterContent={chapterContent}
             contextWindowInfo={contextWindowInfo}
-            modelLocked={modelLocked}
-            onSubmit={() => sendMessage()}
-            onStop={stopStream}
-            onOpenSettings={() => setSettingsOpen(true)}
-            onToggleThinking={toggleThinking}
-            openingMessage={openingMessage}
-            variant="empty"
-            forceShowThinking={tourForceThinking}
+            saveState={chapterSaveState}
+            generationStatus={storyGenerationStatus}
+            writeReasoning={writeReasoning}
+            onOpenRail={() => setRailOpen(true)}
+            onOpenLorebook={() => {
+              setStoryWorkspaceView("lorebook");
+              writeRoute(storyRoute(activeStoryId, activeChapterId, "lorebook"));
+            }}
+            onBackToChapter={() => {
+              setStoryWorkspaceView("chapter");
+              writeRoute(storyRoute(activeStoryId, activeChapterId, "chapter"));
+            }}
+            onChangeContent={updateChapterCanvasContent}
+            onCreateLorebookEntry={createLorebookEntry}
+            onUpdateLorebookEntry={updateLorebookEntry}
+            onDeleteLorebookEntry={deleteLorebookEntry}
           />
+        ) : !isWritingMode ? (
+          <>
+            <MessageList
+              messages={visibleMessages}
+              activeChatId={visibleActiveChatId}
+              streamingMessageId={streamingMessageId}
+              reasoningStreamingMessageId={reasoningStreamingMessageId}
+              reasoningDurations={reasoningDurations}
+              streamRef={streamRef}
+              onScroll={markUserScroll}
+              onWheel={markWheelIntent}
+              onTouchStart={markTouchStart}
+              onTouchMove={markTouchMove}
+              onCopy={copyMessage}
+              onRegenerate={regenerate}
+              onEditUserMessage={editUserMessage}
+              onDeleteUserMessage={deleteUserMessage}
+            />
+
+            <PromptNavigationRail
+              messages={visibleMessages}
+              streamRef={streamRef}
+              visible={showPromptNavigationRail}
+              activeChatId={visibleActiveChatId}
+            />
+          </>
+        ) : (
+          <EmptyChatState />
+        )}
+
+        {showComposer && (showLandingComposer ? (
+          isWritingMode ? (
+            <WriteLanding
+              openingMessage={landingMessage}
+              hasStories={stories.length > 0}
+              onStartNew={startNewStory}
+              onContinue={continueStory}
+            />
+          ) : (
+            <Composer
+              value={prompt}
+              setValue={setPrompt}
+              disabled={!keyStatus.has_key}
+              isStreaming={isStreaming}
+              settings={settings}
+              models={models}
+              contextWindowInfo={contextWindowInfo}
+              modelLocked={activeModelLocked}
+              onSubmit={() => sendMessage()}
+              onStop={stopStream}
+              onOpenSettings={() => setSettingsOpen(true)}
+              onToggleThinking={toggleThinking}
+              openingMessage={landingMessage}
+              variant="empty"
+              forceShowThinking={tourForceThinking}
+            />
+          )
         ) : (
           <Composer
             value={prompt}
@@ -4184,13 +6010,16 @@ function App() {
             settings={settings}
             models={models}
             contextWindowInfo={contextWindowInfo}
-            modelLocked={modelLocked}
-            onSubmit={() => sendMessage()}
+            modelLocked={activeModelLocked}
+            onSubmit={() => (isWritingMode ? generateStoryChapter() : sendMessage())}
             onStop={stopStream}
             onOpenSettings={() => setSettingsOpen(true)}
             onToggleThinking={toggleThinking}
+            showContextMeter={!isWritingMode}
+            writeGenerationMode={isWritingMode ? writeGenerationMode : null}
+            onToggleWriteGenerationMode={toggleWriteGenerationMode}
           />
-        )}
+        ))}
       </main>
 
       <SettingsDrawer
@@ -4201,6 +6030,7 @@ function App() {
         chats={chats}
         activeChatId={activeChatId}
         models={models}
+        chatMode={chatMode}
         settings={settings}
         setSettings={setSettings}
         defaultModel={defaultModel}
@@ -4208,7 +6038,7 @@ function App() {
         nitroMode={nitroMode}
         smoothStreaming={smoothStreaming}
         showPromptNavigationRail={showPromptNavigationRail}
-        modelLocked={modelLocked}
+        modelLocked={activeModelLocked}
         onPersist={persistSettings}
         onModelSelected={(name) => showToast(`Model selected: ${name}`)}
         onSetDefaultModel={updateDefaultModel}

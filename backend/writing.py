@@ -1,5 +1,6 @@
 import json
 import sqlite3
+import time
 import uuid
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Callable
@@ -109,6 +110,17 @@ def json_dict(value: str) -> dict[str, Any]:
 
 def word_count(value: str) -> int:
     return len(value.split())
+
+
+def format_duration(ms: float) -> str:
+    seconds = max(1, round(ms / 1000))
+    return f"{seconds} {'second' if seconds == 1 else 'seconds'}"
+
+
+def display_model_name(model: str) -> str:
+    name = str(model or "Model").split("/")[-1]
+    name = name.replace(":free", "").replace("-", " ").replace("_", " ")
+    return " ".join(part[:1].upper() + part[1:] for part in name.split())
 
 
 def normalize_lorebook_category(category: str | None) -> str:
@@ -265,6 +277,19 @@ def row_to_chapter(row: sqlite3.Row) -> dict[str, Any]:
     }
 
 
+def row_to_chapter_history_entry(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "id": row["id"],
+        "story_id": row["story_id"],
+        "chapter_id": row["chapter_id"],
+        "run_id": row["run_id"],
+        "label": row["label"],
+        "detail": row["detail"],
+        "entry_order": row["entry_order"],
+        "created_at": row["created_at"],
+    }
+
+
 def row_to_lorebook_entry(row: sqlite3.Row) -> dict[str, Any]:
     category = normalize_lorebook_category(row["category"])
     return {
@@ -311,6 +336,51 @@ def next_chapter_order(conn: sqlite3.Connection, story_id: str) -> int:
         (story_id,),
     ).fetchone()
     return int(row["next_order"])
+
+
+def next_chapter_history_order(conn: sqlite3.Connection, chapter_id: str) -> int:
+    row = conn.execute(
+        """
+        SELECT COALESCE(MAX(entry_order), -1) + 1 AS next_order
+        FROM chapter_history_entries
+        WHERE chapter_id = ?
+        """,
+        (chapter_id,),
+    ).fetchone()
+    return int(row["next_order"])
+
+
+def insert_chapter_history_entry(
+    conn: sqlite3.Connection,
+    *,
+    story_id: str,
+    chapter_id: str,
+    run_id: str,
+    label: str,
+    detail: str,
+    now: str,
+) -> dict[str, Any]:
+    entry_id = str(uuid.uuid4())
+    entry_order = next_chapter_history_order(conn, chapter_id)
+    conn.execute(
+        """
+        INSERT INTO chapter_history_entries (
+          id, story_id, chapter_id, run_id, label, detail, entry_order, created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (entry_id, story_id, chapter_id, run_id, label, detail, entry_order, now),
+    )
+    return {
+        "id": entry_id,
+        "story_id": story_id,
+        "chapter_id": chapter_id,
+        "run_id": run_id,
+        "label": label,
+        "detail": detail,
+        "entry_order": entry_order,
+        "created_at": now,
+    }
 
 
 def build_story_messages(
@@ -468,6 +538,14 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                 """,
                 (story_id,),
             ).fetchall()
+            history_rows = conn.execute(
+                """
+                SELECT * FROM chapter_history_entries
+                WHERE story_id = ?
+                ORDER BY entry_order ASC, created_at ASC
+                """,
+                (story_id,),
+            ).fetchall()
             latest_generation = conn.execute(
                 """
                 SELECT * FROM story_generations
@@ -477,9 +555,20 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                 """,
                 (story_id,),
             ).fetchone()
+        history_by_chapter: dict[str, list[dict[str, Any]]] = {}
+        for row in history_rows:
+            history_by_chapter.setdefault(row["chapter_id"], []).append(
+                row_to_chapter_history_entry(row)
+            )
+        chapter_payloads = []
+        for row in chapters:
+            chapter = row_to_chapter(row)
+            chapter["history"] = history_by_chapter.get(row["id"], [])
+            chapter_payloads.append(chapter)
+
         return {
             "story": row_to_story(story),
-            "chapters": [row_to_chapter(row) for row in chapters],
+            "chapters": chapter_payloads,
             "lorebook": [row_to_lorebook_entry(row) for row in lorebook],
             "latest_generation": (
                 row_to_story_generation(latest_generation) if latest_generation else None
@@ -644,8 +733,28 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
         generation_id: str | None = None
         usage: dict[str, Any] | None = None
         story_generation_id = str(uuid.uuid4())
+        history_run_id = str(uuid.uuid4())
+        model_label = display_model_name(payload.model)
+        reasoning_started_at: float | None = None
+        content_started_at: float | None = None
+
+        def save_history(label: str, detail: str = "") -> dict[str, Any]:
+            with deps.get_db() as conn:
+                return insert_chapter_history_entry(
+                    conn,
+                    story_id=story_id,
+                    chapter_id=chapter_id,
+                    run_id=history_run_id,
+                    label=label,
+                    detail=detail,
+                    now=deps.utc_now(),
+                )
 
         try:
+            yield deps.stream_event(
+                "history",
+                save_history("User prompt", " ".join(payload.message.split())),
+            )
             async with httpx.AsyncClient(timeout=None) as client:
                 async with client.stream(
                     "POST",
@@ -683,11 +792,24 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                         delta = choice.get("delta") or {}
                         reasoning = delta.get("reasoning") or delta.get("reasoning_content")
                         if reasoning and payload.thinking_enabled:
+                            if reasoning_started_at is None:
+                                reasoning_started_at = time.perf_counter()
                             value = str(reasoning)
                             reasoning_text.append(value)
                             yield deps.stream_event("reasoning", value)
                         content = delta.get("content")
                         if content:
+                            if reasoning_started_at is not None:
+                                duration_ms = (time.perf_counter() - reasoning_started_at) * 1000
+                                yield deps.stream_event(
+                                    "history",
+                                    save_history(
+                                        f"{model_label} thought for {format_duration(duration_ms)}"
+                                    ),
+                                )
+                                reasoning_started_at = None
+                            if content_started_at is None:
+                                content_started_at = time.perf_counter()
                             value = str(content)
                             generated_text.append(value)
                             yield deps.stream_event("content", value)
@@ -760,10 +882,35 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                     (now, story_id),
                 )
             if content:
+                if content_started_at is not None:
+                    duration_ms = (time.perf_counter() - content_started_at) * 1000
+                    yield deps.stream_event(
+                        "history",
+                        save_history(f"{model_label} wrote for {format_duration(duration_ms)}"),
+                    )
+                    content_started_at = None
+                lorebook_started_at = time.perf_counter()
                 yield deps.stream_event("lorebook_start", {"generation_id": story_generation_id})
+            else:
+                lorebook_started_at = None
             lorebook_result = await update_lorebook_after_generation(
                 story_id, chapter_id, story_generation_id, payload.model, payload.max_tokens, content
             )
+            for update in lorebook_result.get("applied") or []:
+                action = "added" if update.get("action") == "create" else "updated"
+                name = str(update.get("name") or "entry").strip() or "entry"
+                yield deps.stream_event(
+                    "history",
+                    save_history(f"{model_label} {action} {name} to Lorebook"),
+                )
+            if lorebook_started_at is not None:
+                duration_ms = (time.perf_counter() - lorebook_started_at) * 1000
+                yield deps.stream_event(
+                    "history",
+                    save_history(
+                        f"{model_label} finished editing Lorebook after {format_duration(duration_ms)}"
+                    ),
+                )
             yield deps.stream_event("lorebook", lorebook_result)
 
     @router.get("/api/stories")
@@ -862,7 +1009,25 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                 """,
                 (story_id,),
             ).fetchall()
-        return {"chapters": [row_to_chapter(row) for row in rows]}
+            history_rows = conn.execute(
+                """
+                SELECT * FROM chapter_history_entries
+                WHERE story_id = ?
+                ORDER BY entry_order ASC, created_at ASC
+                """,
+                (story_id,),
+            ).fetchall()
+        history_by_chapter: dict[str, list[dict[str, Any]]] = {}
+        for row in history_rows:
+            history_by_chapter.setdefault(row["chapter_id"], []).append(
+                row_to_chapter_history_entry(row)
+            )
+        chapters = []
+        for row in rows:
+            chapter = row_to_chapter(row)
+            chapter["history"] = history_by_chapter.get(row["id"], [])
+            chapters.append(chapter)
+        return {"chapters": chapters}
 
     @router.post("/api/stories/{story_id}/chapters")
     def create_chapter(story_id: str, payload: ChapterCreateRequest) -> dict[str, Any]:

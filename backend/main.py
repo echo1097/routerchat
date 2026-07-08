@@ -297,6 +297,19 @@ def init_db() -> None:
               FOREIGN KEY(chapter_id) REFERENCES chapters(id) ON DELETE CASCADE,
               FOREIGN KEY(generation_id) REFERENCES story_generations(id) ON DELETE SET NULL
             );
+
+            CREATE TABLE IF NOT EXISTS chapter_history_entries (
+              id TEXT PRIMARY KEY,
+              story_id TEXT NOT NULL,
+              chapter_id TEXT NOT NULL,
+              run_id TEXT NOT NULL,
+              label TEXT NOT NULL,
+              detail TEXT NOT NULL DEFAULT '',
+              entry_order INTEGER NOT NULL,
+              created_at TEXT NOT NULL,
+              FOREIGN KEY(story_id) REFERENCES stories(id) ON DELETE CASCADE,
+              FOREIGN KEY(chapter_id) REFERENCES chapters(id) ON DELETE CASCADE
+            );
             """
         )
         ensure_message_order_column(conn)

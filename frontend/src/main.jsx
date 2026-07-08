@@ -1461,6 +1461,32 @@ function formatThoughtDuration(ms) {
   return `${seconds} ${seconds === 1 ? "second" : "seconds"}`;
 }
 
+function compactPrompt(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function promptPreview(value, maxLength = 140) {
+  const compact = compactPrompt(value);
+  if (compact.length <= maxLength) return compact;
+  return `${compact.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
+function historyRunGroups(entries) {
+  const groups = [];
+  entries.forEach((entry) => {
+    if (entry.label === "User prompt" || groups.length === 0) {
+      groups.push({
+        id: entry.id,
+        prompt: entry,
+        actions: [],
+      });
+      return;
+    }
+    groups[groups.length - 1].actions.push(entry);
+  });
+  return groups;
+}
+
 function isFiniteNumber(value) {
   return typeof value === "number" && Number.isFinite(value);
 }
@@ -3025,9 +3051,12 @@ function Composer({
   showContextMeter = true,
   writeGenerationMode = null,
   onToggleWriteGenerationMode,
+  writeHistoryEntries = [],
+  writeHistoryTitle = "Chapter history",
 }) {
   const canThink = supportsThinking(models, settings.model) || forceShowThinking;
   const textareaRef = useRef(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const isEmptyVariant = variant === "empty";
 
   useEffect(() => {
@@ -3098,19 +3127,31 @@ function Composer({
             {showContextMeter && <ContextWindowMeter info={contextWindowInfo} />}
             <div className="flex min-w-0 items-center gap-2">
               {writeGenerationMode && (
-                <button
-                  type="button"
-                  onClick={onToggleWriteGenerationMode}
-                  className={cx(
-                    "relative inline-flex h-[34px] shrink-0 items-center gap-1 rounded-full px-2.5 text-[11px] font-medium leading-none before:absolute before:-bottom-[3px] before:-right-[3px] before:-top-[3px] before:left-0 before:content-[''] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
-                    CONTROL_MOTION,
-                    writeGenerationMode === "new"
-                      ? "text-blue-200"
-                      : "text-zinc-500 hover:text-zinc-200",
-                  )}
-                >
-                  {WRITE_GENERATION_MODES[writeGenerationMode]}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setHistoryOpen(true)}
+                    className={cx(
+                      "relative inline-flex h-[34px] shrink-0 items-center gap-1 rounded-full px-2.5 text-[11px] font-medium leading-none text-zinc-500 before:absolute before:-bottom-[3px] before:-right-[3px] before:-top-[3px] before:left-0 before:content-[''] hover:text-zinc-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+                      CONTROL_MOTION,
+                    )}
+                  >
+                    History
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onToggleWriteGenerationMode}
+                    className={cx(
+                      "relative inline-flex h-[34px] shrink-0 items-center gap-1 rounded-full px-2.5 text-[11px] font-medium leading-none before:absolute before:-bottom-[3px] before:-right-[3px] before:-top-[3px] before:left-0 before:content-[''] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+                      CONTROL_MOTION,
+                      writeGenerationMode === "new"
+                        ? "text-blue-200"
+                        : "text-zinc-500 hover:text-zinc-200",
+                    )}
+                  >
+                    {WRITE_GENERATION_MODES[writeGenerationMode]}
+                  </button>
+                </>
               )}
               {canThink && (
                 <button
@@ -3190,7 +3231,244 @@ function Composer({
           </div>
         </div>
       </div>
+      <WriteHistoryModal
+        open={historyOpen}
+        entries={writeHistoryEntries}
+        title={writeHistoryTitle}
+        onClose={() => setHistoryOpen(false)}
+      />
     </form>
+  );
+}
+
+function WriteHistoryModal({ open, entries, title, onClose }) {
+  const [rendered, setRendered] = useState(open);
+  const [phase, setPhase] = useState(open ? "open" : "closed");
+  const [expandedEntries, setExpandedEntries] = useState({});
+  const [openRuns, setOpenRuns] = useState({});
+  const closeRef = useRef(null);
+
+  useEffect(() => {
+    if (open) {
+      setRendered(true);
+      setPhase("open");
+      requestAnimationFrame(() => closeRef.current?.focus());
+      return undefined;
+    }
+
+    if (!rendered) return undefined;
+
+    setPhase("closing");
+    const closeMs =
+      parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue("--modal-close-dur"),
+      ) || 150;
+    const timeoutId = window.setTimeout(() => {
+      setRendered(false);
+      setPhase("closed");
+    }, closeMs);
+    return () => window.clearTimeout(timeoutId);
+  }, [open, rendered]);
+
+  useEffect(() => {
+    if (!rendered) return undefined;
+
+    function handleKeyDown(event) {
+      if (event.key === "Escape") onClose();
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose, rendered]);
+
+  if (!rendered) return null;
+
+  const isOpen = phase === "open";
+  const runGroups = historyRunGroups(entries);
+
+  function toggleExpanded(entryId) {
+    setExpandedEntries((current) => ({
+      ...current,
+      [entryId]: !current[entryId],
+    }));
+  }
+
+  function toggleRun(runId) {
+    setOpenRuns((current) => ({
+      ...current,
+      [runId]: current[runId] === false,
+    }));
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[80] grid place-items-center px-4 py-6">
+      <button
+        type="button"
+        aria-label="Close history"
+        className={cx(
+          "absolute inset-0 bg-black/60 backdrop-blur-sm transition-[opacity,backdrop-filter] duration-150 ease-out",
+          isOpen ? "opacity-100" : "opacity-0",
+        )}
+        onClick={onClose}
+      />
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="write-history-title"
+        className={cx(
+          "t-modal relative z-10 flex max-h-[min(560px,calc(100dvh-2rem))] w-full max-w-[520px] flex-col overflow-hidden rounded-[24px] bg-[#18181b] text-zinc-100 shadow-[var(--shadow-surface)]",
+          isOpen ? "is-open" : "is-closing",
+        )}
+      >
+        <header className="flex items-center justify-between gap-4 px-4 pb-3 pt-4">
+          <div className="min-w-0">
+            <h2 id="write-history-title" className="text-base font-semibold leading-6 text-zinc-100">
+              {title}
+            </h2>
+          </div>
+          <button
+            ref={closeRef}
+            type="button"
+            onClick={onClose}
+            className={cx(
+              "grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/[0.05] text-zinc-400 hover:bg-white/[0.08] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15",
+              CONTROL_MOTION,
+            )}
+            aria-label="Close history"
+          >
+            <X size={17} />
+          </button>
+        </header>
+        <div className="min-h-0 overflow-y-auto px-4 pb-4">
+          {runGroups.length > 0 ? (
+            <div className="space-y-2">
+              {runGroups.map((run, index) => (
+                <WriteHistoryRunAccordion
+                  key={run.id}
+                  run={run}
+                  open={openRuns[run.id] ?? index === runGroups.length - 1}
+                  title={`Prompt ${index + 1}`}
+                  onToggle={() => toggleRun(run.id)}
+                  expandedEntries={expandedEntries}
+                  onToggleEntry={toggleExpanded}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-2xl bg-black/20 px-4 py-8 text-center text-sm text-zinc-500 shadow-[var(--shadow-border)]">
+              No write actions yet
+            </div>
+          )}
+        </div>
+      </section>
+    </div>,
+    document.body,
+  );
+}
+
+function WriteHistoryRunAccordion({
+  run,
+  open,
+  title,
+  onToggle,
+  expandedEntries,
+  onToggleEntry,
+}) {
+  const actionCount = run.actions.length;
+
+  return (
+    <section
+      className="t-acc rounded-2xl bg-black/15 px-3 shadow-[var(--shadow-border)]"
+      data-open={String(open)}
+    >
+      <button
+        type="button"
+        className="t-acc-head flex min-h-12 w-full items-center justify-between gap-4 rounded-xl py-2 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/35"
+        aria-expanded={open}
+        onClick={onToggle}
+      >
+        <span className="min-w-0">
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-sm font-semibold text-zinc-100">{title}</span>
+            <span className="shrink-0 rounded-full bg-white/[0.04] px-2 py-0.5 text-[11px] font-medium text-zinc-600 shadow-[var(--shadow-border)]">
+              {actionCount} {actionCount === 1 ? "action" : "actions"}
+            </span>
+          </span>
+        </span>
+        <span className="t-acc-chevron shrink-0 text-zinc-400">
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path
+              d="M4 6.5L8 10.5L12 6.5"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </span>
+      </button>
+      <div className="t-acc-panel">
+        <div className="t-acc-panel-inner pb-3">
+          <ol className="space-y-1">
+            {[run.prompt, ...run.actions].filter(Boolean).map((entry) => (
+              <li
+                key={entry.id}
+                className="grid grid-cols-[8px_minmax(0,1fr)] gap-3 rounded-xl px-1 py-2"
+              >
+                <span className="mt-[7px] h-1.5 w-1.5 rounded-full bg-zinc-600" aria-hidden="true" />
+                <div className="min-w-0">
+                  <div className="text-sm font-medium leading-5 text-zinc-200">{entry.label}</div>
+                  <WriteHistoryDetail
+                    entry={entry}
+                    expanded={Boolean(expandedEntries[entry.id])}
+                    onToggle={() => onToggleEntry(entry.id)}
+                  />
+                </div>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function WriteHistoryDetail({ entry, expanded, onToggle }) {
+  if (!entry.detail) return null;
+
+  const isPrompt = entry.label === "User prompt";
+  const isLongPrompt = isPrompt && entry.detail.length > 140;
+
+  if (!isLongPrompt) {
+    return (
+      <div className="mt-0.5 truncate text-xs leading-5 text-zinc-500" title={entry.detail}>
+        {entry.detail}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-1">
+      <div
+        className={cx(
+          "text-xs leading-5 text-zinc-500",
+          expanded ? "whitespace-pre-wrap break-words" : "truncate",
+        )}
+        title={expanded ? undefined : entry.detail}
+      >
+        {expanded ? entry.detail : promptPreview(entry.detail)}
+      </div>
+      <button
+        type="button"
+        onClick={onToggle}
+        className={cx(
+          "mt-1 h-7 rounded-full px-2 text-[11px] font-medium leading-none text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+          CONTROL_MOTION,
+        )}
+      >
+        {expanded ? "Show less" : "Show more"}
+      </button>
+    </div>
   );
 }
 
@@ -4831,6 +5109,7 @@ function App() {
   const [writeReasoning, setWriteReasoning] = useState({ text: "", streaming: false, durationMs: null });
   const [latestStoryGeneration, setLatestStoryGeneration] = useState(null);
   const [writeGenerationMode, setWriteGenerationMode] = useState("edit");
+  const [writeHistoryEntries, setWriteHistoryEntries] = useState([]);
   const [models, setModels] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
   const [temporaryChat, setTemporaryChat] = useState(false);
@@ -4945,6 +5224,7 @@ function App() {
   const activeMessages = isWritingMode ? [] : messages;
   const activeConversationId = isWritingMode ? activeStoryId : activeChatId;
   const activeModelLocked = Boolean(!isWritingMode && activeConversationId && activeMessages.length > 0);
+  const activeChapterTitle = chapters.find((chapter) => chapter.id === activeChapterId)?.title || "Chapter";
 
 
   
@@ -5028,6 +5308,7 @@ function App() {
     setLatestStoryGeneration(nextGeneration);
     setActiveChapterId(nextChapter?.id || null);
     setChapterContent(nextChapter?.content || "");
+    setWriteHistoryEntries(nextChapter?.history || []);
     chapterContentRef.current = nextChapter?.content || "";
     setChapterSaveState("");
     setSettings({
@@ -5270,6 +5551,7 @@ function App() {
     setLorebookEntries([]);
     setLatestStoryGeneration(null);
     setChapterContent("");
+    setWriteHistoryEntries([]);
     chapterContentRef.current = "";
     setChapterSaveState("");
     setStoryGenerationStatus("");
@@ -5893,6 +6175,7 @@ function App() {
     if (!chapter) return;
     setActiveChapterId(chapter.id);
     setChapterContent(chapter.content || "");
+    setWriteHistoryEntries(chapter.history || []);
     chapterContentRef.current = chapter.content || "";
     setChapterSaveState("");
     setStoryWorkspaceView("chapter");
@@ -5909,6 +6192,7 @@ function App() {
       setChapters(nextChapters);
       setActiveChapterId(chapter.id);
       setChapterContent(chapter.content || "");
+      setWriteHistoryEntries(chapter.history || []);
       chapterContentRef.current = chapter.content || "";
       setStoryWorkspaceView("chapter");
       writeRoute(storyRoute(activeStoryId, chapter.id, "chapter"));
@@ -5969,6 +6253,7 @@ function App() {
             setLorebookEntries([]);
             setLatestStoryGeneration(null);
             setChapterContent("");
+            setWriteHistoryEntries([]);
             setStoryWorkspaceView("chapter");
             writeRoute({ page: "home", mode: "write" }, { replace: true });
           }
@@ -5995,6 +6280,7 @@ function App() {
           const nextChapter = nextChapters[0] || null;
           setActiveChapterId(nextChapter?.id || null);
           setChapterContent(nextChapter?.content || "");
+          setWriteHistoryEntries(nextChapter?.history || []);
           chapterContentRef.current = nextChapter?.content || "";
           setStoryWorkspaceView("chapter");
           writeRoute(storyRoute(activeStoryId, nextChapter?.id || null, "chapter"), {
@@ -6061,6 +6347,22 @@ function App() {
     }, 600);
   }
 
+  function appendWriteHistoryEntry(entry) {
+    if (!entry?.id) return;
+    setWriteHistoryEntries((current) => {
+      if (current.some((item) => item.id === entry.id)) return current;
+      return [...current, entry];
+    });
+    setChapters((current) =>
+      current.map((chapter) => {
+        if (chapter.id !== entry.chapter_id) return chapter;
+        const history = Array.isArray(chapter.history) ? chapter.history : [];
+        if (history.some((item) => item.id === entry.id)) return chapter;
+        return { ...chapter, history: [...history, entry] };
+      }),
+    );
+  }
+
   async function generateStoryChapter(text = prompt.trim()) {
     if (isStreaming || !text || !activeStoryId || !activeChapterId) return;
     setIsStreaming(true);
@@ -6100,6 +6402,7 @@ function App() {
         setChapters(nextChapters);
         setActiveChapterId(chapter.id);
         setChapterContent("");
+        setWriteHistoryEntries(chapter.history || []);
         chapterContentRef.current = "";
         setStoryWorkspaceView("chapter");
         writeRoute(storyRoute(activeStoryId, chapter.id, "chapter"));
@@ -6115,6 +6418,10 @@ function App() {
         previousChapters,
         signal: abortRef.current.signal,
         onEvent: (event) => {
+          if (event.type === "history") {
+            appendWriteHistoryEntry(event.value || {});
+            return;
+          }
           if (event.type === "reasoning") {
             if (!writeReasoningStartedAtRef.current) {
               writeReasoningStartedAtRef.current = performance.now();
@@ -6178,6 +6485,7 @@ function App() {
       if (activeChapter) {
         setActiveChapterId(activeChapter.id);
         setChapterContent(activeChapter.content || "");
+        setWriteHistoryEntries(activeChapter.history || []);
         chapterContentRef.current = activeChapter.content || "";
         writeRoute(storyRoute(activeStoryId, activeChapter.id, "chapter"), { replace: true });
       }
@@ -6385,6 +6693,8 @@ function App() {
             showContextMeter={!isWritingMode}
             writeGenerationMode={isWritingMode ? writeGenerationMode : null}
             onToggleWriteGenerationMode={toggleWriteGenerationMode}
+            writeHistoryEntries={writeHistoryEntries}
+            writeHistoryTitle={`${activeChapterTitle} history`}
           />
         ))}
       </main>

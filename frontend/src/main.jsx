@@ -1835,7 +1835,11 @@ function EmptyChatState() {
   );
 }
 
-function WriteLanding({ openingMessage, hasStories, onStartNew, onContinue }) {
+function WriteLanding({ openingMessage, stories, onStartNew, onContinue }) {
+  const [continueOpen, setContinueOpen] = useState(false);
+  const continuePanelId = useId();
+  const hasStories = stories.length > 0;
+
   return (
     <section className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-4 pb-[12vh] pt-20 sm:px-8 lg:px-10">
       <div className="pointer-events-auto mx-auto flex w-full max-w-[760px] flex-col items-center">
@@ -1844,7 +1848,7 @@ function WriteLanding({ openingMessage, hasStories, onStartNew, onContinue }) {
             {openingMessage}
           </div>
         )}
-        <div className="flex w-full flex-col items-center justify-center gap-3 sm:flex-row">
+        <div className="flex w-full flex-col items-center justify-center gap-3 sm:flex-row sm:items-start">
           <button
             type="button"
             onClick={onStartNew}
@@ -1855,17 +1859,43 @@ function WriteLanding({ openingMessage, hasStories, onStartNew, onContinue }) {
           >
             Start a new story
           </button>
-          <button
-            type="button"
-            onClick={onContinue}
-            disabled={!hasStories}
-            className={cx(
-              "inline-flex h-11 min-w-[178px] items-center justify-center rounded-full bg-[#18181a] px-5 text-sm font-medium text-zinc-100 shadow-[0_0_0_1px_rgba(255,255,255,0.11),0_12px_36px_rgba(0,0,0,0.2)] hover:bg-[#1f1f22] disabled:cursor-not-allowed disabled:text-zinc-600 disabled:hover:bg-[#18181a] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
-              CONTROL_MOTION,
-            )}
+          <div
+            className="t-acc relative w-full max-w-[340px] sm:w-[260px]"
+            data-open={String(hasStories && continueOpen)}
           >
-            Continue a story
-          </button>
+            <button
+              type="button"
+              onClick={() => setContinueOpen((current) => !current)}
+              disabled={!hasStories}
+              aria-expanded={hasStories && continueOpen}
+              aria-controls={continuePanelId}
+              className={cx(
+                "t-acc-head inline-flex h-11 w-full min-w-[178px] items-center justify-center gap-2 rounded-full bg-[#18181a] px-5 text-sm font-medium text-zinc-100 shadow-[0_0_0_1px_rgba(255,255,255,0.11),0_12px_36px_rgba(0,0,0,0.2)] hover:bg-[#1f1f22] disabled:cursor-not-allowed disabled:text-zinc-600 disabled:hover:bg-[#18181a] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
+                CONTROL_MOTION,
+              )}
+            >
+              <span>Continue a story</span>
+              <span className="t-acc-chevron shrink-0 text-zinc-500">
+                <ChevronDown size={16} aria-hidden="true" />
+              </span>
+            </button>
+            <div id={continuePanelId} className="t-acc-panel absolute left-0 right-0 top-full z-30">
+              <div className="t-acc-panel-inner px-1 pb-1 pt-2">
+                <div className="max-h-[240px] overflow-y-auto rounded-2xl bg-[#121214] p-1 shadow-[0_0_0_1px_rgba(255,255,255,0.1),0_18px_44px_rgba(0,0,0,0.28)]">
+                  {stories.map((story) => (
+                    <button
+                      key={story.id}
+                      type="button"
+                      onClick={() => onContinue(story.id)}
+                      className="flex h-10 w-full min-w-0 items-center rounded-xl px-3 text-left text-sm font-medium text-zinc-300 hover:bg-white/[0.055] hover:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35"
+                    >
+                      <span className="truncate">{story.title}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -1971,7 +2001,7 @@ function StoryRail({
   onCloseMobile,
   collapsed,
   onCollapse,
-  onCreateStory,
+  onGoHome,
   onCreateChapter,
   onSelectStory,
   onSelectChapter,
@@ -2022,14 +2052,17 @@ function StoryRail({
           <div className="mb-4 flex items-center justify-center gap-2">
             <button
               type="button"
-              onClick={onCreateStory}
+              onClick={() => {
+                onGoHome();
+                onCloseMobile();
+              }}
               className={cx(
                 "flex h-10 min-w-0 flex-1 items-center justify-center gap-2 rounded-full bg-zinc-100 px-4 text-sm font-semibold text-zinc-950 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
                 CONTROL_MOTION,
               )}
             >
-              <MessageSquarePlus size={17} />
-              New story
+              <i className="fi fi-rr-home" aria-hidden="true" />
+              Home
             </button>
             <IconButton
               label="Collapse sidebar"
@@ -4791,6 +4824,7 @@ function App() {
 
   useEffect(() => {
     if (!isWritingMode || activeStoryId || stories.length === 0) return;
+    if (routeRef.current?.page === "home" && routeRef.current?.mode === "write") return;
     if (routeRef.current?.page === "story") return;
     if (skipNextStoryAutoloadRef.current) {
       skipNextStoryAutoloadRef.current = false;
@@ -5504,11 +5538,11 @@ function App() {
     }
   }
 
-  async function continueStory() {
+  async function continueStory(storyId = null) {
     if (isStreaming) return;
-    const nextStory = stories[0] || (await loadStories())[0];
-    if (!nextStory) return;
-    const result = await loadStoryBundle(nextStory.id);
+    const nextStoryId = storyId || stories[0]?.id || (await loadStories())[0]?.id;
+    if (!nextStoryId) return;
+    const result = await loadStoryBundle(nextStoryId);
     setStoryWorkspaceView("chapter");
     writeRoute(storyRoute(result.story.id, null, "chapter"));
   }
@@ -5861,7 +5895,7 @@ function App() {
           onCloseMobile={() => setRailOpen(false)}
           collapsed={railCollapsed}
           onCollapse={() => setRailCollapsed(true)}
-          onCreateStory={startNewStory}
+          onGoHome={() => resetChat({ mode: "write" })}
           onCreateChapter={createStoryChapter}
           onSelectStory={selectStory}
           onSelectChapter={selectChapter}
@@ -5978,7 +6012,7 @@ function App() {
           isWritingMode ? (
             <WriteLanding
               openingMessage={landingMessage}
-              hasStories={stories.length > 0}
+              stories={stories}
               onStartNew={startNewStory}
               onContinue={continueStory}
             />

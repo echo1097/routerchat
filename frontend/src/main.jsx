@@ -6373,8 +6373,10 @@ function App() {
     setStatus("");
     abortRef.current = new AbortController();
     let generatedText = "";
+    let streamFailed = false;
     let targetChapterId = activeChapterId;
     let targetChapterContent = chapterContentRef.current;
+    let shouldWaitForChapterPatch = writeGenerationMode === "edit" && Boolean(targetChapterContent.trim());
     let previousChapters = chapters.map((chapter) => ({
       id: chapter.id,
       title: chapter.title,
@@ -6391,6 +6393,7 @@ function App() {
         const nextChapters = await storyApi.listChapters(activeStoryId);
         targetChapterId = chapter.id;
         targetChapterContent = "";
+        shouldWaitForChapterPatch = false;
         previousChapters = nextChapters
           .filter((item) => item.id !== chapter.id)
           .map((item) => ({
@@ -6449,12 +6452,20 @@ function App() {
             }
             setStoryGenerationStatus("Writing");
             generatedText += value;
+            if (shouldWaitForChapterPatch) return;
             setChapterContent((current) => {
               const base = generatedText === value && current.trim() ? `${current}\n\n` : current;
               const nextContent = `${base}${value}`;
               chapterContentRef.current = nextContent;
               return nextContent;
             });
+            return;
+          }
+          if (event.type === "chapter_updated") {
+            const result = event.value || {};
+            const nextContent = String(result.content || "");
+            setChapterContent(nextContent);
+            chapterContentRef.current = nextContent;
             return;
           }
           if (event.type === "lorebook_start") {
@@ -6475,6 +6486,7 @@ function App() {
             setLatestStoryGeneration(event.value || null);
           }
           if (event.type === "error") {
+            streamFailed = true;
             setStatus(String(event.value || "Story generation failed"));
           }
         },
@@ -6490,7 +6502,7 @@ function App() {
         writeRoute(storyRoute(activeStoryId, activeChapter.id, "chapter"), { replace: true });
       }
       setStoryGenerationStatus("");
-      showToast("Finished chapter");
+      if (!streamFailed) showToast("Finished chapter");
     } catch (error) {
       if (error.name === "AbortError") {
         setStatus("Response stopped");

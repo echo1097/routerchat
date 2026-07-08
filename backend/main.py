@@ -108,6 +108,9 @@ class StreamMessageRequest(BaseModel):
     reasoning_effort: ReasoningEffort = "medium"
     nitro_mode: bool = False
     regenerate_message_id: str | None = None
+    write_generation_mode: str | None = None
+    chapter_content: str | None = None
+    previous_chapters: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class MessageUpdateRequest(BaseModel):

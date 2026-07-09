@@ -1886,7 +1886,7 @@ function WriteLanding({ openingMessage, stories, onStartNew, onContinue }) {
             Start a new story
           </button>
           <div
-            className="t-acc relative w-full max-w-[340px] sm:w-[260px]"
+            className="t-acc relative w-[178px] max-w-full"
             data-open={String(hasStories && continueOpen)}
           >
             <button
@@ -1901,9 +1901,6 @@ function WriteLanding({ openingMessage, stories, onStartNew, onContinue }) {
               )}
             >
               <span>Continue a story</span>
-              <span className="t-acc-chevron shrink-0 text-zinc-500">
-                <ChevronDown size={16} aria-hidden="true" />
-              </span>
             </button>
             <div id={continuePanelId} className="t-acc-panel absolute left-0 right-0 top-full z-30">
               <div className="t-acc-panel-inner px-1 pb-1 pt-2">
@@ -3053,10 +3050,13 @@ function Composer({
   onToggleWriteGenerationMode,
   writeHistoryEntries = [],
   writeHistoryTitle = "Chapter history",
+  systemPrompt = "",
+  onSaveSystemPrompt,
 }) {
   const canThink = supportsThinking(models, settings.model) || forceShowThinking;
   const textareaRef = useRef(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [systemPromptOpen, setSystemPromptOpen] = useState(false);
   const isEmptyVariant = variant === "empty";
 
   useEffect(() => {
@@ -3128,6 +3128,17 @@ function Composer({
             <div className="flex min-w-0 items-center gap-2">
               {writeGenerationMode && (
                 <>
+                  <button
+                    type="button"
+                    onClick={() => setSystemPromptOpen(true)}
+                    className={cx(
+                      "relative inline-flex h-[34px] shrink-0 items-center gap-1 rounded-full px-2.5 text-[11px] font-medium leading-none text-zinc-500 before:absolute before:-bottom-[3px] before:-right-[3px] before:-top-[3px] before:left-0 before:content-[''] hover:text-zinc-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+                      CONTROL_MOTION,
+                      systemPrompt.trim() && "text-blue-200 hover:text-blue-100",
+                    )}
+                  >
+                    System Prompt
+                  </button>
                   <button
                     type="button"
                     onClick={() => setHistoryOpen(true)}
@@ -3237,7 +3248,247 @@ function Composer({
         title={writeHistoryTitle}
         onClose={() => setHistoryOpen(false)}
       />
+      <SystemPromptModal
+        open={systemPromptOpen}
+        value={systemPrompt}
+        onSave={onSaveSystemPrompt}
+        onClose={() => setSystemPromptOpen(false)}
+      />
     </form>
+  );
+}
+
+function SystemPromptModal({ open, value, onSave, onClose }) {
+  const [rendered, setRendered] = useState(open);
+  const [phase, setPhase] = useState(open ? "open" : "closed");
+  const [draft, setDraft] = useState(value || "");
+  const [saveState, setSaveState] = useState("saved");
+  const closeRef = useRef(null);
+  const textareaRef = useRef(null);
+  const latestSavedRef = useRef(value || "");
+  const draftRef = useRef(value || "");
+  const saveTimeoutRef = useRef(null);
+  const saveRunRef = useRef(0);
+
+  useEffect(() => {
+    if (!open) return;
+    const nextValue = value || "";
+    setDraft(nextValue);
+    draftRef.current = nextValue;
+    latestSavedRef.current = nextValue;
+    setSaveState("saved");
+  }, [open, value]);
+
+  useEffect(() => {
+    if (open) {
+      setRendered(true);
+      setPhase("open");
+      requestAnimationFrame(() => {
+        textareaRef.current?.focus();
+      });
+      return undefined;
+    }
+
+    if (!rendered) return undefined;
+
+    setPhase("closing");
+    const closeMs =
+      parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue("--modal-close-dur"),
+      ) || 150;
+    const timeoutId = window.setTimeout(() => {
+      setRendered(false);
+      setPhase("closed");
+    }, closeMs);
+    return () => window.clearTimeout(timeoutId);
+  }, [open, rendered]);
+
+  useEffect(() => {
+    if (!rendered) return undefined;
+
+    function handleKeyDown(event) {
+      if (event.key === "Escape") onClose();
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose, rendered]);
+
+  useEffect(
+    () => () => {
+      window.clearTimeout(saveTimeoutRef.current);
+    },
+    [],
+  );
+
+  async function savePrompt(nextValue, savedLabel = "saved") {
+    if (!onSave) return;
+    if (nextValue === latestSavedRef.current) {
+      setSaveState("saved");
+      return;
+    }
+
+    const runId = saveRunRef.current + 1;
+    saveRunRef.current = runId;
+    setSaveState("saving");
+
+    try {
+      await onSave(nextValue);
+      if (runId !== saveRunRef.current) return;
+      latestSavedRef.current = nextValue;
+      setSaveState(savedLabel);
+      window.setTimeout(() => {
+        if (saveRunRef.current === runId && draftRef.current === latestSavedRef.current) {
+          setSaveState("saved");
+        }
+      }, 1400);
+    } catch {
+      if (runId === saveRunRef.current) {
+        setSaveState("save failed");
+      }
+    }
+  }
+
+  function queueAutosave(nextValue) {
+    window.clearTimeout(saveTimeoutRef.current);
+    if (nextValue === latestSavedRef.current) {
+      setSaveState("saved");
+      return;
+    }
+
+    setSaveState("unsaved");
+    saveTimeoutRef.current = window.setTimeout(() => {
+      void savePrompt(draftRef.current, "autosaved");
+    }, 600);
+  }
+
+  function updateDraft(nextValue) {
+    setDraft(nextValue);
+    draftRef.current = nextValue;
+    queueAutosave(nextValue);
+  }
+
+  function saveNow() {
+    window.clearTimeout(saveTimeoutRef.current);
+    void savePrompt(draftRef.current, "saved");
+  }
+
+  function clearPrompt() {
+    updateDraft("");
+  }
+
+  if (!rendered) return null;
+
+  const isOpen = phase === "open";
+  const canSave = saveState !== "saving" && draft !== latestSavedRef.current;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[80] grid place-items-center px-4 py-6">
+      <button
+        type="button"
+        aria-label="Close system prompt"
+        className={cx(
+          "absolute inset-0 bg-black/60 backdrop-blur-sm transition-[opacity,backdrop-filter] duration-150 ease-out",
+          isOpen ? "opacity-100" : "opacity-0",
+        )}
+        onClick={onClose}
+      />
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="system-prompt-title"
+        className={cx(
+          "t-modal relative z-10 flex max-h-[min(620px,calc(100dvh-2rem))] w-full max-w-[560px] flex-col overflow-hidden rounded-[24px] bg-[#18181b] text-zinc-100 shadow-[var(--shadow-surface)]",
+          isOpen ? "is-open" : "is-closing",
+        )}
+      >
+        <header className="flex items-center justify-between gap-4 px-4 pb-3 pt-4">
+          <div className="min-w-0">
+            <h2 id="system-prompt-title" className="text-balance text-base font-semibold leading-6 text-zinc-100">
+              System prompt
+            </h2>
+            <p className="mt-0.5 text-pretty text-xs leading-5 text-zinc-500">
+              Story-specific instructions sent with every write request
+            </p>
+          </div>
+          <button
+            ref={closeRef}
+            type="button"
+            onClick={onClose}
+            className={cx(
+              "grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/[0.05] text-zinc-400 hover:bg-white/[0.08] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15",
+              CONTROL_MOTION,
+            )}
+            aria-label="Close system prompt"
+          >
+            <X size={17} />
+          </button>
+        </header>
+        <div className="min-h-0 flex-1 px-4 pb-4">
+          <div className="prompt-edit-surface h-[min(340px,calc(100dvh-17rem))] min-h-[220px] rounded-[18px] px-4 py-3">
+            <textarea
+              ref={textareaRef}
+              value={draft}
+              onChange={(event) => updateDraft(event.target.value)}
+              placeholder="No story system prompt"
+              className="block h-full w-full resize-none overflow-y-auto bg-transparent text-sm leading-6 text-zinc-100 outline-none placeholder:text-zinc-500"
+            />
+          </div>
+        </div>
+        <footer className="flex flex-wrap items-center justify-between gap-3 px-4 pb-4">
+          <div className="min-h-10 min-w-0 flex-1">
+            <span
+              className={cx(
+                "inline-flex h-8 items-center rounded-full bg-white/[0.045] px-2.5 text-[11px] font-medium leading-none shadow-[var(--shadow-border)]",
+                saveState === "save failed"
+                  ? "text-red-300"
+                  : saveState === "saving" || saveState === "unsaved"
+                    ? "text-zinc-400"
+                    : "text-emerald-300",
+              )}
+            >
+              {saveState}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            {draft && (
+              <button
+                type="button"
+                onClick={clearPrompt}
+                className={cx(
+                  "inline-flex h-10 items-center justify-center rounded-full px-3 text-sm font-medium text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+                  CONTROL_MOTION,
+                )}
+              >
+                Clear
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className={cx(
+                "inline-flex h-10 items-center justify-center rounded-full px-4 text-sm font-medium text-zinc-300 hover:bg-white/[0.06] hover:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+                CONTROL_MOTION,
+              )}
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              onClick={saveNow}
+              disabled={!canSave}
+              className={cx(
+                "inline-flex h-10 items-center justify-center rounded-full bg-zinc-100 px-4 text-sm font-semibold text-zinc-950 hover:bg-white disabled:cursor-not-allowed disabled:bg-white/30 disabled:text-zinc-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:active:scale-100",
+                CONTROL_MOTION,
+              )}
+            >
+              {saveState === "saving" ? "Saving" : "Save"}
+            </button>
+          </div>
+        </footer>
+      </section>
+    </div>,
+    document.body,
   );
 }
 
@@ -3540,6 +3791,9 @@ function SettingsDrawer({
   const cloudChat = selectedCloudChat || activeCloudChat || chats[0];
   const cloudChatId = cloudChat?.id || "";
   const promptModeName = chatMode === "write" ? "Write" : "Chat";
+  const visibleSettingsPages = chatMode === "write"
+    ? SETTINGS_PAGES.filter((page) => page.id !== "system")
+    : SETTINGS_PAGES;
 
   const filteredCloudChats = useMemo(() => {
     const normalized = cloudSearch.trim().toLowerCase();
@@ -3590,6 +3844,12 @@ function SettingsDrawer({
 
     requestAnimationFrame(() => updateChatListEdges(chatList));
   }, [filteredCloudChats.length, activePage]);
+
+  useEffect(() => {
+    if (chatMode === "write" && activePage === "system") {
+      setActivePage("general");
+    }
+  }, [activePage, chatMode]);
 
   useEffect(() => {
     const hasQuery = query.trim().length > 0;
@@ -4400,7 +4660,7 @@ function SettingsDrawer({
             <X size={20} strokeWidth={1.9} />
           </button>
           <nav className="space-y-1.5" aria-label="Settings sections">
-            {SETTINGS_PAGES.map((page) => {
+            {visibleSettingsPages.map((page) => {
               const Icon = page.icon;
               const selected = activePage === page.id;
               return (
@@ -4443,7 +4703,7 @@ function SettingsDrawer({
                 id="settings-modal-title"
                 className="text-lg font-medium tracking-normal text-zinc-50 md:text-xl"
               >
-                {SETTINGS_PAGES.find((page) => page.id === activePage)?.label || "Settings"}
+                {visibleSettingsPages.find((page) => page.id === activePage)?.label || "Settings"}
               </h1>
               <div className="md:hidden">
                 <IconButton label="Close settings" onClick={onClose}>
@@ -4452,7 +4712,7 @@ function SettingsDrawer({
               </div>
             </div>
             <SlidingTabs
-              options={SETTINGS_PAGES}
+              options={visibleSettingsPages}
               value={activePage}
               onChange={choosePage}
               getValue={(page) => page.id}
@@ -5147,6 +5407,8 @@ function App() {
   const abortRef = useRef(null);
   const routeRef = useRef(parseRoute());
   const initialRouteHandledRef = useRef(false);
+  const appSettingsLoadedRef = useRef(false);
+  const defaultModelRef = useRef(DEFAULT_MODEL);
   const skipNextStoryAutoloadRef = useRef(false);
   const tempChatIdRef = useRef(null);
   const reasoningStartedAtRef = useRef({});
@@ -5361,8 +5623,9 @@ function App() {
         const selectableModels = hideFreeModels
           ? loaded.filter((model) => !isFreeModel(model))
           : loaded;
-        const fallbackModel = selectableModels.some((model) => model.id === defaultModel)
-          ? defaultModel
+        const savedDefaultModel = defaultModelRef.current;
+        const fallbackModel = selectableModels.some((model) => model.id === savedDefaultModel)
+          ? savedDefaultModel
           : selectableModels[0]?.id || loaded[0]?.id || DEFAULT_MODEL;
         return { ...current, model: fallbackModel };
       });
@@ -5388,6 +5651,7 @@ function App() {
           ? payload.smooth_streaming
           : Boolean(readLocalAppSettings().smooth_streaming);
       setDefaultModel(nextDefaultModel);
+      defaultModelRef.current = nextDefaultModel;
       setHideFreeModels(nextHideFreeModels);
       setNitroMode(nextNitroMode);
       setSmoothStreaming(nextSmoothStreaming);
@@ -5397,10 +5661,11 @@ function App() {
         smooth_streaming: nextSmoothStreaming,
       });
       setSettings((current) => (
-        activeChatId || activeStoryId
+        activeChatId || activeStoryId || appSettingsLoadedRef.current
           ? { ...current, nitro_mode: nextNitroMode }
           : { ...current, model: nextDefaultModel, nitro_mode: nextNitroMode }
       ));
+      appSettingsLoadedRef.current = true;
     } catch (error) {
       setStatus(error.message);
     }
@@ -5529,18 +5794,28 @@ function App() {
     }
   }
 
+  async function saveStorySystemPrompt(systemPrompt) {
+    if (!activeStoryId) {
+      throw new Error("No active story.");
+    }
+
+    const nextSettings = { ...settings, system_prompt: systemPrompt };
+    try {
+      await storyApi.updateStory(activeStoryId, nextSettings);
+      setSettings(nextSettings);
+      await loadStories();
+    } catch (error) {
+      setStatus(error.message);
+      throw error;
+    }
+  }
+
   async function resetChat({ replace = false, mode = chatMode } = {}) {
     const nextMode = mode === "write" ? "write" : "chat";
     const nextRoute = { page: "home", mode: nextMode };
     await closeTempForRouteChange(nextRoute);
     writeRoute(nextRoute, { replace });
     setChatMode(nextMode);
-    const selectableModels = hideFreeModels
-      ? models.filter((model) => !isFreeModel(model))
-      : models;
-    const nextModel = selectableModels.some((model) => model.id === defaultModel)
-      ? defaultModel
-      : selectableModels[0]?.id || defaultModel;
     setActiveChatId(null);
     setTemporaryChat(false);
     setTempChatId(null);
@@ -5558,7 +5833,7 @@ function App() {
     setStoryWorkspaceView("chapter");
     setSettings((current) => ({
       ...newSettings,
-      model: nextModel || current.model,
+      model: current.model || defaultModel,
       nitro_mode: nitroMode,
     }));
     setPrompt("");
@@ -5609,7 +5884,8 @@ function App() {
       });
       const nextDefaultModel = payload.default_model || modelId;
       setDefaultModel(nextDefaultModel);
-      if (!activeChatId) {
+      defaultModelRef.current = nextDefaultModel;
+      if (!activeChatId && !activeStoryId) {
         setSettings((current) => ({ ...current, model: nextDefaultModel }));
       }
       showToast("Default model updated");
@@ -6134,7 +6410,7 @@ function App() {
       const story = await storyApi.createStory({
         title: title.trim() || "New story",
         model: settings.model,
-        system_prompt: settings.system_prompt,
+        system_prompt: "",
         temperature: settings.temperature,
         max_tokens: settings.max_tokens,
         thinking_enabled: settings.thinking_enabled,
@@ -6707,6 +6983,8 @@ function App() {
             onToggleWriteGenerationMode={toggleWriteGenerationMode}
             writeHistoryEntries={writeHistoryEntries}
             writeHistoryTitle={`${activeChapterTitle} history`}
+            systemPrompt={isWritingMode ? settings.system_prompt : ""}
+            onSaveSystemPrompt={isWritingMode ? saveStorySystemPrompt : null}
           />
         ))}
       </main>

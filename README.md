@@ -17,6 +17,11 @@ Read [setup.md](setup.md)
 
 For extra support, upload [assistant.md](assistant.md) to your favorite AI to turn it into a support bot to help you set up and troubleshoot!
 
+## Features
+
+- **Chat Mode** — A local chat interface model selection, context, temporary chats, and chat history.
+- **Writing Mode** — A dedicated longform writing workspace. Create stories, organize them into chapters and make a lorebook for characters and world details.
+
 ## Roadmap
 - UI improvements
     - Nav bar (DONE)
@@ -26,11 +31,17 @@ For extra support, upload [assistant.md](assistant.md) to your favorite AI to tu
     - Temporary chats (DONE)
     - Generate chat names instead of just being first message 
     - Pin chats
-- Support for more providers (will take time)
+- Writing Mode improvements
+    - Brainstorming
+    - Import/export 
+    - Better chapter history
+- Support for more providers (will take time and might not happen because of how deeply integrated OpenRouter is)
     - Gemini API
     - OpenAI API
     - Claude API
 - Memory
+    - Chat mode
+    - Write mode (DONE)
 - RAG 
 
 ## Bug reporting and contributing
@@ -52,7 +63,4 @@ Model picker
 
 Sample response
 <img width="1512" height="828" alt="Screenshot 2026-07-01 at 12 50 45 AM" src="https://github.com/user-attachments/assets/028ce3c2-2c92-4a0a-801d-e395cce84870" />
-
-
-
 

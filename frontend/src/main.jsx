@@ -2671,19 +2671,6 @@ function StoryWorkspace({
                 <ContextWindowMeter info={contextWindowInfo} placement="belowEnd" />
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={onOpenLorebook}
-                className={cx(
-                  "inline-flex h-8 items-center gap-2 rounded-full bg-white/[0.065] px-3 text-xs font-medium text-zinc-300 shadow-[var(--shadow-border)] hover:bg-white/[0.085] hover:text-zinc-100 hover:shadow-[var(--shadow-border-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
-                  CONTROL_MOTION,
-                )}
-              >
-                <i className="fi fi-rr-book-alt text-sm leading-none" aria-hidden="true" />
-                Lorebook
-              </button>
-            </div>
           </div>
 
           {canvasEditing ? (
@@ -3121,6 +3108,7 @@ function Composer({
   onToggleWriteGenerationMode,
   writeHistoryEntries = [],
   writeHistoryTitle = "Chapter history",
+  onOpenLorebook,
   systemPrompt = "",
   onSaveSystemPrompt,
 }) {
@@ -3178,7 +3166,13 @@ function Composer({
                   isStreaming ? onStop() : onSubmit();
                 }
               }}
-              placeholder={isEmptyVariant ? "Ask anything" : `Ask ${promptModelName(models, settings.model)} anything`}
+              placeholder={
+                isEmptyVariant
+                  ? "Ask anything"
+                  : writeGenerationMode
+                    ? `Ask ${promptModelName(models, settings.model)} to write anything`
+                    : `Ask ${promptModelName(models, settings.model)} anything`
+              }
               className={cx(
                 "block w-full resize-none bg-transparent text-zinc-100 outline-none",
                 isEmptyVariant
@@ -3199,6 +3193,16 @@ function Composer({
             <div className="flex min-w-0 items-center gap-2">
               {writeGenerationMode && (
                 <>
+                  <button
+                    type="button"
+                    onClick={onOpenLorebook}
+                    className={cx(
+                      "relative inline-flex h-[34px] shrink-0 items-center gap-1 rounded-full px-2.5 text-[11px] font-medium leading-none text-zinc-500 before:absolute before:-bottom-[3px] before:-right-[3px] before:-top-[3px] before:left-0 before:content-[''] hover:text-zinc-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+                      CONTROL_MOTION,
+                    )}
+                  >
+                    Lorebook
+                  </button>
                   <button
                     type="button"
                     onClick={() => setSystemPromptOpen(true)}
@@ -7171,6 +7175,10 @@ function App() {
             onToggleWriteGenerationMode={toggleWriteGenerationMode}
             writeHistoryEntries={writeHistoryEntries}
             writeHistoryTitle={`${activeChapterTitle} history`}
+            onOpenLorebook={() => {
+              setStoryWorkspaceView("lorebook");
+              writeRoute(storyRoute(activeStoryId, activeChapterId, "lorebook"));
+            }}
             systemPrompt={isWritingMode ? settings.system_prompt : ""}
             onSaveSystemPrompt={isWritingMode ? saveStorySystemPrompt : null}
           />

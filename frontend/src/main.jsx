@@ -1004,6 +1004,7 @@ function ConversationRail({
   onCollapse,
   highlightFirstChatActions,
   chatMode,
+  previousChatMode,
   onChatModeChange,
 }) {
   const [railScrolling, setRailScrolling] = useState(false);
@@ -1162,6 +1163,7 @@ function ConversationRail({
             <SlidingTabs
               options={CHAT_MODES}
               value={chatMode}
+              fromValue={previousChatMode}
               onChange={onChatModeChange}
               getValue={(mode) => mode.value}
               getLabel={(mode) => mode.label}
@@ -2032,6 +2034,7 @@ function StoryRail({
   onRenameChapter,
   onDeleteStory,
   onDeleteChapter,
+  previousChatMode,
   onChatModeChange,
 }) {
   return (
@@ -2064,6 +2067,7 @@ function StoryRail({
             <SlidingTabs
               options={CHAT_MODES}
               value="write"
+              fromValue={previousChatMode}
               onChange={onChatModeChange}
               getValue={(mode) => mode.value}
               getLabel={(mode) => mode.label}
@@ -2426,6 +2430,7 @@ function StoryWorkspace({
   onCreateLorebookEntry,
   onUpdateLorebookEntry,
   onDeleteLorebookEntry,
+  onConfirmDeleteLorebookEntry,
 }) {
   const [canvasEditing, setCanvasEditing] = useState(false);
   const canvasScrollRef = useRef(null);
@@ -2567,6 +2572,7 @@ function StoryWorkspace({
         onCreateEntry={onCreateLorebookEntry}
         onUpdateEntry={onUpdateLorebookEntry}
         onDeleteEntry={onDeleteLorebookEntry}
+        onConfirmDeleteEntry={onConfirmDeleteLorebookEntry}
         locked={writingLocked}
       />
     );
@@ -4820,6 +4826,7 @@ function Accordion({ id, title, open, onToggle, trailing, children }) {
 function SlidingTabs({
   options,
   value,
+  fromValue = null,
   onChange,
   getValue,
   getLabel,
@@ -4830,43 +4837,97 @@ function SlidingTabs({
   const barRef = useRef(null);
   const pillRef = useRef(null);
   const measuredRef = useRef(false);
+  const fromValueRef = useRef(fromValue);
 
   useEffect(() => {
+    fromValueRef.current = fromValue;
+  }, [fromValue]);
+
+  useLayoutEffect(() => {
     const bar = barRef.current;
     const pill = pillRef.current;
     if (!bar || !pill) return undefined;
 
-    function moveToActive(animate) {
-      const activeTab =
-        bar.querySelector('[aria-selected="true"]') ||
-        bar.querySelector(".t-tab");
-      if (!activeTab) return;
+    function tabForValue(tabValue) {
+      if (!tabValue) return null;
+      return [...bar.querySelectorAll(".t-tab")].find(
+        (tab) => tab.dataset.value === tabValue,
+      );
+    }
+
+    function moveToTab(tab, animate) {
+      if (!tab) return;
+
+      const tabLeft = tab.offsetLeft;
+      const tabWidth = tab.offsetWidth;
 
       if (!animate) {
         const previousTransition = pill.style.transition;
         pill.style.transition = "none";
-        pill.style.transform = `translateX(${activeTab.offsetLeft}px)`;
-        pill.style.width = `${activeTab.offsetWidth}px`;
+        pill.style.transform = `translateX(${tabLeft}px)`;
+        pill.style.width = `${tabWidth}px`;
         void pill.offsetWidth;
         pill.style.transition = previousTransition;
         return;
       }
 
-      pill.style.transform = `translateX(${activeTab.offsetLeft}px)`;
-      pill.style.width = `${activeTab.offsetWidth}px`;
+      pill.style.transform = `translateX(${tabLeft}px)`;
+      pill.style.width = `${tabWidth}px`;
+    }
+
+    function moveToActive(animate) {
+      const activeTab =
+        tabForValue(value) ||
+        bar.querySelector('[aria-selected="true"]') ||
+        bar.querySelector(".t-tab");
+
+      moveToTab(activeTab, animate);
     }
 
     function handleResize() {
       moveToActive(false);
     }
 
-    requestAnimationFrame(() => {
-      moveToActive(measuredRef.current);
+    const previousTab = tabForValue(fromValueRef.current);
+    if (!measuredRef.current && previousTab && fromValueRef.current !== value) {
+      moveToTab(previousTab, false);
       measuredRef.current = true;
-    });
+
+      const frameId = requestAnimationFrame(() => {
+        moveToActive(true);
+        fromValueRef.current = null;
+      });
+
+      window.addEventListener("resize", handleResize);
+      return () => {
+        cancelAnimationFrame(frameId);
+        window.removeEventListener("resize", handleResize);
+      };
+    }
+
+    const shouldAnimate = measuredRef.current;
+    moveToActive(shouldAnimate);
+    measuredRef.current = true;
+
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(() => moveToActive(false));
+
+    resizeObserver?.observe(bar);
+
+    const frameId = shouldAnimate
+      ? null
+      : requestAnimationFrame(() => {
+          moveToActive(false);
+        });
     window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, [options, value]);
+    return () => {
+      if (frameId) cancelAnimationFrame(frameId);
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [options, value, fromValue]);
 
   return (
     <div
@@ -4885,6 +4946,7 @@ function SlidingTabs({
             type="button"
             role="tab"
             aria-selected={selected}
+            data-value={optionValue}
             disabled={disabled}
             onClick={() => onChange(optionValue)}
             className="t-tab min-w-0 flex-1 whitespace-nowrap"
@@ -5140,8 +5202,8 @@ function ConfirmModal({ dialog, onClose }) {
 
   const open = phase === "open";
 
-  return (
-    <div className="fixed inset-0 z-[80] grid place-items-center px-4 py-6">
+  return createPortal(
+    <div className="fixed inset-0 z-[100] grid place-items-center px-4 py-6">
       <button
         type="button"
         aria-label="Close dialog"
@@ -5212,7 +5274,8 @@ function ConfirmModal({ dialog, onClose }) {
           </button>
         </div>
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -5393,6 +5456,7 @@ function App() {
     const route = parseRoute();
     return route.page === "story" ? "write" : route.mode || "chat";
   });
+  const [previousChatMode, setPreviousChatMode] = useState(null);
   const [railCollapsed, setRailCollapsed] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingMessageId, setStreamingMessageId] = useState(null);
@@ -5405,9 +5469,17 @@ function App() {
   const [tourForceThinking, setTourForceThinking] = useState(false);
   const [tourSampleChatActive, setTourSampleChatActive] = useState(false);
   const abortRef = useRef(null);
+  const previousChatModeTimeoutRef = useRef(null);
   const routeRef = useRef(parseRoute());
   const initialRouteHandledRef = useRef(false);
   const appSettingsLoadedRef = useRef(false);
+
+  useEffect(
+    () => () => {
+      window.clearTimeout(previousChatModeTimeoutRef.current);
+    },
+    [],
+  );
   const defaultModelRef = useRef(DEFAULT_MODEL);
   const skipNextStoryAutoloadRef = useRef(false);
   const tempChatIdRef = useRef(null);
@@ -6401,6 +6473,14 @@ function App() {
 
   function changeChatMode(nextMode) {
     const mode = nextMode === "write" ? "write" : "chat";
+    if (mode !== chatMode) {
+      setPreviousChatMode(chatMode);
+      window.clearTimeout(previousChatModeTimeoutRef.current);
+      previousChatModeTimeoutRef.current = window.setTimeout(
+        () => setPreviousChatMode(null),
+        300,
+      );
+    }
     void resetChat({ mode });
   }
 
@@ -6596,6 +6676,21 @@ function App() {
     await storyApi.deleteLorebookEntry(activeStoryId, entryId);
     setLorebookEntries((currentEntries) => currentEntries.filter((entry) => entry.id !== entryId));
     showToast("Lorebook entry deleted");
+  }
+
+  function confirmDeleteLorebookEntry(entry) {
+    return new Promise((resolve) => {
+      setConfirmDialog({
+        title: "Delete lorebook entry?",
+        chatTitle: entry.name,
+        body: "This cannot be undone.",
+        confirmLabel: "Delete",
+        onConfirm: async () => {
+          resolve(true);
+        },
+        onCancel: () => resolve(false),
+      });
+    });
   }
 
   function updateChapterCanvasContent(content) {
@@ -6830,6 +6925,7 @@ function App() {
           onRenameChapter={renameChapterItem}
           onDeleteStory={deleteStoryItem}
           onDeleteChapter={deleteChapterItem}
+          previousChatMode={previousChatMode}
           onChatModeChange={changeChatMode}
         />
       ) : (
@@ -6848,6 +6944,7 @@ function App() {
           onCollapse={() => setRailCollapsed(true)}
           highlightFirstChatActions={tour.currentStep?.id === "chatActions"}
           chatMode={chatMode}
+          previousChatMode={previousChatMode}
           onChatModeChange={changeChatMode}
         />
       )}
@@ -6904,6 +7001,7 @@ function App() {
             onCreateLorebookEntry={createLorebookEntry}
             onUpdateLorebookEntry={updateLorebookEntry}
             onDeleteLorebookEntry={deleteLorebookEntry}
+            onConfirmDeleteLorebookEntry={confirmDeleteLorebookEntry}
           />
         ) : !isWritingMode ? (
           <>
@@ -7018,7 +7116,10 @@ function App() {
       />
       <ConfirmModal
         dialog={confirmDialog}
-        onClose={() => setConfirmDialog(null)}
+        onClose={() => {
+          confirmDialog?.onCancel?.();
+          setConfirmDialog(null);
+        }}
       />
       <NewStoryModal
         open={newStoryDialogOpen}

@@ -1,4 +1,4 @@
-# RouterChat Setup (Generated with GPT-5.5 as im lazy)
+# RouterChat Setup
 
 These instructions set up RouterChat on macOS or Windows.
 
@@ -22,7 +22,7 @@ Beginner note: run commands one line at a time unless they are shown as a full c
 - npm
 - An OpenRouter API key
 
-The Node version matters because the installed Vite version requires modern Node. If `npm install` or `npm run dev` complains about engines, update Node first.
+The Node version matters because the installed Vite version requires modern Node. Use Node `20.19.0` or later in the 20.x release line, or Node `22.12.0` or later. If `npm install` or `npm run dev` complains about engines, update Node first.
 
 ## What These Things Are
 
@@ -74,7 +74,7 @@ node --version
 npm --version
 ```
 
-RouterChat needs Node `20.19.0` or newer, or Node `22.12.0` or newer.
+RouterChat needs Node `20.19.0` or later in the 20.x release line, or Node `22.12.0` or later.
 
 The beginner friendly option is the prebuilt Node.js installer from the official site:
 
@@ -130,7 +130,7 @@ You do not need `nvm` if the official installer worked.
 First check whether Python is already installed. Open PowerShell and run:
 
 ```powershell
-py -3 --version
+python --version
 ```
 
 If it prints something like `Python 3.12.5`, you are good.
@@ -146,10 +146,10 @@ If the command is missing, install Python:
 7. Run this again:
 
 ```powershell
-py -3 --version
+python --version
 ```
 
-If `py -3 --version` works, use `py -3` for creating the virtual environment later.
+If `python --version` works, you are ready to create the virtual environment.
 
 ### Install Node and npm on Windows
 
@@ -162,7 +162,7 @@ node --version
 npm --version
 ```
 
-RouterChat needs Node `20.19.0` or newer, or Node `22.12.0` or newer.
+RouterChat needs Node `20.19.0` or later in the 20.x release line, or Node `22.12.0` or later.
 
 The beginner friendly option is the official installer:
 
@@ -274,7 +274,7 @@ cd C:\path\to\routerchat
 Create and activate a Python virtual environment:
 
 ```powershell
-py -3 -m venv .venv
+python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 ```
 
@@ -366,7 +366,7 @@ Some buttons only show when you hover over a chat or message:
 
 ## Normal Local Run
 
-After dependencies are installed, the regular run flow is:
+After dependencies are installed, macOS users can run:
 
 ```sh
 npm run build
@@ -381,7 +381,7 @@ source .venv/bin/activate
 python3 -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
 ```
 
-Windows:
+On Windows, run:
 
 ```powershell
 npm run build
@@ -414,14 +414,6 @@ For development mode, you may have two running terminals:
 
 - Press `Ctrl + C` in the backend terminal running `python3 -m uvicorn ...` on macOS or `python -m uvicorn ...` on Windows.
 - Press `Ctrl + C` in the frontend terminal running `npm run dev`.
-
-If the terminal asks something like `Terminate batch job?` on Windows, type:
-
-```txt
-y
-```
-
-Then press Enter.
 
 If you closed the terminal window without stopping the app and the port is still busy, restarting your computer is the beginner friendly fix. If you are comfortable with terminal commands, you can also find and stop the process using the port.
 
@@ -459,7 +451,7 @@ Then start Uvicorn again.
 
 ### `npm` complains about Node engines
 
-Update Node to `20.19.0` or newer, or use Node `22.12.0` or newer.
+Update Node to `20.19.0` or later in the 20.x release line, or use Node `22.12.0` or later.
 
 On macOS, `nvm` is a clean way to manage Node versions:
 
@@ -481,10 +473,10 @@ python3 --version
 On Windows, try:
 
 ```powershell
-py -3 --version
+python --version
 ```
 
-Install Python from `https://www.python.org/downloads/` if neither command works.
+Install Python from `https://www.python.org/downloads/` if the command for your operating system does not work.
 
 ### Port 8000 is already in use
 
@@ -518,21 +510,21 @@ Development uses two servers:
 - FastAPI backend: `http://127.0.0.1:8000`
 - Vite frontend: `http://127.0.0.1:5173`
 
-Terminal 1:
+On macOS, open Terminal 1 and run:
 
 ```sh
 source .venv/bin/activate
 python3 -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
 ```
 
-On Windows, activate with:
+On Windows, open PowerShell 1 and run:
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
 python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
 ```
 
-Terminal 2:
+In Terminal 2 on macOS or PowerShell 2 on Windows, run:
 
 ```sh
 npm run dev

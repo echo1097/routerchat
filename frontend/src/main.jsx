@@ -856,7 +856,7 @@ function OverflowActions({
   );
 }
 
-function ChatHistoryActions({ chat, isFirst, forceVisible, onRename, onDelete, onExport }) {
+function ChatHistoryActions({ chat, isFirst, forceVisible, onRename, onDelete, onExport, onTogglePin }) {
   return (
     <OverflowActions
       id={`chat-${chat.id}`}
@@ -878,6 +878,18 @@ function ChatHistoryActions({ chat, isFirst, forceVisible, onRename, onDelete, o
           >
             <Pencil size={14} />
             Edit name
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              closeMenu();
+              onTogglePin(chat);
+            }}
+            className="chat-history-menu-item text-zinc-200 hover:bg-white/[0.07] focus:bg-white/[0.07] focus:outline-none"
+          >
+            <i className="fi fi-rr-thumbtack text-[14px] leading-none" aria-hidden="true" />
+            {chat.pinned ? "Unpin chat" : "Pin chat"}
           </button>
           <button
             type="button"
@@ -998,6 +1010,7 @@ function ConversationRail({
   onRenameChat,
   onDeleteChat,
   onExportChat,
+  onTogglePinChat,
   mobileOpen,
   onCloseMobile,
   collapsed,
@@ -1010,6 +1023,8 @@ function ConversationRail({
   const [railScrolling, setRailScrolling] = useState(false);
   const [renamingChatId, setRenamingChatId] = useState(null);
   const [renameDraft, setRenameDraft] = useState("");
+  const [pinnedOpen, setPinnedOpen] = useState(true);
+  const [recentsOpen, setRecentsOpen] = useState(true);
   const railScrollTimeoutRef = useRef(null);
   const skipRenameCommitRef = useRef(false);
 
@@ -1059,6 +1074,105 @@ function ConversationRail({
     setRenameDraft("");
   }
 
+  const pinnedChats = chats.filter((chat) => chat.pinned);
+  const recentChats = chats.filter((chat) => !chat.pinned);
+
+  function renderChatRows(groupChats, startIndex = 0) {
+    return groupChats.map((chat, chatIndex) => {
+      const renaming = renamingChatId === chat.id;
+      const index = startIndex + chatIndex;
+
+      return (
+        <div
+          key={chat.id}
+          className={cx(
+            "group relative grid select-none grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-2xl border border-transparent px-2 py-1 transition-[background-color,border-color,box-shadow] duration-150 ease-out",
+            chat.id === activeChatId
+              ? "bg-white/[0.08] shadow-[var(--shadow-border)]"
+              : "hover:bg-white/[0.045] hover:shadow-[var(--shadow-border)]",
+          )}
+        >
+          {renaming ? (
+            <div className="min-h-8 min-w-0 rounded-xl px-1 py-0.5">
+              <input
+                autoFocus
+                value={renameDraft}
+                onChange={(event) => setRenameDraft(event.target.value)}
+                onBlur={() => commitRename(chat)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") event.currentTarget.blur();
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    cancelRename();
+                  }
+                }}
+                className="block h-6 w-full min-w-0 rounded-md bg-white/[0.06] px-1.5 text-sm font-medium text-zinc-100 outline-none shadow-[var(--shadow-border)]"
+              />
+              <div className="truncate text-[11px] leading-3 text-zinc-500">
+                {promptModelName(models, chat.model)}
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                onLoadChat(chat.id);
+                onCloseMobile();
+              }}
+              className={cx(
+                "min-h-8 min-w-0 rounded-xl px-1 py-0.5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15",
+                CONTROL_MOTION,
+              )}
+            >
+              <div className="truncate text-balance text-sm font-medium leading-4 text-zinc-100">
+                {chat.title}
+              </div>
+              <div className="truncate text-[11px] leading-3 text-zinc-500">
+                {promptModelName(models, chat.model)}
+              </div>
+            </button>
+          )}
+          <ChatHistoryActions
+            chat={chat}
+            isFirst={index === 0}
+            forceVisible={index === 0 && highlightFirstChatActions}
+            onRename={startRename}
+            onDelete={onDeleteChat}
+            onExport={onExportChat}
+            onTogglePin={onTogglePinChat}
+          />
+        </div>
+      );
+    });
+  }
+
+  function renderHistoryGroup(label, groupChats, open, onToggle, startIndex = 0) {
+    const panelId = `${label.toLowerCase()}-chat-history`;
+    return (
+      <section className="t-acc chat-history-group" data-open={String(open)}>
+        <button
+          type="button"
+          className="t-acc-head chat-history-group-heading"
+          aria-expanded={open}
+          aria-controls={panelId}
+          onClick={onToggle}
+        >
+          <span>{label}</span>
+          <span className="t-acc-chevron chat-history-group-chevron" aria-hidden="true">
+            <svg viewBox="0 0 16 16" fill="none">
+              <path d="M4 6.5L8 10.5L12 6.5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+        </button>
+        <div id={panelId} className="t-acc-panel">
+          <div className="t-acc-panel-inner chat-history-group-items">
+            {renderChatRows(groupChats, startIndex)}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   const historyItems =
     chats.length === 0 ? (
       <div className="px-3 py-8 text-pretty text-sm leading-6 text-zinc-500">
@@ -1067,70 +1181,21 @@ function ConversationRail({
           : "Your conversations will appear here."}
       </div>
     ) : (
-      chats.map((chat, chatIndex) => {
-        const renaming = renamingChatId === chat.id;
-
-        return (
-          <div
-            key={chat.id}
-            className={cx(
-              "group relative grid select-none grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-2xl border border-transparent px-2 py-1 transition-[background-color,border-color,box-shadow] duration-150 ease-out",
-              chat.id === activeChatId
-                ? "bg-white/[0.08] shadow-[var(--shadow-border)]"
-                : "hover:bg-white/[0.045] hover:shadow-[var(--shadow-border)]",
-            )}
-          >
-            {renaming ? (
-              <div className="min-h-8 min-w-0 rounded-xl px-1 py-0.5">
-                <input
-                  autoFocus
-                  value={renameDraft}
-                  onChange={(event) => setRenameDraft(event.target.value)}
-                  onBlur={() => commitRename(chat)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") event.currentTarget.blur();
-                    if (event.key === "Escape") {
-                      event.preventDefault();
-                      cancelRename();
-                    }
-                  }}
-                  className="block h-6 w-full min-w-0 rounded-md bg-white/[0.06] px-1.5 text-sm font-medium text-zinc-100 outline-none shadow-[var(--shadow-border)]"
-                />
-                <div className="truncate text-[11px] leading-3 text-zinc-500">
-                  {promptModelName(models, chat.model)}
-                </div>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  onLoadChat(chat.id);
-                  onCloseMobile();
-                }}
-                className={cx(
-                  "min-h-8 min-w-0 rounded-xl px-1 py-0.5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15",
-                  CONTROL_MOTION,
-                )}
-              >
-                <div className="truncate text-balance text-sm font-medium leading-4 text-zinc-100">
-                  {chat.title}
-                </div>
-                <div className="truncate text-[11px] leading-3 text-zinc-500">
-                  {promptModelName(models, chat.model)}
-                </div>
-              </button>
-            )}
-            <ChatHistoryActions
-              chat={chat}
-              isFirst={chatIndex === 0}
-              forceVisible={chatIndex === 0 && highlightFirstChatActions}
-              onRename={startRename}
-              onDelete={onDeleteChat}
-              onExport={onExportChat}
-            />
-          </div>
-        );
-      })
+      <div className="space-y-4">
+        {pinnedChats.length > 0 && renderHistoryGroup(
+          "Pinned",
+          pinnedChats,
+          pinnedOpen,
+          () => setPinnedOpen((current) => !current),
+        )}
+        {renderHistoryGroup(
+          "Recents",
+          recentChats,
+          recentsOpen,
+          () => setRecentsOpen((current) => !current),
+          pinnedChats.length,
+        )}
+      </div>
     );
 
   return (
@@ -6151,6 +6216,30 @@ function App() {
     }
   }
 
+  async function toggleChatPin(chat) {
+    const nextPinned = !Boolean(chat.pinned);
+    setChats((current) => current.map((item) => (
+      item.id === chat.id ? { ...item, pinned: nextPinned } : item
+    )));
+
+    try {
+      const payload = await api(`/api/chats/${chat.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ pinned: nextPinned }),
+      });
+      setChats((current) => current.map((item) => (
+        item.id === chat.id ? payload.chat : item
+      )));
+      await loadChats();
+      showToast(nextPinned ? "Chat pinned" : "Chat unpinned");
+    } catch (error) {
+      setChats((current) => current.map((item) => (
+        item.id === chat.id ? chat : item
+      )));
+      setStatus(error.message);
+    }
+  }
+
   async function saveKey(apiKey) {
     try {
       const payload = await api("/api/settings/openrouter-key", {
@@ -6938,6 +7027,7 @@ function App() {
           onRenameChat={renameChat}
           onDeleteChat={deleteChat}
           onExportChat={exportChatFromMenu}
+          onTogglePinChat={toggleChatPin}
           mobileOpen={railOpen}
           onCloseMobile={() => setRailOpen(false)}
           collapsed={railCollapsed}

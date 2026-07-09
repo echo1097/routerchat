@@ -30,7 +30,7 @@ For extra support, upload [assistant.md](assistant.md) to your favorite AI to tu
     - Show model context (DONE)
     - Temporary chats (DONE)
     - Generate chat names instead of just being first message 
-    - Pin chats
+    - Pin chats (DONE)
 - Writing Mode improvements
     - Brainstorming
     - Import/export 

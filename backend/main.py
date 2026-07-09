@@ -87,6 +87,7 @@ class ChatPatchRequest(BaseModel):
     max_tokens: int | None = None
     thinking_enabled: bool | None = None
     reasoning_effort: ReasoningEffort | None = None
+    pinned: bool | None = None
 
 
 class AppSettingsPatchRequest(BaseModel):
@@ -163,6 +164,7 @@ def init_db() -> None:
               thinking_enabled INTEGER NOT NULL,
               reasoning_effort TEXT NOT NULL DEFAULT 'medium',
               temporary INTEGER NOT NULL DEFAULT 0,
+              pinned INTEGER NOT NULL DEFAULT 0,
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
             );
@@ -334,6 +336,8 @@ def ensure_chat_settings_columns(conn: sqlite3.Connection) -> None:
         )
     if "temporary" not in existing_columns:
         conn.execute("ALTER TABLE chats ADD COLUMN temporary INTEGER NOT NULL DEFAULT 0")
+    if "pinned" not in existing_columns:
+        conn.execute("ALTER TABLE chats ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0")
 
 
 def ensure_writing_thread_settings_columns(conn: sqlite3.Connection) -> None:
@@ -709,6 +713,7 @@ def row_to_chat(row: sqlite3.Row) -> dict[str, Any]:
         "thinking_enabled": bool(row["thinking_enabled"]),
         "reasoning_effort": row["reasoning_effort"],
         "temporary": bool(row["temporary"]),
+        "pinned": bool(row["pinned"]),
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
@@ -892,7 +897,7 @@ def list_chats() -> dict[str, Any]:
             """
             SELECT * FROM chats
             WHERE temporary = 0
-            ORDER BY updated_at DESC, created_at DESC
+            ORDER BY pinned DESC, updated_at DESC, created_at DESC
             """
         ).fetchall()
     return {"chats": [row_to_chat(row) for row in rows]}
@@ -980,9 +985,9 @@ def import_chats(payload: ChatImportRequest) -> dict[str, Any]:
                 """
                 INSERT INTO chats (
                   id, title, model, system_prompt, temperature, max_tokens,
-                  thinking_enabled, reasoning_effort, created_at, updated_at
+                  thinking_enabled, reasoning_effort, pinned, created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     chat_id,
@@ -993,6 +998,7 @@ def import_chats(payload: ChatImportRequest) -> dict[str, Any]:
                     int_or_none(item.get("max_tokens")) or DEFAULT_MAX_TOKENS,
                     coerce_bool_int(item.get("thinking_enabled")),
                     coerce_reasoning_effort(item.get("reasoning_effort")),
+                    coerce_bool_int(item.get("pinned")),
                     str(item.get("created_at") or now),
                     str(item.get("updated_at") or now),
                 ),
@@ -1091,7 +1097,7 @@ def update_chat(chat_id: str, payload: ChatPatchRequest) -> dict[str, Any]:
                 detail=f"This chat is locked to {chat['model']}. Start a new chat to use another model.",
             )
         for key, value in updates.items():
-            if key == "thinking_enabled":
+            if key in {"thinking_enabled", "pinned"}:
                 value = int(bool(value))
             assignments.append(f"{key} = ?")
             values.append(value)

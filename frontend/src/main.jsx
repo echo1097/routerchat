@@ -33,7 +33,7 @@ import {
 } from "lucide-react";
 import packageInfo from "../../package.json";
 import openingMessages from "./openingMessages.json";
-import { cx, CONTROL_MOTION, SOFT_SURFACE, FADE_MOTION } from "./uiShared.js";
+import { cx, CONTROL_MOTION, PROMPT_BAR_CONTROL_MOTION, SOFT_SURFACE, FADE_MOTION } from "./uiShared.js";
 import HelpTourButton from "./HelpTourButton.jsx";
 import StoryLorebook from "./lorebook/StoryLorebook.jsx";
 import TourOverlay from "./tour/TourOverlay.jsx";
@@ -1596,7 +1596,7 @@ function ContextWindowMeter({ info, placement = "above" }) {
   return (
     <span
       className={cx(
-        "t-tt-wrap context-meter-wrap -mr-1 inline-flex h-[34px] w-[18px] shrink-0 items-center justify-center",
+        "t-tt-wrap context-meter-wrap inline-flex h-10 w-10 shrink-0 items-center justify-center",
         placement === "belowEnd" && "context-meter-wrap-below-end",
       )}
     >
@@ -1605,7 +1605,7 @@ function ContextWindowMeter({ info, placement = "above" }) {
         aria-label={ariaLabel}
         aria-describedby={tooltipId}
         className={cx(
-          "t-tt-trigger grid h-[34px] w-[18px] place-items-center rounded-full text-zinc-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+          "t-tt-trigger grid h-10 w-10 place-items-center rounded-full text-zinc-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
           CONTROL_MOTION,
           "hover:text-zinc-100",
         )}
@@ -2668,7 +2668,6 @@ function StoryWorkspace({
                 ) : (
                   <span>{saveState || `${activeChapter.word_count || 0} words`}</span>
                 )}
-                <ContextWindowMeter info={contextWindowInfo} placement="belowEnd" />
               </div>
             </div>
           </div>
@@ -3087,6 +3086,26 @@ function CharacterEditorModal({
   );
 }
 
+function ComposerMenuButton({ label, detail, active = false, dataTour, onClick }) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      data-tour={dataTour}
+      onClick={onClick}
+      className={cx(
+        "flex min-h-10 w-full items-center justify-between gap-4 rounded-xl px-3 py-2 text-left text-sm transition-[background-color,color,scale] duration-150 ease-out hover:bg-white/[0.08] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30 active:scale-[0.96]",
+        active ? "text-zinc-100" : "text-zinc-300",
+      )}
+    >
+      <span>{label}</span>
+      <span className={cx("max-w-[132px] truncate text-xs", active ? "text-zinc-400" : "text-zinc-500")}>
+        {detail}
+      </span>
+    </button>
+  );
+}
+
 function Composer({
   value,
   setValue,
@@ -3114,9 +3133,13 @@ function Composer({
 }) {
   const canThink = supportsThinking(models, settings.model) || forceShowThinking;
   const textareaRef = useRef(null);
+  const composerControlsRef = useRef(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [systemPromptOpen, setSystemPromptOpen] = useState(false);
+  const [contextMenuOpen, setContextMenuOpen] = useState(false);
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const isEmptyVariant = variant === "empty";
+  const isWritePromptBar = Boolean(writeGenerationMode);
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -3127,6 +3150,29 @@ function Composer({
     textarea.style.height = `${nextHeight}px`;
     textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
   }, [isEmptyVariant, value]);
+
+  useEffect(() => {
+    function closeComposerMenus(event) {
+      if (event.key === "Escape") {
+        setContextMenuOpen(false);
+        setModelMenuOpen(false);
+      }
+    }
+
+    function closeOnOutsidePress(event) {
+      if (!composerControlsRef.current?.contains(event.target)) {
+        setContextMenuOpen(false);
+        setModelMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("keydown", closeComposerMenus);
+    document.addEventListener("pointerdown", closeOnOutsidePress);
+    return () => {
+      document.removeEventListener("keydown", closeComposerMenus);
+      document.removeEventListener("pointerdown", closeOnOutsidePress);
+    };
+  }, []);
 
   return (
     <form
@@ -3182,102 +3228,92 @@ function Composer({
             />
           </div>
           <div
+            ref={composerControlsRef}
             className={cx(
               "flex items-center gap-2",
               isEmptyVariant
-                ? "flex-wrap justify-end px-4 pb-3 pt-1.5 sm:flex-nowrap sm:px-5"
-                : "justify-end px-2.5 pb-2.5 pt-1.5",
+                ? "flex-wrap justify-between px-4 pb-3 pt-1.5 sm:flex-nowrap sm:px-5"
+                : cx("justify-between pb-2.5 pt-1.5", isWritePromptBar ? "px-4" : "px-2.5"),
             )}
-          >
-            {showContextMeter && <ContextWindowMeter info={contextWindowInfo} />}
-            <div className="flex min-w-0 items-center gap-2">
+            >
+            <div className="flex min-w-0 items-center gap-1.5">
               {writeGenerationMode && (
-                <>
+                <div className="relative">
                   <button
                     type="button"
-                    onClick={onOpenLorebook}
+                    onClick={() => {
+                      setContextMenuOpen((open) => !open);
+                      setModelMenuOpen(false);
+                    }}
+                    aria-expanded={contextMenuOpen}
+                    aria-haspopup="menu"
                     className={cx(
-                      "relative inline-flex h-[34px] shrink-0 items-center gap-1 rounded-full px-2.5 text-[11px] font-medium leading-none text-zinc-500 before:absolute before:-bottom-[3px] before:-right-[3px] before:-top-[3px] before:left-0 before:content-[''] hover:text-zinc-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
-                      CONTROL_MOTION,
+                      "inline-flex h-10 min-w-0 items-center gap-1.5 rounded-full text-xs font-medium text-zinc-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30 active:scale-[0.96]",
+                      isWritePromptBar ? "pl-0 pr-6" : "px-3",
+                      isWritePromptBar ? "" : "bg-white/[0.07] shadow-[inset_0_1px_rgba(255,255,255,0.06)] hover:bg-white/[0.11]",
+                      PROMPT_BAR_CONTROL_MOTION,
                     )}
                   >
-                    Lorebook
+                    <span>Writing tools</span>
+                    <span className="text-zinc-500">{WRITE_GENERATION_MODES[writeGenerationMode]}</span>
+                    <ChevronDown size={14} className={cx("writing-tools-chevron transition-transform duration-200", contextMenuOpen && "rotate-180")} />
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setSystemPromptOpen(true)}
-                    className={cx(
-                      "relative inline-flex h-[34px] shrink-0 items-center gap-1 rounded-full px-2.5 text-[11px] font-medium leading-none text-zinc-500 before:absolute before:-bottom-[3px] before:-right-[3px] before:-top-[3px] before:left-0 before:content-[''] hover:text-zinc-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
-                      CONTROL_MOTION,
-                      systemPrompt.trim() && "text-blue-200 hover:text-blue-100",
-                    )}
-                  >
-                    System Prompt
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setHistoryOpen(true)}
-                    className={cx(
-                      "relative inline-flex h-[34px] shrink-0 items-center gap-1 rounded-full px-2.5 text-[11px] font-medium leading-none text-zinc-500 before:absolute before:-bottom-[3px] before:-right-[3px] before:-top-[3px] before:left-0 before:content-[''] hover:text-zinc-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
-                      CONTROL_MOTION,
-                    )}
-                  >
-                    History
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onToggleWriteGenerationMode}
-                    className={cx(
-                      "relative inline-flex h-[34px] shrink-0 items-center gap-1 rounded-full px-2.5 text-[11px] font-medium leading-none before:absolute before:-bottom-[3px] before:-right-[3px] before:-top-[3px] before:left-0 before:content-[''] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
-                      CONTROL_MOTION,
-                      writeGenerationMode === "new"
-                        ? "text-blue-200"
-                        : "text-zinc-500 hover:text-zinc-200",
-                    )}
-                  >
-                    {WRITE_GENERATION_MODES[writeGenerationMode]}
-                  </button>
-                </>
+                  {contextMenuOpen && (
+                    <div role="menu" className="absolute bottom-[calc(100%+8px)] -left-4 z-30 w-72 rounded-2xl bg-[#29292c] p-1.5 shadow-[0_0_0_1px_rgba(255,255,255,0.12),0_16px_40px_rgba(0,0,0,0.38)]">
+                      <ComposerMenuButton label="Lorebook" detail="Story knowledge" onClick={() => { onOpenLorebook(); setContextMenuOpen(false); }} />
+                      <ComposerMenuButton label="System Prompt" detail={systemPrompt.trim() ? "Custom instructions" : "Default instructions"} onClick={() => { setSystemPromptOpen(true); setContextMenuOpen(false); }} active={Boolean(systemPrompt.trim())} />
+                      <ComposerMenuButton label="History" detail={`${writeHistoryEntries.length} saved events`} onClick={() => { setHistoryOpen(true); setContextMenuOpen(false); }} />
+                      <div className="my-1 border-t border-white/[0.08]" />
+                      <ComposerMenuButton label={WRITE_GENERATION_MODES[writeGenerationMode]} detail="Switch writing action" onClick={() => { onToggleWriteGenerationMode(); setContextMenuOpen(false); }} />
+                    </div>
+                  )}
+                </div>
               )}
-              {canThink && (
+            </div>
+            <div className="ml-auto flex min-w-0 items-center gap-1.5">
+              <div className="flex min-w-0 items-center gap-0">
+                {showContextMeter && <ContextWindowMeter info={contextWindowInfo} />}
+                <div className="relative min-w-0">
                 <button
                   type="button"
-                  data-tour="thinking-button"
-                  onClick={onToggleThinking}
+                  data-tour="model-button"
+                  onClick={() => { setModelMenuOpen((open) => !open); setContextMenuOpen(false); }}
+                  aria-expanded={modelMenuOpen}
+                  aria-haspopup="menu"
                   className={cx(
-                    "relative inline-flex h-[34px] shrink-0 items-center gap-1 rounded-full px-2.5 text-[11px] font-medium leading-none before:absolute before:-bottom-[3px] before:-right-[3px] before:-top-[3px] before:left-0 before:content-[''] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
-                    CONTROL_MOTION,
-                    settings.thinking_enabled
-                      ? "text-blue-200"
-                      : "text-zinc-500 hover:text-zinc-200",
+                    "inline-flex h-10 min-w-0 max-w-[220px] items-center gap-1.5 rounded-full text-xs font-medium text-zinc-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30 active:scale-[0.96] sm:max-w-[280px]",
+                    isWritePromptBar ? "pl-0 pr-3" : "px-3",
+                    isWritePromptBar ? "" : "bg-white/[0.07] shadow-[inset_0_1px_rgba(255,255,255,0.06)] hover:bg-white/[0.11]",
+                    PROMPT_BAR_CONTROL_MOTION,
                   )}
                 >
-                  Thinking
+                  <span className="truncate">{promptModelName(models, settings.model)}</span>
+                  {canThink && <span className="hidden text-zinc-500 sm:inline">{settings.thinking_enabled ? "Thinking" : "Instant"}</span>}
+                  {modelLocked && <span className="text-zinc-500">locked</span>}
+                  <ChevronDown size={14} className={cx("thinking-toggle-chevron shrink-0 transition-transform duration-200", modelMenuOpen && "rotate-180")} />
                 </button>
-              )}
-              <button
-                type="button"
-                data-tour="model-button"
-                onClick={onOpenSettings}
-                className={cx(
-                  "relative inline-flex h-[34px] min-w-0 max-w-[190px] items-center gap-1 rounded-full px-2.5 text-[11px] font-medium leading-none text-zinc-400 before:absolute before:-inset-[3px] before:content-[''] hover:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 sm:max-w-[240px]",
-                  CONTROL_MOTION,
+                {modelMenuOpen && (
+                  <div role="menu" className="absolute bottom-[calc(100%+8px)] right-0 z-30 w-64 rounded-2xl bg-[#29292c] p-1.5 shadow-[0_0_0_1px_rgba(255,255,255,0.12),0_16px_40px_rgba(0,0,0,0.38)]">
+                    <ComposerMenuButton label="Model" detail={promptModelName(models, settings.model)} onClick={() => { onOpenSettings(); setModelMenuOpen(false); }} />
+                    {canThink && <ComposerMenuButton label="Thinking" detail={settings.thinking_enabled ? "On" : "Off"} active={settings.thinking_enabled} dataTour="thinking-button" onClick={() => { onToggleThinking(); setModelMenuOpen(false); }} />}
+                  </div>
                 )}
-              >
-                <span className="truncate">{promptModelName(models, settings.model)}</span>
-                {modelLocked && <span className="text-zinc-600">locked</span>}
-              </button>
-            </div>
+                </div>
+              </div>
+
             <button
               type="submit"
               data-tour="send-button"
               disabled={!isStreaming && (!value.trim() || disabled)}
               className={cx(
                 "group relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
-                CONTROL_MOTION,
+                PROMPT_BAR_CONTROL_MOTION,
                 isStreaming
-                  ? "text-zinc-950"
-                  : "text-zinc-950 disabled:cursor-not-allowed disabled:text-zinc-600 disabled:active:scale-100",
+                  ? (isWritePromptBar ? "text-zinc-200" : "text-zinc-950")
+                  : cx(
+                    isWritePromptBar ? "text-zinc-300 hover:text-white" : "text-zinc-950",
+                    "disabled:cursor-not-allowed disabled:text-zinc-600 disabled:active:scale-100",
+                  ),
               )}
               aria-label={isStreaming ? "Stop" : "Send"}
               title={isStreaming ? "Stop" : "Send"}
@@ -3286,9 +3322,11 @@ function Composer({
                 aria-hidden="true"
                 className={cx(
                   "absolute inset-[3px] rounded-full transition-colors duration-150 ease-out",
-                  isStreaming
-                    ? "bg-zinc-200"
-                    : "bg-accent group-hover:bg-blue-300 group-disabled:bg-zinc-800",
+                  isWritePromptBar
+                    ? "hidden"
+                    : isStreaming
+                      ? "bg-zinc-200"
+                      : "bg-accent group-hover:bg-blue-300 group-disabled:bg-zinc-800",
                 )}
               />
               <span
@@ -3314,6 +3352,7 @@ function Composer({
                 <i className="fi fi-rr-arrow-small-up send-arrow-icon" />
               </span>
             </button>
+            </div>
           </div>
         </div>
       </div>
@@ -3456,6 +3495,7 @@ function SystemPromptModal({ open, value, onSave, onClose }) {
 
   const isOpen = phase === "open";
   const canSave = saveState !== "saving" && draft !== latestSavedRef.current;
+  const saveStateLabel = saveState.replace(/\b\w/g, (letter) => letter.toUpperCase());
 
   return createPortal(
     <div className="fixed inset-0 z-[80] grid place-items-center px-4 py-6">
@@ -3479,9 +3519,23 @@ function SystemPromptModal({ open, value, onSave, onClose }) {
       >
         <header className="flex items-center justify-between gap-4 px-4 pb-3 pt-4">
           <div className="min-w-0">
-            <h2 id="system-prompt-title" className="text-balance text-base font-semibold leading-6 text-zinc-100">
-              System prompt
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2 id="system-prompt-title" className="text-balance text-base font-semibold leading-6 text-zinc-100">
+                System prompt
+              </h2>
+              <span
+                className={cx(
+                  "inline-flex h-6 items-center rounded-full bg-white/[0.045] px-2.5 text-base font-semibold leading-6 shadow-[var(--shadow-border)]",
+                  saveState === "save failed"
+                    ? "text-red-300"
+                    : saveState === "saving" || saveState === "unsaved"
+                      ? "text-zinc-400"
+                      : "text-emerald-300",
+                )}
+              >
+                {saveStateLabel}
+              </span>
+            </div>
             <p className="mt-0.5 text-pretty text-xs leading-5 text-zinc-500">
               Story-specific instructions sent with every write request
             </p>
@@ -3510,21 +3564,7 @@ function SystemPromptModal({ open, value, onSave, onClose }) {
             />
           </div>
         </div>
-        <footer className="flex flex-wrap items-center justify-between gap-3 px-4 pb-4">
-          <div className="min-h-10 min-w-0 flex-1">
-            <span
-              className={cx(
-                "inline-flex h-8 items-center rounded-full bg-white/[0.045] px-2.5 text-[11px] font-medium leading-none shadow-[var(--shadow-border)]",
-                saveState === "save failed"
-                  ? "text-red-300"
-                  : saveState === "saving" || saveState === "unsaved"
-                    ? "text-zinc-400"
-                    : "text-emerald-300",
-              )}
-            >
-              {saveState}
-            </span>
-          </div>
+        <footer className="flex flex-wrap items-center justify-end gap-3 px-4 pb-4">
           <div className="flex items-center gap-2">
             {draft && (
               <button
@@ -7170,7 +7210,7 @@ function App() {
             onStop={stopStream}
             onOpenSettings={() => setSettingsOpen(true)}
             onToggleThinking={toggleThinking}
-            showContextMeter={!isWritingMode}
+            showContextMeter
             writeGenerationMode={isWritingMode ? writeGenerationMode : null}
             onToggleWriteGenerationMode={toggleWriteGenerationMode}
             writeHistoryEntries={writeHistoryEntries}

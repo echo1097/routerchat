@@ -1354,6 +1354,16 @@ textarea {
   background-clip: content-box;
 }
 
+.writing-tools-chevron {
+  position: relative;
+  top: var(--writing-tools-chevron-offset, 1px);
+}
+
+.thinking-toggle-chevron {
+  position: relative;
+  top: var(--thinking-toggle-chevron-offset, 1px);
+}
+
 /* help tour overlay, spotlight, and popover */
 
 .tour-layer {

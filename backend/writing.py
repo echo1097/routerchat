@@ -129,6 +129,16 @@ def display_model_name(model: str) -> str:
     return " ".join(part[:1].upper() + part[1:] for part in name.split())
 
 
+def lorebook_history_label(model_label: str, update: dict[str, Any]) -> str:
+    name = str(update.get("name") or "entry").strip() or "entry"
+    if name.casefold() == "timeline":
+        return f"{model_label} updated Timeline"
+
+    action = "added" if update.get("action") == "create" else "updated"
+    destination = "in" if action == "updated" else "to"
+    return f"{model_label} {action} {name} {destination} Lorebook"
+
+
 def normalize_lorebook_category(category: str | None) -> str:
     value = str(category or "note").strip().lower()
     if value in {"characters", "character"}:
@@ -1238,11 +1248,9 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                 content_for_lorebook,
             )
             for update in lorebook_result.get("applied") or []:
-                action = "added" if update.get("action") == "create" else "updated"
-                name = str(update.get("name") or "entry").strip() or "entry"
                 yield deps.stream_event(
                     "history",
-                    save_history(f"{model_label} {action} {name} to Lorebook"),
+                    save_history(lorebook_history_label(model_label, update)),
                 )
             if lorebook_started_at is not None:
                 duration_ms = (time.perf_counter() - lorebook_started_at) * 1000

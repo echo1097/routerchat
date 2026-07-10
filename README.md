@@ -1,4 +1,4 @@
-# RouterChat v0.2.5
+# RouterChat v0.3.0
 A 100% free local OpenRouter chat interface. Strictly BYOK. 
 
 ## Disclaimer
@@ -63,4 +63,3 @@ Model picker
 
 Sample response
 <img width="1512" height="828" alt="Screenshot 2026-07-01 at 12 50 45 AM" src="https://github.com/user-attachments/assets/028ce3c2-2c92-4a0a-801d-e395cce84870" />
-

@@ -1596,7 +1596,7 @@ function ContextWindowMeter({ info, placement = "above" }) {
   return (
     <span
       className={cx(
-        "t-tt-wrap context-meter-wrap inline-flex h-10 w-10 shrink-0 items-center justify-center",
+        "t-tt-wrap context-meter-wrap inline-flex h-8 w-8 shrink-0 items-center justify-center",
         placement === "belowEnd" && "context-meter-wrap-below-end",
       )}
     >
@@ -1605,7 +1605,7 @@ function ContextWindowMeter({ info, placement = "above" }) {
         aria-label={ariaLabel}
         aria-describedby={tooltipId}
         className={cx(
-          "t-tt-trigger grid h-10 w-10 place-items-center rounded-full text-zinc-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+          "t-tt-trigger grid h-8 w-8 place-items-center rounded-full text-zinc-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
           CONTROL_MOTION,
           "hover:text-zinc-100",
         )}
@@ -3233,7 +3233,7 @@ function Composer({
               "flex items-center gap-2",
               isEmptyVariant
                 ? "flex-wrap justify-between px-4 pb-3 pt-1.5 sm:flex-nowrap sm:px-5"
-                : cx("justify-between pb-2.5 pt-1.5", isWritePromptBar ? "px-4" : "px-2.5"),
+                : "justify-between px-4 pb-2.5 pt-1.5",
             )}
             >
             <div className="flex min-w-0 items-center gap-1.5">
@@ -3282,19 +3282,27 @@ function Composer({
                   aria-haspopup="menu"
                   className={cx(
                     "inline-flex h-10 min-w-0 max-w-[220px] items-center gap-1.5 rounded-full text-xs font-medium text-zinc-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30 active:scale-[0.96] sm:max-w-[280px]",
-                    isWritePromptBar ? "pl-0 pr-3" : "px-3",
-                    isWritePromptBar ? "" : "bg-white/[0.07] shadow-[inset_0_1px_rgba(255,255,255,0.06)] hover:bg-white/[0.11]",
+                    "pl-0 pr-3",
+                    isWritePromptBar ? "" : "bg-transparent shadow-none hover:bg-transparent",
                     PROMPT_BAR_CONTROL_MOTION,
                   )}
                 >
                   <span className="truncate">{promptModelName(models, settings.model)}</span>
                   {canThink && <span className="hidden text-zinc-500 sm:inline">{settings.thinking_enabled ? "Thinking" : "Instant"}</span>}
-                  {modelLocked && <span className="text-zinc-500">locked</span>}
                   <ChevronDown size={14} className={cx("thinking-toggle-chevron shrink-0 transition-transform duration-200", modelMenuOpen && "rotate-180")} />
                 </button>
                 {modelMenuOpen && (
                   <div role="menu" className="absolute bottom-[calc(100%+8px)] right-0 z-30 w-64 rounded-2xl bg-[#29292c] p-1.5 shadow-[0_0_0_1px_rgba(255,255,255,0.12),0_16px_40px_rgba(0,0,0,0.38)]">
-                    <ComposerMenuButton label="Model" detail={promptModelName(models, settings.model)} onClick={() => { onOpenSettings(); setModelMenuOpen(false); }} />
+                    <ComposerMenuButton
+                      label="Model"
+                      detail={(
+                        <>
+                          {promptModelName(models, settings.model)}
+                          {modelLocked && <span className="ml-1 text-zinc-400">locked</span>}
+                        </>
+                      )}
+                      onClick={() => { onOpenSettings(); setModelMenuOpen(false); }}
+                    />
                     {canThink && <ComposerMenuButton label="Thinking" detail={settings.thinking_enabled ? "On" : "Off"} active={settings.thinking_enabled} dataTour="thinking-button" onClick={() => { onToggleThinking(); setModelMenuOpen(false); }} />}
                   </div>
                 )}
@@ -3309,26 +3317,15 @@ function Composer({
                 "group relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
                 PROMPT_BAR_CONTROL_MOTION,
                 isStreaming
-                  ? (isWritePromptBar ? "text-zinc-200" : "text-zinc-950")
+                  ? "text-zinc-200"
                   : cx(
-                    isWritePromptBar ? "text-zinc-300 hover:text-white" : "text-zinc-950",
+                    "text-zinc-300 hover:text-white",
                     "disabled:cursor-not-allowed disabled:text-zinc-600 disabled:active:scale-100",
                   ),
               )}
               aria-label={isStreaming ? "Stop" : "Send"}
               title={isStreaming ? "Stop" : "Send"}
             >
-              <span
-                aria-hidden="true"
-                className={cx(
-                  "absolute inset-[3px] rounded-full transition-colors duration-150 ease-out",
-                  isWritePromptBar
-                    ? "hidden"
-                    : isStreaming
-                      ? "bg-zinc-200"
-                      : "bg-accent group-hover:bg-blue-300 group-disabled:bg-zinc-800",
-                )}
-              />
               <span
                 aria-hidden="true"
                 className={cx(
@@ -3651,6 +3648,7 @@ function WriteHistoryModal({ open, entries, title, onClose }) {
 
   const isOpen = phase === "open";
   const runGroups = historyRunGroups(entries);
+  const eventCount = entries.filter((entry) => entry.label !== "User prompt").length;
 
   function toggleExpanded(entryId) {
     setExpandedEntries((current) => ({
@@ -3682,22 +3680,27 @@ function WriteHistoryModal({ open, entries, title, onClose }) {
         aria-modal="true"
         aria-labelledby="write-history-title"
         className={cx(
-          "t-modal relative z-10 flex max-h-[min(560px,calc(100dvh-2rem))] w-full max-w-[520px] flex-col overflow-hidden rounded-[24px] bg-[#18181b] text-zinc-100 shadow-[var(--shadow-surface)]",
+          "t-modal relative z-10 flex max-h-[min(680px,calc(100dvh-2rem))] w-full max-w-[600px] flex-col overflow-hidden rounded-[26px] bg-[#19191c] text-zinc-100 shadow-[var(--shadow-surface)]",
           isOpen ? "is-open" : "is-closing",
         )}
       >
-        <header className="flex items-center justify-between gap-4 px-4 pb-3 pt-4">
+        <header className="flex items-start justify-between gap-5 px-5 pb-4 pt-5 sm:px-6 sm:pt-6">
           <div className="min-w-0">
-            <h2 id="write-history-title" className="text-base font-semibold leading-6 text-zinc-100">
+            <h2 id="write-history-title" className="text-balance text-lg font-semibold leading-6 tracking-[-0.01em] text-zinc-100">
               {title}
             </h2>
+            <p className="mt-1 text-sm leading-5 text-zinc-500">
+              {eventCount > 0
+                ? `${runGroups.length} ${runGroups.length === 1 ? "prompt" : "prompts"} · ${eventCount} ${eventCount === 1 ? "event" : "events"}`
+                : "Prompts and changes will appear here"}
+            </p>
           </div>
           <button
             ref={closeRef}
             type="button"
             onClick={onClose}
             className={cx(
-              "grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/[0.05] text-zinc-400 hover:bg-white/[0.08] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15",
+              "grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/[0.05] text-zinc-400 shadow-[var(--shadow-border)] hover:bg-white/[0.09] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
               CONTROL_MOTION,
             )}
             aria-label="Close history"
@@ -3705,15 +3708,16 @@ function WriteHistoryModal({ open, entries, title, onClose }) {
             <X size={17} />
           </button>
         </header>
-        <div className="min-h-0 overflow-y-auto px-4 pb-4">
+        <div className="min-h-0 overflow-y-auto px-3 pb-3 sm:px-4 sm:pb-4">
           {runGroups.length > 0 ? (
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {runGroups.map((run, index) => (
                 <WriteHistoryRunAccordion
                   key={run.id}
                   run={run}
                   open={openRuns[run.id] ?? index === runGroups.length - 1}
                   title={`Prompt ${index + 1}`}
+                  sequence={index + 1}
                   onToggle={() => toggleRun(run.id)}
                   expandedEntries={expandedEntries}
                   onToggleEntry={toggleExpanded}
@@ -3721,8 +3725,9 @@ function WriteHistoryModal({ open, entries, title, onClose }) {
               ))}
             </div>
           ) : (
-            <div className="rounded-2xl bg-black/20 px-4 py-8 text-center text-sm text-zinc-500 shadow-[var(--shadow-border)]">
-              No write actions yet
+            <div className="rounded-[20px] bg-black/20 px-4 py-12 text-center shadow-[var(--shadow-border)]">
+              <div className="text-sm font-medium text-zinc-300">No history yet</div>
+              <div className="mt-1 text-xs leading-5 text-zinc-600">Your next writing run will show up here.</div>
             </div>
           )}
         </div>
@@ -3736,70 +3741,100 @@ function WriteHistoryRunAccordion({
   run,
   open,
   title,
+  sequence,
   onToggle,
   expandedEntries,
   onToggleEntry,
 }) {
   const actionCount = run.actions.length;
+  const promptText = run.prompt?.detail
+    ? promptPreview(run.prompt.detail, 86)
+    : "Prompt details unavailable";
 
   return (
     <section
-      className="t-acc rounded-2xl bg-black/15 px-3 shadow-[var(--shadow-border)]"
+      className="t-acc overflow-hidden rounded-[20px] bg-black/20 shadow-[var(--shadow-border)]"
       data-open={String(open)}
     >
       <button
         type="button"
-        className="t-acc-head flex min-h-12 w-full items-center justify-between gap-4 rounded-xl py-2 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/35"
+        className={cx(
+          "t-acc-head flex min-h-[72px] w-full items-center justify-between gap-4 rounded-[20px] px-3.5 py-3 text-left hover:bg-white/[0.025] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/20 sm:px-4",
+          CONTROL_MOTION,
+        )}
         aria-expanded={open}
         onClick={onToggle}
       >
-        <span className="min-w-0">
-          <span className="flex min-w-0 items-center gap-2">
-            <span className="truncate text-sm font-semibold text-zinc-100">{title}</span>
-            <span className="shrink-0 rounded-full bg-white/[0.04] px-2 py-0.5 text-[11px] font-medium text-zinc-600 shadow-[var(--shadow-border)]">
-              {actionCount} {actionCount === 1 ? "action" : "actions"}
+        <span className="flex min-w-0 items-center gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white/[0.055] text-xs font-semibold tabular-nums text-zinc-400 shadow-[var(--shadow-border)]">
+            {String(sequence).padStart(2, "0")}
+          </span>
+          <span className="min-w-0">
+            <span className="flex min-w-0 items-center gap-2.5">
+              <span className="truncate text-sm font-semibold text-zinc-100">{title}</span>
+              <span className="shrink-0 text-[11px] font-medium tabular-nums text-zinc-600">
+                {actionCount} {actionCount === 1 ? "action" : "actions"}
+              </span>
             </span>
+            <span className="mt-0.5 block truncate text-xs leading-5 text-zinc-500">{promptText}</span>
           </span>
         </span>
-        <span className="t-acc-chevron shrink-0 text-zinc-400">
-          <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-            <path
-              d="M4 6.5L8 10.5L12 6.5"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
+        <span className="t-acc-chevron grid h-9 w-9 shrink-0 place-items-center rounded-full text-zinc-500">
+          <ChevronDown size={17} strokeWidth={1.8} aria-hidden="true" />
         </span>
       </button>
-      <div className="t-acc-panel">
-        <div className="t-acc-panel-inner pb-3">
-          <ol className="space-y-1">
-            {[run.prompt, ...run.actions].filter(Boolean).map((entry) => (
-              <li
-                key={entry.id}
-                className="grid grid-cols-[8px_minmax(0,1fr)] gap-3 rounded-xl px-1 py-2"
-              >
-                <span className="mt-[7px] h-1.5 w-1.5 rounded-full bg-zinc-600" aria-hidden="true" />
-                <div className="min-w-0">
-                  <div className="text-sm font-medium leading-5 text-zinc-200">{entry.label}</div>
-                  <WriteHistoryDetail
-                    entry={entry}
-                    expanded={Boolean(expandedEntries[entry.id])}
-                    onToggle={() => onToggleEntry(entry.id)}
-                  />
-                </div>
-              </li>
-            ))}
-          </ol>
+      <div className="t-acc-panel min-h-0">
+        <div className="t-acc-panel-inner min-h-0 px-3.5 pb-4 sm:px-4">
+          <div className="mb-4 rounded-2xl bg-white/[0.035] px-3.5 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.045)]">
+            <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600">Prompt</div>
+            {run.prompt ? (
+              <WriteHistoryDetail
+                entry={run.prompt}
+                expanded={Boolean(expandedEntries[run.prompt.id])}
+                onToggle={() => onToggleEntry(run.prompt.id)}
+                promptCard
+              />
+            ) : (
+              <div className="text-sm text-zinc-600">Prompt details unavailable</div>
+            )}
+          </div>
+
+          <div className="mb-2 flex items-center justify-between px-1">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600">Activity</div>
+            <div className="text-[10px] font-medium tabular-nums text-zinc-700">{actionCount}</div>
+          </div>
+
+          {run.actions.length > 0 ? (
+            <ol>
+              {run.actions.map((entry, index) => (
+                <li key={entry.id} className="grid grid-cols-[18px_minmax(0,1fr)] gap-3 px-1">
+                  <span className="relative flex justify-center" aria-hidden="true">
+                    {index < run.actions.length - 1 && (
+                      <span className="absolute bottom-0 top-[14px] w-px bg-white/[0.07]" />
+                    )}
+                    <span className="relative mt-[7px] h-2 w-2 rounded-full bg-zinc-600 ring-4 ring-[#141416]" />
+                  </span>
+                  <div className={cx("min-w-0 pb-3", index === run.actions.length - 1 && "pb-0")}>
+                    <div className="text-pretty text-sm font-medium leading-5 text-zinc-300">{entry.label}</div>
+                    <WriteHistoryDetail
+                      entry={entry}
+                      expanded={Boolean(expandedEntries[entry.id])}
+                      onToggle={() => onToggleEntry(entry.id)}
+                    />
+                  </div>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <div className="px-1 text-xs leading-5 text-zinc-600">No actions recorded for this prompt.</div>
+          )}
         </div>
       </div>
     </section>
   );
 }
 
-function WriteHistoryDetail({ entry, expanded, onToggle }) {
+function WriteHistoryDetail({ entry, expanded, onToggle, promptCard = false }) {
   if (!entry.detail) return null;
 
   const isPrompt = entry.label === "User prompt";
@@ -3807,18 +3842,27 @@ function WriteHistoryDetail({ entry, expanded, onToggle }) {
 
   if (!isLongPrompt) {
     return (
-      <div className="mt-0.5 truncate text-xs leading-5 text-zinc-500" title={entry.detail}>
+      <div
+        className={cx(
+          promptCard
+            ? "text-pretty text-sm leading-5 text-zinc-300"
+            : "mt-0.5 truncate text-xs leading-5 text-zinc-500",
+        )}
+        title={entry.detail}
+      >
         {entry.detail}
       </div>
     );
   }
 
   return (
-    <div className="mt-1">
+    <div className={promptCard ? "" : "mt-1"}>
       <div
         className={cx(
-          "text-xs leading-5 text-zinc-500",
-          expanded ? "whitespace-pre-wrap break-words" : "truncate",
+          promptCard
+            ? "text-pretty text-sm leading-5 text-zinc-300"
+            : "text-xs leading-5 text-zinc-500",
+          expanded ? "whitespace-pre-wrap break-words" : promptCard ? "line-clamp-2" : "truncate",
         )}
         title={expanded ? undefined : entry.detail}
       >
@@ -3828,7 +3872,7 @@ function WriteHistoryDetail({ entry, expanded, onToggle }) {
         type="button"
         onClick={onToggle}
         className={cx(
-          "mt-1 h-7 rounded-full px-2 text-[11px] font-medium leading-none text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+          "-ml-2 mt-1 inline-flex min-h-10 items-center rounded-full px-2 text-[11px] font-medium leading-none text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
           CONTROL_MOTION,
         )}
       >

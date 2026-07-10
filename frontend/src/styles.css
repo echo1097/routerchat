@@ -562,11 +562,11 @@ textarea {
 
 .t-acc-panel {
   display: grid;
-  grid-template-rows: 0fr;
+  grid-template-rows: minmax(0, 0fr);
   transition: grid-template-rows var(--acc-collapse) var(--acc-ease);
 }
 .t-acc[data-open="true"] .t-acc-panel {
-  grid-template-rows: 1fr;
+  grid-template-rows: minmax(0, 1fr);
   transition: grid-template-rows var(--acc-expand) var(--acc-ease);
 }
 .t-acc-panel-inner {

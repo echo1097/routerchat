@@ -35,6 +35,7 @@ import packageInfo from "../../package.json";
 import openingMessages from "./openingMessages.json";
 import { cx, CONTROL_MOTION, PROMPT_BAR_CONTROL_MOTION, SOFT_SURFACE, FADE_MOTION } from "./uiShared.js";
 import HelpTourButton from "./HelpTourButton.jsx";
+import StoryBrainstorm from "./brainstorm/StoryBrainstorm.jsx";
 import StoryLorebook from "./lorebook/StoryLorebook.jsx";
 import TourOverlay from "./tour/TourOverlay.jsx";
 import { useTour } from "./tour/useTour.js";
@@ -244,6 +245,72 @@ const storyApi = {
     );
   },
 
+  async getBrainstorm(storyId) {
+    return api(`/api/stories/${encodeURIComponent(storyId)}/brainstorm`);
+  },
+
+  async updateBrainstormNode(storyId, nodeId, data) {
+    const payload = await api(
+      `/api/stories/${encodeURIComponent(storyId)}/brainstorm/nodes/${encodeURIComponent(nodeId)}`,
+      { method: "PATCH", body: JSON.stringify(data) },
+    );
+    return payload.node;
+  },
+
+  async deleteBrainstormNode(storyId, nodeId, cascade = false) {
+    return api(
+      `/api/stories/${encodeURIComponent(storyId)}/brainstorm/nodes/${encodeURIComponent(nodeId)}?cascade=${cascade}`,
+      { method: "DELETE" },
+    );
+  },
+
+  async updateBrainstormViewport(storyId, viewport) {
+    return api(`/api/stories/${encodeURIComponent(storyId)}/brainstorm/viewport`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        position_x: viewport.x,
+        position_y: viewport.y,
+        zoom: viewport.zoom,
+      }),
+    });
+  },
+
+  async generateBrainstorm({ storyId, prompt, selectedIdeaIds, ideaCount, settings, onEvent, signal }) {
+    const response = await fetch(
+      `/api/stories/${encodeURIComponent(storyId)}/brainstorm/generate/stream`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal,
+        body: JSON.stringify({
+          ...settings,
+          write_system_prompt: settings.system_prompt,
+          selected_idea_ids: selectedIdeaIds,
+          brainstorm_idea_count: ideaCount,
+          message: prompt,
+        }),
+      },
+    );
+    if (!response.ok || !response.body) {
+      throw new Error(await responseErrorDetail(response));
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffered = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffered += decoder.decode(value, { stream: true });
+      const lines = buffered.split("\n");
+      buffered = lines.pop() || "";
+      for (const line of lines) {
+        if (line.trim()) onEvent(JSON.parse(line));
+      }
+    }
+    if (buffered.trim()) onEvent(JSON.parse(buffered));
+  },
+
   async generateChapter({
     storyId,
     chapterId,
@@ -404,11 +471,14 @@ function chatRoute(chat) {
 
 function storyRoute(storyId, chapterId = null, workspaceView = "chapter") {
   if (!storyId) return { page: "home", mode: "write" };
+  const nextWorkspaceView = ["lorebook", "brainstorm"].includes(workspaceView)
+    ? workspaceView
+    : "chapter";
   return {
     page: "story",
     storyId,
-    chapterId: workspaceView === "lorebook" ? null : chapterId,
-    workspaceView: workspaceView === "lorebook" ? "lorebook" : "chapter",
+    chapterId: nextWorkspaceView === "chapter" ? chapterId : null,
+    workspaceView: nextWorkspaceView,
   };
 }
 
@@ -421,6 +491,7 @@ function routePath(route) {
   if (route.page === "story") {
     const storyPath = `/write/story/${encodeURIComponent(route.storyId)}`;
     if (route.workspaceView === "lorebook") return `${storyPath}/lorebook`;
+    if (route.workspaceView === "brainstorm") return `${storyPath}/brainstorm`;
     if (route.chapterId) return `${storyPath}/chapter/${encodeURIComponent(route.chapterId)}`;
     return storyPath;
   }
@@ -457,6 +528,14 @@ function parseRoute(pathname = window.location.pathname, search = window.locatio
         storyId,
         chapterId: null,
         workspaceView: "lorebook",
+      };
+    }
+    if (parts[3] === "brainstorm") {
+      return {
+        page: "story",
+        storyId,
+        chapterId: null,
+        workspaceView: "brainstorm",
       };
     }
     return {
@@ -3128,6 +3207,7 @@ function Composer({
   writeHistoryEntries = [],
   writeHistoryTitle = "Chapter history",
   onOpenLorebook,
+  onOpenBrainstorm,
   systemPrompt = "",
   onSaveSystemPrompt,
 }) {
@@ -3261,6 +3341,7 @@ function Composer({
                   {contextMenuOpen && (
                     <div role="menu" className="absolute bottom-[calc(100%+8px)] -left-4 z-30 w-72 rounded-2xl bg-[#29292c] p-1.5 shadow-[0_0_0_1px_rgba(255,255,255,0.12),0_16px_40px_rgba(0,0,0,0.38)]">
                       <ComposerMenuButton label="Lorebook" detail="Story knowledge" onClick={() => { onOpenLorebook(); setContextMenuOpen(false); }} />
+                      <ComposerMenuButton label="Brainstorm" detail="Branch story ideas" onClick={() => { onOpenBrainstorm(); setContextMenuOpen(false); }} />
                       <ComposerMenuButton label="System Prompt" detail={systemPrompt.trim() ? "Custom instructions" : "Default instructions"} onClick={() => { setSystemPromptOpen(true); setContextMenuOpen(false); }} active={Boolean(systemPrompt.trim())} />
                       <ComposerMenuButton label="History" detail={`${writeHistoryEntries.length} saved events`} onClick={() => { setHistoryOpen(true); setContextMenuOpen(false); }} />
                       <div className="my-1 border-t border-white/[0.08]" />
@@ -3294,7 +3375,7 @@ function Composer({
                 {modelMenuOpen && (
                   <div role="menu" className="absolute bottom-[calc(100%+8px)] right-0 z-30 w-64 rounded-2xl bg-[#29292c] p-1.5 shadow-[0_0_0_1px_rgba(255,255,255,0.12),0_16px_40px_rgba(0,0,0,0.38)]">
                     <ComposerMenuButton
-                      label="Model"
+                      label="Settings"
                       detail={(
                         <>
                           {promptModelName(models, settings.model)}
@@ -4426,8 +4507,8 @@ function SettingsDrawer({
                         "grid min-h-10 w-full grid-cols-[18px_minmax(0,1fr)_14px] items-center gap-2 rounded-xl px-3 py-2 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
                         CONTROL_MOTION,
                         selected
-                          ? "bg-white/[0.08] text-zinc-100 shadow-[var(--shadow-border)]"
-                          : "text-zinc-300 hover:bg-white/[0.045] hover:text-zinc-100",
+                          ? "bg-white/[0.065] text-zinc-100 shadow-[var(--shadow-border)]"
+                          : "text-zinc-300 hover:bg-white/[0.035] hover:text-zinc-100",
                       )}
                     >
                       <span className="col-start-2 min-w-0">
@@ -4454,14 +4535,14 @@ function SettingsDrawer({
             <div
               aria-hidden="true"
               className={cx(
-                "pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-[#202022]/95 to-transparent backdrop-blur-[1px] transition-opacity duration-150 ease-out",
+                "settings-list-fade pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-[#202022]/95 to-transparent transition-opacity duration-150 ease-out",
                 chatListScrolled ? "opacity-100" : "opacity-0",
               )}
             />
             <div
               aria-hidden="true"
               className={cx(
-                "pointer-events-none absolute inset-x-0 bottom-0 h-7 bg-gradient-to-t from-[#202022]/95 to-transparent backdrop-blur-[1px] transition-opacity duration-150 ease-out",
+                "settings-list-fade pointer-events-none absolute inset-x-0 bottom-0 h-7 bg-gradient-to-t from-[#202022]/95 to-transparent transition-opacity duration-150 ease-out",
                 chatListHasMoreBelow ? "opacity-100" : "opacity-0",
               )}
             />
@@ -4585,9 +4666,9 @@ function SettingsDrawer({
           </p>
         )}
       </div>
-      <div className="grid grid-cols-[minmax(0,1fr)_82px] items-center px-1 pb-2 pt-1 text-[11px] font-medium uppercase tracking-[0.08em] text-zinc-600">
+      <div className="grid grid-cols-[minmax(0,1fr)_104px] items-center px-1 pb-2 pt-1 text-[11px] font-medium uppercase tracking-[0.08em] text-zinc-600">
         <span>Model</span>
-        <span className="text-center">Price</span>
+        <span className="whitespace-nowrap text-center">Price + Context</span>
       </div>
       <div className="relative min-h-0 flex-1">
         <div
@@ -4603,12 +4684,16 @@ function SettingsDrawer({
             filteredModels.map((model) => {
               const isSelected = model.id === settings.model;
               const modelPrice = priceLabel(model);
+              const modelContextLimit = getModelContextLimit(model);
+              const modelContext = Number.isFinite(modelContextLimit)
+                ? `${formatTokens(modelContextLimit)} context`
+                : "—";
               return (
                 <div
                   key={model.id}
                   className={cx(
-                    "grid min-h-[52px] grid-cols-[minmax(0,1fr)_82px] items-center rounded-lg px-1 py-2 transition-colors duration-150 ease-out",
-                    isSelected ? "bg-white/[0.045]" : "hover:bg-white/[0.025]",
+                    "grid min-h-[52px] grid-cols-[minmax(0,1fr)_104px] items-center rounded-lg px-1 py-2 transition-colors duration-150 ease-out",
+                    isSelected ? "bg-white/[0.035]" : "hover:bg-white/[0.02]",
                     modelLocked && !isSelected && "opacity-45",
                   )}
                 >
@@ -4629,8 +4714,9 @@ function SettingsDrawer({
                       {model.id}
                     </span>
                   </button>
-                  <span className="px-1 text-center text-xs tabular-nums text-zinc-500">
-                    {modelPrice || "-"}
+                  <span className="flex min-w-0 flex-col items-center px-1 text-center text-xs leading-4 tabular-nums text-zinc-500">
+                    <span className="whitespace-nowrap">{modelPrice || "-"}</span>
+                    <span className="whitespace-nowrap">{modelContext}</span>
                   </span>
                 </div>
               );
@@ -4640,14 +4726,14 @@ function SettingsDrawer({
         <div
           aria-hidden="true"
           className={cx(
-            "pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-[#202022]/95 to-transparent backdrop-blur-[1px] transition-opacity duration-150 ease-out",
+            "settings-list-fade pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-[#202022]/95 to-transparent transition-opacity duration-150 ease-out",
             modelListScrolled ? "opacity-100" : "opacity-0",
           )}
         />
         <div
           aria-hidden="true"
           className={cx(
-            "pointer-events-none absolute inset-x-0 bottom-0 h-7 bg-gradient-to-t from-[#202022]/95 to-transparent backdrop-blur-[1px] transition-opacity duration-150 ease-out",
+            "settings-list-fade pointer-events-none absolute inset-x-0 bottom-0 h-7 bg-gradient-to-t from-[#202022]/95 to-transparent transition-opacity duration-150 ease-out",
             modelListHasMoreBelow ? "opacity-100" : "opacity-0",
           )}
         />
@@ -5576,6 +5662,12 @@ function App() {
   const [stories, setStories] = useState([]);
   const [chapters, setChapters] = useState([]);
   const [lorebookEntries, setLorebookEntries] = useState([]);
+  const [brainstormNodes, setBrainstormNodes] = useState([]);
+  const [brainstormEdges, setBrainstormEdges] = useState([]);
+  const [brainstormViewport, setBrainstormViewport] = useState({ x: 0, y: 0, zoom: 1 });
+  const [brainstormPrompt, setBrainstormPrompt] = useState("");
+  const [brainstormReasoning, setBrainstormReasoning] = useState("");
+  const [latestBrainstormGeneration, setLatestBrainstormGeneration] = useState(null);
   const [activeStoryId, setActiveStoryId] = useState(null);
   const [activeChapterId, setActiveChapterId] = useState(null);
   const [storyWorkspaceView, setStoryWorkspaceView] = useState("chapter");
@@ -5626,10 +5718,14 @@ function App() {
   const routeRef = useRef(parseRoute());
   const initialRouteHandledRef = useRef(false);
   const appSettingsLoadedRef = useRef(false);
+  const latestChatLoadRef = useRef(0);
+  const latestStoryLoadRef = useRef(0);
 
   useEffect(
     () => () => {
       window.clearTimeout(previousChatModeTimeoutRef.current);
+      window.clearTimeout(chapterSaveTimeoutRef.current);
+      window.clearTimeout(brainstormViewportTimeoutRef.current);
     },
     [],
   );
@@ -5642,6 +5738,8 @@ function App() {
   const streamRef = useRef(null);
   const previousRailStateRef = useRef(null);
   const chapterSaveTimeoutRef = useRef(null);
+  const pendingChapterSaveRef = useRef(null);
+  const brainstormViewportTimeoutRef = useRef(null);
   const chapterContentRef = useRef("");
   const {
     isNearBottom,
@@ -5724,7 +5822,9 @@ function App() {
     const selectedModel = models.find((model) => model.id === settings.model);
     const contextLimit = getModelContextLimit(selectedModel);
     const latestItemWithUsage = isWritingMode
-      ? latestStoryGeneration
+      ? storyWorkspaceView === "brainstorm"
+        ? latestBrainstormGeneration
+        : latestStoryGeneration
       : [...activeMessages]
           .reverse()
           .find((message) => {
@@ -5749,7 +5849,7 @@ function App() {
       isWritingMode && contextTokens === null ? 0 : contextTokens,
       contextLimit,
     );
-  }, [activeMessages, isWritingMode, latestStoryGeneration, models, settings.model]);
+  }, [activeMessages, isWritingMode, latestBrainstormGeneration, latestStoryGeneration, models, settings.model, storyWorkspaceView]);
 
   function showToast(message) {
     setToast(message);
@@ -5775,7 +5875,12 @@ function App() {
   }, []);
 
   async function loadStoryBundle(storyId, preferredChapterId = null, options = {}) {
+    const loadId = latestStoryLoadRef.current + 1;
+    latestStoryLoadRef.current = loadId;
+    await flushChapterSave();
+
     const payload = await storyApi.getStory(storyId);
+    if (loadId !== latestStoryLoadRef.current) return null;
     const nextStory = payload.story;
     const nextChapters = payload.chapters || [];
     const nextLorebook = payload.lorebook || [];
@@ -5807,22 +5912,42 @@ function App() {
       reasoning_effort: nextStory.reasoning_effort || "medium",
       nitro_mode: nitroMode,
     });
-    return { story: nextStory, chapters: nextChapters, chapter: nextChapter };
+    return { story: nextStory, chapters: nextChapters, chapter: nextChapter, loadId };
+  }
+
+  async function loadBrainstormBundle(storyId, storyLoadId = latestStoryLoadRef.current) {
+    const payload = await storyApi.getBrainstorm(storyId);
+    if (storyLoadId !== latestStoryLoadRef.current) return null;
+    setBrainstormNodes(payload.nodes || []);
+    setBrainstormEdges(payload.edges || []);
+    setBrainstormViewport(payload.viewport || { x: 0, y: 0, zoom: 1 });
+    setLatestBrainstormGeneration(payload.latest_generation || null);
+    return payload;
   }
 
   async function loadStoryRoute(route, { replace = false, fromRoute = false } = {}) {
+    const expectedLoadId = latestStoryLoadRef.current + 1;
     try {
       setChatMode("write");
       const result = await loadStoryBundle(route.storyId, route.chapterId, {
         requirePreferredChapter: Boolean(route.chapterId),
       });
-      const workspaceView = route.workspaceView === "lorebook" ? "lorebook" : "chapter";
+      if (!result) return;
+      const workspaceView = ["lorebook", "brainstorm"].includes(route.workspaceView)
+        ? route.workspaceView
+        : "chapter";
+      if (workspaceView === "brainstorm") {
+        await loadBrainstormBundle(result.story.id, result.loadId);
+      }
+      if (result.loadId !== latestStoryLoadRef.current) return;
       setStoryWorkspaceView(workspaceView);
       const routeChapterId = route.chapterId ? result.chapter?.id || null : null;
       const nextRoute = storyRoute(result.story.id, routeChapterId, workspaceView);
       await closeTempForRouteChange(nextRoute);
+      if (result.loadId !== latestStoryLoadRef.current) return;
       writeRoute(nextRoute, { replace: replace || fromRoute });
     } catch (error) {
+      if (expectedLoadId !== latestStoryLoadRef.current) return;
       if (fromRoute) {
         skipNextStoryAutoloadRef.current = true;
         await resetChat({ replace: true, mode: "write" });
@@ -5932,6 +6057,7 @@ function App() {
       return;
     }
     void loadStoryBundle(stories[0].id).then((result) => {
+      if (!result) return;
       writeRoute(storyRoute(result.story.id, null, "chapter"), {
         replace: true,
       });
@@ -5982,11 +6108,19 @@ function App() {
   }, []);
 
   async function loadChat(chatId, { replace = false, fromRoute = false } = {}) {
+    const loadId = latestChatLoadRef.current + 1;
+    latestChatLoadRef.current = loadId;
     try {
       const payload = await api(`/api/chats/${chatId}`);
-      await navigateToChat(payload.chat, { replace: replace || fromRoute });
+      if (loadId !== latestChatLoadRef.current) return;
+      const nextRoute = chatRoute(payload.chat);
+      await closeTempForRouteChange(nextRoute);
+      if (loadId !== latestChatLoadRef.current) return;
+      writeRoute(nextRoute, { replace: replace || fromRoute });
+      setChatMode("chat");
       applyChat(payload.chat, payload.messages || []);
     } catch (error) {
+      if (loadId !== latestChatLoadRef.current) return;
       if (fromRoute) {
         await resetChat({ replace: true });
       } else {
@@ -6049,6 +6183,10 @@ function App() {
     setActiveChapterId(null);
     setChapters([]);
     setLorebookEntries([]);
+    setBrainstormNodes([]);
+    setBrainstormEdges([]);
+    setBrainstormViewport({ x: 0, y: 0, zoom: 1 });
+    setLatestBrainstormGeneration(null);
     setLatestStoryGeneration(null);
     setChapterContent("");
     setWriteHistoryEntries([]);
@@ -6561,13 +6699,17 @@ function App() {
         }
       } else {
         setStatus(error.message);
-        setMessages((current) =>
-          current.map((message) =>
-            message.id === currentAssistantId
-              ? { ...message, content: error.message }
-              : message,
-          ),
-        );
+        if (regenerateMessageId && conversationId) {
+          await loadChat(conversationId, { replace: true });
+        } else {
+          setMessages((current) =>
+            current.map((message) =>
+              message.id === currentAssistantId
+                ? { ...message, content: error.message }
+                : message,
+            ),
+          );
+        }
       }
     } finally {
       setIsStreaming(false);
@@ -6600,14 +6742,16 @@ function App() {
   async function editUserMessage(message, content) {
     if (!activeChatId || isStreaming) return;
     try {
-      const payload = await api(`/api/chats/${activeChatId}/messages/${message.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ content }),
-      });
-      applyChat(payload.chat, payload.messages || []);
-      await navigateToChat(payload.chat, { replace: true });
       setStatus("Prompt updated. Regenerating...");
-      void sendMessage(content, message.id);
+      setMessages((current) => {
+        const messageIndex = current.findIndex((item) => item.id === message.id);
+        if (messageIndex < 0) return current;
+        return [
+          ...current.slice(0, messageIndex),
+          { ...current[messageIndex], content },
+        ];
+      });
+      await sendMessage(content, message.id);
     } catch (error) {
       setStatus(error.message);
       throw error;
@@ -6689,23 +6833,36 @@ function App() {
     const nextStoryId = storyId || stories[0]?.id || (await loadStories())[0]?.id;
     if (!nextStoryId) return;
     const result = await loadStoryBundle(nextStoryId);
+    if (!result) return;
     setStoryWorkspaceView("chapter");
     writeRoute(storyRoute(result.story.id, null, "chapter"));
   }
 
   async function selectStory(storyId) {
+    const expectedLoadId = latestStoryLoadRef.current + 1;
     try {
       const result = await loadStoryBundle(storyId);
+      if (!result) return;
       setStoryWorkspaceView("chapter");
       writeRoute(storyRoute(result.story.id, null, "chapter"));
     } catch (error) {
+      if (expectedLoadId !== latestStoryLoadRef.current) return;
       setStatus(error.message);
     }
   }
 
-  function selectChapter(chapterId) {
+  async function selectChapter(chapterId) {
     const chapter = chapters.find((item) => item.id === chapterId);
     if (!chapter) return;
+
+    try {
+      await flushChapterSave();
+    } catch (error) {
+      setChapterSaveState("Save failed");
+      setStatus(error.message);
+      return;
+    }
+
     setActiveChapterId(chapter.id);
     setChapterContent(chapter.content || "");
     setWriteHistoryEntries(chapter.history || []);
@@ -6770,11 +6927,22 @@ function App() {
       confirmLabel: "Delete",
       onConfirm: async () => {
         try {
+          const pendingSave = pendingChapterSaveRef.current;
+          if (pendingSave?.storyId === story.id) {
+            await flushChapterSave();
+          }
+
           await storyApi.deleteStory(story.id);
           const nextStories = await loadStories();
-          const nextStory = nextStories.find((item) => item.id !== story.id) || nextStories[0];
+          if (story.id !== activeStoryId) {
+            setStatus("Story deleted");
+            return;
+          }
+
+          const nextStory = nextStories[0];
           if (nextStory) {
             const result = await loadStoryBundle(nextStory.id);
+            if (!result) return;
             setStoryWorkspaceView("chapter");
             writeRoute(storyRoute(result.story.id, null, "chapter"), {
               replace: true,
@@ -6784,6 +6952,10 @@ function App() {
             setActiveChapterId(null);
             setChapters([]);
             setLorebookEntries([]);
+            setBrainstormNodes([]);
+            setBrainstormEdges([]);
+            setBrainstormViewport({ x: 0, y: 0, zoom: 1 });
+            setLatestBrainstormGeneration(null);
             setLatestStoryGeneration(null);
             setChapterContent("");
             setWriteHistoryEntries([]);
@@ -6807,9 +6979,22 @@ function App() {
       confirmLabel: "Delete",
       onConfirm: async () => {
         try {
+          const pendingSave = pendingChapterSaveRef.current;
+          if (
+            pendingSave?.storyId === activeStoryId
+            && pendingSave.chapterId === chapter.id
+          ) {
+            await flushChapterSave();
+          }
+
           await storyApi.deleteChapter(activeStoryId, chapter.id);
           const nextChapters = await storyApi.listChapters(activeStoryId);
           setChapters(nextChapters);
+          if (chapter.id !== activeChapterId) {
+            setStatus("Chapter deleted");
+            return;
+          }
+
           const nextChapter = nextChapters[0] || null;
           setActiveChapterId(nextChapter?.id || null);
           setChapterContent(nextChapter?.content || "");
@@ -6870,29 +7055,224 @@ function App() {
     });
   }
 
+  async function persistPendingChapterSave(pendingSave) {
+    if (!pendingSave.promise) {
+      pendingSave.promise = storyApi.saveChapterContent(
+        pendingSave.storyId,
+        pendingSave.chapterId,
+        pendingSave.content,
+      );
+    }
+
+    try {
+      const saved = await pendingSave.promise;
+      if (pendingChapterSaveRef.current === pendingSave) {
+        pendingChapterSaveRef.current = null;
+      }
+      setChapters((current) =>
+        current.map((chapter) => (chapter.id === saved.id ? saved : chapter)),
+      );
+      setChapterSaveState("Saved");
+      window.setTimeout(() => setChapterSaveState(""), 1200);
+      return saved;
+    } catch (error) {
+      pendingSave.promise = null;
+      throw error;
+    }
+  }
+
   function updateChapterCanvasContent(content) {
     setChapterContent(content);
     chapterContentRef.current = content;
     if (!activeStoryId || !activeChapterId) return;
+
+    const pendingSave = {
+      storyId: activeStoryId,
+      chapterId: activeChapterId,
+      content,
+      promise: null,
+    };
+
     setChapterSaveState("Saving");
     window.clearTimeout(chapterSaveTimeoutRef.current);
+    pendingChapterSaveRef.current = pendingSave;
     chapterSaveTimeoutRef.current = window.setTimeout(async () => {
+      chapterSaveTimeoutRef.current = null;
       try {
-        const saved = await storyApi.saveChapterContent(
-          activeStoryId,
-          activeChapterId,
-          chapterContentRef.current,
-        );
-        setChapters((current) =>
-          current.map((chapter) => (chapter.id === saved.id ? saved : chapter)),
-        );
-        setChapterSaveState("Saved");
-        window.setTimeout(() => setChapterSaveState(""), 1200);
+        await persistPendingChapterSave(pendingSave);
       } catch (error) {
         setChapterSaveState("Save failed");
         setStatus(error.message);
       }
     }, 600);
+  }
+
+  async function flushChapterSave() {
+    const pendingSave = pendingChapterSaveRef.current;
+    if (!pendingSave) return;
+
+    window.clearTimeout(chapterSaveTimeoutRef.current);
+    chapterSaveTimeoutRef.current = null;
+    setChapterSaveState("Saving");
+    await persistPendingChapterSave(pendingSave);
+  }
+
+  async function openBrainstorm() {
+    if (!activeStoryId || isStreaming) return;
+    try {
+      await flushChapterSave();
+      await loadBrainstormBundle(activeStoryId);
+      setStoryWorkspaceView("brainstorm");
+      writeRoute(storyRoute(activeStoryId, activeChapterId, "brainstorm"));
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function updateBrainstormNode(nodeId, changes) {
+    if (!activeStoryId) return;
+    setBrainstormNodes((current) => current.map((node) => (
+      node.id === nodeId
+        ? {
+            ...node,
+            ...changes,
+            position_x: changes.position_x ?? node.position_x,
+            position_y: changes.position_y ?? node.position_y,
+          }
+        : node
+    )));
+    try {
+      const updated = await storyApi.updateBrainstormNode(activeStoryId, nodeId, changes);
+      setBrainstormNodes((current) => current.map((node) => (
+        node.id === updated.id ? updated : node
+      )));
+    } catch (error) {
+      setStatus(error.message);
+      await loadBrainstormBundle(activeStoryId);
+      throw error;
+    }
+  }
+
+  async function deleteBrainstormNode(nodeId, hasDescendants = false, skipConfirm = false) {
+    if (!activeStoryId || isStreaming) return;
+    const performDelete = async () => {
+      try {
+        const payload = await storyApi.deleteBrainstormNode(
+          activeStoryId,
+          nodeId,
+          hasDescendants,
+        );
+        const deletedIds = new Set(payload.deleted_node_ids || []);
+        setBrainstormNodes((current) => current.filter((node) => !deletedIds.has(node.id)));
+        setBrainstormEdges((current) => current.filter((edge) => (
+          !deletedIds.has(edge.source_node_id) && !deletedIds.has(edge.target_node_id)
+        )));
+        if (!skipConfirm) showToast(hasDescendants ? "Branch deleted" : "Idea deleted");
+      } catch (error) {
+        setStatus(error.message);
+        throw error;
+      }
+    };
+
+    if (hasDescendants && !skipConfirm) {
+      setConfirmDialog({
+        title: "Delete brainstorm branch?",
+        body: "This removes the selected card and every prompt and idea descended from it. This cannot be undone.",
+        confirmLabel: "Delete branch",
+        onConfirm: performDelete,
+      });
+      return;
+    }
+    await performDelete();
+  }
+
+  function updateBrainstormViewport(viewport) {
+    if (!activeStoryId) return;
+    setBrainstormViewport(viewport);
+    window.clearTimeout(brainstormViewportTimeoutRef.current);
+    brainstormViewportTimeoutRef.current = window.setTimeout(() => {
+      storyApi.updateBrainstormViewport(activeStoryId, viewport).catch((error) => {
+        setStatus(error.message);
+      });
+    }, 350);
+  }
+
+  async function generateBrainstorm(text = brainstormPrompt.trim(), selectedIdeaIds = [], ideaCount = 3) {
+    if (isStreaming || !text || !activeStoryId) return;
+    setIsStreaming(true);
+    setBrainstormReasoning("");
+    setStatus("");
+    setBrainstormPrompt("");
+    abortRef.current = new AbortController();
+    let streamError = "";
+
+    try {
+      await storyApi.generateBrainstorm({
+        storyId: activeStoryId,
+        prompt: text,
+        selectedIdeaIds,
+        ideaCount,
+        settings,
+        signal: abortRef.current.signal,
+        onEvent: (event) => {
+          if (event.type === "prompt") {
+            const value = event.value || {};
+            if (value.node) {
+              setBrainstormNodes((current) => [
+                ...current.filter((node) => node.id !== value.node.id),
+                value.node,
+              ]);
+            }
+            if (Array.isArray(value.edges)) {
+              setBrainstormEdges((current) => [
+                ...current.filter((edge) => !value.edges.some((next) => next.id === edge.id)),
+                ...value.edges,
+              ]);
+            }
+            return;
+          }
+          if (event.type === "reasoning") {
+            setBrainstormReasoning((current) => `${current}${String(event.value || "")}`);
+            return;
+          }
+          if (event.type === "ideas") {
+            const value = event.value || {};
+            setBrainstormNodes((current) => [
+              ...current.map((node) => (
+                node.status === "generating" ? { ...node, status: "complete" } : node
+              )),
+              ...(value.nodes || []),
+            ]);
+            setBrainstormEdges((current) => [...current, ...(value.edges || [])]);
+            return;
+          }
+          if (event.type === "usage") {
+            setLatestBrainstormGeneration(event.value || null);
+            return;
+          }
+          if (event.type === "error") {
+            streamError = String(event.value || "Brainstorming failed");
+            setStatus(streamError);
+          }
+        },
+      });
+      if (!streamError) showToast("Ideas added");
+    } catch (error) {
+      if (error.name === "AbortError") {
+        setStatus("Brainstorm stopped");
+      } else {
+        setStatus(error.message);
+      }
+    } finally {
+      setIsStreaming(false);
+      setBrainstormReasoning("");
+      abortRef.current = null;
+      try {
+        await loadBrainstormBundle(activeStoryId);
+      } catch (error) {
+        setStatus(error.message);
+      }
+    }
   }
 
   function appendWriteHistoryEntry(entry) {
@@ -7080,7 +7460,7 @@ function App() {
   const visibleActiveChatId = activeConversationId;
   const showLandingComposer = isWritingMode ? isEmptyWriting : isEmptyChat;
   const showComposer =
-    !(isWritingMode && ["lorebook", "characters"].includes(storyWorkspaceView) && !showLandingComposer);
+    !(isWritingMode && ["lorebook", "characters", "brainstorm"].includes(storyWorkspaceView) && !showLandingComposer);
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#070708] text-ink">
@@ -7153,7 +7533,33 @@ function App() {
 
         <TemporaryChatMarker visible={!isWritingMode && temporaryChat && activeChatId === tempChatId && messages.length > 0} />
 
-        {isWritingMode && !showLandingComposer ? (
+        {isWritingMode && !showLandingComposer && storyWorkspaceView === "brainstorm" ? (
+          <StoryBrainstorm
+            story={stories.find((story) => story.id === activeStoryId)}
+            graphNodes={brainstormNodes}
+            graphEdges={brainstormEdges}
+            viewport={brainstormViewport}
+            prompt={brainstormPrompt}
+            setPrompt={setBrainstormPrompt}
+            isStreaming={isStreaming}
+            reasoning={brainstormReasoning}
+            disabled={!keyStatus.has_key}
+            modelLabel={promptModelName(models, settings.model)}
+            thinkingEnabled={settings.thinking_enabled}
+            contextMeter={<ContextWindowMeter info={contextWindowInfo} />}
+            onBack={() => {
+              setStoryWorkspaceView("chapter");
+              writeRoute(storyRoute(activeStoryId, activeChapterId, "chapter"));
+            }}
+            onGenerate={generateBrainstorm}
+            onStop={stopStream}
+            onOpenSettings={() => setSettingsOpen(true)}
+            onToggleThinking={toggleThinking}
+            onUpdateNode={updateBrainstormNode}
+            onDeleteNode={deleteBrainstormNode}
+            onUpdateViewport={updateBrainstormViewport}
+          />
+        ) : isWritingMode && !showLandingComposer ? (
           <StoryWorkspace
             stories={stories}
             chapters={chapters}
@@ -7263,6 +7669,7 @@ function App() {
               setStoryWorkspaceView("lorebook");
               writeRoute(storyRoute(activeStoryId, activeChapterId, "lorebook"));
             }}
+            onOpenBrainstorm={openBrainstorm}
             systemPrompt={isWritingMode ? settings.system_prompt : ""}
             onSaveSystemPrompt={isWritingMode ? saveStorySystemPrompt : null}
           />

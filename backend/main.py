@@ -28,6 +28,7 @@ DB_PATH = DATA_DIR / "routerchat.sqlite3"
 ENV_PATH = ROOT_DIR / ".env"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_MAX_TOKENS = 30000
+OPENROUTER_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=10.0)
 DEFAULT_MODEL_ID = "anthropic/claude-3.5-sonnet"
 ReasoningEffort = Literal["low", "medium", "high", "xhigh"]
 
@@ -112,6 +113,8 @@ class StreamMessageRequest(BaseModel):
     write_generation_mode: str | None = None
     chapter_content: str | None = None
     previous_chapters: list[dict[str, Any]] = Field(default_factory=list)
+    selected_idea_ids: list[str] = Field(default_factory=list)
+    brainstorm_idea_count: int = Field(default=3, ge=1, le=8)
 
 
 class MessageUpdateRequest(BaseModel):
@@ -143,10 +146,26 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def patch_updates(payload: BaseModel) -> dict[str, Any]:
+    if hasattr(payload, "model_dump"):
+        updates = payload.model_dump(exclude_unset=True)
+    else:
+        updates = payload.dict(exclude_unset=True)
+
+    null_fields = [key for key, value in updates.items() if value is None]
+    if null_fields:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Fields cannot be null: {', '.join(null_fields)}.",
+        )
+    return updates
+
+
 def get_db() -> sqlite3.Connection:
     DATA_DIR.mkdir(exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 
@@ -315,6 +334,68 @@ def init_db() -> None:
               FOREIGN KEY(story_id) REFERENCES stories(id) ON DELETE CASCADE,
               FOREIGN KEY(chapter_id) REFERENCES chapters(id) ON DELETE CASCADE
             );
+
+            CREATE TABLE IF NOT EXISTS brainstorm_nodes (
+              id TEXT PRIMARY KEY,
+              story_id TEXT NOT NULL,
+              node_type TEXT NOT NULL,
+              title TEXT NOT NULL,
+              content TEXT NOT NULL,
+              position_x REAL NOT NULL DEFAULT 0,
+              position_y REAL NOT NULL DEFAULT 0,
+              status TEXT NOT NULL DEFAULT 'complete',
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              FOREIGN KEY(story_id) REFERENCES stories(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS brainstorm_edges (
+              id TEXT PRIMARY KEY,
+              story_id TEXT NOT NULL,
+              source_node_id TEXT NOT NULL,
+              target_node_id TEXT NOT NULL,
+              created_at TEXT NOT NULL,
+              FOREIGN KEY(story_id) REFERENCES stories(id) ON DELETE CASCADE,
+              FOREIGN KEY(source_node_id) REFERENCES brainstorm_nodes(id) ON DELETE CASCADE,
+              FOREIGN KEY(target_node_id) REFERENCES brainstorm_nodes(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS brainstorm_viewports (
+              story_id TEXT PRIMARY KEY,
+              position_x REAL NOT NULL DEFAULT 0,
+              position_y REAL NOT NULL DEFAULT 0,
+              zoom REAL NOT NULL DEFAULT 1,
+              updated_at TEXT NOT NULL,
+              FOREIGN KEY(story_id) REFERENCES stories(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS brainstorm_generations (
+              id TEXT PRIMARY KEY,
+              story_id TEXT NOT NULL,
+              prompt_node_id TEXT NOT NULL,
+              prompt TEXT NOT NULL,
+              model TEXT NOT NULL,
+              finish_reason TEXT,
+              error TEXT,
+              generation_id TEXT,
+              prompt_tokens INTEGER,
+              completion_tokens INTEGER,
+              reasoning_tokens INTEGER,
+              total_tokens INTEGER,
+              cost REAL,
+              provider_name TEXT,
+              generation_time REAL,
+              latency REAL,
+              created_at TEXT NOT NULL,
+              FOREIGN KEY(story_id) REFERENCES stories(id) ON DELETE CASCADE,
+              FOREIGN KEY(prompt_node_id) REFERENCES brainstorm_nodes(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_brainstorm_nodes_story
+            ON brainstorm_nodes(story_id, created_at);
+
+            CREATE INDEX IF NOT EXISTS idx_brainstorm_edges_story
+            ON brainstorm_edges(story_id, created_at);
             """
         )
         ensure_message_order_column(conn)
@@ -855,6 +936,7 @@ def get_app_settings() -> dict[str, Any]:
 
 @app.patch("/api/settings")
 def update_app_settings(payload: AppSettingsPatchRequest) -> dict[str, Any]:
+    patch_updates(payload)
     if payload.default_model is not None:
         model_id = payload.default_model.strip()
         ids = {model["id"] for model in cached_models() if model.get("id")}
@@ -980,6 +1062,7 @@ def import_chats(payload: ChatImportRequest) -> dict[str, Any]:
                 chat_id = str(uuid.uuid4())
             chat_id_map[source_id] = chat_id
             imported_chat_ids.add(chat_id)
+            imported_temperature = float_or_none(item.get("temperature"))
 
             conn.execute(
                 """
@@ -994,7 +1077,7 @@ def import_chats(payload: ChatImportRequest) -> dict[str, Any]:
                     str(item.get("title") or "Imported chat")[:120],
                     str(item.get("model") or default_model_id()),
                     str(item.get("system_prompt") or ""),
-                    float_or_none(item.get("temperature")) or 0.7,
+                    0.7 if imported_temperature is None else imported_temperature,
                     int_or_none(item.get("max_tokens")) or DEFAULT_MAX_TOKENS,
                     coerce_bool_int(item.get("thinking_enabled")),
                     coerce_reasoning_effort(item.get("reasoning_effort")),
@@ -1074,7 +1157,7 @@ def get_chat(chat_id: str) -> dict[str, Any]:
 
 @app.patch("/api/chats/{chat_id}")
 def update_chat(chat_id: str, payload: ChatPatchRequest) -> dict[str, Any]:
-    updates = payload.dict(exclude_unset=True)
+    updates = patch_updates(payload)
     if "chat_system_prompt" in updates:
         updates["system_prompt"] = chatSystemPrompt(payload)
         updates.pop("chat_system_prompt", None)
@@ -1206,7 +1289,7 @@ def get_writing_thread(thread_id: str) -> dict[str, Any]:
 
 @app.patch("/api/writing/{thread_id}")
 def update_writing_thread(thread_id: str, payload: ChatPatchRequest) -> dict[str, Any]:
-    updates = payload.dict(exclude_unset=True)
+    updates = patch_updates(payload)
     if "write_system_prompt" in updates:
         updates["system_prompt"] = writeSystemPrompt(payload)
         updates.pop("write_system_prompt", None)
@@ -1368,13 +1451,6 @@ def update_message(
         ).fetchone()
         previous_first_user_content = previous_first_user["content"] if previous_first_user else None
         conn.execute(
-            """
-            DELETE FROM messages
-            WHERE chat_id = ? AND message_order > ?
-            """,
-            (chat_id, message["message_order"]),
-        )
-        conn.execute(
             "UPDATE messages SET content = ? WHERE id = ? AND chat_id = ?",
             (content, message_id, chat_id),
         )
@@ -1441,13 +1517,6 @@ def update_writing_message(
         ).fetchone()
         previous_first_user_content = previous_first_user["content"] if previous_first_user else None
         conn.execute(
-            """
-            DELETE FROM writing_messages
-            WHERE writing_thread_id = ? AND message_order > ?
-            """,
-            (thread_id, message["message_order"]),
-        )
-        conn.execute(
             "UPDATE writing_messages SET content = ? WHERE id = ? AND writing_thread_id = ?",
             (content, message_id, thread_id),
         )
@@ -1487,39 +1556,55 @@ def delete_writing_message(thread_id: str, message_id: str) -> dict[str, Any]:
     return get_writing_thread(thread_id)
 
 
-def build_openrouter_messages(chat_id: str, system_prompt: str) -> list[dict[str, str]]:
+def build_openrouter_messages(
+    chat_id: str,
+    system_prompt: str,
+    regenerate_message_id: str | None = None,
+    replacement_content: str | None = None,
+) -> list[dict[str, str]]:
     messages: list[dict[str, str]] = []
     if system_prompt.strip():
         messages.append({"role": "system", "content": system_prompt.strip()})
     with get_db() as conn:
         rows = conn.execute(
             """
-            SELECT role, content FROM messages
+            SELECT id, role, content FROM messages
             WHERE chat_id = ? AND error IS NULL
             ORDER BY message_order ASC, created_at ASC, rowid ASC
             """,
             (chat_id,),
         ).fetchall()
     for row in rows:
+        if regenerate_message_id and row["id"] == regenerate_message_id:
+            messages.append({"role": "user", "content": replacement_content or row["content"]})
+            break
         if row["role"] in {"user", "assistant"}:
             messages.append({"role": row["role"], "content": row["content"]})
     return messages
 
 
-def build_openrouter_writing_messages(thread_id: str, system_prompt: str) -> list[dict[str, str]]:
+def build_openrouter_writing_messages(
+    thread_id: str,
+    system_prompt: str,
+    regenerate_message_id: str | None = None,
+    replacement_content: str | None = None,
+) -> list[dict[str, str]]:
     messages: list[dict[str, str]] = []
     if system_prompt.strip():
         messages.append({"role": "system", "content": system_prompt.strip()})
     with get_db() as conn:
         rows = conn.execute(
             """
-            SELECT role, content FROM writing_messages
+            SELECT id, role, content FROM writing_messages
             WHERE writing_thread_id = ? AND error IS NULL
             ORDER BY message_order ASC, created_at ASC, rowid ASC
             """,
             (thread_id,),
         ).fetchall()
     for row in rows:
+        if regenerate_message_id and row["id"] == regenerate_message_id:
+            messages.append({"role": "user", "content": replacement_content or row["content"]})
+            break
         if row["role"] in {"user", "assistant"}:
             messages.append({"role": row["role"], "content": row["content"]})
     return messages
@@ -1646,9 +1731,19 @@ async def stream_openrouter_response(
         raise HTTPException(status_code=401, detail="Add an OpenRouter API key first.")
 
     messages = (
-        build_openrouter_writing_messages(chat_id, writeSystemPrompt(payload))
+        build_openrouter_writing_messages(
+            chat_id,
+            writeSystemPrompt(payload),
+            payload.regenerate_message_id,
+            payload.message.strip(),
+        )
         if writing
-        else build_openrouter_messages(chat_id, chatSystemPrompt(payload))
+        else build_openrouter_messages(
+            chat_id,
+            chatSystemPrompt(payload),
+            payload.regenerate_message_id,
+            payload.message.strip(),
+        )
     )
     body: dict[str, Any] = {
         "model": openrouter_request_model(payload.model, payload.nitro_mode),
@@ -1676,9 +1771,10 @@ async def stream_openrouter_response(
     error_text: str | None = None
     generation_id: str | None = None
     usage: dict[str, Any] | None = None
+    stream_completed = False
 
     try:
-        async with httpx.AsyncClient(timeout=None) as client:
+        async with httpx.AsyncClient(timeout=OPENROUTER_TIMEOUT) as client:
             async with client.stream(
                 "POST",
                 f"{OPENROUTER_BASE_URL}/chat/completions",
@@ -1702,6 +1798,7 @@ async def stream_openrouter_response(
                         continue
                     data = line.removeprefix("data:").strip()
                     if data == "[DONE]":
+                        stream_completed = True
                         break
                     try:
                         chunk = json.loads(data)
@@ -1717,6 +1814,8 @@ async def stream_openrouter_response(
                         continue
                     choice = choices[0]
                     finish_reason = choice.get("finish_reason") or finish_reason
+                    if finish_reason:
+                        stream_completed = True
                     delta = choice.get("delta") or {}
                     reasoning = delta.get("reasoning") or delta.get("reasoning_content")
                     if reasoning and payload.thinking_enabled:
@@ -1747,9 +1846,52 @@ async def stream_openrouter_response(
         assistant_text.append(fallback)
         yield stream_event("error", fallback)
     finally:
+        if payload.regenerate_message_id and (error_text or not stream_completed):
+            return
+
         content = "".join(assistant_text)
         with get_db() as conn:
             if writing:
+                if payload.regenerate_message_id:
+                    regenerate_message = conn.execute(
+                        """
+                        SELECT * FROM writing_messages
+                        WHERE id = ? AND writing_thread_id = ? AND role = 'user'
+                        """,
+                        (payload.regenerate_message_id, chat_id),
+                    ).fetchone()
+                    if not regenerate_message:
+                        return
+                    previous_first_user = conn.execute(
+                        """
+                        SELECT content FROM writing_messages
+                        WHERE writing_thread_id = ? AND role = 'user'
+                        ORDER BY message_order ASC, created_at ASC, rowid ASC
+                        LIMIT 1
+                        """,
+                        (chat_id,),
+                    ).fetchone()
+                    previous_first_user_content = (
+                        previous_first_user["content"] if previous_first_user else None
+                    )
+                    conn.execute(
+                        """
+                        DELETE FROM writing_messages
+                        WHERE writing_thread_id = ? AND message_order > ?
+                        """,
+                        (chat_id, regenerate_message["message_order"]),
+                    )
+                    conn.execute(
+                        """
+                        UPDATE writing_messages SET content = ?
+                        WHERE id = ? AND writing_thread_id = ?
+                        """,
+                        (payload.message.strip(), payload.regenerate_message_id, chat_id),
+                    )
+                    refresh_writing_after_message_change(
+                        conn, chat_id, previous_first_user_content
+                    )
+
                 conn.execute(
                     """
                     INSERT INTO writing_messages (
@@ -1786,6 +1928,45 @@ async def stream_openrouter_response(
                     (utc_now(), chat_id),
                 )
                 return
+
+            if payload.regenerate_message_id:
+                regenerate_message = conn.execute(
+                    """
+                    SELECT * FROM messages
+                    WHERE id = ? AND chat_id = ? AND role = 'user'
+                    """,
+                    (payload.regenerate_message_id, chat_id),
+                ).fetchone()
+                if not regenerate_message:
+                    return
+                previous_first_user = conn.execute(
+                    """
+                    SELECT content FROM messages
+                    WHERE chat_id = ? AND role = 'user'
+                    ORDER BY message_order ASC, created_at ASC, rowid ASC
+                    LIMIT 1
+                    """,
+                    (chat_id,),
+                ).fetchone()
+                previous_first_user_content = (
+                    previous_first_user["content"] if previous_first_user else None
+                )
+                conn.execute(
+                    """
+                    DELETE FROM messages
+                    WHERE chat_id = ? AND message_order > ?
+                    """,
+                    (chat_id, regenerate_message["message_order"]),
+                )
+                conn.execute(
+                    """
+                    UPDATE messages SET content = ? WHERE id = ? AND chat_id = ?
+                    """,
+                    (payload.message.strip(), payload.regenerate_message_id, chat_id),
+                )
+                refresh_chat_after_message_change(
+                    conn, chat_id, previous_first_user_content
+                )
 
             conn.execute(
                 """
@@ -1865,13 +2046,6 @@ async def stream_message(
                     status_code=400,
                     detail="Only user prompts can be regenerated.",
                 )
-            conn.execute(
-                """
-                DELETE FROM messages
-                WHERE chat_id = ? AND message_order > ?
-                """,
-                (chat_id, regenerateMessage["message_order"]),
-            )
         else:
             conn.execute(
                 """
@@ -1968,13 +2142,6 @@ async def stream_writing_message(
                     status_code=400,
                     detail="Only user prompts can be regenerated.",
                 )
-            conn.execute(
-                """
-                DELETE FROM writing_messages
-                WHERE writing_thread_id = ? AND message_order > ?
-                """,
-                (thread_id, regenerateMessage["message_order"]),
-            )
         else:
             conn.execute(
                 """

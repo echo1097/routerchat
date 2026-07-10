@@ -610,6 +610,11 @@ textarea {
 .settings-chat-list::-webkit-scrollbar {
   display: none;
 }
+.settings-list-fade {
+  z-index: 1;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
 .settings-range {
   --range-progress: 0%;
   display: block;

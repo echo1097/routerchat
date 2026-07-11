@@ -266,6 +266,7 @@ def init_db() -> None:
               content TEXT NOT NULL,
               word_count INTEGER NOT NULL DEFAULT 0,
               order_index INTEGER NOT NULL,
+              disabled INTEGER NOT NULL DEFAULT 0,
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL,
               FOREIGN KEY(story_id) REFERENCES stories(id) ON DELETE CASCADE
@@ -406,6 +407,7 @@ def init_db() -> None:
         ensure_writing_message_usage_columns(conn)
         ensure_writing_thread_settings_columns(conn)
         ensure_story_settings_columns(conn)
+        ensure_chapter_context_column(conn)
         clean_lorebook_categories(conn)
 
 
@@ -443,6 +445,14 @@ def ensure_story_settings_columns(conn: sqlite3.Connection) -> None:
     }
     if "temporary" not in existingColumns:
         conn.execute("ALTER TABLE stories ADD COLUMN temporary INTEGER NOT NULL DEFAULT 0")
+
+
+def ensure_chapter_context_column(conn: sqlite3.Connection) -> None:
+    existingColumns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(chapters)").fetchall()
+    }
+    if "disabled" not in existingColumns:
+        conn.execute("ALTER TABLE chapters ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0")
 
 
 def clean_lorebook_categories(conn: sqlite3.Connection) -> None:

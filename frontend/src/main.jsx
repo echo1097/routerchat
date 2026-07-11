@@ -16,6 +16,8 @@ import {
   Check,
   ChevronDown,
   Copy,
+  Eye,
+  EyeOff,
   KeyRound,
   Menu,
   MessageSquarePlus,
@@ -1047,7 +1049,7 @@ function StoryHistoryActions({ story, onRename, onDelete }) {
   );
 }
 
-function ChapterHistoryActions({ chapter, onRename, onDelete }) {
+function ChapterHistoryActions({ chapter, onRename, onDelete, onToggleContext }) {
   return (
     <OverflowActions
       id={`chapter-${chapter.id}`}
@@ -1068,6 +1070,18 @@ function ChapterHistoryActions({ chapter, onRename, onDelete }) {
           >
             <Pencil size={14} />
             Edit name
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              closeMenu();
+              onToggleContext(chapter);
+            }}
+            className="chat-history-menu-item text-zinc-200 hover:bg-white/[0.07] focus:bg-white/[0.07] focus:outline-none"
+          >
+            {chapter.disabled ? <Eye size={14} /> : <EyeOff size={14} />}
+            {chapter.disabled ? "Show chapter" : "Hide chapter"}
           </button>
           <button
             type="button"
@@ -2185,6 +2199,7 @@ function StoryRail({
   onRenameChapter,
   onDeleteStory,
   onDeleteChapter,
+  onToggleChapterContext,
   previousChatMode,
   onChatModeChange,
 }) {
@@ -2312,8 +2327,12 @@ function StoryRail({
                               className={cx(
                                 "group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-xl px-2 py-1",
                                 chapter.id === activeChapterId
-                                  ? "bg-white/[0.075] text-zinc-100"
-                                  : "text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-100",
+                                  ? chapter.disabled
+                                    ? "bg-white/[0.075] text-zinc-400"
+                                    : "bg-white/[0.075] text-zinc-100"
+                                  : chapter.disabled
+                                    ? "text-zinc-600 hover:bg-white/[0.04] hover:text-zinc-300"
+                                    : "text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-100",
                               )}
                             >
                               <button
@@ -2322,14 +2341,22 @@ function StoryRail({
                                   onSelectChapter(chapter.id);
                                   onCloseMobile();
                                 }}
-                                className="min-w-0 text-left text-xs leading-5 focus:outline-none"
+                                className="flex min-w-0 items-center gap-1.5 text-left text-xs leading-5 focus:outline-none"
                               >
-                                <span className="truncate">{chapter.title}</span>
+                                <span className="min-w-0 flex-1 truncate">{chapter.title}</span>
+                                {chapter.disabled && (
+                                  <EyeOff
+                                    size={13}
+                                    className="shrink-0 text-zinc-500"
+                                    aria-hidden="true"
+                                  />
+                                )}
                               </button>
                               <ChapterHistoryActions
                                 chapter={chapter}
                                 onRename={onRenameChapter}
                                 onDelete={onDeleteChapter}
+                                onToggleContext={onToggleChapterContext}
                               />
                             </div>
                           ))
@@ -7022,6 +7049,22 @@ function App() {
     }
   }
 
+  async function toggleChapterContext(chapter) {
+    if (!activeStoryId) return;
+
+    try {
+      const updated = await storyApi.updateChapter(activeStoryId, chapter.id, {
+        disabled: !chapter.disabled,
+      });
+      setChapters((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      showToast(updated.disabled ? "Chapter hidden" : "Chapter shown");
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
   async function deleteStoryItem(story) {
     setConfirmDialog({
       title: "Delete story?",
@@ -7588,6 +7631,7 @@ function App() {
           onRenameChapter={renameChapterItem}
           onDeleteStory={deleteStoryItem}
           onDeleteChapter={deleteChapterItem}
+          onToggleChapterContext={toggleChapterContext}
           previousChatMode={previousChatMode}
           onChatModeChange={changeChatMode}
         />

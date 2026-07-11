@@ -63,6 +63,7 @@ class ChapterPatchRequest(BaseModel):
     title: str | None = None
     content: str | None = None
     order_index: int | None = None
+    disabled: bool | None = None
 
 
 class ChapterContentRequest(BaseModel):
@@ -588,6 +589,7 @@ def row_to_chapter(row: sqlite3.Row) -> dict[str, Any]:
         "content": row["content"],
         "word_count": row["word_count"],
         "order_index": row["order_index"],
+        "disabled": bool(row["disabled"]),
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
@@ -675,10 +677,11 @@ def build_brainstorm_messages(
     prompt: str,
     idea_count: int = 3,
 ) -> list[dict[str, str]]:
-    chapter_text = "\n\n".join(
+    visibleChapters = [chapter for chapter in chapters if not bool(chapter["disabled"])]
+    chapterText = "\n\n".join(
         f"chapter {index + 1}: {chapter['title']}\n{chapter['content'] or 'empty chapter'}"
-        for index, chapter in enumerate(chapters)
-    ) or "no chapters yet"
+        for index, chapter in enumerate(visibleChapters)
+    ) or "no visible chapters yet"
     lorebook_text = "\n".join(
         f"- {row['name']} ({row['category']}): {row['description']}"
         for row in lorebook_rows
@@ -694,7 +697,7 @@ def build_brainstorm_messages(
         f"author: {story['author'] or 'unknown'}\n"
         f"language: {story['language'] or 'English'}\n"
         f"synopsis: {story['synopsis'] or 'none yet'}\n\n"
-        f"all chapters:\n{chapter_text}\n\n"
+        f"all visible chapters:\n{chapterText}\n\n"
         f"lorebook:\n{lorebook_text}\n\n"
         f"selected brainstorm branch:\n{branch_text}"
     )

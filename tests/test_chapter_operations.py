@@ -59,6 +59,81 @@ class ChapterOperationTest(unittest.TestCase):
         self.assertEqual(result["deletedBlockIds"], ["p_001"])
         self.assertEqual(result["insertedBlockIds"], ["p_001"])
 
+    def test_replace_block_range_deletes_all_inclusive_blocks(self):
+        content = "before\n\nreplace one\n\n***\n\nreplace two\n\nafter"
+        blocks = chapter_blocks(content)
+        operation = self.operation(
+            "replaceBlockRange",
+            startBlockId=blocks[1]["blockId"],
+            startExpectedTextHash=blocks[1]["textHash"],
+            endBlockId=blocks[3]["blockId"],
+            endExpectedTextHash=blocks[3]["textHash"],
+            newText="rewritten middle",
+        )
+
+        result = apply_chapter_operation(content, operation, baseRevision=7)
+
+        self.assertEqual(result["content"], "before\n\nrewritten middle\n\nafter")
+        self.assertEqual(result["deletedBlockIds"], ["p_002", "s_001", "p_003"])
+
+    def test_replace_block_range_can_replace_through_final_block(self):
+        content = "keep this\n\nold ending one\n\nold ending two"
+        blocks = chapter_blocks(content)
+        operation = self.operation(
+            "replaceBlockRange",
+            startBlockId=blocks[1]["blockId"],
+            startExpectedTextHash=blocks[1]["textHash"],
+            endBlockId=blocks[-1]["blockId"],
+            endExpectedTextHash=blocks[-1]["textHash"],
+            newText="new ending",
+        )
+
+        result = apply_chapter_operation(content, operation, baseRevision=7)
+
+        self.assertEqual(result["content"], "keep this\n\nnew ending")
+
+    def test_replace_block_range_rejects_invalid_targets_and_order(self):
+        blocks = self.blocks
+        reversedRange = self.operation(
+            "replaceBlockRange",
+            startBlockId=blocks[2]["blockId"],
+            startExpectedTextHash=blocks[2]["textHash"],
+            endBlockId=blocks[0]["blockId"],
+            endExpectedTextHash=blocks[0]["textHash"],
+            newText="replacement",
+        )
+        changedHash = {**reversedRange, "startExpectedTextHash": text_hash("changed")}
+        unknownBlock = {**reversedRange, "startBlockId": "p_999"}
+
+        self.assertErrorCode(
+            lambda: apply_chapter_operation(self.content, reversedRange, baseRevision=7),
+            CHAPTER_EDIT_TARGET_MISMATCH,
+        )
+        self.assertErrorCode(
+            lambda: apply_chapter_operation(self.content, changedHash, baseRevision=7),
+            CHAPTER_EDIT_TARGET_MISMATCH,
+        )
+        self.assertErrorCode(
+            lambda: apply_chapter_operation(self.content, unknownBlock, baseRevision=7),
+            CHAPTER_EDIT_TARGET_MISMATCH,
+        )
+
+    def test_replace_block_range_requires_its_exact_fields(self):
+        operation = self.operation(
+            "replaceBlockRange",
+            startBlockId="p_001",
+            startExpectedTextHash=text_hash("first paragraph"),
+            endBlockId="p_002",
+            endExpectedTextHash=text_hash("last paragraph"),
+            newText="replacement",
+            extra=True,
+        )
+
+        self.assertErrorCode(
+            lambda: parse_chapter_operation(json.dumps(operation)),
+            CHAPTER_EDIT_INVALID_OPERATION,
+        )
+
     def test_scene_break_can_be_replaced(self):
         operation = self.operation(
             "replaceBlock",

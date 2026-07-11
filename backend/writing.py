@@ -101,6 +101,7 @@ class BrainstormViewportRequest(BaseModel):
 
 CHAPTER_EDIT_OPERATIONS = {
     "replaceBlock",
+    "replaceBlockRange",
     "insertBeforeBlock",
     "insertAfterBlock",
     "appendToChapter",
@@ -354,6 +355,19 @@ def chapter_edit_operation_schema() -> dict[str, Any]:
             "required": requiredFields,
         }
 
+    rangeFields = {
+        "startBlockId": {"type": "string", "minLength": 1},
+        "startExpectedTextHash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+        },
+        "endBlockId": {"type": "string", "minLength": 1},
+        "endExpectedTextHash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+        },
+    }
+
     return {
         "type": "object",
         "oneOf": [
@@ -361,6 +375,24 @@ def chapter_edit_operation_schema() -> dict[str, Any]:
                 "replaceBlock",
                 ["operation", "chapterRevision", "blockId", "expectedTextHash", "newText"],
             ),
+            {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    **operationFields,
+                    **rangeFields,
+                    "operation": {"const": "replaceBlockRange"},
+                },
+                "required": [
+                    "operation",
+                    "chapterRevision",
+                    "startBlockId",
+                    "startExpectedTextHash",
+                    "endBlockId",
+                    "endExpectedTextHash",
+                    "newText",
+                ],
+            },
             variant(
                 "insertBeforeBlock",
                 ["operation", "chapterRevision", "blockId", "expectedTextHash", "newText"],
@@ -431,7 +463,16 @@ def validate_chapter_operation(
         )
 
     requiredFields = {"operation", "chapterRevision", "newText"}
-    if operationType != "appendToChapter":
+    if operationType == "replaceBlockRange":
+        requiredFields.update(
+            {
+                "startBlockId",
+                "startExpectedTextHash",
+                "endBlockId",
+                "endExpectedTextHash",
+            }
+        )
+    elif operationType != "appendToChapter":
         requiredFields.update({"blockId", "expectedTextHash"})
     actualFields = set(operation)
     missingFields = requiredFields - actualFields
@@ -466,33 +507,51 @@ def validate_chapter_operation(
     if operationType == "appendToChapter":
         return operation
 
-    blockId = operation.get("blockId")
-    expectedTextHash = operation.get("expectedTextHash")
-    if not isinstance(blockId, str) or not blockId.strip():
-        raise ChapterEditError(
-            CHAPTER_EDIT_INVALID_OPERATION,
-            "blockId must be a non-empty string",
-        )
-    if not isinstance(expectedTextHash, str) or not re.fullmatch(
-        r"[0-9a-f]{64}", expectedTextHash
-    ):
-        raise ChapterEditError(
-            CHAPTER_EDIT_INVALID_OPERATION,
-            "expectedTextHash must be a lowercase SHA-256 hex digest",
-        )
+    if operationType == "replaceBlockRange":
+        targetFields = [
+            ("startBlockId", "startExpectedTextHash"),
+            ("endBlockId", "endExpectedTextHash"),
+        ]
+    else:
+        targetFields = [("blockId", "expectedTextHash")]
 
-    if blocks is not None:
-        blocksById = {block["blockId"]: block for block in blocks}
-        block = blocksById.get(blockId.strip())
-        if not block:
+    targetBlocks: list[dict[str, Any]] = []
+    for blockIdField, expectedHashField in targetFields:
+        blockId = operation.get(blockIdField)
+        expectedTextHash = operation.get(expectedHashField)
+        if not isinstance(blockId, str) or not blockId.strip():
             raise ChapterEditError(
-                CHAPTER_EDIT_TARGET_MISMATCH,
-                f"unknown block id: {blockId}",
+                CHAPTER_EDIT_INVALID_OPERATION,
+                f"{blockIdField} must be a non-empty string",
             )
-        if expectedTextHash != block["textHash"]:
+        if not isinstance(expectedTextHash, str) or not re.fullmatch(
+            r"[0-9a-f]{64}", expectedTextHash
+        ):
+            raise ChapterEditError(
+                CHAPTER_EDIT_INVALID_OPERATION,
+                f"{expectedHashField} must be a lowercase SHA-256 hex digest",
+            )
+
+        if blocks is not None:
+            blocksById = {block["blockId"]: block for block in blocks}
+            block = blocksById.get(blockId.strip())
+            if not block:
+                raise ChapterEditError(
+                    CHAPTER_EDIT_TARGET_MISMATCH,
+                    f"unknown block id: {blockId}",
+                )
+            if expectedTextHash != block["textHash"]:
+                raise ChapterEditError(
+                    CHAPTER_EDIT_TARGET_MISMATCH,
+                    f"text hash mismatch for {blockId}",
+                )
+            targetBlocks.append(block)
+
+    if operationType == "replaceBlockRange" and len(targetBlocks) == 2:
+        if targetBlocks[0]["startChar"] > targetBlocks[1]["startChar"]:
             raise ChapterEditError(
                 CHAPTER_EDIT_TARGET_MISMATCH,
-                f"text hash mismatch for {blockId}",
+                "range start block must not follow range end block",
             )
 
     return operation
@@ -531,6 +590,27 @@ def apply_chapter_operation(
             "operation": operationType,
             "deletedBlockIds": [],
             "insertedBlockIds": [],
+            "appliedText": newText,
+        }
+
+    if operationType == "replaceBlockRange":
+        startBlock = blocksById[operation["startBlockId"].strip()]
+        endBlock = blocksById[operation["endBlockId"].strip()]
+        deletedBlockIds = [
+            block["blockId"]
+            for block in blocks
+            if startBlock["startChar"] <= block["startChar"] <= endBlock["startChar"]
+        ]
+        nextContent = (
+            f"{content[:startBlock['startChar']]}"
+            f"{newText}"
+            f"{content[endBlock['endChar']:]}"
+        )
+        return {
+            "content": nextContent,
+            "operation": operationType,
+            "deletedBlockIds": deletedBlockIds,
+            "insertedBlockIds": [startBlock["blockId"]],
             "appliedText": newText,
         }
 
@@ -914,16 +994,20 @@ def build_story_messages(
                     "You are editing the active chapter using exactly one JSON operation. Return "
                     "only one JSON object with no markdown, explanation, or wrapper text. The "
                     "chapterRevision must exactly match the chapter revision in the context. "
-                    "Supported operations are replaceBlock, insertBeforeBlock, insertAfterBlock, "
-                    "and appendToChapter. Every operation includes operation, chapterRevision, "
-                    "and non-empty newText. Targeted operations also include blockId and the "
-                    "exact lowercase SHA-256 expectedTextHash from the block map. Do not use "
-                    "appendToChapter unless the user explicitly asks to continue at the end. "
-                    "Replacement operations delete the targeted text first and insert the "
-                    "replacement in the same position. Do not preserve, duplicate, append beside, "
-                    "or restate replaced text unless the user explicitly asks for it. Use the "
-                    "block map to resolve references like 4th paragraph; paragraph indexes are "
-                    "1-based."
+                    "Supported operations are replaceBlock, replaceBlockRange, insertBeforeBlock, "
+                    "insertAfterBlock, and appendToChapter. Every operation includes operation, "
+                    "chapterRevision, and non-empty newText. Targeted single-block operations "
+                    "include blockId and the exact lowercase SHA-256 expectedTextHash from the "
+                    "block map. replaceBlockRange replaces an inclusive contiguous range and "
+                    "includes startBlockId, startExpectedTextHash, endBlockId, and "
+                    "endExpectedTextHash. To rewrite everything after a paragraph, leave that "
+                    "anchor paragraph untouched, select the next block through the final block, "
+                    "and use replaceBlockRange. Do not use appendToChapter unless the user "
+                    "explicitly asks to continue at the end. Replacement operations delete the "
+                    "targeted text first and insert the replacement in the same position. Do not "
+                    "preserve, duplicate, append beside, or restate replaced text unless the user "
+                    "explicitly asks for it. Use the block map to resolve references like 4th "
+                    "paragraph; paragraph indexes are 1-based."
                 ),
             }
         )

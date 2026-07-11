@@ -371,6 +371,39 @@ class StoryApiTest(unittest.TestCase):
         self.assertNotIn("response_format", requestBody)
         self.assertIn("lorebook", [event["type"] for event in events])
 
+    def test_range_edit_commits_deleted_blocks_and_preserves_surrounding_text(self):
+        story = self.client.post("/api/stories", json={"title": "Range Edit"}).json()["story"]
+        chapter = self.client.post(
+            f"/api/stories/{story['id']}/chapters",
+            json={
+                "title": "Opening",
+                "content": "keep before\n\nold one\n\n***\n\nold two\n\nkeep after",
+            },
+        ).json()["chapter"]
+        operation = json.dumps({
+            "operation": "replaceBlockRange",
+            "chapterRevision": chapter["revision"],
+            "startBlockId": "p_002",
+            "startExpectedTextHash": text_hash("old one"),
+            "endBlockId": "p_003",
+            "endExpectedTextHash": text_hash("old two"),
+            "newText": "rewritten section",
+        })
+
+        response, _ = self.streamChapterGeneration(story, chapter, operation)
+
+        events = [json.loads(line) for line in response.text.splitlines() if line]
+        updateEvent = next(event for event in events if event["type"] == "chapter_updated")
+        self.assertEqual(
+            updateEvent["value"]["chapter"]["content"],
+            "keep before\n\nrewritten section\n\nkeep after",
+        )
+        self.assertEqual(updateEvent["value"]["chapter"]["revision"], 1)
+        self.assertEqual(updateEvent["value"]["deletedBlockIds"], ["p_002", "s_001", "p_003"])
+        persisted = self.client.get(f"/api/stories/{story['id']}").json()["chapters"][0]
+        self.assertEqual(persisted["revision"], 1)
+        self.assertEqual(persisted["content"], updateEvent["value"]["chapter"]["content"])
+
     def test_invalid_edit_output_is_stored_and_does_not_mutate_chapter(self):
         story = self.client.post("/api/stories", json={"title": "Invalid Edit"}).json()["story"]
         chapter = self.client.post(

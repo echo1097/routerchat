@@ -254,6 +254,7 @@ def init_db() -> None:
               max_tokens INTEGER NOT NULL,
               thinking_enabled INTEGER NOT NULL,
               reasoning_effort TEXT NOT NULL DEFAULT 'medium',
+              temporary INTEGER NOT NULL DEFAULT 0,
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
             );
@@ -404,6 +405,7 @@ def init_db() -> None:
         ensure_writing_message_order_column(conn)
         ensure_writing_message_usage_columns(conn)
         ensure_writing_thread_settings_columns(conn)
+        ensure_story_settings_columns(conn)
         clean_lorebook_categories(conn)
 
 
@@ -433,6 +435,14 @@ def ensure_writing_thread_settings_columns(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE writing_threads ADD COLUMN temporary INTEGER NOT NULL DEFAULT 0"
         )
+
+
+def ensure_story_settings_columns(conn: sqlite3.Connection) -> None:
+    existingColumns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(stories)").fetchall()
+    }
+    if "temporary" not in existingColumns:
+        conn.execute("ALTER TABLE stories ADD COLUMN temporary INTEGER NOT NULL DEFAULT 0")
 
 
 def clean_lorebook_categories(conn: sqlite3.Connection) -> None:
@@ -593,6 +603,20 @@ def on_startup() -> None:
             """
         )
         conn.execute("DELETE FROM writing_threads WHERE temporary = 1")
+        temporaryStoryIds = [
+            row["id"]
+            for row in conn.execute("SELECT id FROM stories WHERE temporary = 1").fetchall()
+        ]
+        for storyId in temporaryStoryIds:
+            conn.execute("DELETE FROM brainstorm_generations WHERE story_id = ?", (storyId,))
+            conn.execute("DELETE FROM brainstorm_edges WHERE story_id = ?", (storyId,))
+            conn.execute("DELETE FROM brainstorm_nodes WHERE story_id = ?", (storyId,))
+            conn.execute("DELETE FROM brainstorm_viewports WHERE story_id = ?", (storyId,))
+            conn.execute("DELETE FROM lorebook_update_runs WHERE story_id = ?", (storyId,))
+            conn.execute("DELETE FROM story_generations WHERE story_id = ?", (storyId,))
+            conn.execute("DELETE FROM lorebook_entries WHERE story_id = ?", (storyId,))
+            conn.execute("DELETE FROM chapters WHERE story_id = ?", (storyId,))
+            conn.execute("DELETE FROM stories WHERE id = ?", (storyId,))
 
 
 def read_openrouter_key() -> str | None:
@@ -642,10 +666,16 @@ def headers_for_key(api_key: str) -> dict[str, str]:
 
 
 async def validate_key(api_key: str) -> dict[str, Any]:
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        response = await client.get(
-            f"{OPENROUTER_BASE_URL}/key", headers=headers_for_key(api_key)
-        )
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.get(
+                f"{OPENROUTER_BASE_URL}/key", headers=headers_for_key(api_key)
+            )
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Could not reach OpenRouter. Check your network connection or local TLS certificate.",
+        ) from exc
     if response.status_code == 401:
         raise HTTPException(status_code=401, detail="OpenRouter API key is invalid.")
     if response.status_code >= 400:
@@ -764,12 +794,18 @@ def openrouter_request_model(model_id: str, nitro_mode: bool) -> str:
 
 
 async def fetch_models_from_openrouter(api_key: str) -> list[dict[str, Any]]:
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.get(
-            f"{OPENROUTER_BASE_URL}/models",
-            headers=headers_for_key(api_key),
-            params={"output_modalities": "text"},
-        )
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(
+                f"{OPENROUTER_BASE_URL}/models",
+                headers=headers_for_key(api_key),
+                params={"output_modalities": "text"},
+            )
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Could not reach OpenRouter. Check your network connection or local TLS certificate.",
+        ) from exc
     if response.status_code >= 400:
         raise HTTPException(
             status_code=response.status_code,

@@ -4,6 +4,7 @@ import { cx, CONTROL_MOTION } from "../uiShared.js";
 
 const spotlightPadding = 8;
 const popoverWidth = 300;
+const estimatedPopoverHeight = 210;
 const popoverGap = 14;
 
 function measureTarget(selector) {
@@ -23,12 +24,20 @@ function placePopover(rect) {
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
 
-  const spaceBelow = viewportHeight - rect.bottom;
-  const placeAbove = spaceBelow < 190 && rect.top > 190;
+  const roomBelow = viewportHeight - rect.bottom;
+  const roomAbove = rect.top;
+  const placeAbove = roomBelow < estimatedPopoverHeight + popoverGap
+    && roomAbove >= estimatedPopoverHeight + popoverGap;
 
   const rawLeft = rect.left + rect.width / 2 - popoverWidth / 2;
   const left = Math.min(Math.max(rawLeft, 12), viewportWidth - popoverWidth - 12);
-  const top = placeAbove ? rect.top - popoverGap : rect.bottom + popoverGap;
+  const rawTop = placeAbove
+    ? rect.top - estimatedPopoverHeight - popoverGap
+    : rect.bottom + popoverGap;
+  const top = Math.min(
+    Math.max(rawTop, 12),
+    Math.max(12, viewportHeight - estimatedPopoverHeight - 12),
+  );
 
   return { left, top, placeAbove };
 }

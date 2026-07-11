@@ -37,8 +37,11 @@ import { cx, CONTROL_MOTION, PROMPT_BAR_CONTROL_MOTION, SOFT_SURFACE, FADE_MOTIO
 import HelpTourButton from "./HelpTourButton.jsx";
 import StoryBrainstorm from "./brainstorm/StoryBrainstorm.jsx";
 import StoryLorebook from "./lorebook/StoryLorebook.jsx";
+import NotificationStack from "./notifications/NotificationStack.jsx";
+import { useNotifications } from "./notifications/useNotifications.js";
 import TourOverlay from "./tour/TourOverlay.jsx";
 import { useTour } from "./tour/useTour.js";
+import { WRITE_TOUR_STEPS } from "./tour/tourSteps.js";
 import "./styles.css";
 
 const DEFAULT_MODEL = "anthropic/claude-3.5-sonnet";
@@ -170,6 +173,10 @@ const storyApi = {
 
   async deleteStory(storyId) {
     return api(`/api/stories/${encodeURIComponent(storyId)}`, { method: "DELETE" });
+  },
+
+  async closeStory(storyId) {
+    return api(`/api/stories/${encodeURIComponent(storyId)}/close`, { method: "POST" });
   },
 
   async listChapters(storyId) {
@@ -2223,6 +2230,7 @@ function StoryRail({
           <div className="mb-4 flex items-center justify-center gap-2">
             <button
               type="button"
+              data-tour="write-home-button"
               onClick={() => {
                 onGoHome();
                 onCloseMobile();
@@ -2258,6 +2266,7 @@ function StoryRail({
                 return (
                   <div key={story.id} className="space-y-1">
                     <div
+                      data-tour={active ? "write-story-rail" : undefined}
                       className={cx(
                         "group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-2xl border border-transparent px-2 py-1",
                         active ? "bg-white/[0.08] shadow-[var(--shadow-border)]" : "hover:bg-white/[0.045]",
@@ -2286,6 +2295,7 @@ function StoryRail({
                       <div className="ml-3 space-y-1 border-l border-white/10 pl-2">
                         <button
                           type="button"
+                          data-tour="write-new-chapter-button"
                           onClick={onCreateChapter}
                           className="mb-1 flex h-8 w-full items-center justify-center rounded-xl text-xs font-medium text-zinc-400 hover:bg-white/[0.045] hover:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
                         >
@@ -2723,7 +2733,7 @@ function StoryWorkspace({
   }
 
   return (
-    <section ref={canvasScrollRef} className="write-canvas-scroll min-h-0 overflow-y-auto px-4 pb-6 sm:px-8 lg:px-10">
+    <section data-tour="write-chapter-canvas" ref={canvasScrollRef} className="write-canvas-scroll min-h-0 overflow-y-auto px-4 pb-6 sm:px-8 lg:px-10">
       <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col">
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="write-canvas-header mb-4 space-y-3">
@@ -3210,10 +3220,12 @@ function Composer({
   onOpenBrainstorm,
   systemPrompt = "",
   onSaveSystemPrompt,
+  tourUi = null,
 }) {
   const canThink = supportsThinking(models, settings.model) || forceShowThinking;
   const textareaRef = useRef(null);
   const composerControlsRef = useRef(null);
+  const tourUiRef = useRef(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [systemPromptOpen, setSystemPromptOpen] = useState(false);
   const [contextMenuOpen, setContextMenuOpen] = useState(false);
@@ -3253,6 +3265,25 @@ function Composer({
       document.removeEventListener("pointerdown", closeOnOutsidePress);
     };
   }, []);
+
+  useEffect(() => {
+    if (!tourUi) {
+      if (tourUiRef.current) {
+        setContextMenuOpen(false);
+        setModelMenuOpen(false);
+        setSystemPromptOpen(false);
+        setHistoryOpen(false);
+      }
+      tourUiRef.current = null;
+      return;
+    }
+
+    tourUiRef.current = tourUi;
+    setContextMenuOpen(["tools", "generationMode"].includes(tourUi));
+    setModelMenuOpen(tourUi === "model");
+    setSystemPromptOpen(tourUi === "systemPrompt");
+    setHistoryOpen(tourUi === "history");
+  }, [tourUi]);
 
   return (
     <form
@@ -3321,6 +3352,7 @@ function Composer({
                 <div className="relative">
                   <button
                     type="button"
+                    data-tour="write-tools-button"
                     onClick={() => {
                       setContextMenuOpen((open) => !open);
                       setModelMenuOpen(false);
@@ -3345,7 +3377,7 @@ function Composer({
                       <ComposerMenuButton label="System Prompt" detail={systemPrompt.trim() ? "Custom instructions" : "Default instructions"} onClick={() => { setSystemPromptOpen(true); setContextMenuOpen(false); }} active={Boolean(systemPrompt.trim())} />
                       <ComposerMenuButton label="History" detail={`${writeHistoryEntries.length} saved events`} onClick={() => { setHistoryOpen(true); setContextMenuOpen(false); }} />
                       <div className="my-1 border-t border-white/[0.08]" />
-                      <ComposerMenuButton label={WRITE_GENERATION_MODES[writeGenerationMode]} detail="Switch writing action" onClick={() => { onToggleWriteGenerationMode(); setContextMenuOpen(false); }} />
+                      <ComposerMenuButton dataTour="write-generation-mode" label={WRITE_GENERATION_MODES[writeGenerationMode]} detail="Switch writing action" onClick={() => { onToggleWriteGenerationMode(); setContextMenuOpen(false); }} />
                     </div>
                   )}
                 </div>
@@ -3353,7 +3385,7 @@ function Composer({
             </div>
             <div className="ml-auto flex min-w-0 items-center gap-1.5">
               <div className="flex min-w-0 items-center gap-0">
-                {showContextMeter && <ContextWindowMeter info={contextWindowInfo} />}
+                {showContextMeter && <span data-tour="write-context-meter"><ContextWindowMeter info={contextWindowInfo} /></span>}
                 <div className="relative min-w-0">
                 <button
                   type="button"
@@ -3587,6 +3619,7 @@ function SystemPromptModal({ open, value, onSave, onClose }) {
         onClick={onClose}
       />
       <section
+        data-tour="write-system-prompt"
         role="dialog"
         aria-modal="true"
         aria-labelledby="system-prompt-title"
@@ -3757,6 +3790,7 @@ function WriteHistoryModal({ open, entries, title, onClose }) {
         onClick={onClose}
       />
       <section
+        data-tour="write-history"
         role="dialog"
         aria-modal="true"
         aria-labelledby="write-history-title"
@@ -5340,26 +5374,6 @@ function SearchClearField({ value, onChange, placeholder }) {
   );
 }
 
-function Toast({ message }) {
-  return <StatusPill message={message || ""} />;
-}
-
-function StatusPill({ message }) {
-  return (
-    <div
-      aria-live="polite"
-      className={cx(
-        "pointer-events-none fixed right-4 top-4 z-[70] max-w-[calc(100vw-2rem)] rounded-full bg-white/[0.035] px-3 py-1.5 text-xs font-medium text-zinc-500 shadow-[var(--shadow-border)] backdrop-blur-xl transition-[opacity,filter,transform] duration-200 ease-out sm:right-6 sm:top-6",
-        message
-          ? "translate-y-0 opacity-100 blur-0"
-          : "translate-y-[-8px] opacity-0 blur-[4px]",
-      )}
-    >
-      {message || "\u00a0"}
-    </div>
-  );
-}
-
 function ConfirmModal({ dialog, onClose }) {
   const [renderedDialog, setRenderedDialog] = useState(dialog);
   const [phase, setPhase] = useState(dialog ? "open" : "closed");
@@ -5694,7 +5708,6 @@ function App() {
   const [prompt, setPrompt] = useState("");
   const [openingMessage] = useState(() => pickOpeningMessage());
   const [writingOpeningMessage] = useState(() => pickOpeningMessage("write"));
-  const [status, setStatus] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [railOpen, setRailOpen] = useState(false);
   const [chatMode, setChatMode] = useState(() => {
@@ -5709,8 +5722,10 @@ function App() {
   const [reasoningDurations, setReasoningDurations] = useState({});
   const [confirmDialog, setConfirmDialog] = useState(null);
   const [newStoryDialogOpen, setNewStoryDialogOpen] = useState(false);
-  const [toast, setToast] = useState("");
+  const [temporaryTourStory, setTemporaryTourStory] = useState(null);
   const tour = useTour();
+  const writeTour = useTour(WRITE_TOUR_STEPS);
+  const { notifications, setStatus, showToast } = useNotifications();
   const [tourForceThinking, setTourForceThinking] = useState(false);
   const [tourSampleChatActive, setTourSampleChatActive] = useState(false);
   const abortRef = useRef(null);
@@ -5720,6 +5735,7 @@ function App() {
   const appSettingsLoadedRef = useRef(false);
   const latestChatLoadRef = useRef(0);
   const latestStoryLoadRef = useRef(0);
+  const temporaryTourStoryIdRef = useRef(null);
 
   useEffect(
     () => () => {
@@ -5780,6 +5796,29 @@ function App() {
     setTourForceThinking(Boolean(tour.currentStep?.forceThinkingVisible));
   }, [tour.currentStep]);
 
+  useEffect(() => {
+    const storyId = temporaryTourStoryIdRef.current;
+    const nextView = writeTour.currentStep?.workspaceView;
+    if (!writeTour.isActive || !storyId || !nextView) return;
+
+    setStoryWorkspaceView(nextView);
+    writeRoute(storyRoute(storyId, activeChapterId, nextView), { replace: true });
+  }, [writeTour.currentStep]);
+
+  useEffect(() => {
+    function closeTourStoryOnPageExit() {
+      const storyId = temporaryTourStoryIdRef.current;
+      if (!storyId) return;
+      navigator.sendBeacon?.(`/api/stories/${encodeURIComponent(storyId)}/close`);
+    }
+
+    window.addEventListener("pagehide", closeTourStoryOnPageExit);
+    return () => {
+      closeTourStoryOnPageExit();
+      window.removeEventListener("pagehide", closeTourStoryOnPageExit);
+    };
+  }, []);
+
   function writeRoute(route, { replace = false } = {}) {
     const nextPath = routePath(route);
     routeRef.current = route;
@@ -5806,6 +5845,9 @@ function App() {
   const isEmptyChat = !activeChatId && messages.length === 0;
   const isWritingMode = chatMode === "write";
   const isEmptyWriting = !activeStoryId || !activeChapterId;
+  const writingStories = temporaryTourStory
+    ? [temporaryTourStory, ...stories.filter((story) => story.id !== temporaryTourStory.id)]
+    : stories;
   const activeMessages = isWritingMode ? [] : messages;
   const activeConversationId = isWritingMode ? activeStoryId : activeChatId;
   const activeModelLocked = Boolean(!isWritingMode && activeConversationId && activeMessages.length > 0);
@@ -5850,18 +5892,6 @@ function App() {
       contextLimit,
     );
   }, [activeMessages, isWritingMode, latestBrainstormGeneration, latestStoryGeneration, models, settings.model, storyWorkspaceView]);
-
-  function showToast(message) {
-    setToast(message);
-    window.clearTimeout(showToast.timeoutId);
-    showToast.timeoutId = window.setTimeout(() => setToast(""), 2600);
-  }
-
-  useEffect(() => {
-    if (!status) return undefined;
-    const timeoutId = window.setTimeout(() => setStatus(""), 2600);
-    return () => window.clearTimeout(timeoutId);
-  }, [status]);
 
   const loadChats = useCallback(async () => {
     const payload = await api("/api/chats");
@@ -6805,6 +6835,79 @@ function App() {
     void resetChat({ mode });
   }
 
+  async function finishWriteTour() {
+    const storyId = temporaryTourStoryIdRef.current;
+    temporaryTourStoryIdRef.current = null;
+    writeTour.finish();
+
+    try {
+      if (storyId) await storyApi.closeStory(storyId);
+    } catch (error) {
+      setStatus(error.message);
+    } finally {
+      await loadStories();
+      await resetChat({ replace: true, mode: "write" });
+      setTemporaryTourStory(null);
+      setRailOpen(false);
+      setRailCollapsed(false);
+    }
+  }
+
+  async function startWriteTour() {
+    if (isStreaming || writeTour.isActive || temporaryTourStoryIdRef.current) return;
+
+    let storyId = null;
+    try {
+      setStatus("Preparing write tour");
+      const story = await storyApi.createStory({
+        title: "Write tour · temporary story",
+        model: settings.model,
+        system_prompt: "Keep the prose atmospheric, concise, and grounded in the story lore.",
+        temperature: settings.temperature,
+        max_tokens: settings.max_tokens,
+        thinking_enabled: settings.thinking_enabled,
+        reasoning_effort: settings.reasoning_effort,
+        temporary: true,
+      });
+      storyId = story.id;
+      temporaryTourStoryIdRef.current = story.id;
+      setTemporaryTourStory(story);
+
+      const chapter = await storyApi.createChapter(story.id, {
+        title: "Chapter 1 · The Signal",
+        content: "# The Tower\n\nLucy began to climb the tower steps, in awe of the moss covering everything",
+      });
+      await storyApi.createLorebookEntry(story.id, {
+        name: "Lucy",
+        category: "character",
+        description: "A mage with a deep connection to the arcane.",
+        aliases: ["Lucy"],
+        tags: ["protagonist"],
+      });
+
+      await loadStoryBundle(story.id, chapter.id);
+      setRailCollapsed(false);
+      setRailOpen(true);
+      setStoryWorkspaceView("chapter");
+      writeRoute(storyRoute(story.id, chapter.id, "chapter"));
+      setStatus("");
+      writeTour.start();
+    } catch (error) {
+      temporaryTourStoryIdRef.current = null;
+      setTemporaryTourStory(null);
+      if (storyId) {
+        try {
+          await storyApi.closeStory(storyId);
+        } catch {
+          //cleanup also runs at startup if the browser decided today was the day
+        }
+      }
+      await loadStories();
+      await resetChat({ replace: true, mode: "write" });
+      setStatus(error.message);
+    }
+  }
+
   async function startNewStory(title = "New story") {
     if (isStreaming) return;
     try {
@@ -7024,11 +7127,14 @@ function App() {
   async function updateLorebookEntry(entryId, data) {
     if (!activeStoryId) throw new Error("No active story.");
 
+    const previousEntry = lorebookEntries.find((currentEntry) => currentEntry.id === entryId);
     const entry = await storyApi.updateLorebookEntry(activeStoryId, entryId, data);
     setLorebookEntries((currentEntries) =>
       currentEntries.map((currentEntry) => (currentEntry.id === entry.id ? entry : currentEntry)),
     );
-    showToast("Lorebook entry updated");
+    const contextChanged = previousEntry
+      && Boolean(previousEntry.disabled) !== Boolean(entry.disabled);
+    showToast(contextChanged ? (entry.disabled ? "Entry disabled" : "Entry enabled") : "Lorebook entry updated");
     return entry;
   }
 
@@ -7466,7 +7572,7 @@ function App() {
     <div className="flex h-screen overflow-hidden bg-[#070708] text-ink">
       {isWritingMode ? (
         <StoryRail
-          stories={stories}
+          stories={writingStories}
           chapters={chapters}
           activeStoryId={activeStoryId}
           activeChapterId={activeChapterId}
@@ -7529,13 +7635,18 @@ function App() {
               />
             </div>
           )}
+          {showLandingComposer && isWritingMode && (
+            <div className="ml-auto">
+              <HelpTourButton onClick={startWriteTour} />
+            </div>
+          )}
         </header>
 
         <TemporaryChatMarker visible={!isWritingMode && temporaryChat && activeChatId === tempChatId && messages.length > 0} />
 
         {isWritingMode && !showLandingComposer && storyWorkspaceView === "brainstorm" ? (
           <StoryBrainstorm
-            story={stories.find((story) => story.id === activeStoryId)}
+            story={writingStories.find((story) => story.id === activeStoryId)}
             graphNodes={brainstormNodes}
             graphEdges={brainstormEdges}
             viewport={brainstormViewport}
@@ -7561,7 +7672,7 @@ function App() {
           />
         ) : isWritingMode && !showLandingComposer ? (
           <StoryWorkspace
-            stories={stories}
+            stories={writingStories}
             chapters={chapters}
             lorebookEntries={lorebookEntries}
             activeStoryId={activeStoryId}
@@ -7672,6 +7783,8 @@ function App() {
             onOpenBrainstorm={openBrainstorm}
             systemPrompt={isWritingMode ? settings.system_prompt : ""}
             onSaveSystemPrompt={isWritingMode ? saveStorySystemPrompt : null}
+            forceShowThinking={Boolean(writeTour.currentStep?.forceThinkingVisible)}
+            tourUi={writeTour.currentStep?.composerUi || null}
           />
         ))}
       </main>
@@ -7715,8 +7828,7 @@ function App() {
         onClose={() => setNewStoryDialogOpen(false)}
         onCreate={startNewStory}
       />
-      <StatusPill message={status} />
-      <Toast message={toast} />
+      <NotificationStack notifications={notifications} />
       {tour.isActive && tour.currentStep && (
         <TourOverlay
           step={tour.currentStep}
@@ -7726,6 +7838,17 @@ function App() {
           onNext={tour.isLastStep ? tour.finish : tour.next}
           onPrevious={tour.previous}
           onClose={tour.finish}
+        />
+      )}
+      {writeTour.isActive && writeTour.currentStep && (
+        <TourOverlay
+          step={writeTour.currentStep}
+          stepNumber={writeTour.stepIndex + 1}
+          stepCount={writeTour.stepCount}
+          isLastStep={writeTour.isLastStep}
+          onNext={writeTour.isLastStep ? finishWriteTour : writeTour.next}
+          onPrevious={writeTour.previous}
+          onClose={finishWriteTour}
         />
       )}
     </div>

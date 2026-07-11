@@ -90,6 +90,10 @@
   --shake-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --revert-hold: 3000ms;
   --revert-dur: 280ms;
+  --notification-reflow-dur: 250ms;
+  --notification-enter-dur: 250ms;
+  --notification-exit-dur: 150ms;
+  --notification-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 * {
@@ -295,6 +299,93 @@ textarea {
 @media (prefers-reduced-motion: reduce) {
   .t-tt {
     transition: none !important;
+  }
+}
+
+.notification-stack {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 70;
+  display: flex;
+  width: max-content;
+  max-width: calc(100vw - 2rem);
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.notification-item {
+  display: flex;
+  width: max-content;
+  max-width: min(420px, calc(100vw - 2rem));
+  justify-content: flex-end;
+  transform: translateY(0);
+  transition: transform var(--notification-reflow-dur) var(--notification-ease);
+  will-change: transform;
+}
+
+.notification-surface {
+  max-width: 100%;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.035);
+  color: #71717a;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  box-shadow: var(--shadow-border);
+  backdrop-filter: blur(24px);
+  opacity: 0;
+  transform: translateY(-8px);
+  filter: blur(4px);
+  transition:
+    opacity var(--notification-enter-dur) var(--notification-ease),
+    filter var(--notification-enter-dur) var(--notification-ease),
+    transform var(--notification-enter-dur) var(--notification-ease);
+}
+
+.notification-surface.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+  filter: blur(0);
+}
+
+.notification-surface.is-closing {
+  opacity: 0;
+  transform: translateY(-8px);
+  filter: blur(4px);
+  transition-duration: var(--notification-exit-dur);
+  transition-timing-function: ease-in;
+}
+
+@media (min-width: 640px) {
+  .notification-stack {
+    top: 1.5rem;
+    right: 1.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notification-item {
+    transform: none !important;
+    transition: none !important;
+  }
+
+  .notification-surface {
+    transform: none !important;
+    filter: none !important;
+    transition: none !important;
+  }
+
+  .notification-surface.is-visible {
+    opacity: 1;
+  }
+
+  .notification-surface.is-closing {
+    opacity: 0;
   }
 }
 

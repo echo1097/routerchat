@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import {
   ArrowLeft,
   ChevronDown,
+  Eye,
+  EyeOff,
   Plus,
   Search,
   X,
@@ -94,7 +96,7 @@ function entryFromDraft(draft, existingEntry) {
     aliases,
     tags: [],
     metadata,
-    disabled: false,
+    disabled: existingEntry?.disabled ?? false,
     created_at: existingEntry?.created_at || new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
@@ -171,6 +173,7 @@ export default function StoryLorebook({
   const [savingEntry, setSavingEntry] = useState(false);
   const [savingTimeline, setSavingTimeline] = useState(false);
   const [deletingEntryId, setDeletingEntryId] = useState(null);
+  const [togglingEntryId, setTogglingEntryId] = useState(null);
   const searchWrapRef = useRef(null);
   const searchInputRef = useRef(null);
   const searchShakeRef = useRef(null);
@@ -322,6 +325,37 @@ export default function StoryLorebook({
     }
   }
 
+  async function toggleEntryContext(entry) {
+    if (locked || savingEntry || togglingEntryId) return;
+
+    const nextEntry = {
+      ...entry,
+      disabled: !entry.disabled,
+      updated_at: new Date().toISOString(),
+    };
+
+    try {
+      setTogglingEntryId(entry.id);
+      setLorebookError("");
+      setLocalEntries((currentEntries) =>
+        currentEntries.map((currentEntry) => (currentEntry.id === entry.id ? nextEntry : currentEntry)),
+      );
+
+      const savedEntry = await onUpdateEntry(entry.id, nextEntry);
+      const normalizedEntry = normalizeEntry(savedEntry);
+      setLocalEntries((currentEntries) =>
+        currentEntries.map((currentEntry) => (currentEntry.id === entry.id ? normalizedEntry : currentEntry)),
+      );
+    } catch (error) {
+      setLocalEntries((currentEntries) =>
+        currentEntries.map((currentEntry) => (currentEntry.id === entry.id ? entry : currentEntry)),
+      );
+      setLorebookError(error.message || "Could not update entry context.");
+    } finally {
+      setTogglingEntryId(null);
+    }
+  }
+
   async function deleteEntry(entryId) {
     if (deletingEntryId || locked) return false;
 
@@ -373,7 +407,7 @@ export default function StoryLorebook({
       aliases: timelineEntry?.aliases || ["Timeline"],
       tags: timelineEntry?.tags || [],
       metadata: timelineEntry?.metadata || {},
-      disabled: false,
+      disabled: timelineEntry?.disabled ?? false,
       created_at: timelineEntry?.created_at || new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -407,7 +441,7 @@ export default function StoryLorebook({
 
   return (
     <>
-      <section className="lorebook-shell min-h-0 overflow-y-auto px-4 py-6 sm:px-8 lg:px-10">
+      <section data-tour="write-lorebook" className="lorebook-shell min-h-0 overflow-y-auto px-4 py-6 sm:px-8 lg:px-10">
         <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col">
           <header className="lorebook-header">
             <div className="lorebook-title-block">
@@ -488,6 +522,9 @@ export default function StoryLorebook({
                   key={entry.id}
                   entry={entry}
                   onEdit={() => openEditEntry(entry)}
+                  onToggleContext={() => toggleEntryContext(entry)}
+                  toggling={togglingEntryId === entry.id}
+                  contextBusy={Boolean(togglingEntryId)}
                   locked={locked}
                 />
               ))}
@@ -556,7 +593,7 @@ function TimelineCanvas({ entry, locked, saving, onSave }) {
   );
 }
 
-function LorebookCard({ entry, onEdit, locked }) {
+function LorebookCard({ entry, onEdit, onToggleContext, toggling, contextBusy, locked }) {
   function handleKeyDown(event) {
     if (event.key !== "Enter" && event.key !== " ") return;
 
@@ -565,17 +602,38 @@ function LorebookCard({ entry, onEdit, locked }) {
   }
 
   return (
-    <article
-      className="lorebook-card"
-      role="button"
-      tabIndex={locked ? -1 : 0}
-      aria-label={`Edit ${entry.name}`}
-      onClick={onEdit}
-      onKeyDown={handleKeyDown}
-    >
-      <h2>{entry.name}</h2>
+    <article className={cx("lorebook-card", entry.disabled && "is-disabled")}>
+      <div
+        className="lorebook-card-content"
+        role="button"
+        tabIndex={locked ? -1 : 0}
+        aria-label={`Edit ${entry.name}`}
+        aria-disabled={locked}
+        onClick={onEdit}
+        onKeyDown={handleKeyDown}
+      >
+        <h2>{entry.name}</h2>
 
-      <p>{entry.description || "No description yet."}</p>
+        <p>{entry.description || "No description yet."}</p>
+      </div>
+
+      <button
+        type="button"
+        className={cx("lorebook-context-button", CONTROL_MOTION, entry.disabled && "is-disabled")}
+        onClick={onToggleContext}
+        disabled={locked || contextBusy}
+        aria-pressed={!entry.disabled}
+        aria-busy={toggling}
+        aria-label={entry.disabled ? `Include ${entry.name} in context` : `Exclude ${entry.name} from context`}
+        title={entry.disabled ? "Include in context" : "Exclude from context"}
+      >
+        <span className="lorebook-context-icon lorebook-context-icon-eye" aria-hidden="true">
+          <Eye size={17} />
+        </span>
+        <span className="lorebook-context-icon lorebook-context-icon-eye-off" aria-hidden="true">
+          <EyeOff size={17} />
+        </span>
+      </button>
     </article>
   );
 }

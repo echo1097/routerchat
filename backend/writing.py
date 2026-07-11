@@ -38,6 +38,7 @@ class StoryCreateRequest(BaseModel):
     max_tokens: int = DEFAULT_MAX_TOKENS
     thinking_enabled: bool = False
     reasoning_effort: str = "medium"
+    temporary: bool = False
 
 
 class StoryPatchRequest(BaseModel):
@@ -573,6 +574,7 @@ def row_to_story(row: sqlite3.Row) -> dict[str, Any]:
         "max_tokens": row["max_tokens"],
         "thinking_enabled": bool(row["thinking_enabled"]),
         "reasoning_effort": row["reasoning_effort"],
+        "temporary": bool(row["temporary"]),
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
@@ -1391,7 +1393,7 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
     def list_stories() -> dict[str, Any]:
         with deps.get_db() as conn:
             rows = conn.execute(
-                "SELECT * FROM stories ORDER BY updated_at DESC, created_at DESC"
+                "SELECT * FROM stories WHERE temporary = 0 ORDER BY updated_at DESC, created_at DESC"
             ).fetchall()
         return {"stories": [row_to_story(row) for row in rows]}
 
@@ -1405,10 +1407,10 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                 """
                 INSERT INTO stories (
                   id, title, author, language, synopsis, model, system_prompt,
-                  temperature, max_tokens, thinking_enabled, reasoning_effort,
+                  temperature, max_tokens, thinking_enabled, reasoning_effort, temporary,
                   created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     story_id,
@@ -1422,6 +1424,7 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                     payload.max_tokens,
                     int(payload.thinking_enabled),
                     payload.reasoning_effort,
+                    int(payload.temporary),
                     now,
                     now,
                 ),
@@ -1472,6 +1475,16 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
         if result.rowcount == 0:
             raise HTTPException(status_code=404, detail="Story not found.")
         return {"ok": True}
+
+    @router.post("/api/stories/{story_id}/close")
+    def close_story(story_id: str) -> dict[str, Any]:
+        with deps.get_db() as conn:
+            story = conn.execute(
+                "SELECT temporary FROM stories WHERE id = ?", (story_id,)
+            ).fetchone()
+        if not story or not bool(story["temporary"]):
+            return {"ok": True}
+        return delete_story(story_id)
 
     @router.get("/api/stories/{story_id}/chapters")
     def list_chapters(story_id: str) -> dict[str, Any]:

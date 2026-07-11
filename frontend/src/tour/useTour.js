@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { TOUR_STEPS } from "./tourSteps.js";
+import { CHAT_TOUR_STEPS } from "./tourSteps.js";
 
 const desktopBreakpoint = 1024;
 
@@ -9,15 +9,15 @@ function isDesktopViewport() {
 }
 
 
-export function useTour() {
+export function useTour(tourSteps = CHAT_TOUR_STEPS) {
   const [stepIndex, setStepIndex] = useState(-1);
   const isActive = stepIndex >= 0;
 
   const steps = useMemo(() => {
     const desktop = isDesktopViewport();
-    return TOUR_STEPS.filter((step) => !step.desktopOnly || desktop);
+    return tourSteps.filter((step) => !step.desktopOnly || desktop);
    
-  }, [isActive]);
+  }, [isActive, tourSteps]);
 
   const currentStep = isActive ? steps[stepIndex] : null;
   const isLastStep = isActive && stepIndex === steps.length - 1;

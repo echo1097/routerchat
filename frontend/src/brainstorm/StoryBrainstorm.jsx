@@ -251,7 +251,7 @@ export default function StoryBrainstorm({
   }, []);
 
   return (
-    <section className="brainstorm-workspace">
+    <section data-tour="write-brainstorm" className="brainstorm-workspace">
       <header className="brainstorm-header">
         <div>
           <button type="button" onClick={onBack} className={cx("brainstorm-back-button", CONTROL_MOTION)}>

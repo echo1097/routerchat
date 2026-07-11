@@ -1,4 +1,8 @@
 import { defineConfig } from "vite";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const configDir = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   root: "frontend",
@@ -10,5 +14,8 @@ export default defineConfig({
   build: {
     outDir: "../dist",
     emptyOutDir: true,
+  },
+  test: {
+    dir: resolve(configDir, "tests/frontend"),
   },
 });

@@ -3,10 +3,13 @@ data/
 .venv/
 node_modules/
 dist/
+playwright-report/
+test-results/
 __pycache__/
 .pytest_cache/
 .DS_Store
 bugs/
-tests/
 mockup/
 notes.md
+notes/
+planning/

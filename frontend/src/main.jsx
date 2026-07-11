@@ -41,6 +41,14 @@ import StoryBrainstorm from "./brainstorm/StoryBrainstorm.jsx";
 import StoryLorebook from "./lorebook/StoryLorebook.jsx";
 import NotificationStack from "./notifications/NotificationStack.jsx";
 import { useNotifications } from "./notifications/useNotifications.js";
+import { createSaveCoordinator } from "./writing/saveCoordinator.js";
+import { createNavigationCoordinator } from "./writing/navigationCoordinator.js";
+import {
+  chapterFromUpdateEvent,
+  chapterGenerationErrorMessage,
+  chapterGenerationEventMatchesRun,
+  chapterUpdateMatchesRun,
+} from "./writing/chapterGenerationEvents.js";
 import TourOverlay from "./tour/TourOverlay.jsx";
 import { useTour } from "./tour/useTour.js";
 import { WRITE_TOUR_STEPS } from "./tour/tourSteps.js";
@@ -50,6 +58,7 @@ const DEFAULT_MODEL = "anthropic/claude-3.5-sonnet";
 const APP_VERSION = packageInfo.version;
 const APP_SETTINGS_STORAGE_KEY = "routerchat.appSettings";
 const OPENING_MESSAGE_STORAGE_KEY = "routerchat.lastOpeningMessage";
+const PENDING_CHAPTER_DRAFTS_STORAGE_KEY = "routerchat.pendingChapterDrafts";
 
 const newSettings = {
   model: DEFAULT_MODEL,
@@ -128,23 +137,41 @@ async function api(path, options = {}) {
   });
 
   if (!response.ok) {
-    throw new Error(await responseErrorDetail(response));
+    throw await responseError(response);
   }
 
   return response.json();
 }
 
-async function responseErrorDetail(response) {
+async function responseError(response) {
   const fallback = response.statusText || "Request failed";
   const body = await response.text();
-  if (!body) return fallback;
+  let payload = null;
 
-  try {
-    const payload = JSON.parse(body);
-    return payload.detail || fallback;
-  } catch {
-    return body;
+  if (body) {
+    try {
+      payload = JSON.parse(body);
+    } catch {
+      payload = null;
+    }
   }
+
+  const detail = payload?.detail;
+  const message = typeof detail === "string"
+    ? detail
+    : detail?.message || payload?.error?.message || body || fallback;
+  const error = new Error(message);
+  error.name = "ApiError";
+  error.status = response.status;
+  error.payload = payload;
+  error.code = detail?.code || payload?.error?.code || payload?.code || null;
+  error.chapter = detail?.chapter || payload?.chapter || null;
+  return error;
+}
+
+async function responseErrorDetail(response) {
+  const error = await responseError(response);
+  return error.message;
 }
 
 const storyApi = {
@@ -163,6 +190,13 @@ const storyApi = {
       body: JSON.stringify(data),
     });
     return payload.story;
+  },
+
+  async createStoryWithInitialChapter(data, initialChapter) {
+    return api("/api/stories/with-initial-chapter", {
+      method: "POST",
+      body: JSON.stringify({ ...data, initial_chapter: initialChapter }),
+    });
   },
 
   async updateStory(storyId, data) {
@@ -212,12 +246,12 @@ const storyApi = {
     );
   },
 
-  async saveChapterContent(storyId, chapterId, content) {
+  async saveChapterContent(storyId, chapterId, content, revision) {
     const payload = await api(
       `/api/stories/${encodeURIComponent(storyId)}/chapters/${encodeURIComponent(chapterId)}/content`,
       {
         method: "PATCH",
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content, revision }),
       },
     );
     return payload.chapter;
@@ -301,7 +335,7 @@ const storyApi = {
       },
     );
     if (!response.ok || !response.body) {
-      throw new Error(await responseErrorDetail(response));
+      throw await responseError(response);
     }
 
     const reader = response.body.getReader();
@@ -326,8 +360,8 @@ const storyApi = {
     prompt,
     settings,
     generationMode,
-    chapterContent,
-    previousChapters,
+    chapterRevision,
+    generationRunId,
     onEvent,
     signal,
   }) {
@@ -341,15 +375,15 @@ const storyApi = {
           ...settings,
           write_system_prompt: settings.system_prompt,
           write_generation_mode: generationMode,
-          chapter_content: chapterContent,
-          previous_chapters: previousChapters,
+          chapter_revision: chapterRevision,
+          generation_run_id: generationRunId,
           message: prompt,
         }),
       },
     );
 
     if (!response.ok || !response.body) {
-      throw new Error(await responseErrorDetail(response));
+      throw await responseError(response);
     }
 
     const reader = response.body.getReader();
@@ -2202,6 +2236,7 @@ function StoryRail({
   onToggleChapterContext,
   previousChatMode,
   onChatModeChange,
+  navigationLocked = false,
 }) {
   return (
     <>
@@ -2247,9 +2282,11 @@ function StoryRail({
               type="button"
               data-tour="write-home-button"
               onClick={() => {
+                if (navigationLocked) return;
                 onGoHome();
                 onCloseMobile();
               }}
+              disabled={navigationLocked}
               className={cx(
                 "flex h-10 min-w-0 flex-1 items-center justify-center gap-2 rounded-full bg-zinc-100 px-4 text-sm font-semibold text-zinc-950 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
                 CONTROL_MOTION,
@@ -2290,9 +2327,11 @@ function StoryRail({
                       <button
                         type="button"
                         onClick={() => {
+                          if (navigationLocked) return;
                           onSelectStory(story.id);
                           onCloseMobile();
                         }}
+                        disabled={navigationLocked}
                         className="min-w-0 rounded-xl px-1 py-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
                       >
                         <div className="truncate text-sm font-medium leading-4 text-zinc-100">
@@ -2312,6 +2351,7 @@ function StoryRail({
                           type="button"
                           data-tour="write-new-chapter-button"
                           onClick={onCreateChapter}
+                          disabled={navigationLocked}
                           className="mb-1 flex h-8 w-full items-center justify-center rounded-xl text-xs font-medium text-zinc-400 hover:bg-white/[0.045] hover:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
                         >
                           New chapter
@@ -2338,9 +2378,11 @@ function StoryRail({
                               <button
                                 type="button"
                                 onClick={() => {
+                                  if (navigationLocked) return;
                                   onSelectChapter(chapter.id);
                                   onCloseMobile();
                                 }}
+                                disabled={navigationLocked}
                                 className="flex min-w-0 items-center gap-1.5 text-left text-xs leading-5 focus:outline-none"
                               >
                                 <span className="min-w-0 flex-1 truncate">{chapter.title}</span>
@@ -5756,6 +5798,7 @@ function App() {
   const [tourForceThinking, setTourForceThinking] = useState(false);
   const [tourSampleChatActive, setTourSampleChatActive] = useState(false);
   const abortRef = useRef(null);
+  const writeGenerationRunRef = useRef(null);
   const previousChatModeTimeoutRef = useRef(null);
   const routeRef = useRef(parseRoute());
   const initialRouteHandledRef = useRef(false);
@@ -5763,15 +5806,6 @@ function App() {
   const latestChatLoadRef = useRef(0);
   const latestStoryLoadRef = useRef(0);
   const temporaryTourStoryIdRef = useRef(null);
-
-  useEffect(
-    () => () => {
-      window.clearTimeout(previousChatModeTimeoutRef.current);
-      window.clearTimeout(chapterSaveTimeoutRef.current);
-      window.clearTimeout(brainstormViewportTimeoutRef.current);
-    },
-    [],
-  );
   const defaultModelRef = useRef(DEFAULT_MODEL);
   const skipNextStoryAutoloadRef = useRef(false);
   const tempChatIdRef = useRef(null);
@@ -5780,10 +5814,150 @@ function App() {
   const writeReasoningStreamingRef = useRef(false);
   const streamRef = useRef(null);
   const previousRailStateRef = useRef(null);
-  const chapterSaveTimeoutRef = useRef(null);
-  const pendingChapterSaveRef = useRef(null);
   const brainstormViewportTimeoutRef = useRef(null);
   const chapterContentRef = useRef("");
+  const chaptersRef = useRef([]);
+  const activeStoryIdRef = useRef(null);
+  const activeChapterIdRef = useRef(null);
+  const storyWorkspaceViewRef = useRef("chapter");
+  const navigationCoordinatorRef = useRef(null);
+  const chapterSaveCoordinatorRef = useRef(null);
+
+  if (!navigationCoordinatorRef.current) {
+    navigationCoordinatorRef.current = createNavigationCoordinator();
+  }
+
+  if (!chapterSaveCoordinatorRef.current) {
+    chapterSaveCoordinatorRef.current = createSaveCoordinator({
+      saveChapter: ({ storyId, chapterId, content, revision }) => (
+        storyApi.saveChapterContent(storyId, chapterId, content, revision)
+      ),
+      onStateChange: (snapshot) => {
+        if (snapshot.confirmedChapter) {
+          setChapters((current) => current.map((chapter) => {
+            if (chapter.id !== snapshot.chapterId) return chapter;
+            const nextChapter = snapshot.confirmedChapter;
+            if (!snapshot.draft) return nextChapter;
+            const draftContent = snapshot.draft.content;
+            return {
+              ...nextChapter,
+              content: draftContent,
+              word_count: draftContent.trim() ? draftContent.trim().split(/\s+/).length : 0,
+            };
+          }));
+        }
+
+        if (
+          snapshot.storyId !== activeStoryIdRef.current
+          || snapshot.chapterId !== activeChapterIdRef.current
+        ) return;
+
+        const labels = {
+          queued: "Saving",
+          saving: "Saving",
+          saved: "Saved",
+          failed: "Save failed",
+          conflict: "Conflict",
+        };
+        setChapterSaveState(labels[snapshot.state] || "");
+        if ((snapshot.state === "failed" || snapshot.state === "conflict") && snapshot.error) {
+          setStatus(snapshot.error.message);
+        }
+      },
+    });
+  }
+
+  const chapterSaveCoordinator = chapterSaveCoordinatorRef.current;
+
+  function persistPendingChapterDrafts() {
+    const pendingDrafts = chapterSaveCoordinator.getPendingDrafts();
+    try {
+      if (pendingDrafts.length > 0) {
+        window.sessionStorage.setItem(
+          PENDING_CHAPTER_DRAFTS_STORAGE_KEY,
+          JSON.stringify(pendingDrafts),
+        );
+      } else {
+        window.sessionStorage.removeItem(PENDING_CHAPTER_DRAFTS_STORAGE_KEY);
+      }
+    } catch {
+      //storage can be unavailable in private browser modes and thats fine
+    }
+  }
+
+  function restorePendingChapterDrafts(nextChapters) {
+    let storedDrafts = [];
+    try {
+      storedDrafts = JSON.parse(
+        window.sessionStorage.getItem(PENDING_CHAPTER_DRAFTS_STORAGE_KEY) || "[]",
+      );
+    } catch {
+      storedDrafts = [];
+    }
+
+    if (!Array.isArray(storedDrafts) || storedDrafts.length === 0) return;
+
+    const restoredKeys = new Set();
+    for (const draft of storedDrafts) {
+      const chapter = nextChapters.find(
+        (item) => item.id === draft.chapterId && item.story_id === draft.storyId,
+      );
+      if (!chapter) continue;
+
+      chapterSaveCoordinator.rememberServerChapter(chapter);
+      const key = `${draft.storyId}/${draft.chapterId}`;
+      if (!chapterSaveCoordinator.getDraft(draft.storyId, draft.chapterId)) {
+        if (chapter.content !== draft.content) {
+          chapterSaveCoordinator.queueDraft(
+            draft.storyId,
+            draft.chapterId,
+            String(draft.content || ""),
+            Number.isInteger(draft.baseRevision) ? draft.baseRevision : chapter.revision,
+          );
+        }
+      }
+      restoredKeys.add(key);
+    }
+
+    const remainingDrafts = storedDrafts.filter(
+      (draft) => !restoredKeys.has(`${draft.storyId}/${draft.chapterId}`),
+    );
+    try {
+      if (remainingDrafts.length > 0) {
+        window.sessionStorage.setItem(
+          PENDING_CHAPTER_DRAFTS_STORAGE_KEY,
+          JSON.stringify(remainingDrafts),
+        );
+      } else {
+        window.sessionStorage.removeItem(PENDING_CHAPTER_DRAFTS_STORAGE_KEY);
+      }
+    } catch {
+      //storage can be unavailable in private browser modes and thats fine
+    }
+  }
+
+  useEffect(() => {
+    activeStoryIdRef.current = activeStoryId;
+    activeChapterIdRef.current = activeChapterId;
+    chaptersRef.current = chapters;
+    storyWorkspaceViewRef.current = storyWorkspaceView;
+  }, [activeStoryId, activeChapterId, chapters, storyWorkspaceView]);
+
+  useEffect(() => {
+    function handlePageHide() {
+      persistPendingChapterDrafts();
+    }
+
+    window.addEventListener("pagehide", handlePageHide);
+    return () => {
+      window.removeEventListener("pagehide", handlePageHide);
+      persistPendingChapterDrafts();
+      chapterSaveCoordinator.dispose({ abandon: true });
+      window.clearTimeout(previousChatModeTimeoutRef.current);
+      window.clearTimeout(brainstormViewportTimeoutRef.current);
+    };
+  }, []);
+
   const {
     isNearBottom,
     markUserScroll,
@@ -5854,17 +6028,111 @@ function App() {
     window.history[replace ? "replaceState" : "pushState"]({ route }, "", nextPath);
   }
 
-  async function closeTempForRouteChange(nextRoute) {
+  function beginNavigationIntent() {
+    return navigationCoordinatorRef.current.begin();
+  }
+
+  function navigationIntentIsCurrent(intentId) {
+    return navigationCoordinatorRef.current.isCurrent(intentId);
+  }
+
+  function currentNavigationIntent() {
+    return navigationCoordinatorRef.current.current();
+  }
+
+  function setCommittedWriteSelection({ storyId, chapterId, workspaceView, chapters: nextChapters, lorebook, generation, story, chapter }) {
+    const nextView = ["lorebook", "brainstorm"].includes(workspaceView)
+      ? workspaceView
+      : "chapter";
+    const nextChapter = chapter || nextChapters.find((item) => item.id === chapterId) || null;
+
+    activeStoryIdRef.current = storyId;
+    activeChapterIdRef.current = nextChapter?.id || null;
+    storyWorkspaceViewRef.current = nextView;
+    chaptersRef.current = nextChapters;
+    setActiveStoryId(storyId);
+    setChapters(nextChapters);
+    setLorebookEntries(lorebook || []);
+    setLatestStoryGeneration(generation || null);
+    setActiveChapterId(nextChapter?.id || null);
+    setChapterContent(nextChapter?.content || "");
+    setWriteHistoryEntries(nextChapter?.history || []);
+    chapterContentRef.current = nextChapter?.content || "";
+    setChapterSaveState("");
+    setStoryWorkspaceView(nextView);
+    setSettings({
+      model: story.model,
+      temperature: story.temperature,
+      max_tokens: story.max_tokens,
+      system_prompt: story.system_prompt || "",
+      thinking_enabled: Boolean(story.thinking_enabled),
+      reasoning_effort: story.reasoning_effort || "medium",
+      nitro_mode: nitroMode,
+    });
+  }
+
+  function hasActiveWriteGeneration() {
+    const status = writeGenerationRunRef.current?.status;
+    return ["preparing", "streaming", "applying", "reconciling"].includes(status);
+  }
+
+  function rejectWriteNavigationDuringGeneration() {
+    if (!hasActiveWriteGeneration()) return false;
+    setStatus("Finish or stop the current generation first.");
+    return true;
+  }
+
+  function generationRunOwnsVisibleWorkspace(run) {
+    return writeGenerationRunRef.current === run
+      && run.navigationIntent === currentNavigationIntent()
+      && activeStoryIdRef.current === run.storyId;
+  }
+
+  async function reconcileGenerationRun(run) {
+    if (run.navigationIntent !== currentNavigationIntent()) return;
+    const payload = await storyApi.getStory(run.storyId);
+    if (run.navigationIntent !== currentNavigationIntent()) return;
+    const nextChapters = payload.chapters || [];
+    nextChapters.forEach((chapter) => chapterSaveCoordinator.rememberServerChapter(chapter));
+
+    if (activeStoryIdRef.current !== run.storyId) return;
+    const visibleChapters = nextChapters.map(chapterWithCoordinatorState);
+    setChapters(visibleChapters);
+    setLorebookEntries(payload.lorebook || []);
+    setLatestStoryGeneration(payload.latest_generation || null);
+
+    const route = routeRef.current;
+    if (route?.page !== "story" || route.storyId !== run.storyId || route.chapterId !== run.chapterId) return;
+    const targetChapter = visibleChapters.find((chapter) => chapter.id === run.chapterId);
+    if (!targetChapter) return;
+    setChapterContent(targetChapter.content || "");
+    setWriteHistoryEntries(targetChapter.history || []);
+    chapterContentRef.current = targetChapter.content || "";
+  }
+
+  async function closeTempForRouteChange(nextRoute, navigationIntent = null) {
     const currentRoute = routeRef.current;
     const chatId = tempChatIdRef.current;
     if (currentRoute?.page !== "temp" || !chatId) return;
     if (nextRoute?.page === "temp" && nextRoute.chatId === chatId) return;
     await closeTemporaryChat(chatId);
+    if (navigationIntent !== null && !navigationIntentIsCurrent(navigationIntent)) return false;
+    return true;
   }
 
   async function navigateToChat(chat, { replace = false } = {}) {
+    if (rejectWriteNavigationDuringGeneration()) return;
+    const navigationIntent = beginNavigationIntent();
     const nextRoute = chatRoute(chat);
-    await closeTempForRouteChange(nextRoute);
+    try {
+      await flushChapterSave(activeStoryIdRef.current, activeChapterIdRef.current);
+      if (!navigationIntentIsCurrent(navigationIntent)) return;
+    } catch (error) {
+      setStatus(error.message);
+      return;
+    }
+    await closeTempForRouteChange(nextRoute, navigationIntent);
+    if (!navigationIntentIsCurrent(navigationIntent)) return;
     writeRoute(nextRoute, { replace });
     setChatMode("chat");
   }
@@ -5931,50 +6199,74 @@ function App() {
     return nextStories;
   }, []);
 
+  function chapterWithCoordinatorState(chapter) {
+    const confirmedChapter = chapterSaveCoordinator.getConfirmedChapter(
+      chapter.story_id,
+      chapter.id,
+    ) || chapter;
+    const draftContent = chapterSaveCoordinator.getDraft(chapter.story_id, chapter.id);
+    if (draftContent === null) return confirmedChapter;
+
+    return {
+      ...confirmedChapter,
+      content: draftContent,
+      word_count: draftContent.trim() ? draftContent.trim().split(/\s+/).length : 0,
+    };
+  }
+
   async function loadStoryBundle(storyId, preferredChapterId = null, options = {}) {
-    const loadId = latestStoryLoadRef.current + 1;
+    const navigationIntent = options.navigationIntent ?? beginNavigationIntent();
+    const loadId = navigationIntent;
     latestStoryLoadRef.current = loadId;
-    await flushChapterSave();
+    await flushChapterSave(activeStoryIdRef.current, activeChapterIdRef.current);
+
+    if (!navigationIntentIsCurrent(navigationIntent)) return null;
 
     const payload = await storyApi.getStory(storyId);
-    if (loadId !== latestStoryLoadRef.current) return null;
+    if (!navigationIntentIsCurrent(navigationIntent) || loadId !== latestStoryLoadRef.current) return null;
     const nextStory = payload.story;
     const nextChapters = payload.chapters || [];
+    nextChapters.forEach((chapter) => chapterSaveCoordinator.rememberServerChapter(chapter));
+    restorePendingChapterDrafts(nextChapters);
+    const visibleChapters = nextChapters.map(chapterWithCoordinatorState);
     const nextLorebook = payload.lorebook || [];
     const nextGeneration = payload.latest_generation || null;
-    const preferredChapter = nextChapters.find((chapter) => chapter.id === preferredChapterId);
+    const preferredChapter = visibleChapters.find((chapter) => chapter.id === preferredChapterId);
     if (options.requirePreferredChapter && preferredChapterId && !preferredChapter) {
       throw new Error("Chapter not found.");
     }
     const nextChapter =
       preferredChapter ||
-      nextChapters[0] ||
+      visibleChapters[0] ||
       null;
 
-    setActiveStoryId(nextStory.id);
-    setChapters(nextChapters);
-    setLorebookEntries(nextLorebook);
-    setLatestStoryGeneration(nextGeneration);
-    setActiveChapterId(nextChapter?.id || null);
-    setChapterContent(nextChapter?.content || "");
-    setWriteHistoryEntries(nextChapter?.history || []);
-    chapterContentRef.current = nextChapter?.content || "";
-    setChapterSaveState("");
-    setSettings({
-      model: nextStory.model,
-      temperature: nextStory.temperature,
-      max_tokens: nextStory.max_tokens,
-      system_prompt: nextStory.system_prompt || "",
-      thinking_enabled: Boolean(nextStory.thinking_enabled),
-      reasoning_effort: nextStory.reasoning_effort || "medium",
-      nitro_mode: nitroMode,
+    return {
+      story: nextStory,
+      chapters: visibleChapters,
+      chapter: nextChapter,
+      lorebook: nextLorebook,
+      generation: nextGeneration,
+      loadId,
+      navigationIntent,
+    };
+  }
+
+  function commitStoryBundle(result, workspaceView = "chapter") {
+    setCommittedWriteSelection({
+      storyId: result.story.id,
+      chapterId: result.chapter?.id || null,
+      workspaceView,
+      chapters: result.chapters,
+      lorebook: result.lorebook,
+      generation: result.generation,
+      story: result.story,
+      chapter: result.chapter,
     });
-    return { story: nextStory, chapters: nextChapters, chapter: nextChapter, loadId };
   }
 
   async function loadBrainstormBundle(storyId, storyLoadId = latestStoryLoadRef.current) {
     const payload = await storyApi.getBrainstorm(storyId);
-    if (storyLoadId !== latestStoryLoadRef.current) return null;
+    if (storyLoadId !== latestStoryLoadRef.current || !navigationIntentIsCurrent(storyLoadId)) return null;
     setBrainstormNodes(payload.nodes || []);
     setBrainstormEdges(payload.edges || []);
     setBrainstormViewport(payload.viewport || { x: 0, y: 0, zoom: 1 });
@@ -5983,11 +6275,16 @@ function App() {
   }
 
   async function loadStoryRoute(route, { replace = false, fromRoute = false } = {}) {
-    const expectedLoadId = latestStoryLoadRef.current + 1;
+    if (rejectWriteNavigationDuringGeneration()) {
+      writeRoute(routeRef.current, { replace: true });
+      return;
+    }
+    const navigationIntent = beginNavigationIntent();
+    const expectedLoadId = navigationIntent;
     try {
-      setChatMode("write");
       const result = await loadStoryBundle(route.storyId, route.chapterId, {
         requirePreferredChapter: Boolean(route.chapterId),
+        navigationIntent,
       });
       if (!result) return;
       const workspaceView = ["lorebook", "brainstorm"].includes(route.workspaceView)
@@ -5996,15 +6293,25 @@ function App() {
       if (workspaceView === "brainstorm") {
         await loadBrainstormBundle(result.story.id, result.loadId);
       }
-      if (result.loadId !== latestStoryLoadRef.current) return;
-      setStoryWorkspaceView(workspaceView);
+      if (!navigationIntentIsCurrent(navigationIntent) || result.loadId !== latestStoryLoadRef.current) return;
       const routeChapterId = route.chapterId ? result.chapter?.id || null : null;
       const nextRoute = storyRoute(result.story.id, routeChapterId, workspaceView);
-      await closeTempForRouteChange(nextRoute);
-      if (result.loadId !== latestStoryLoadRef.current) return;
+      await closeTempForRouteChange(nextRoute, navigationIntent);
+      if (!navigationIntentIsCurrent(navigationIntent)) return;
+      setCommittedWriteSelection({
+        storyId: result.story.id,
+        chapterId: result.chapter?.id || null,
+        workspaceView,
+        chapters: result.chapters,
+        lorebook: result.lorebook,
+        generation: result.generation,
+        story: result.story,
+        chapter: result.chapter,
+      });
       writeRoute(nextRoute, { replace: replace || fromRoute });
+      setChatMode("write");
     } catch (error) {
-      if (expectedLoadId !== latestStoryLoadRef.current) return;
+      if (!navigationIntentIsCurrent(navigationIntent) || expectedLoadId !== latestStoryLoadRef.current) return;
       if (fromRoute) {
         skipNextStoryAutoloadRef.current = true;
         await resetChat({ replace: true, mode: "write" });
@@ -6098,13 +6405,6 @@ function App() {
     scrollToBottom(true);
   }, [activeChatId, activeStoryId, activeChapterId, scrollToBottom]);
 
-  useEffect(
-    () => () => {
-      window.clearTimeout(chapterSaveTimeoutRef.current);
-    },
-    [],
-  );
-
   useEffect(() => {
     if (!isWritingMode || activeStoryId || stories.length === 0) return;
     if (routeRef.current?.page === "home" && routeRef.current?.mode === "write") return;
@@ -6113,8 +6413,20 @@ function App() {
       skipNextStoryAutoloadRef.current = false;
       return;
     }
-    void loadStoryBundle(stories[0].id).then((result) => {
+    const navigationIntent = beginNavigationIntent();
+    void loadStoryBundle(stories[0].id, null, { navigationIntent }).then((result) => {
       if (!result) return;
+      if (!navigationIntentIsCurrent(navigationIntent)) return;
+      setCommittedWriteSelection({
+        storyId: result.story.id,
+        chapterId: result.chapter?.id || null,
+        workspaceView: "chapter",
+        chapters: result.chapters,
+        lorebook: result.lorebook,
+        generation: result.generation,
+        story: result.story,
+        chapter: result.chapter,
+      });
       writeRoute(storyRoute(result.story.id, null, "chapter"), {
         replace: true,
       });
@@ -6165,19 +6477,26 @@ function App() {
   }, []);
 
   async function loadChat(chatId, { replace = false, fromRoute = false } = {}) {
+    if (rejectWriteNavigationDuringGeneration()) {
+      writeRoute(routeRef.current, { replace: true });
+      return;
+    }
+    const navigationIntent = beginNavigationIntent();
     const loadId = latestChatLoadRef.current + 1;
     latestChatLoadRef.current = loadId;
     try {
+      await flushChapterSave(activeStoryIdRef.current, activeChapterIdRef.current);
+      if (!navigationIntentIsCurrent(navigationIntent)) return;
       const payload = await api(`/api/chats/${chatId}`);
-      if (loadId !== latestChatLoadRef.current) return;
+      if (loadId !== latestChatLoadRef.current || !navigationIntentIsCurrent(navigationIntent)) return;
       const nextRoute = chatRoute(payload.chat);
-      await closeTempForRouteChange(nextRoute);
-      if (loadId !== latestChatLoadRef.current) return;
+      await closeTempForRouteChange(nextRoute, navigationIntent);
+      if (loadId !== latestChatLoadRef.current || !navigationIntentIsCurrent(navigationIntent)) return;
       writeRoute(nextRoute, { replace: replace || fromRoute });
       setChatMode("chat");
       applyChat(payload.chat, payload.messages || []);
     } catch (error) {
-      if (loadId !== latestChatLoadRef.current) return;
+      if (loadId !== latestChatLoadRef.current || !navigationIntentIsCurrent(navigationIntent)) return;
       if (fromRoute) {
         await resetChat({ replace: true });
       } else {
@@ -6227,9 +6546,20 @@ function App() {
   }
 
   async function resetChat({ replace = false, mode = chatMode } = {}) {
+    if (rejectWriteNavigationDuringGeneration()) return;
+    const navigationIntent = beginNavigationIntent();
     const nextMode = mode === "write" ? "write" : "chat";
     const nextRoute = { page: "home", mode: nextMode };
-    await closeTempForRouteChange(nextRoute);
+    try {
+      await flushChapterSave(activeStoryIdRef.current, activeChapterIdRef.current);
+      if (!navigationIntentIsCurrent(navigationIntent)) return;
+    } catch (error) {
+      setChapterSaveState(error.code === "chapter_revision_conflict" ? "Conflict" : "Save failed");
+      setStatus(error.message);
+      return;
+    }
+    await closeTempForRouteChange(nextRoute, navigationIntent);
+    if (!navigationIntentIsCurrent(navigationIntent)) return;
     writeRoute(nextRoute, { replace });
     setChatMode(nextMode);
     setActiveChatId(null);
@@ -6238,6 +6568,10 @@ function App() {
     setMessages([]);
     setActiveStoryId(null);
     setActiveChapterId(null);
+    activeStoryIdRef.current = null;
+    activeChapterIdRef.current = null;
+    storyWorkspaceViewRef.current = "chapter";
+    chaptersRef.current = [];
     setChapters([]);
     setLorebookEntries([]);
     setBrainstormNodes([]);
@@ -6280,6 +6614,11 @@ function App() {
   useEffect(() => {
     function handlePopState() {
       const nextRoute = parseRoute();
+      if (hasActiveWriteGeneration()) {
+        setStatus("Finish or stop the current generation first.");
+        writeRoute(routeRef.current, { replace: true });
+        return;
+      }
       if (nextRoute.page === "chat" || nextRoute.page === "temp") {
         setChatMode("chat");
         void loadChat(nextRoute.chatId, { replace: true, fromRoute: true });
@@ -6846,10 +7185,12 @@ function App() {
   }
 
   function toggleWriteGenerationMode() {
+    if (hasActiveWriteGeneration()) return setStatus("Finish or stop the current generation first.");
     setWriteGenerationMode((current) => (current === "new" ? "edit" : "new"));
   }
 
   function changeChatMode(nextMode) {
+    if (rejectWriteNavigationDuringGeneration()) return;
     const mode = nextMode === "write" ? "write" : "chat";
     if (mode !== chatMode) {
       setPreviousChatMode(chatMode);
@@ -6863,15 +7204,23 @@ function App() {
   }
 
   async function finishWriteTour() {
+    if (rejectWriteNavigationDuringGeneration()) return;
+    const navigationIntent = beginNavigationIntent();
     const storyId = temporaryTourStoryIdRef.current;
-    temporaryTourStoryIdRef.current = null;
     writeTour.finish();
 
     try {
-      if (storyId) await storyApi.closeStory(storyId);
+      if (storyId) {
+        await chapterSaveCoordinator.flush(storyId);
+        if (!navigationIntentIsCurrent(navigationIntent)) return;
+        await storyApi.closeStory(storyId);
+        if (!navigationIntentIsCurrent(navigationIntent)) return;
+      }
     } catch (error) {
       setStatus(error.message);
     } finally {
+      if (!navigationIntentIsCurrent(navigationIntent)) return;
+      temporaryTourStoryIdRef.current = null;
       await loadStories();
       await resetChat({ replace: true, mode: "write" });
       setTemporaryTourStory(null);
@@ -6912,7 +7261,10 @@ function App() {
         tags: ["protagonist"],
       });
 
-      await loadStoryBundle(story.id, chapter.id);
+      const navigationIntent = beginNavigationIntent();
+      const result = await loadStoryBundle(story.id, chapter.id, { navigationIntent });
+      if (!result || !navigationIntentIsCurrent(navigationIntent)) return;
+      commitStoryBundle(result);
       setRailCollapsed(false);
       setRailOpen(true);
       setStoryWorkspaceView("chapter");
@@ -6936,20 +7288,26 @@ function App() {
   }
 
   async function startNewStory(title = "New story") {
-    if (isStreaming) return;
+    if (rejectWriteNavigationDuringGeneration() || isStreaming) return;
     try {
-      const story = await storyApi.createStory({
-        title: title.trim() || "New story",
-        model: settings.model,
-        system_prompt: "",
-        temperature: settings.temperature,
-        max_tokens: settings.max_tokens,
-        thinking_enabled: settings.thinking_enabled,
-        reasoning_effort: settings.reasoning_effort,
-      });
+      const scaffold = await storyApi.createStoryWithInitialChapter(
+        {
+          title: title.trim() || "New story",
+          model: settings.model,
+          system_prompt: "",
+          temperature: settings.temperature,
+          max_tokens: settings.max_tokens,
+          thinking_enabled: settings.thinking_enabled,
+          reasoning_effort: settings.reasoning_effort,
+        },
+        { title: "Chapter 1", content: "" },
+      );
+      const { story, chapter } = scaffold;
       await loadStories();
-      const chapter = await storyApi.createChapter(story.id, { title: "Chapter 1" });
-      await loadStoryBundle(story.id, chapter.id);
+      const navigationIntent = beginNavigationIntent();
+      const result = await loadStoryBundle(story.id, chapter.id, { navigationIntent });
+      if (!result || !navigationIntentIsCurrent(navigationIntent)) return;
+      commitStoryBundle(result);
       setStoryWorkspaceView("chapter");
       writeRoute(storyRoute(story.id, null, "chapter"));
       showToast("Story created");
@@ -6959,63 +7317,94 @@ function App() {
   }
 
   async function continueStory(storyId = null) {
-    if (isStreaming) return;
+    if (rejectWriteNavigationDuringGeneration() || isStreaming) return;
     const nextStoryId = storyId || stories[0]?.id || (await loadStories())[0]?.id;
     if (!nextStoryId) return;
-    const result = await loadStoryBundle(nextStoryId);
+    const navigationIntent = beginNavigationIntent();
+    const result = await loadStoryBundle(nextStoryId, null, { navigationIntent });
     if (!result) return;
+    if (!navigationIntentIsCurrent(navigationIntent)) return;
+    commitStoryBundle(result);
     setStoryWorkspaceView("chapter");
     writeRoute(storyRoute(result.story.id, null, "chapter"));
   }
 
   async function selectStory(storyId) {
-    const expectedLoadId = latestStoryLoadRef.current + 1;
+    if (rejectWriteNavigationDuringGeneration()) return;
+    const navigationIntent = beginNavigationIntent();
+    const expectedLoadId = navigationIntent;
     try {
-      const result = await loadStoryBundle(storyId);
+      const result = await loadStoryBundle(storyId, null, { navigationIntent });
       if (!result) return;
+      if (!navigationIntentIsCurrent(navigationIntent)) return;
+      commitStoryBundle(result);
       setStoryWorkspaceView("chapter");
       writeRoute(storyRoute(result.story.id, null, "chapter"));
     } catch (error) {
-      if (expectedLoadId !== latestStoryLoadRef.current) return;
+      if (!navigationIntentIsCurrent(navigationIntent) || expectedLoadId !== latestStoryLoadRef.current) return;
       setStatus(error.message);
     }
   }
 
   async function selectChapter(chapterId) {
-    const chapter = chapters.find((item) => item.id === chapterId);
-    if (!chapter) return;
+    if (rejectWriteNavigationDuringGeneration()) return;
+    const storyId = activeStoryIdRef.current;
+    if (!storyId) return;
+    const navigationIntent = beginNavigationIntent();
 
     try {
-      await flushChapterSave();
+      await flushChapterSave(storyId, activeChapterIdRef.current);
+      if (!navigationIntentIsCurrent(navigationIntent) || activeStoryIdRef.current !== storyId) return;
+      const nextChapters = await storyApi.listChapters(storyId);
+      if (!navigationIntentIsCurrent(navigationIntent) || activeStoryIdRef.current !== storyId) return;
+      nextChapters.forEach((chapter) => chapterSaveCoordinator.rememberServerChapter(chapter));
+      const visibleChapters = nextChapters.map(chapterWithCoordinatorState);
+      const chapter = visibleChapters.find((item) => item.id === chapterId);
+      if (!chapter) return;
+      const nextChapter = chapterWithCoordinatorState(chapter);
+      chaptersRef.current = visibleChapters;
+      activeChapterIdRef.current = nextChapter.id;
+      storyWorkspaceViewRef.current = "chapter";
+      setChapters(visibleChapters);
+      setActiveChapterId(nextChapter.id);
+      setChapterContent(nextChapter.content || "");
+      setWriteHistoryEntries(nextChapter.history || []);
+      chapterContentRef.current = nextChapter.content || "";
+      setChapterSaveState("");
+      setStoryWorkspaceView("chapter");
+      writeRoute(storyRoute(storyId, nextChapter.id, "chapter"));
     } catch (error) {
-      setChapterSaveState("Save failed");
+      setChapterSaveState(error.code === "chapter_revision_conflict" ? "Conflict" : "Save failed");
       setStatus(error.message);
-      return;
     }
-
-    setActiveChapterId(chapter.id);
-    setChapterContent(chapter.content || "");
-    setWriteHistoryEntries(chapter.history || []);
-    chapterContentRef.current = chapter.content || "";
-    setChapterSaveState("");
-    setStoryWorkspaceView("chapter");
-    writeRoute(storyRoute(activeStoryId, chapter.id, "chapter"));
   }
 
   async function createStoryChapter() {
-    if (!activeStoryId) return;
+    if (rejectWriteNavigationDuringGeneration()) return;
+    const storyId = activeStoryIdRef.current;
+    if (!storyId) return;
+    const navigationIntent = beginNavigationIntent();
     try {
-      const chapter = await storyApi.createChapter(activeStoryId, {
-        title: `Chapter ${chapters.length + 1}`,
+      await flushChapterSave(storyId, activeChapterIdRef.current);
+      if (!navigationIntentIsCurrent(navigationIntent) || activeStoryIdRef.current !== storyId) return;
+      const chapter = await storyApi.createChapter(storyId, {
+        title: `Chapter ${chaptersRef.current.length + 1}`,
       });
-      const nextChapters = await storyApi.listChapters(activeStoryId);
-      setChapters(nextChapters);
+      if (!navigationIntentIsCurrent(navigationIntent) || activeStoryIdRef.current !== storyId) return;
+      const nextChapters = await storyApi.listChapters(storyId);
+      if (!navigationIntentIsCurrent(navigationIntent) || activeStoryIdRef.current !== storyId) return;
+      nextChapters.forEach((item) => chapterSaveCoordinator.rememberServerChapter(item));
+      const visibleChapters = nextChapters.map(chapterWithCoordinatorState);
+      chaptersRef.current = visibleChapters;
+      activeChapterIdRef.current = chapter.id;
+      storyWorkspaceViewRef.current = "chapter";
+      setChapters(visibleChapters);
       setActiveChapterId(chapter.id);
       setChapterContent(chapter.content || "");
       setWriteHistoryEntries(chapter.history || []);
       chapterContentRef.current = chapter.content || "";
       setStoryWorkspaceView("chapter");
-      writeRoute(storyRoute(activeStoryId, chapter.id, "chapter"));
+      writeRoute(storyRoute(storyId, chapter.id, "chapter"));
       showToast("Chapter created");
     } catch (error) {
       setStatus(error.message);
@@ -7028,7 +7417,11 @@ function App() {
     try {
       await storyApi.updateStory(story.id, { title: title.trim() });
       await loadStories();
-      if (story.id === activeStoryId) await loadStoryBundle(story.id, activeChapterId);
+      if (story.id === activeStoryIdRef.current) {
+        const navigationIntent = beginNavigationIntent();
+        const result = await loadStoryBundle(story.id, activeChapterIdRef.current, { navigationIntent });
+        if (result && navigationIntentIsCurrent(navigationIntent)) commitStoryBundle(result);
+      }
     } catch (error) {
       setStatus(error.message);
     }
@@ -7038,11 +7431,18 @@ function App() {
     const title = window.prompt("rename chapter", chapter.title);
     if (!title?.trim() || !activeStoryId) return;
     try {
+      await flushChapterSave(activeStoryId, chapter.id);
+      const confirmedChapter = chapterSaveCoordinator.getConfirmedChapter(
+        activeStoryId,
+        chapter.id,
+      ) || chapter;
       const updated = await storyApi.updateChapter(activeStoryId, chapter.id, {
         title: title.trim(),
+        revision: confirmedChapter.revision,
       });
+      chapterSaveCoordinator.rememberServerChapter(updated);
       setChapters((current) =>
-        current.map((item) => (item.id === updated.id ? updated : item)),
+        current.map((item) => (item.id === updated.id ? chapterWithCoordinatorState(updated) : item)),
       );
     } catch (error) {
       setStatus(error.message);
@@ -7053,11 +7453,18 @@ function App() {
     if (!activeStoryId) return;
 
     try {
+      await flushChapterSave(activeStoryId, chapter.id);
+      const confirmedChapter = chapterSaveCoordinator.getConfirmedChapter(
+        activeStoryId,
+        chapter.id,
+      ) || chapter;
       const updated = await storyApi.updateChapter(activeStoryId, chapter.id, {
         disabled: !chapter.disabled,
+        revision: confirmedChapter.revision,
       });
+      chapterSaveCoordinator.rememberServerChapter(updated);
       setChapters((current) =>
-        current.map((item) => (item.id === updated.id ? updated : item)),
+        current.map((item) => (item.id === updated.id ? chapterWithCoordinatorState(updated) : item)),
       );
       showToast(updated.disabled ? "Chapter hidden" : "Chapter shown");
     } catch (error) {
@@ -7066,6 +7473,7 @@ function App() {
   }
 
   async function deleteStoryItem(story) {
+    if (rejectWriteNavigationDuringGeneration()) return;
     setConfirmDialog({
       title: "Delete story?",
       chatTitle: story.title,
@@ -7073,10 +7481,7 @@ function App() {
       confirmLabel: "Delete",
       onConfirm: async () => {
         try {
-          const pendingSave = pendingChapterSaveRef.current;
-          if (pendingSave?.storyId === story.id) {
-            await flushChapterSave();
-          }
+          await chapterSaveCoordinator.flush(story.id);
 
           await storyApi.deleteStory(story.id);
           const nextStories = await loadStories();
@@ -7087,8 +7492,11 @@ function App() {
 
           const nextStory = nextStories[0];
           if (nextStory) {
-            const result = await loadStoryBundle(nextStory.id);
+            const navigationIntent = beginNavigationIntent();
+            const result = await loadStoryBundle(nextStory.id, null, { navigationIntent });
             if (!result) return;
+            if (!navigationIntentIsCurrent(navigationIntent)) return;
+            commitStoryBundle(result);
             setStoryWorkspaceView("chapter");
             writeRoute(storyRoute(result.story.id, null, "chapter"), {
               replace: true,
@@ -7117,6 +7525,7 @@ function App() {
   }
 
   async function deleteChapterItem(chapter) {
+    if (rejectWriteNavigationDuringGeneration()) return;
     if (!activeStoryId) return;
     setConfirmDialog({
       title: "Delete chapter?",
@@ -7125,23 +7534,19 @@ function App() {
       confirmLabel: "Delete",
       onConfirm: async () => {
         try {
-          const pendingSave = pendingChapterSaveRef.current;
-          if (
-            pendingSave?.storyId === activeStoryId
-            && pendingSave.chapterId === chapter.id
-          ) {
-            await flushChapterSave();
-          }
+          await chapterSaveCoordinator.flush(activeStoryId, chapter.id);
 
           await storyApi.deleteChapter(activeStoryId, chapter.id);
           const nextChapters = await storyApi.listChapters(activeStoryId);
-          setChapters(nextChapters);
+          nextChapters.forEach((item) => chapterSaveCoordinator.rememberServerChapter(item));
+          const visibleChapters = nextChapters.map(chapterWithCoordinatorState);
+          setChapters(visibleChapters);
           if (chapter.id !== activeChapterId) {
             setStatus("Chapter deleted");
             return;
           }
 
-          const nextChapter = nextChapters[0] || null;
+          const nextChapter = visibleChapters[0] || null;
           setActiveChapterId(nextChapter?.id || null);
           setChapterContent(nextChapter?.content || "");
           setWriteHistoryEntries(nextChapter?.history || []);
@@ -7204,72 +7609,32 @@ function App() {
     });
   }
 
-  async function persistPendingChapterSave(pendingSave) {
-    if (!pendingSave.promise) {
-      pendingSave.promise = storyApi.saveChapterContent(
-        pendingSave.storyId,
-        pendingSave.chapterId,
-        pendingSave.content,
-      );
-    }
-
-    try {
-      const saved = await pendingSave.promise;
-      if (pendingChapterSaveRef.current === pendingSave) {
-        pendingChapterSaveRef.current = null;
-      }
-      setChapters((current) =>
-        current.map((chapter) => (chapter.id === saved.id ? saved : chapter)),
-      );
-      setChapterSaveState("Saved");
-      window.setTimeout(() => setChapterSaveState(""), 1200);
-      return saved;
-    } catch (error) {
-      pendingSave.promise = null;
-      throw error;
-    }
-  }
-
   function updateChapterCanvasContent(content) {
     setChapterContent(content);
     chapterContentRef.current = content;
     if (!activeStoryId || !activeChapterId) return;
 
-    const pendingSave = {
-      storyId: activeStoryId,
-      chapterId: activeChapterId,
+    const confirmedChapter = chapterSaveCoordinator.getConfirmedChapter(
+      activeStoryId,
+      activeChapterId,
+    ) || chaptersRef.current.find((chapter) => chapter.id === activeChapterId);
+    chapterSaveCoordinator.queueDraft(
+      activeStoryId,
+      activeChapterId,
       content,
-      promise: null,
-    };
-
-    setChapterSaveState("Saving");
-    window.clearTimeout(chapterSaveTimeoutRef.current);
-    pendingChapterSaveRef.current = pendingSave;
-    chapterSaveTimeoutRef.current = window.setTimeout(async () => {
-      chapterSaveTimeoutRef.current = null;
-      try {
-        await persistPendingChapterSave(pendingSave);
-      } catch (error) {
-        setChapterSaveState("Save failed");
-        setStatus(error.message);
-      }
-    }, 600);
+      confirmedChapter?.revision ?? 0,
+    );
   }
 
-  async function flushChapterSave() {
-    const pendingSave = pendingChapterSaveRef.current;
-    if (!pendingSave) return;
-
-    window.clearTimeout(chapterSaveTimeoutRef.current);
-    chapterSaveTimeoutRef.current = null;
-    setChapterSaveState("Saving");
-    await persistPendingChapterSave(pendingSave);
+  async function flushChapterSave(storyId = activeStoryId, chapterId = activeChapterId) {
+    if (!storyId) return null;
+    return chapterSaveCoordinator.flush(storyId, chapterId);
   }
 
   async function openBrainstorm() {
     if (!activeStoryId || isStreaming) return;
     try {
-      await flushChapterSave();
+      await flushChapterSave(activeStoryId, activeChapterId);
       await loadBrainstormBundle(activeStoryId);
       setStoryWorkspaceView("brainstorm");
       writeRoute(storyRoute(activeStoryId, activeChapterId, "brainstorm"));
@@ -7441,63 +7806,83 @@ function App() {
   }
 
   async function generateStoryChapter(text = prompt.trim()) {
-    if (isStreaming || !text || !activeStoryId || !activeChapterId) return;
+    if (isStreaming || hasActiveWriteGeneration() || !text || !activeStoryId || !activeChapterId) return;
+    const abortController = new AbortController();
+    const run = {
+      runId: crypto.randomUUID(),
+      storyId: activeStoryId,
+      chapterId: activeChapterId,
+      baseRevision: 0,
+      generationMode: writeGenerationMode,
+      status: "preparing",
+      abortController,
+      startedAt: Date.now(),
+      navigationIntent: currentNavigationIntent(),
+    };
+    writeGenerationRunRef.current = run;
+    abortRef.current = abortController;
     setIsStreaming(true);
-    setStoryGenerationStatus("Writing");
+    setStoryGenerationStatus("Preparing");
     setWriteReasoning({ text: "", streaming: false, durationMs: null });
     writeReasoningStartedAtRef.current = null;
     writeReasoningStreamingRef.current = false;
     setStatus("");
-    abortRef.current = new AbortController();
     let generatedText = "";
     let streamFailed = false;
-    let targetChapterId = activeChapterId;
-    let targetChapterContent = chapterContentRef.current;
-    let shouldWaitForChapterPatch = writeGenerationMode === "edit" && Boolean(targetChapterContent.trim());
-    let previousChapters = chapters.map((chapter) => ({
-      id: chapter.id,
-      title: chapter.title,
-      content: chapter.content || "",
-      word_count: chapter.word_count || 0,
-    }));
+    let terminalStatus = "completed";
+    let targetChapterId = run.chapterId;
+    let targetChapterContent = "";
+    let targetChapterRevision = 0;
+    let shouldWaitForChapterPatch = false;
 
     try {
+      await flushChapterSave(run.storyId, run.chapterId);
+      const confirmedChapter = chapterSaveCoordinator.getConfirmedChapter(
+        run.storyId,
+        run.chapterId,
+      ) || chaptersRef.current.find((chapter) => chapter.id === run.chapterId);
+      targetChapterContent = chapterSaveCoordinator.getDraft(run.storyId, run.chapterId)
+        ?? confirmedChapter?.content
+        ?? chapterContentRef.current;
+      targetChapterRevision = confirmedChapter?.revision ?? 0;
+      run.baseRevision = targetChapterRevision;
+      shouldWaitForChapterPatch = writeGenerationMode === "edit" && Boolean(targetChapterContent.trim());
       setPrompt("");
       if (writeGenerationMode === "new") {
-        const chapter = await storyApi.createChapter(activeStoryId, {
+        const chapter = await storyApi.createChapter(run.storyId, {
           title: `Chapter ${chapters.length + 1}`,
         });
-        const nextChapters = await storyApi.listChapters(activeStoryId);
+        const nextChapters = await storyApi.listChapters(run.storyId);
+        nextChapters.forEach((chapterItem) => chapterSaveCoordinator.rememberServerChapter(chapterItem));
         targetChapterId = chapter.id;
+        run.chapterId = chapter.id;
+        run.baseRevision = chapter.revision;
         targetChapterContent = "";
+        targetChapterRevision = chapter.revision;
         shouldWaitForChapterPatch = false;
-        previousChapters = nextChapters
-          .filter((item) => item.id !== chapter.id)
-          .map((item) => ({
-            id: item.id,
-            title: item.title,
-            content: item.content || "",
-            word_count: item.word_count || 0,
-          }));
-        setChapters(nextChapters);
+        setChapters(nextChapters.map(chapterWithCoordinatorState));
         setActiveChapterId(chapter.id);
         setChapterContent("");
         setWriteHistoryEntries(chapter.history || []);
         chapterContentRef.current = "";
         setStoryWorkspaceView("chapter");
-        writeRoute(storyRoute(activeStoryId, chapter.id, "chapter"));
+        writeRoute(storyRoute(run.storyId, chapter.id, "chapter"));
       }
 
+      run.status = "streaming";
+      setStoryGenerationStatus("Writing");
       await storyApi.generateChapter({
-        storyId: activeStoryId,
+        storyId: run.storyId,
         chapterId: targetChapterId,
         prompt: text,
         settings,
         generationMode: writeGenerationMode,
-        chapterContent: targetChapterContent,
-        previousChapters,
-        signal: abortRef.current.signal,
+        chapterRevision: targetChapterRevision,
+        generationRunId: run.runId,
+        signal: abortController.signal,
         onEvent: (event) => {
+          if (!chapterGenerationEventMatchesRun(event, run)) return;
+          if (!generationRunOwnsVisibleWorkspace(run)) return;
           if (event.type === "history") {
             appendWriteHistoryEntry(event.value || {});
             return;
@@ -7529,20 +7914,33 @@ function App() {
             }
             setStoryGenerationStatus("Writing");
             generatedText += value;
-            if (shouldWaitForChapterPatch) return;
-            setChapterContent((current) => {
-              const base = generatedText === value && current.trim() ? `${current}\n\n` : current;
-              const nextContent = `${base}${value}`;
-              chapterContentRef.current = nextContent;
-              return nextContent;
-            });
             return;
           }
           if (event.type === "chapter_updated") {
+            if (!chapterUpdateMatchesRun(event, run)) return;
+            run.status = "applying";
             const result = event.value || {};
-            const nextContent = String(result.content || "");
-            setChapterContent(nextContent);
-            chapterContentRef.current = nextContent;
+            const updatedChapter = chapterFromUpdateEvent(result);
+            if (!updatedChapter) return;
+            const nextContent = String(updatedChapter.content || "");
+            const currentChapter = chapterSaveCoordinator.getConfirmedChapter(
+              run.storyId,
+              targetChapterId,
+            ) || chaptersRef.current.find((chapter) => chapter.id === run.chapterId);
+            if (currentChapter) {
+              chapterSaveCoordinator.rememberServerChapter({
+                ...currentChapter,
+                ...updatedChapter,
+              });
+            }
+            setChapters((current) => current.map((chapter) => (
+              chapter.id === run.chapterId ? { ...chapter, ...updatedChapter } : chapter
+            )));
+            const route = routeRef.current;
+            if (route?.page === "story" && route.storyId === run.storyId && route.chapterId === run.chapterId) {
+              setChapterContent(nextContent);
+              chapterContentRef.current = nextContent;
+            }
             return;
           }
           if (event.type === "lorebook_start") {
@@ -7555,7 +7953,7 @@ function App() {
             if (result.error || appliedUpdates.length === 0) {
               setStatus("Lorebook update skipped");
             }
-            void storyApi.listLorebook(activeStoryId).then(setLorebookEntries).catch((error) => {
+            void storyApi.listLorebook(run.storyId).then(setLorebookEntries).catch((error) => {
               setStatus(error.message);
             });
           }
@@ -7564,29 +7962,40 @@ function App() {
           }
           if (event.type === "error") {
             streamFailed = true;
-            setStatus(String(event.value || "Story generation failed"));
+            const errorValue = event.value;
+            if (errorValue?.code === "chapter_revision_conflict") {
+              setStatus("Chapter changed while generation was running.");
+              terminalStatus = "conflicted";
+            } else {
+              setStatus(chapterGenerationErrorMessage(errorValue));
+            }
           }
         },
       });
-      const nextChapters = await storyApi.listChapters(activeStoryId);
-      setChapters(nextChapters);
-      const activeChapter = nextChapters.find((chapter) => chapter.id === targetChapterId);
-      if (activeChapter) {
-        setActiveChapterId(activeChapter.id);
-        setChapterContent(activeChapter.content || "");
-        setWriteHistoryEntries(activeChapter.history || []);
-        chapterContentRef.current = activeChapter.content || "";
-        writeRoute(storyRoute(activeStoryId, activeChapter.id, "chapter"), { replace: true });
-      }
-      setStoryGenerationStatus("");
+      run.status = "reconciling";
+      setStoryGenerationStatus("Reconciling");
+      await reconcileGenerationRun(run);
+      run.status = terminalStatus;
       if (!streamFailed) showToast("Finished chapter");
     } catch (error) {
       if (error.name === "AbortError") {
         setStatus("Response stopped");
+        terminalStatus = "aborted";
       } else {
         setStatus(error.message);
+        terminalStatus = "failed";
       }
     } finally {
+      if (run.status !== "reconciling") {
+        run.status = "reconciling";
+        setStoryGenerationStatus("Reconciling");
+        try {
+          await reconcileGenerationRun(run);
+        } catch (error) {
+          if (terminalStatus === "completed") terminalStatus = "failed";
+        }
+      }
+      run.status = terminalStatus;
       setIsStreaming(false);
       setStoryGenerationStatus("");
       setWriteReasoning((current) => ({
@@ -7600,7 +8009,9 @@ function App() {
       }));
       writeReasoningStartedAtRef.current = null;
       writeReasoningStreamingRef.current = false;
-      abortRef.current = null;
+      if (abortRef.current === abortController) abortRef.current = null;
+      if (writeGenerationRunRef.current === run) writeGenerationRunRef.current = null;
+      setStoryGenerationStatus("");
     }
   }
 
@@ -7634,6 +8045,7 @@ function App() {
           onToggleChapterContext={toggleChapterContext}
           previousChatMode={previousChatMode}
           onChatModeChange={changeChatMode}
+          navigationLocked={hasActiveWriteGeneration()}
         />
       ) : (
         <ConversationRail

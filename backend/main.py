@@ -111,8 +111,8 @@ class StreamMessageRequest(BaseModel):
     nitro_mode: bool = False
     regenerate_message_id: str | None = None
     write_generation_mode: str | None = None
-    chapter_content: str | None = None
-    previous_chapters: list[dict[str, Any]] = Field(default_factory=list)
+    chapter_revision: int | None = Field(default=None, ge=0)
+    generation_run_id: str | None = Field(default=None, min_length=1)
     selected_idea_ids: list[str] = Field(default_factory=list)
     brainstorm_idea_count: int = Field(default=3, ge=1, le=8)
 
@@ -265,6 +265,7 @@ def init_db() -> None:
               title TEXT NOT NULL,
               content TEXT NOT NULL,
               word_count INTEGER NOT NULL DEFAULT 0,
+              revision INTEGER NOT NULL DEFAULT 0,
               order_index INTEGER NOT NULL,
               disabled INTEGER NOT NULL DEFAULT 0,
               created_at TEXT NOT NULL,
@@ -408,6 +409,7 @@ def init_db() -> None:
         ensure_writing_thread_settings_columns(conn)
         ensure_story_settings_columns(conn)
         ensure_chapter_context_column(conn)
+        ensure_chapter_revision_column(conn)
         clean_lorebook_categories(conn)
 
 
@@ -453,6 +455,16 @@ def ensure_chapter_context_column(conn: sqlite3.Connection) -> None:
     }
     if "disabled" not in existingColumns:
         conn.execute("ALTER TABLE chapters ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0")
+
+
+def ensure_chapter_revision_column(conn: sqlite3.Connection) -> None:
+    existingColumns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(chapters)").fetchall()
+    }
+    if "revision" not in existingColumns:
+        conn.execute(
+            "ALTER TABLE chapters ADD COLUMN revision INTEGER NOT NULL DEFAULT 0"
+        )
 
 
 def clean_lorebook_categories(conn: sqlite3.Connection) -> None:
@@ -1663,6 +1675,14 @@ def model_supports_reasoning(model_id: str) -> bool:
     return False
 
 
+def model_supports_structured_output(model_id: str) -> bool:
+    normalizedModelId = str(model_id or "").removesuffix(":nitro")
+    for model in cached_models():
+        if model.get("id") in {model_id, normalizedModelId}:
+            return "structured_outputs" in (model.get("supported_parameters") or [])
+    return False
+
+
 def openrouter_error_message(status_code: int, response_text: str) -> str:
     try:
         payload = json.loads(response_text)
@@ -1761,8 +1781,11 @@ async def fetch_generation_usage(
     return None
 
 
-def stream_event(event_type: str, value: Any) -> bytes:
-    return (json.dumps({"type": event_type, "value": value}) + "\n").encode("utf-8")
+def stream_event(event_type: str, value: Any, metadata: dict[str, Any] | None = None) -> bytes:
+    payload = {"type": event_type, "value": value}
+    if metadata:
+        payload.update({key: value for key, value in metadata.items() if value is not None})
+    return (json.dumps(payload) + "\n").encode("utf-8")
 
 
 async def stream_openrouter_response(
@@ -2256,6 +2279,7 @@ app.include_router(
             write_system_prompt=writeSystemPrompt,
             openrouter_request_model=openrouter_request_model,
             model_supports_reasoning=model_supports_reasoning,
+            model_supports_structured_output=model_supports_structured_output,
             openrouter_error_message=openrouter_error_message,
             normalize_usage=normalize_usage,
             fetch_generation_usage=fetch_generation_usage,

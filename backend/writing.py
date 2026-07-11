@@ -59,15 +59,21 @@ class ChapterCreateRequest(BaseModel):
     content: str = ""
 
 
+class StoryWithInitialChapterRequest(StoryCreateRequest):
+    initial_chapter: ChapterCreateRequest
+
+
 class ChapterPatchRequest(BaseModel):
     title: str | None = None
     content: str | None = None
     order_index: int | None = None
     disabled: bool | None = None
+    revision: int | None = Field(default=None, ge=0)
 
 
 class ChapterContentRequest(BaseModel):
     content: str = ""
+    revision: int = Field(ge=0)
 
 
 class LorebookEntryRequest(BaseModel):
@@ -93,6 +99,26 @@ class BrainstormViewportRequest(BaseModel):
     zoom: float = Field(ge=0.1, le=4.0)
 
 
+CHAPTER_EDIT_OPERATIONS = {
+    "replaceBlock",
+    "insertBeforeBlock",
+    "insertAfterBlock",
+    "appendToChapter",
+}
+CHAPTER_EDIT_INVALID_JSON = "chapter_edit_invalid_json"
+CHAPTER_EDIT_INVALID_OPERATION = "chapter_edit_invalid_operation"
+CHAPTER_EDIT_REVISION_MISMATCH = "chapter_edit_revision_mismatch"
+CHAPTER_EDIT_TARGET_MISMATCH = "chapter_edit_target_mismatch"
+CHAPTER_REVISION_CONFLICT = "chapter_revision_conflict"
+
+
+class ChapterEditError(ValueError):
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
 @dataclass(frozen=True)
 class WritingDeps:
     get_db: Callable[[], sqlite3.Connection]
@@ -103,10 +129,11 @@ class WritingDeps:
     write_system_prompt: Callable[[Any], str]
     openrouter_request_model: Callable[[str, bool], str]
     model_supports_reasoning: Callable[[str], bool]
+    model_supports_structured_output: Callable[[str], bool]
     openrouter_error_message: Callable[[int, str], str]
     normalize_usage: Callable[[dict[str, Any] | None], dict[str, Any] | None]
     fetch_generation_usage: Callable[[str, str], Any]
-    stream_event: Callable[[str, Any], bytes]
+    stream_event: Callable[..., bytes]
     stream_message_request: type[BaseModel]
     openrouter_base_url: str
 
@@ -298,80 +325,177 @@ def block_map_for_prompt(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "type": block["type"],
             "index": block["index"],
             "preview": block["preview"],
-            "startChar": block["startChar"],
-            "endChar": block["endChar"],
             "textHash": block["textHash"],
         }
         for block in blocks
     ]
 
 
+def chapter_edit_operation_schema() -> dict[str, Any]:
+    operationFields = {
+        "operation": {"type": "string"},
+        "chapterRevision": {"type": "integer", "minimum": 0},
+        "blockId": {"type": "string", "minLength": 1},
+        "expectedTextHash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+        },
+        "newText": {"type": "string", "minLength": 1},
+    }
+
+    def variant(operationType: str, requiredFields: list[str]) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                **operationFields,
+                "operation": {"const": operationType},
+            },
+            "required": requiredFields,
+        }
+
+    return {
+        "type": "object",
+        "oneOf": [
+            variant(
+                "replaceBlock",
+                ["operation", "chapterRevision", "blockId", "expectedTextHash", "newText"],
+            ),
+            variant(
+                "insertBeforeBlock",
+                ["operation", "chapterRevision", "blockId", "expectedTextHash", "newText"],
+            ),
+            variant(
+                "insertAfterBlock",
+                ["operation", "chapterRevision", "blockId", "expectedTextHash", "newText"],
+            ),
+            variant("appendToChapter", ["operation", "chapterRevision", "newText"]),
+        ],
+    }
+
+
+def chapter_edit_response_format() -> dict[str, Any]:
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "chapter_edit_operation",
+            "strict": True,
+            "schema": chapter_edit_operation_schema(),
+        },
+    }
+
+
 def parse_chapter_operation(raw_output: str) -> dict[str, Any]:
-    candidates = [raw_output.strip(), strip_json_fence(raw_output)]
+    if not isinstance(raw_output, str) or not raw_output.strip():
+        raise ChapterEditError(
+            CHAPTER_EDIT_INVALID_JSON,
+            "model output was empty",
+        )
+
     try:
-        candidates.append(first_json_object(candidates[-1]))
-    except ValueError:
-        pass
+        parsed = json.loads(raw_output.strip())
+    except json.JSONDecodeError as exc:
+        raise ChapterEditError(
+            CHAPTER_EDIT_INVALID_JSON,
+            "model output was not exactly one JSON object",
+        ) from exc
 
-    seen: set[str] = set()
-    for candidate in candidates:
-        if not candidate or candidate in seen:
-            continue
-        seen.add(candidate)
-        try:
-            parsed = json.loads(candidate)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(parsed, dict):
-            return parsed
-
-    raise ValueError("model did not return a valid chapter edit operation")
+    if not isinstance(parsed, dict):
+        raise ChapterEditError(
+            CHAPTER_EDIT_INVALID_OPERATION,
+            "chapter edit output must be a JSON object",
+        )
+    return validate_chapter_operation(parsed)
 
 
 def clean_insert_text(value: Any) -> str:
     return str(value or "").strip()
 
 
-def operation_text(operation: dict[str, Any]) -> str:
-    if "newText" in operation:
-        return clean_insert_text(operation.get("newText"))
-
-    new_blocks = operation.get("newBlocks")
-    if isinstance(new_blocks, list):
-        parts = []
-        for block in new_blocks:
-            if isinstance(block, dict):
-                text = clean_insert_text(block.get("text"))
-            else:
-                text = clean_insert_text(block)
-            if text:
-                parts.append(text)
-        return "\n\n".join(parts)
-
-    return clean_insert_text(operation.get("text"))
-
-
-def expected_hash_for(operation: dict[str, Any], block_id: str) -> str:
-    expected_hashes = operation.get("expectedTextHashes")
-    if isinstance(expected_hashes, dict):
-        return str(expected_hashes.get(block_id) or "")
-    return str(operation.get("expectedTextHash") or "")
-
-
-def require_matching_block(
-    blocks_by_id: dict[str, dict[str, Any]], operation: dict[str, Any], block_id: str
+def validate_chapter_operation(
+    operation: dict[str, Any],
+    baseRevision: int | None = None,
+    blocks: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    block = blocks_by_id.get(block_id)
-    if not block:
-        raise ValueError(f"unknown block id: {block_id}")
+    if not isinstance(operation, dict):
+        raise ChapterEditError(
+            CHAPTER_EDIT_INVALID_OPERATION,
+            "chapter edit output must be a JSON object",
+        )
 
-    expected_hash = expected_hash_for(operation, block_id)
-    if not expected_hash:
-        raise ValueError(f"missing expectedTextHash for {block_id}")
-    if expected_hash != block["textHash"]:
-        raise ValueError(f"text hash mismatch for {block_id}")
+    operationType = operation.get("operation")
+    if not isinstance(operationType, str) or operationType not in CHAPTER_EDIT_OPERATIONS:
+        raise ChapterEditError(
+            CHAPTER_EDIT_INVALID_OPERATION,
+            f"unsupported chapter edit operation: {operationType or 'missing'}",
+        )
 
-    return block
+    requiredFields = {"operation", "chapterRevision", "newText"}
+    if operationType != "appendToChapter":
+        requiredFields.update({"blockId", "expectedTextHash"})
+    actualFields = set(operation)
+    missingFields = requiredFields - actualFields
+    extraFields = actualFields - requiredFields
+    if missingFields or extraFields:
+        details = []
+        if missingFields:
+            details.append(f"missing fields: {', '.join(sorted(missingFields))}")
+        if extraFields:
+            details.append(f"unsupported fields: {', '.join(sorted(extraFields))}")
+        raise ChapterEditError(CHAPTER_EDIT_INVALID_OPERATION, "; ".join(details))
+
+    chapterRevision = operation.get("chapterRevision")
+    if type(chapterRevision) is not int or chapterRevision < 0:
+        raise ChapterEditError(
+            CHAPTER_EDIT_INVALID_OPERATION,
+            "chapterRevision must be a non-negative integer",
+        )
+    if baseRevision is not None and chapterRevision != baseRevision:
+        raise ChapterEditError(
+            CHAPTER_EDIT_REVISION_MISMATCH,
+            "operation chapterRevision does not match the generation base revision",
+        )
+
+    newText = operation.get("newText")
+    if not isinstance(newText, str) or not newText.strip():
+        raise ChapterEditError(
+            CHAPTER_EDIT_INVALID_OPERATION,
+            "newText must be a non-empty string",
+        )
+
+    if operationType == "appendToChapter":
+        return operation
+
+    blockId = operation.get("blockId")
+    expectedTextHash = operation.get("expectedTextHash")
+    if not isinstance(blockId, str) or not blockId.strip():
+        raise ChapterEditError(
+            CHAPTER_EDIT_INVALID_OPERATION,
+            "blockId must be a non-empty string",
+        )
+    if not isinstance(expectedTextHash, str) or not re.fullmatch(
+        r"[0-9a-f]{64}", expectedTextHash
+    ):
+        raise ChapterEditError(
+            CHAPTER_EDIT_INVALID_OPERATION,
+            "expectedTextHash must be a lowercase SHA-256 hex digest",
+        )
+
+    if blocks is not None:
+        blocksById = {block["blockId"]: block for block in blocks}
+        block = blocksById.get(blockId.strip())
+        if not block:
+            raise ChapterEditError(
+                CHAPTER_EDIT_TARGET_MISMATCH,
+                f"unknown block id: {blockId}",
+            )
+        if expectedTextHash != block["textHash"]:
+            raise ChapterEditError(
+                CHAPTER_EDIT_TARGET_MISMATCH,
+                f"text hash mismatch for {blockId}",
+            )
+
+    return operation
 
 
 def insert_with_spacing(content: str, position: int, text: str, placement: str) -> str:
@@ -389,91 +513,59 @@ def insert_with_spacing(content: str, position: int, text: str, placement: str) 
     return f"{content[:position].rstrip()}\n\n{insert_text}\n\n{content[position:].lstrip()}"
 
 
-def apply_chapter_operation(content: str, operation: dict[str, Any]) -> dict[str, Any]:
+def apply_chapter_operation(
+    content: str,
+    operation: dict[str, Any],
+    baseRevision: int | None = None,
+) -> dict[str, Any]:
     blocks = chapter_blocks(content)
-    blocks_by_id = {block["blockId"]: block for block in blocks}
-    operation_type = str(operation.get("operation") or operation.get("type") or "").strip()
+    validate_chapter_operation(operation, baseRevision, blocks)
+    blocksById = {block["blockId"]: block for block in blocks}
+    operationType = operation["operation"]
+    newText = clean_insert_text(operation["newText"])
 
-    if operation_type == "appendToChapter":
-        new_text = operation_text(operation)
-        next_content = insert_with_spacing(content, len(content), new_text, "after")
+    if operationType == "appendToChapter":
+        nextContent = insert_with_spacing(content, len(content), newText, "after")
         return {
-            "content": next_content,
-            "operation": operation_type,
+            "content": nextContent,
+            "operation": operationType,
             "deletedBlockIds": [],
             "insertedBlockIds": [],
-            "appliedText": new_text,
+            "appliedText": newText,
         }
 
-    if operation_type in {"insertBeforeBlock", "insertAfterBlock"}:
-        block_id = str(operation.get("blockId") or "").strip()
-        block = require_matching_block(blocks_by_id, operation, block_id)
-        new_text = operation_text(operation)
-        position = block["startChar"] if operation_type == "insertBeforeBlock" else block["endChar"]
-        next_content = insert_with_spacing(
+    blockId = operation["blockId"].strip()
+    block = blocksById[blockId]
+    if operationType in {"insertBeforeBlock", "insertAfterBlock"}:
+        position = block["startChar"] if operationType == "insertBeforeBlock" else block["endChar"]
+        nextContent = insert_with_spacing(
             content,
             position,
-            new_text,
-            "before" if operation_type == "insertBeforeBlock" else "after",
+            newText,
+            "before" if operationType == "insertBeforeBlock" else "after",
         )
         return {
-            "content": next_content,
-            "operation": operation_type,
+            "content": nextContent,
+            "operation": operationType,
             "deletedBlockIds": [],
             "insertedBlockIds": [],
-            "appliedText": new_text,
+            "appliedText": newText,
         }
 
-    if operation_type == "replaceBlock":
-        block_id = str(operation.get("blockId") or "").strip()
-        block = require_matching_block(blocks_by_id, operation, block_id)
-        new_text = operation_text(operation)
-        if not new_text:
-            raise ValueError("new text cannot be empty")
-        next_content = f"{content[:block['startChar']]}{new_text}{content[block['endChar']:]}"
+    nextContent = f"{content[:block['startChar']]}{newText}{content[block['endChar']:]}"
+    if operationType == "replaceBlock":
         return {
-            "content": next_content,
-            "operation": operation_type,
-            "deletedBlockIds": [block_id],
-            "insertedBlockIds": [block_id],
-            "appliedText": new_text,
+            "content": nextContent,
+            "operation": operationType,
+            "deletedBlockIds": [blockId],
+            "insertedBlockIds": [blockId],
+            "appliedText": newText,
         }
 
-    if operation_type == "replaceBlocks":
-        block_ids = operation.get("blockIds")
-        if not isinstance(block_ids, list) or not block_ids:
-            raise ValueError("replaceBlocks needs blockIds")
-
-        selected = [
-            require_matching_block(blocks_by_id, operation, str(block_id).strip())
-            for block_id in block_ids
-        ]
-        selected.sort(key=lambda block: block["startChar"])
-        selected_ids = [block["blockId"] for block in selected]
-        expected_ids = [str(block_id).strip() for block_id in block_ids]
-        if selected_ids != expected_ids:
-            raise ValueError("replaceBlocks blockIds must be in chapter order")
-
-        block_positions = {block["blockId"]: index for index, block in enumerate(blocks)}
-        for left, right in zip(selected, selected[1:]):
-            if block_positions[right["blockId"]] != block_positions[left["blockId"]] + 1:
-                raise ValueError("replaceBlocks blockIds must be contiguous")
-
-        new_text = operation_text(operation)
-        if not new_text:
-            raise ValueError("new text cannot be empty")
-        start = selected[0]["startChar"]
-        end = selected[-1]["endChar"]
-        next_content = f"{content[:start]}{new_text}{content[end:]}"
-        return {
-            "content": next_content,
-            "operation": operation_type,
-            "deletedBlockIds": selected_ids,
-            "insertedBlockIds": selected_ids,
-            "appliedText": new_text,
-        }
-
-    raise ValueError(f"unsupported chapter operation: {operation_type or 'missing'}")
+    raise ChapterEditError(
+        CHAPTER_EDIT_INVALID_OPERATION,
+        f"unsupported chapter edit operation: {operationType}",
+    )
 
 
 def append_chapter_text(content: str, text: str) -> dict[str, Any]:
@@ -588,6 +680,7 @@ def row_to_chapter(row: sqlite3.Row) -> dict[str, Any]:
         "title": row["title"],
         "content": row["content"],
         "word_count": row["word_count"],
+        "revision": row["revision"],
         "order_index": row["order_index"],
         "disabled": bool(row["disabled"]),
         "created_at": row["created_at"],
@@ -799,6 +892,7 @@ def build_story_messages(
         f"language: {story['language'] or 'English'}",
         f"synopsis: {story['synopsis'] or 'none yet'}",
         f"chapter title: {chapter['title']}",
+        f"chapter revision: {chapter['revision']}",
         f"current chapter draft:\n{chapter['content'] or 'empty chapter'}",
     ]
     if generation_mode == "edit":
@@ -817,18 +911,19 @@ def build_story_messages(
             {
                 "role": "system",
                 "content": (
-                    "You are editing the active chapter using a JSON operation. Return only one "
-                    "JSON object and no analysis or wrapper text. Supported operations are "
-                    "replaceBlock, replaceBlocks, insertBeforeBlock, insertAfterBlock, and "
-                    "appendToChapter. For replaceBlock include operation, blockId, "
-                    "expectedTextHash, and newText. For replaceBlocks include operation, blockIds, "
-                    "expectedTextHashes, and either newText or newBlocks. For inserts include "
-                    "operation, blockId, expectedTextHash, and newText. For appendToChapter include "
-                    "operation and newText. Replacement operations delete the targeted text first "
-                    "and insert the replacement in the same position. Do not preserve, duplicate, "
-                    "append beside, or restate replaced text unless the user explicitly asks for it. "
-                    "Use the block map to resolve references like 4th paragraph; paragraph indexes "
-                    "are 1-based."
+                    "You are editing the active chapter using exactly one JSON operation. Return "
+                    "only one JSON object with no markdown, explanation, or wrapper text. The "
+                    "chapterRevision must exactly match the chapter revision in the context. "
+                    "Supported operations are replaceBlock, insertBeforeBlock, insertAfterBlock, "
+                    "and appendToChapter. Every operation includes operation, chapterRevision, "
+                    "and non-empty newText. Targeted operations also include blockId and the "
+                    "exact lowercase SHA-256 expectedTextHash from the block map. Do not use "
+                    "appendToChapter unless the user explicitly asks to continue at the end. "
+                    "Replacement operations delete the targeted text first and insert the "
+                    "replacement in the same position. Do not preserve, duplicate, append beside, "
+                    "or restate replaced text unless the user explicitly asks for it. Use the "
+                    "block map to resolve references like 4th paragraph; paragraph indexes are "
+                    "1-based."
                 ),
             }
         )
@@ -1124,7 +1219,18 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
         story: sqlite3.Row,
         chapter: sqlite3.Row,
         lorebook_rows: list[sqlite3.Row],
+        base_revision: int,
     ) -> AsyncIterator[bytes]:
+        event_metadata = {
+            "runId": getattr(payload, "generation_run_id", None),
+            "storyId": story_id,
+            "chapterId": chapter_id,
+        }
+
+        def emit(event_type: str, value: Any, revision: int | None = None) -> bytes:
+            metadata = {**event_metadata, "revision": revision}
+            return deps.stream_event(event_type, value, metadata)
+
         api_key = deps.read_openrouter_key()
         if not api_key:
             raise HTTPException(status_code=401, detail="Add an OpenRouter API key first.")
@@ -1157,6 +1263,8 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                 "exclude": False,
                 "effort": payload.reasoning_effort,
             }
+        if generation_mode == "edit" and deps.model_supports_structured_output(payload.model):
+            body["response_format"] = chapter_edit_response_format()
 
         generated_text: list[str] = []
         reasoning_text: list[str] = []
@@ -1169,6 +1277,9 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
         model_label = display_model_name(payload.model)
         reasoning_started_at: float | None = None
         content_started_at: float | None = None
+        stream_completed = False
+        received_done = False
+        cancelled = False
 
         def save_history(label: str, detail: str = "") -> dict[str, Any]:
             with deps.get_db() as conn:
@@ -1182,8 +1293,19 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                     now=deps.utc_now(),
                 )
 
+        def revision_conflict_event(conn: sqlite3.Connection) -> dict[str, Any]:
+            currentChapter = conn.execute(
+                "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
+                (chapter_id, story_id),
+            ).fetchone()
+            return {
+                "code": CHAPTER_REVISION_CONFLICT,
+                "message": "Chapter changed while generation was running.",
+                "chapter": row_to_chapter(currentChapter) if currentChapter else None,
+            }
+
         try:
-            yield deps.stream_event(
+            yield emit(
                 "history",
                 save_history("User prompt", " ".join(payload.message.split())),
             )
@@ -1197,7 +1319,7 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                     if response.status_code >= 400:
                         raw_error = (await response.aread()).decode("utf-8", errors="replace")
                         error_text = deps.openrouter_error_message(response.status_code, raw_error)
-                        yield deps.stream_event("error", error_text)
+                        yield emit("error", error_text)
                         return
                     generation_id = response.headers.get("X-Generation-Id") or generation_id
 
@@ -1206,6 +1328,7 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                             continue
                         data = line.removeprefix("data:").strip()
                         if data == "[DONE]":
+                            received_done = True
                             break
                         try:
                             chunk = json.loads(data)
@@ -1228,12 +1351,12 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                                 reasoning_started_at = time.perf_counter()
                             value = str(reasoning)
                             reasoning_text.append(value)
-                            yield deps.stream_event("reasoning", value)
+                            yield emit("reasoning", value)
                         content = delta.get("content")
                         if content:
                             if reasoning_started_at is not None:
                                 duration_ms = (time.perf_counter() - reasoning_started_at) * 1000
-                                yield deps.stream_event(
+                                yield emit(
                                     "history",
                                     save_history(
                                         f"{model_label} thought for {format_duration(duration_ms)}"
@@ -1244,82 +1367,147 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                                 content_started_at = time.perf_counter()
                             value = str(content)
                             generated_text.append(value)
-                            yield deps.stream_event("content", value)
+                            yield emit("content", value)
 
                     if generation_id:
                         generation_usage = await deps.fetch_generation_usage(api_key, generation_id)
                         if generation_usage:
                             usage = {**(usage or {}), **generation_usage}
                     if usage:
-                        yield deps.stream_event(
+                        yield emit(
                             "usage",
                             {"generation_id": generation_id, "model": payload.model, **usage},
                         )
+                    stream_completed = received_done
+        except asyncio.CancelledError:
+            cancelled = True
+            error_text = "generation_cancelled"
+            raise
         except Exception as exc:  # noqa: BLE001
             error_text = str(exc)
-            yield deps.stream_event("error", f"RouterChat error: {error_text}")
+            yield emit("error", f"RouterChat error: {error_text}")
         finally:
             content = "".join(generated_text)
             now = deps.utc_now()
-            content_for_lorebook = content
+            content_for_lorebook = ""
             chapter_update_event: dict[str, Any] | None = None
+            error_event: dict[str, Any] | None = None
+            operation: dict[str, Any] | None = None
+
+            if not stream_completed and not error_text:
+                error_text = "generation_incomplete_stream"
+                error_event = {
+                    "code": "generation_incomplete_stream",
+                    "message": "Generation ended before the provider completed the stream.",
+                }
+            if cancelled:
+                error_event = {
+                    "code": "generation_cancelled",
+                    "message": "Generation was cancelled.",
+                }
+
+            if stream_completed and generation_mode == "edit" and content:
+                try:
+                    parsedOperation = parse_chapter_operation(content)
+                    operation = validate_chapter_operation(
+                        parsedOperation,
+                        baseRevision=base_revision,
+                    )
+                except ChapterEditError as exc:
+                    error_event = {"code": exc.code, "message": exc.message}
+                    error_text = f"{exc.code}: {exc.message}"
+                    operation = None
+
             with deps.get_db() as conn:
+                if stream_completed and content:
+                    conn.execute("BEGIN IMMEDIATE")
                 current = conn.execute(
-                    "SELECT content FROM chapters WHERE id = ? AND story_id = ?",
+                    "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
                     (chapter_id, story_id),
                 ).fetchone()
                 current_content = current["content"] if current else ""
-                if content:
-                    if generation_mode == "edit":
-                        try:
-                            try:
-                                operation = parse_chapter_operation(content)
-                            except ValueError:
-                                operation = {"operation": "appendToChapter", "newText": content}
-                            operation_result = apply_chapter_operation(current_content, operation)
-                            next_content = operation_result["content"]
-                            content_for_lorebook = operation_result.get("appliedText") or content
-                            chapter_update_event = {
-                                "content": next_content,
-                                "operation": operation_result["operation"],
-                                "deletedBlockIds": operation_result["deletedBlockIds"],
-                                "insertedBlockIds": operation_result["insertedBlockIds"],
-                            }
-                            conn.execute(
+
+                if stream_completed and content and generation_mode == "edit" and operation is not None:
+                    try:
+                        if not current or current["revision"] != base_revision:
+                            error_event = revision_conflict_event(conn)
+                            error_text = CHAPTER_REVISION_CONFLICT
+                        else:
+                            operation_result = apply_chapter_operation(
+                                current_content,
+                                operation,
+                                baseRevision=base_revision,
+                            )
+                            nextContent = operation_result["content"]
+                            result = conn.execute(
                                 """
                                 UPDATE chapters
-                                SET content = ?, word_count = ?, updated_at = ?
-                                WHERE id = ? AND story_id = ?
+                                SET content = ?, word_count = ?, revision = revision + 1, updated_at = ?
+                                WHERE id = ? AND story_id = ? AND revision = ?
                                 """,
                                 (
-                                    next_content,
-                                    word_count(next_content),
+                                    nextContent,
+                                    word_count(nextContent),
                                     now,
                                     chapter_id,
                                     story_id,
+                                    base_revision,
                                 ),
                             )
-                        except ValueError as exc:
-                            error_text = str(exc)
-                            content_for_lorebook = ""
-                            yield deps.stream_event("error", f"Chapter edit skipped: {error_text}")
-                    else:
-                        operation_result = append_chapter_text(current_content, content)
-                        next_content = operation_result["content"]
-                        conn.execute(
-                            """
-                            UPDATE chapters
-                            SET content = ?, word_count = ?, updated_at = ?
-                            WHERE id = ? AND story_id = ?
-                            """,
-                            (next_content, word_count(next_content), now, chapter_id, story_id),
-                        )
+                            if result.rowcount != 1:
+                                error_event = revision_conflict_event(conn)
+                                error_text = CHAPTER_REVISION_CONFLICT
+                            else:
+                                savedChapter = conn.execute(
+                                    "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
+                                    (chapter_id, story_id),
+                                ).fetchone()
+                                content_for_lorebook = operation_result["appliedText"]
+                                chapter_update_event = {
+                                    "chapter": row_to_chapter(savedChapter),
+                                    "operation": operation_result["operation"],
+                                    "appliedText": operation_result["appliedText"],
+                                    "deletedBlockIds": operation_result["deletedBlockIds"],
+                                    "insertedBlockIds": operation_result["insertedBlockIds"],
+                                }
+                    except ChapterEditError as exc:
+                        error_event = {"code": exc.code, "message": exc.message}
+                        error_text = f"{exc.code}: {exc.message}"
+                elif stream_completed and content and generation_mode != "edit":
+                    operation_result = append_chapter_text(current_content, content)
+                    nextContent = operation_result["content"]
+                    result = conn.execute(
+                        """
+                        UPDATE chapters
+                        SET content = ?, word_count = ?, revision = revision + 1, updated_at = ?
+                        WHERE id = ? AND story_id = ? AND revision = ?
+                        """,
+                        (
+                            nextContent,
+                            word_count(nextContent),
+                            now,
+                            chapter_id,
+                            story_id,
+                            base_revision,
+                        ),
+                    )
+                    if result.rowcount == 1:
+                        savedChapter = conn.execute(
+                            "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
+                            (chapter_id, story_id),
+                        ).fetchone()
+                        content_for_lorebook = content
                         chapter_update_event = {
-                            "content": next_content,
+                            "chapter": row_to_chapter(savedChapter),
                             "operation": operation_result["operation"],
+                            "appliedText": operation_result["appliedText"],
                             "deletedBlockIds": operation_result["deletedBlockIds"],
                             "insertedBlockIds": operation_result["insertedBlockIds"],
                         }
+                    else:
+                        error_event = revision_conflict_event(conn)
+                        error_text = CHAPTER_REVISION_CONFLICT
+
                 conn.execute(
                     """
                     INSERT INTO story_generations (
@@ -1355,42 +1543,44 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                     "UPDATE stories SET updated_at = ? WHERE id = ?",
                     (now, story_id),
                 )
-            if content:
-                if chapter_update_event is not None:
-                    yield deps.stream_event("chapter_updated", chapter_update_event)
+            if error_event is not None:
+                yield emit("error", error_event)
+            if chapter_update_event is not None:
+                yield emit("chapter_updated", chapter_update_event, chapter_update_event["chapter"]["revision"])
                 if content_started_at is not None:
                     duration_ms = (time.perf_counter() - content_started_at) * 1000
-                    yield deps.stream_event(
+                    yield emit(
                         "history",
                         save_history(f"{model_label} wrote for {format_duration(duration_ms)}"),
                     )
                     content_started_at = None
                 lorebook_started_at = time.perf_counter()
-                yield deps.stream_event("lorebook_start", {"generation_id": story_generation_id})
+                yield emit("lorebook_start", {"generation_id": story_generation_id})
             else:
                 lorebook_started_at = None
-            lorebook_result = await update_lorebook_after_generation(
-                story_id,
-                chapter_id,
-                story_generation_id,
-                payload.model,
-                payload.max_tokens,
-                content_for_lorebook,
-            )
-            for update in lorebook_result.get("applied") or []:
-                yield deps.stream_event(
-                    "history",
-                    save_history(lorebook_history_label(model_label, update)),
+            if content_for_lorebook:
+                lorebook_result = await update_lorebook_after_generation(
+                    story_id,
+                    chapter_id,
+                    story_generation_id,
+                    payload.model,
+                    payload.max_tokens,
+                    content_for_lorebook,
                 )
-            if lorebook_started_at is not None:
-                duration_ms = (time.perf_counter() - lorebook_started_at) * 1000
-                yield deps.stream_event(
-                    "history",
-                    save_history(
-                        f"{model_label} finished editing Lorebook after {format_duration(duration_ms)}"
-                    ),
-                )
-            yield deps.stream_event("lorebook", lorebook_result)
+                for update in lorebook_result.get("applied") or []:
+                    yield emit(
+                        "history",
+                        save_history(lorebook_history_label(model_label, update)),
+                    )
+                if lorebook_started_at is not None:
+                    duration_ms = (time.perf_counter() - lorebook_started_at) * 1000
+                    yield emit(
+                        "history",
+                        save_history(
+                            f"{model_label} finished editing Lorebook after {format_duration(duration_ms)}"
+                        ),
+                    )
+                yield emit("lorebook", lorebook_result)
 
     @router.get("/api/stories")
     def list_stories() -> dict[str, Any]:
@@ -1434,6 +1624,69 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
             )
             row = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
         return {"story": row_to_story(row)}
+
+    @router.post("/api/stories/with-initial-chapter")
+    def create_story_with_initial_chapter(
+        payload: StoryWithInitialChapterRequest,
+    ) -> dict[str, Any]:
+        now = deps.utc_now()
+        story_id = str(uuid.uuid4())
+        chapter_id = str(uuid.uuid4())
+        model = payload.model or deps.default_model_id()
+        initial_chapter = payload.initial_chapter
+        content = initial_chapter.content
+
+        with deps.get_db() as conn:
+            conn.execute(
+                """
+                INSERT INTO stories (
+                  id, title, author, language, synopsis, model, system_prompt,
+                  temperature, max_tokens, thinking_enabled, reasoning_effort, temporary,
+                  created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    story_id,
+                    payload.title.strip() or "New story",
+                    payload.author,
+                    payload.language,
+                    payload.synopsis,
+                    model,
+                    payload.system_prompt,
+                    payload.temperature,
+                    payload.max_tokens,
+                    int(payload.thinking_enabled),
+                    payload.reasoning_effort,
+                    int(payload.temporary),
+                    now,
+                    now,
+                ),
+            )
+            conn.execute(
+                """
+                INSERT INTO chapters (
+                  id, story_id, title, content, word_count, order_index, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    chapter_id,
+                    story_id,
+                    initial_chapter.title.strip() or "New chapter",
+                    content,
+                    word_count(content),
+                    0,
+                    now,
+                    now,
+                ),
+            )
+            story = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
+            chapter = conn.execute(
+                "SELECT * FROM chapters WHERE id = ?", (chapter_id,)
+            ).fetchone()
+
+        return {"story": row_to_story(story), "chapter": row_to_chapter(chapter)}
 
     @router.get("/api/stories/{story_id}")
     def get_story(story_id: str) -> dict[str, Any]:
@@ -1558,20 +1811,29 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
         story_id: str, chapter_id: str, payload: ChapterPatchRequest
     ) -> dict[str, Any]:
         updates = request_updates(payload, reject_null=True)
+        base_revision = updates.pop("revision", None)
         if "content" in updates:
             updates["word_count"] = word_count(updates["content"])
         if "title" in updates:
             updates["title"] = str(updates["title"]).strip() or "New chapter"
         if not updates:
-            return get_story_bundle(story_id)
+            with deps.get_db() as conn:
+                chapter = conn.execute(
+                    "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
+                    (chapter_id, story_id),
+                ).fetchone()
+            if not chapter:
+                raise HTTPException(status_code=404, detail="Chapter not found.")
+            return {"chapter": row_to_chapter(chapter)}
         assignments: list[str] = []
         values: list[Any] = []
         for key, value in updates.items():
             assignments.append(f"{key} = ?")
             values.append(value)
         assignments.append("updated_at = ?")
-        values.append(deps.utc_now())
-        values.extend([chapter_id, story_id])
+        now = deps.utc_now()
+        values.append(now)
+        content_changed = "content" in updates
         with deps.get_db() as conn:
             chapter = conn.execute(
                 "SELECT id FROM chapters WHERE id = ? AND story_id = ?",
@@ -1579,10 +1841,44 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
             ).fetchone()
             if not chapter:
                 raise HTTPException(status_code=404, detail="Chapter not found.")
-            conn.execute(
-                f"UPDATE chapters SET {', '.join(assignments)} WHERE id = ? AND story_id = ?",
-                values,
-            )
+            if base_revision is None:
+                values.extend([chapter_id, story_id])
+                conn.execute(
+                    f"""
+                    UPDATE chapters
+                    SET {', '.join(assignments)}, revision = revision + 1
+                    WHERE id = ? AND story_id = ?
+                    """,
+                    values,
+                )
+            else:
+                values.extend([chapter_id, story_id, base_revision])
+                result = conn.execute(
+                    f"""
+                    UPDATE chapters
+                    SET {', '.join(assignments)}, revision = revision + 1
+                    WHERE id = ? AND story_id = ? AND revision = ?
+                    """,
+                    values,
+                )
+                if result.rowcount == 0:
+                    current = conn.execute(
+                        "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
+                        (chapter_id, story_id),
+                    ).fetchone()
+                    raise HTTPException(
+                        status_code=409,
+                        detail={
+                            "code": "chapter_revision_conflict",
+                            "message": "Chapter changed on the server.",
+                            "chapter": row_to_chapter(current),
+                        },
+                    )
+            if content_changed:
+                conn.execute(
+                    "UPDATE stories SET updated_at = ? WHERE id = ?",
+                    (now, story_id),
+                )
             row = conn.execute(
                 "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
                 (chapter_id, story_id),
@@ -1596,7 +1892,7 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
         return update_chapter(
             story_id,
             chapter_id,
-            ChapterPatchRequest(content=payload.content),
+            ChapterPatchRequest(content=payload.content, revision=payload.revision),
         )
 
     @router.delete("/api/stories/{story_id}/chapters/{chapter_id}")
@@ -2242,6 +2538,18 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
             ).fetchone()
             if not chapter:
                 raise HTTPException(status_code=404, detail="Chapter not found.")
+            base_revision = payload.chapter_revision
+            if base_revision is None:
+                raise HTTPException(status_code=422, detail="chapter_revision is required.")
+            if base_revision != chapter["revision"]:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "chapter_revision_conflict",
+                        "message": "Chapter changed on the server.",
+                        "chapter": row_to_chapter(chapter),
+                    },
+                )
             lorebook_rows = conn.execute(
                 "SELECT * FROM lorebook_entries WHERE story_id = ? ORDER BY updated_at DESC",
                 (story_id,),
@@ -2273,6 +2581,7 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                 story,
                 chapter,
                 lorebook_rows,
+                base_revision,
             ),
             media_type="application/x-ndjson; charset=utf-8",
         )

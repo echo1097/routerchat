@@ -665,6 +665,11 @@ function useRafScroller(streamRef) {
     [streamRef],
   );
 
+  const startFollowing = useCallback(() => {
+    followRef.current = true;
+    scrollToBottom(true);
+  }, [scrollToBottom]);
+
   useEffect(
     () => () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -679,6 +684,7 @@ function useRafScroller(streamRef) {
     markTouchStart,
     markTouchMove,
     scrollToBottom,
+    startFollowing,
     followRef,
   };
 }
@@ -2662,10 +2668,32 @@ function StoryWorkspace({
   const canvasScrollTopRef = useRef(null);
   const canvasSelectionOffsetRef = useRef(null);
   const canvasClickPointRef = useRef(null);
+  const generationActiveRef = useRef(false);
   const activeStory = stories.find((story) => story.id === activeStoryId);
   const activeChapter = chapters.find((chapter) => chapter.id === activeChapterId);
   const hasChapterContent = Boolean(chapterContent.trim());
   const writingLocked = Boolean(generationStatus);
+  const {
+    markUserScroll: markCanvasScroll,
+    markWheelIntent: markCanvasWheelIntent,
+    markTouchStart: markCanvasTouchStart,
+    markTouchMove: markCanvasTouchMove,
+    scrollToBottom: scrollCanvasToBottom,
+    startFollowing: startCanvasFollowing,
+  } = useRafScroller(canvasScrollRef);
+
+  useEffect(() => {
+    const generationActive = Boolean(generationStatus);
+    if (generationActive && !generationActiveRef.current) {
+      startCanvasFollowing();
+    }
+    generationActiveRef.current = generationActive;
+  }, [generationStatus, startCanvasFollowing]);
+
+  useEffect(() => {
+    if (!generationStatus) return;
+    scrollCanvasToBottom();
+  }, [chapterContent, generationStatus, scrollCanvasToBottom]);
 
   useLayoutEffect(() => {
     if (!canvasEditing) return;
@@ -2802,7 +2830,15 @@ function StoryWorkspace({
   }
 
   return (
-    <section data-tour="write-chapter-canvas" ref={canvasScrollRef} className="write-canvas-scroll min-h-0 overflow-y-auto px-4 pb-6 sm:px-8 lg:px-10">
+    <section
+      data-tour="write-chapter-canvas"
+      ref={canvasScrollRef}
+      onScroll={markCanvasScroll}
+      onWheel={markCanvasWheelIntent}
+      onTouchStart={markCanvasTouchStart}
+      onTouchMove={markCanvasTouchMove}
+      className="write-canvas-scroll min-h-0 overflow-y-auto overscroll-contain px-4 pb-6 sm:px-8 lg:px-10"
+    >
       <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col">
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="write-canvas-header mb-4 space-y-3">
@@ -5965,6 +6001,7 @@ function App() {
     markTouchStart,
     markTouchMove,
     scrollToBottom,
+    startFollowing,
     followRef,
   } =
     useRafScroller(streamRef);
@@ -7042,7 +7079,7 @@ function App() {
         created_at: new Date().toISOString(),
       };
 
-      followRef.current = true;
+      startFollowing();
       setStreamingMessageId(assistantId);
       setReasoningDurations((current) => {
         const next = { ...current };
@@ -7055,7 +7092,6 @@ function App() {
           : [...current, assistantMessage],
       );
       setPrompt("");
-      scrollToBottom(true);
 
       const response = await fetch(`/api/chats/${conversationId}/messages/stream`, {
         method: "POST",
@@ -7914,6 +7950,10 @@ function App() {
             }
             setStoryGenerationStatus("Writing");
             generatedText += value;
+            if (writeGenerationMode === "new") {
+              setChapterContent(generatedText);
+              chapterContentRef.current = generatedText;
+            }
             return;
           }
           if (event.type === "chapter_updated") {

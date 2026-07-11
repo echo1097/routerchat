@@ -17,6 +17,13 @@ function chapter(id, title, content, revision = 0) {
   };
 }
 
+function longChapterContent() {
+  return Array.from(
+    { length: 48 },
+    (_, index) => `paragraph ${index + 1} gives the chapter enough room to scroll while generation is pending.`,
+  ).join("\n\n");
+}
+
 function response(route, body, status = 200) {
   return route.fulfill({
     status,
@@ -34,6 +41,7 @@ export function createDeferred() {
 }
 
 export async function installWriteApi(page, options = {}) {
+  const openingContent = options.longContent ? longChapterContent() : "saved opening";
   const state = {
     story: {
       id: "story-1",
@@ -47,8 +55,8 @@ export async function installWriteApi(page, options = {}) {
       updated_at: "2026-01-01T00:00:00Z",
     },
     chapters: options.twoChapters
-      ? [chapter("chapter-1", "Opening", "saved opening"), chapter("chapter-2", "Second", "saved second")]
-      : [chapter("chapter-1", "Opening", "saved opening")],
+      ? [chapter("chapter-1", "Opening", openingContent), chapter("chapter-2", "Second", "saved second")]
+      : [chapter("chapter-1", "Opening", openingContent)],
     saveRequests: [],
     saveGates: [],
     generationRequests: [],

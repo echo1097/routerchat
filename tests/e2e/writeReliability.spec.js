@@ -14,6 +14,13 @@ async function reloadAndRead(page) {
   return page.getByRole("textbox", { name: "Chapter canvas" });
 }
 
+async function canvasMetrics(page) {
+  return page.locator('[data-tour="write-chapter-canvas"]').evaluate((node) => ({
+    scrollTop: node.scrollTop,
+    maxScroll: Math.max(node.scrollHeight - node.clientHeight, 0),
+  }));
+}
+
 test.describe.configure({ mode: "serial" });
 
 test("keeps the newest debounced draft through a controlled save response", async ({ page }) => {
@@ -56,6 +63,70 @@ test("locks navigation during generation and keeps the other chapter unchanged",
   generationGate.resolve();
   await expect(await reloadAndRead(page)).toContainText("generated text");
   expect(api.state.chapters[1].content).toBe("saved second");
+});
+
+test("follows the chapter bottom until the user scrolls upward", async ({ page }) => {
+  const api = await installWriteApi(page, { longContent: true });
+  await api.open();
+  const canvas = page.locator('[data-tour="write-chapter-canvas"]');
+  const generationGate = api.deferGeneration();
+
+  await page.getByPlaceholder(/Ask Test model to write anything/).fill("write more");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect.poll(() => api.state.generationRequests.length).toBe(1);
+  await expect.poll(async () => {
+    const metrics = await canvasMetrics(page);
+    return metrics.maxScroll - metrics.scrollTop;
+  }).toBeLessThan(2);
+
+  await canvas.evaluate((node) => {
+    node.dispatchEvent(new WheelEvent("wheel", { deltaY: -500, bubbles: true }));
+    node.scrollTop = Math.max(node.scrollTop - node.clientHeight, 0);
+    node.dispatchEvent(new Event("scroll", { bubbles: true }));
+  });
+  const pausedMetrics = await canvasMetrics(page);
+  expect(pausedMetrics.scrollTop).toBeLessThan(pausedMetrics.maxScroll - 100);
+
+  generationGate.resolve();
+  await expect(page.getByText("Finished chapter")).toBeVisible();
+
+  const afterGeneration = await canvasMetrics(page);
+  expect(afterGeneration.scrollTop).toBeLessThan(afterGeneration.maxScroll - 80);
+});
+
+test("resumes chapter auto-follow when the user returns to the bottom", async ({ page }) => {
+  const api = await installWriteApi(page, { longContent: true });
+  await api.open();
+  const canvas = page.locator('[data-tour="write-chapter-canvas"]');
+  const generationGate = api.deferGeneration();
+
+  await page.getByPlaceholder(/Ask Test model to write anything/).fill("write more");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect.poll(() => api.state.generationRequests.length).toBe(1);
+  await expect.poll(async () => {
+    const metrics = await canvasMetrics(page);
+    return metrics.maxScroll - metrics.scrollTop;
+  }).toBeLessThan(2);
+
+  await canvas.evaluate((node) => {
+    node.dispatchEvent(new WheelEvent("wheel", { deltaY: -500, bubbles: true }));
+    node.scrollTop = Math.max(node.scrollTop - node.clientHeight, 0);
+    node.dispatchEvent(new Event("scroll", { bubbles: true }));
+  });
+  await canvas.evaluate((node) => {
+    node.scrollTop = node.scrollHeight;
+    node.dispatchEvent(new Event("scroll", { bubbles: true }));
+  });
+  await expect.poll(async () => {
+    const metrics = await canvasMetrics(page);
+    return metrics.maxScroll - metrics.scrollTop;
+  }).toBeLessThan(2);
+
+  generationGate.resolve();
+  await expect(page.getByText("Finished chapter")).toBeVisible();
+
+  const afterGeneration = await canvasMetrics(page);
+  expect(afterGeneration.maxScroll - afterGeneration.scrollTop).toBeLessThan(2);
 });
 
 test("stopping a pending generation does not persist partial output", async ({ page }) => {

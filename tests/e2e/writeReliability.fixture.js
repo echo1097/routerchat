@@ -84,7 +84,10 @@ export async function installWriteApi(page, options = {}) {
       updated_at: "2026-01-01T00:00:00Z",
     },
     chapters: options.twoChapters
-      ? [chapter("chapter-1", "Opening", openingContent), chapter("chapter-2", "Second", "saved second")]
+      ? [
+          chapter("chapter-1", "Opening", openingContent),
+          chapter("chapter-2", "Second", options.secondContent ?? "saved second"),
+        ]
       : [chapter("chapter-1", "Opening", openingContent)],
     saveRequests: [],
     saveGates: [],

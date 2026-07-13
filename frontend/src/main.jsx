@@ -2588,9 +2588,11 @@ function StoryWorkspace({
   saveState,
   generationStatus,
   writeReasoning,
+  canvasScrollPosition,
   onOpenRail,
   onOpenLorebook,
   onBackToChapter,
+  onCanvasScrollPositionChange,
   onChangeContent,
   onCanvasImportFallback,
   onCreateLorebookEntry,
@@ -2611,6 +2613,26 @@ function StoryWorkspace({
     scrollToBottom: scrollCanvasToBottom,
     startFollowing: startCanvasFollowing,
   } = useRafScroller(canvasScrollRef);
+
+  useLayoutEffect(() => {
+    if (workspaceView !== "chapter" || generationStatus) return undefined;
+
+    const canvas = canvasScrollRef.current;
+    if (!canvas) return undefined;
+
+    const maxScroll = Math.max(canvas.scrollHeight - canvas.clientHeight, 0);
+    const savedScrollTop = Number.isFinite(canvasScrollPosition) ? canvasScrollPosition : 0;
+    canvas.scrollTop = Math.min(Math.max(savedScrollTop, 0), maxScroll);
+
+    return undefined;
+  }, [activeChapterId, activeStoryId, canvasScrollPosition, generationStatus, workspaceView]);
+
+  const handleCanvasScroll = useCallback(() => {
+    markCanvasScroll();
+
+    const canvas = canvasScrollRef.current;
+    if (canvas) onCanvasScrollPositionChange(canvas.scrollTop);
+  }, [markCanvasScroll, onCanvasScrollPositionChange]);
 
   useEffect(() => {
     const generationActive = Boolean(generationStatus);
@@ -2665,7 +2687,7 @@ function StoryWorkspace({
     <section
       data-tour="write-chapter-canvas"
       ref={canvasScrollRef}
-      onScroll={markCanvasScroll}
+      onScroll={handleCanvasScroll}
       onWheel={markCanvasWheelIntent}
       onTouchStart={markCanvasTouchStart}
       onTouchMove={markCanvasTouchMove}
@@ -5665,6 +5687,7 @@ function App() {
   const chaptersRef = useRef([]);
   const activeStoryIdRef = useRef(null);
   const activeChapterIdRef = useRef(null);
+  const chapterCanvasScrollPositionsRef = useRef(new Map());
   const storyWorkspaceViewRef = useRef("chapter");
   const navigationCoordinatorRef = useRef(null);
   const chapterSaveCoordinatorRef = useRef(null);
@@ -5714,6 +5737,25 @@ function App() {
   }
 
   const chapterSaveCoordinator = chapterSaveCoordinatorRef.current;
+
+  function chapterCanvasScrollKey(storyId, chapterId) {
+    return `${storyId}/${chapterId}`;
+  }
+
+  function chapterCanvasScrollPosition(storyId, chapterId) {
+    if (!storyId || !chapterId) return 0;
+    return chapterCanvasScrollPositionsRef.current.get(
+      chapterCanvasScrollKey(storyId, chapterId),
+    ) || 0;
+  }
+
+  function rememberChapterCanvasScroll(storyId, chapterId, scrollTop) {
+    if (!storyId || !chapterId || !Number.isFinite(scrollTop)) return;
+    chapterCanvasScrollPositionsRef.current.set(
+      chapterCanvasScrollKey(storyId, chapterId),
+      scrollTop,
+    );
+  }
 
   function persistPendingChapterDrafts() {
     const pendingDrafts = chapterSaveCoordinator.getPendingDrafts();
@@ -7989,6 +8031,7 @@ function App() {
             saveState={chapterSaveState}
             generationStatus={storyGenerationStatus}
             writeReasoning={writeReasoning}
+            canvasScrollPosition={chapterCanvasScrollPosition(activeStoryId, activeChapterId)}
             onOpenRail={() => setRailOpen(true)}
             onOpenLorebook={() => {
               setStoryWorkspaceView("lorebook");
@@ -7997,6 +8040,9 @@ function App() {
             onBackToChapter={() => {
               setStoryWorkspaceView("chapter");
               writeRoute(storyRoute(activeStoryId, activeChapterId, "chapter"));
+            }}
+            onCanvasScrollPositionChange={(scrollTop) => {
+              rememberChapterCanvasScroll(activeStoryId, activeChapterId, scrollTop);
             }}
             onChangeContent={updateChapterCanvasContent}
             onCanvasImportFallback={(error) => {

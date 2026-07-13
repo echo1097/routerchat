@@ -116,6 +116,57 @@ test("uses native click placement and keeps the canvas stable while editing", as
   expect((mobileEditorBox?.x || 0) + (mobileEditorBox?.width || 0)).toBeLessThanOrEqual(390);
 });
 
+test("remembers each chapter canvas position during the current app session", async ({ page }) => {
+  const openingContent = Array.from(
+    { length: 56 },
+    (_, index) => `opening paragraph ${index + 1} keeps the first chapter tall enough to scroll.`,
+  ).join("\n\n");
+  const secondContent = Array.from(
+    { length: 64 },
+    (_, index) => `second paragraph ${index + 1} keeps the other chapter independently scrollable.`,
+  ).join("\n\n");
+  const api = await installWriteApi(page, {
+    legacyContent: openingContent,
+    secondContent,
+    twoChapters: true,
+  });
+  await api.open();
+
+  const canvas = page.locator('[data-tour="write-chapter-canvas"]');
+  await canvas.evaluate((node) => {
+    node.scrollTop = Math.round((node.scrollHeight - node.clientHeight) * 0.42);
+  });
+  const openingScrollTop = (await canvasMetrics(page)).scrollTop;
+  expect(openingScrollTop).toBeGreaterThan(0);
+
+  await page.getByRole("button", { name: /Writing tools/ }).click();
+  await page.getByRole("menu").getByText("Lorebook", { exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Lorebook" })).toBeVisible();
+  await page.getByRole("button", { name: "Back to chapter" }).click();
+  await expect(page.getByRole("heading", { name: "Opening" })).toBeVisible();
+  await expect.poll(async () => (await canvasMetrics(page)).scrollTop).toBeCloseTo(openingScrollTop, 0);
+
+  await page.getByRole("button", { name: "Second", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Second" })).toBeVisible();
+  await canvas.evaluate((node) => {
+    node.scrollTop = Math.round((node.scrollHeight - node.clientHeight) * 0.68);
+  });
+  const secondScrollTop = (await canvasMetrics(page)).scrollTop;
+  expect(secondScrollTop).toBeGreaterThan(openingScrollTop);
+
+  await page.getByRole("button", { name: "Opening", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Opening" })).toBeVisible();
+  await expect.poll(async () => (await canvasMetrics(page)).scrollTop).toBeCloseTo(openingScrollTop, 0);
+
+  await page.getByRole("button", { name: "Second", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Second" })).toBeVisible();
+  await expect.poll(async () => (await canvasMetrics(page)).scrollTop).toBeCloseTo(secondScrollTop, 0);
+
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Second" })).toBeVisible();
+  await expect.poll(async () => (await canvasMetrics(page)).scrollTop).toBe(0);
+});
+
 test("edits and reloads migrated Markdown with working undo and redo", async ({ page }) => {
   const legacyContent = "# Existing title\n\nA paragraph with **old formatting**.";
   const api = await installWriteApi(page, { legacyContent });

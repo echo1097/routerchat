@@ -1,5 +1,7 @@
 import React, {
+  lazy,
   memo,
+  Suspense,
   useCallback,
   useEffect,
   useId,
@@ -43,6 +45,8 @@ import NotificationStack from "./notifications/NotificationStack.jsx";
 import { useNotifications } from "./notifications/useNotifications.js";
 import { createSaveCoordinator } from "./writing/saveCoordinator.js";
 import { createNavigationCoordinator } from "./writing/navigationCoordinator.js";
+
+const ChapterCanvasEditor = lazy(() => import("./writing/ChapterCanvasEditor.jsx"));
 import {
   chapterFromUpdateEvent,
   chapterGenerationErrorMessage,
@@ -2572,147 +2576,6 @@ function WriteOperationStatus({ status, reasoning = "", reasoningStreaming = fal
   );
 }
 
-function visibleOffsetFromPoint(root, clientX, clientY) {
-  if (!root) return null;
-  const caretRange =
-    document.caretPositionFromPoint?.(clientX, clientY) ||
-    document.caretRangeFromPoint?.(clientX, clientY);
-  if (!caretRange) return null;
-
-  const offsetNode = caretRange.offsetNode || caretRange.startContainer;
-  const offset = caretRange.offset ?? caretRange.startOffset;
-  if (!offsetNode || !root.contains(offsetNode)) return null;
-
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  let visibleOffset = 0;
-  let previousBlock = null;
-  let node = walker.nextNode();
-
-  while (node) {
-    const block = node.parentElement?.closest("p,h1,h2,h3,li,blockquote,pre");
-    if (previousBlock && block && block !== previousBlock) {
-      visibleOffset += 2;
-    }
-    previousBlock = block || previousBlock;
-
-    if (node === offsetNode) {
-      return visibleOffset + offset;
-    }
-    visibleOffset += node.textContent?.length || 0;
-    node = walker.nextNode();
-  }
-
-  return null;
-}
-
-function sourceOffsetFromVisibleOffset(source, visibleOffset) {
-  if (visibleOffset === null) return null;
-
-  let visibleIndex = 0;
-  const markdownSyntax = new Set(["#", "*", "_", "`", "[", "]", "(", ")", ">", "|"]);
-
-  for (let sourceIndex = 0; sourceIndex < source.length; sourceIndex += 1) {
-    if (visibleIndex >= visibleOffset) return sourceIndex;
-
-    const character = source[sourceIndex];
-    const previous = source[sourceIndex - 1] || "\n";
-    const next = source[sourceIndex + 1] || "";
-    const isListMarker = (character === "-" || character === "+") && previous === "\n" && next === " ";
-    const isOrderedListMarker =
-      character === "." &&
-      previous >= "0" &&
-      previous <= "9" &&
-      next === " ";
-
-    if (markdownSyntax.has(character) || isListMarker || isOrderedListMarker) {
-      continue;
-    }
-
-    visibleIndex += 1;
-  }
-
-  return source.length;
-}
-
-function textareaOffsetFromPoint(textarea, source, clientX, clientY, fallbackOffset) {
-  if (!textarea) return fallbackOffset;
-  if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return fallbackOffset;
-
-  const rect = textarea.getBoundingClientRect();
-  const styles = window.getComputedStyle(textarea);
-  const mirror = document.createElement("div");
-  const marker = document.createElement("span");
-  const styleProperties = [
-    "boxSizing",
-    "width",
-    "fontFamily",
-    "fontSize",
-    "fontWeight",
-    "fontStyle",
-    "letterSpacing",
-    "lineHeight",
-    "paddingTop",
-    "paddingRight",
-    "paddingBottom",
-    "paddingLeft",
-    "borderTopWidth",
-    "borderRightWidth",
-    "borderBottomWidth",
-    "borderLeftWidth",
-  ];
-
-  styleProperties.forEach((property) => {
-    mirror.style[property] = styles[property];
-  });
-  mirror.style.position = "fixed";
-  mirror.style.left = `${rect.left}px`;
-  mirror.style.top = `${rect.top}px`;
-  mirror.style.whiteSpace = "pre-wrap";
-  mirror.style.overflowWrap = "break-word";
-  mirror.style.visibility = "hidden";
-  mirror.style.pointerEvents = "none";
-  marker.textContent = "\u200b";
-  document.body.appendChild(mirror);
-
-  const markerRectAt = (offset) => {
-    mirror.textContent = source.slice(0, offset);
-    mirror.appendChild(marker);
-    return marker.getBoundingClientRect();
-  };
-
-  let low = 0;
-  let high = source.length;
-  while (low < high) {
-    const mid = Math.floor((low + high + 1) / 2);
-    if (markerRectAt(mid).top <= clientY) {
-      low = mid;
-    } else {
-      high = mid - 1;
-    }
-  }
-
-  const lineTop = markerRectAt(low).top;
-  while (low > 0 && Math.abs(markerRectAt(low - 1).top - lineTop) < 1) {
-    low -= 1;
-  }
-
-  let bestOffset = low;
-  let bestDistance = Number.POSITIVE_INFINITY;
-  for (let offset = low; offset <= source.length; offset += 1) {
-    const markerRect = markerRectAt(offset);
-    if (offset > low && Math.abs(markerRect.top - lineTop) >= 1) break;
-
-    const distance = Math.abs(markerRect.left - clientX);
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      bestOffset = offset;
-    }
-  }
-
-  document.body.removeChild(mirror);
-  return bestOffset;
-}
-
 function StoryWorkspace({
   stories,
   chapters,
@@ -2729,22 +2592,16 @@ function StoryWorkspace({
   onOpenLorebook,
   onBackToChapter,
   onChangeContent,
+  onCanvasImportFallback,
   onCreateLorebookEntry,
   onUpdateLorebookEntry,
   onDeleteLorebookEntry,
   onConfirmDeleteLorebookEntry,
 }) {
-  const [canvasEditing, setCanvasEditing] = useState(false);
   const canvasScrollRef = useRef(null);
-  const canvasPreviewRef = useRef(null);
-  const canvasTextareaRef = useRef(null);
-  const canvasScrollTopRef = useRef(null);
-  const canvasSelectionOffsetRef = useRef(null);
-  const canvasClickPointRef = useRef(null);
   const generationActiveRef = useRef(false);
   const activeStory = stories.find((story) => story.id === activeStoryId);
   const activeChapter = chapters.find((chapter) => chapter.id === activeChapterId);
-  const hasChapterContent = Boolean(chapterContent.trim());
   const writingLocked = Boolean(generationStatus);
   const {
     markUserScroll: markCanvasScroll,
@@ -2767,104 +2624,6 @@ function StoryWorkspace({
     if (!generationStatus) return;
     scrollCanvasToBottom();
   }, [chapterContent, generationStatus, scrollCanvasToBottom]);
-
-  useLayoutEffect(() => {
-    if (!canvasEditing) return;
-    const textarea = canvasTextareaRef.current;
-    if (!textarea) return;
-
-    textarea.style.height = "auto";
-    textarea.style.height = `${Math.max(textarea.scrollHeight, 320)}px`;
-  }, [activeChapterId, canvasEditing, chapterContent]);
-
-  useLayoutEffect(() => {
-    if (!canvasEditing || writingLocked) return;
-
-    const scrollTop = canvasScrollTopRef.current;
-    canvasTextareaRef.current?.focus({ preventScroll: true });
-    if (canvasSelectionOffsetRef.current !== null) {
-      const selectionOffset = Math.min(
-        textareaOffsetFromPoint(
-          canvasTextareaRef.current,
-          chapterContent,
-          canvasClickPointRef.current?.clientX,
-          canvasClickPointRef.current?.clientY,
-          canvasSelectionOffsetRef.current,
-        ),
-        chapterContent.length,
-      );
-      canvasTextareaRef.current?.setSelectionRange(selectionOffset, selectionOffset);
-      canvasSelectionOffsetRef.current = null;
-      canvasClickPointRef.current = null;
-    }
-    if (canvasScrollRef.current && scrollTop !== null) {
-      canvasScrollRef.current.scrollTop = scrollTop;
-      requestAnimationFrame(() => {
-        if (canvasScrollRef.current) {
-          canvasScrollRef.current.scrollTop = scrollTop;
-        }
-        canvasScrollTopRef.current = null;
-      });
-    } else {
-      canvasScrollTopRef.current = null;
-    }
-  }, [canvasEditing, writingLocked]);
-
-  useEffect(() => {
-    if (writingLocked) {
-      setCanvasEditing(false);
-    }
-  }, [writingLocked]);
-
-  const openCanvasEditor = () => {
-    if (writingLocked) return;
-    canvasScrollTopRef.current = canvasScrollRef.current?.scrollTop ?? null;
-    setCanvasEditing(true);
-  };
-
-  const openCanvasEditorFromPointer = (event) => {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    const visibleOffset = visibleOffsetFromPoint(canvasPreviewRef.current, event.clientX, event.clientY);
-    canvasSelectionOffsetRef.current = sourceOffsetFromVisibleOffset(chapterContent, visibleOffset);
-    canvasClickPointRef.current = { clientX: event.clientX, clientY: event.clientY };
-    openCanvasEditor();
-  };
-
-  const storyMarkdownComponents = useMemo(
-    () => ({
-      p: ({ node, ...props }) => <p className="mb-8 text-pretty last:mb-0" {...props} />,
-      em: ({ node, ...props }) => <em className="italic text-zinc-100" {...props} />,
-      strong: ({ node, ...props }) => <strong className="font-semibold text-zinc-50" {...props} />,
-      h1: ({ node, ...props }) => <h1 className="mb-5 mt-8 text-3xl font-semibold leading-tight text-zinc-50 first:mt-0" {...props} />,
-      h2: ({ node, ...props }) => <h2 className="mb-4 mt-7 text-2xl font-semibold leading-tight text-zinc-50 first:mt-0" {...props} />,
-      h3: ({ node, ...props }) => <h3 className="mb-3 mt-6 text-xl font-semibold leading-tight text-zinc-100 first:mt-0" {...props} />,
-      ul: ({ node, ...props }) => <ul className="my-5 list-disc space-y-2 pl-6 text-pretty" {...props} />,
-      ol: ({ node, ...props }) => <ol className="my-5 list-decimal space-y-2 pl-6 text-pretty" {...props} />,
-      li: ({ node, ...props }) => <li className="pl-1" {...props} />,
-      blockquote: ({ node, ...props }) => (
-        <blockquote className="my-5 border-l border-white/15 pl-5 text-zinc-300" {...props} />
-      ),
-      code: ({ inline, ...props }) =>
-        inline ? (
-          <code className="rounded-md bg-white/[0.07] px-1.5 py-0.5 text-[0.92em] text-zinc-100" {...props} />
-        ) : (
-          <code {...props} />
-        ),
-      pre: ({ node, ...props }) => (
-        <pre className="my-5 overflow-x-auto rounded-xl bg-black/30 p-4 text-sm leading-6 text-zinc-200 shadow-[var(--shadow-border)]" {...props} />
-      ),
-      a: ({ node, ...props }) => (
-        <a
-          className="text-accent underline decoration-accent/30 underline-offset-4 hover:decoration-accent/70"
-          target="_blank"
-          rel="noreferrer"
-          {...props}
-        />
-      ),
-    }),
-    [],
-  );
 
   if (!activeStory || !activeChapter) {
     return (
@@ -2939,39 +2698,17 @@ function StoryWorkspace({
             </div>
           </div>
 
-          {canvasEditing ? (
-            <textarea
-              ref={canvasTextareaRef}
-              value={chapterContent}
-              onBlur={() => setCanvasEditing(false)}
-              onChange={(event) => onChangeContent(event.target.value)}
-              disabled={writingLocked}
+          <Suspense fallback={<div className="chapter-editor-loading" aria-hidden="true" />}>
+            <ChapterCanvasEditor
+              key={activeChapter.id}
+              chapterId={activeChapter.id}
+              markdown={chapterContent}
+              readOnly={writingLocked}
               placeholder="Start writing here, or prompt the model to begin."
-              className="min-h-[320px] w-full flex-none resize-none overflow-hidden bg-transparent px-1 py-3 text-[17px] leading-8 text-zinc-100 outline-none placeholder:text-zinc-600 sm:px-2 sm:py-5"
+              onChange={onChangeContent}
+              onImportFallback={onCanvasImportFallback}
             />
-          ) : (
-            <div
-              ref={canvasPreviewRef}
-              role="textbox"
-              tabIndex={0}
-              aria-label="Chapter canvas"
-              aria-readonly={writingLocked}
-              onMouseDown={openCanvasEditorFromPointer}
-              onFocus={openCanvasEditor}
-              className={cx(
-                "min-h-[320px] flex-1 px-1 py-3 text-[17px] leading-8 text-zinc-100 outline-none focus-visible:ring-2 focus-visible:ring-accent/30 sm:px-2 sm:py-5",
-                writingLocked ? "cursor-default opacity-80" : "cursor-text",
-              )}
-            >
-              {hasChapterContent ? (
-                <ReactMarkdown components={storyMarkdownComponents}>
-                  {chapterContent}
-                </ReactMarkdown>
-              ) : (
-                <span className="text-zinc-600">Start writing here, or prompt the model to begin.</span>
-              )}
-            </div>
-          )}
+          </Suspense>
         </div>
       </div>
     </section>
@@ -8262,6 +7999,10 @@ function App() {
               writeRoute(storyRoute(activeStoryId, activeChapterId, "chapter"));
             }}
             onChangeContent={updateChapterCanvasContent}
+            onCanvasImportFallback={(error) => {
+              console.error("Chapter Markdown opened as literal text", error);
+              setStatus("Some chapter formatting opened as plain Markdown so no writing was lost.");
+            }}
             onCreateLorebookEntry={createLorebookEntry}
             onUpdateLorebookEntry={updateLorebookEntry}
             onDeleteLorebookEntry={deleteLorebookEntry}

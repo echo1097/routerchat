@@ -2,10 +2,7 @@ import { test, expect } from "@playwright/test";
 import { installWriteApi } from "./writeReliability.fixture.js";
 
 async function editCanvas(page, content) {
-  const editor = page.getByPlaceholder("Start writing here, or prompt the model to begin.");
-  if (!await editor.isVisible()) {
-    await page.getByRole("textbox", { name: "Chapter canvas" }).click();
-  }
+  const editor = page.getByRole("textbox", { name: "Chapter canvas" });
   await editor.fill(content);
 }
 
@@ -29,6 +26,121 @@ async function thinkingMetrics(page) {
 }
 
 test.describe.configure({ mode: "serial" });
+
+test("opens existing Markdown in the rich canvas without rewriting it", async ({ page }) => {
+  const legacyContent = [
+    "# Legacy chapter",
+    "",
+    "A **bold passage** with *quiet emphasis* and `inline code`.",
+    "",
+    "1. First route",
+    "    - Nested route",
+    "",
+    "> An old warning remains.",
+    "",
+    "```text",
+    "the sealed door",
+    "```",
+    "",
+    "[Open map](https://example.com/map)",
+  ].join("\n");
+  const api = await installWriteApi(page, { legacyContent });
+  await api.open();
+
+  const editor = page.getByRole("textbox", { name: "Chapter canvas" });
+  await expect(editor.locator("h1")).toHaveText("Legacy chapter");
+  await expect(editor.locator("strong")).toHaveText("bold passage");
+  await expect(editor.locator("em")).toHaveText("quiet emphasis");
+  await expect(editor.locator("ol")).toContainText("First route");
+  await expect(editor.locator("ul").filter({ hasText: "Nested route" }).first()).toContainText("Nested route");
+  await expect(editor.locator("blockquote")).toContainText("An old warning remains.");
+  await expect(editor.locator("code").filter({ hasText: "the sealed door" })).toContainText("the sealed door");
+  await expect(editor.getByRole("link", { name: "Open map" })).toBeVisible();
+
+  await page.waitForTimeout(750);
+  expect(api.state.saveRequests).toHaveLength(0);
+  expect(api.state.chapters[0].content).toBe(legacyContent);
+});
+
+test("uses native click placement and keeps the canvas stable while editing", async ({ page }) => {
+  const legacyContent = Array.from(
+    { length: 48 },
+    (_, index) => `paragraph ${index + 1} has a stable target for precise canvas editing.`,
+  ).join("\n\n");
+  const api = await installWriteApi(page, { legacyContent });
+  await api.open();
+
+  const canvas = page.locator('[data-tour="write-chapter-canvas"]');
+  const editor = page.getByRole("textbox", { name: "Chapter canvas" });
+  const targetParagraph = editor.locator("p").nth(24);
+  await targetParagraph.scrollIntoViewIfNeeded();
+
+  const beforeMetrics = await targetParagraph.evaluate((node) => {
+    const scroller = node.closest('[data-tour="write-chapter-canvas"]');
+    return {
+      scrollTop: scroller.scrollTop,
+      top: node.getBoundingClientRect().top,
+    };
+  });
+  const targetBox = await targetParagraph.boundingBox();
+  await page.mouse.click(
+    (targetBox?.x || 0) + (targetBox?.width || 0) - 2,
+    (targetBox?.y || 0) + Math.min((targetBox?.height || 32) / 2, 16),
+  );
+  await page.keyboard.type(" Added at the clicked end.");
+  await page.keyboard.press("Backspace");
+  await page.keyboard.type("!");
+
+  await expect(targetParagraph).toHaveText(
+    "paragraph 25 has a stable target for precise canvas editing. Added at the clicked end!",
+  );
+  const afterMetrics = await targetParagraph.evaluate((node) => {
+    const scroller = node.closest('[data-tour="write-chapter-canvas"]');
+    return {
+      scrollTop: scroller.scrollTop,
+      top: node.getBoundingClientRect().top,
+    };
+  });
+
+  expect(Math.abs(afterMetrics.scrollTop - beforeMetrics.scrollTop)).toBeLessThan(2);
+  expect(Math.abs(afterMetrics.top - beforeMetrics.top)).toBeLessThan(2);
+  const canvasAfterEdit = await canvasMetrics(page);
+  expect(canvasAfterEdit.scrollTop).toBeGreaterThan(0);
+  expect(canvasAfterEdit.scrollTop).toBeLessThan(canvasAfterEdit.maxScroll);
+  await expect.poll(() => api.state.saveRequests.length).toBe(1);
+  expect(api.state.saveRequests[0].content).toContain("Added at the clicked end!");
+
+  await page.setViewportSize({ width: 390, height: 700 });
+  const mobileEditorBox = await editor.boundingBox();
+  expect(mobileEditorBox?.x).toBeGreaterThanOrEqual(0);
+  expect((mobileEditorBox?.x || 0) + (mobileEditorBox?.width || 0)).toBeLessThanOrEqual(390);
+});
+
+test("edits and reloads migrated Markdown with working undo and redo", async ({ page }) => {
+  const legacyContent = "# Existing title\n\nA paragraph with **old formatting**.";
+  const api = await installWriteApi(page, { legacyContent });
+  await api.open();
+
+  const editor = page.getByRole("textbox", { name: "Chapter canvas" });
+  const paragraph = editor.locator("p");
+  await paragraph.click();
+  await page.keyboard.press("End");
+  await page.keyboard.type(" Added sentence.");
+  await expect(paragraph).toContainText("Added sentence.");
+
+  const undoKey = process.platform === "darwin" ? "Meta+z" : "Control+z";
+  const redoKey = process.platform === "darwin" ? "Meta+Shift+z" : "Control+Shift+z";
+  await page.keyboard.press(undoKey);
+  await expect(paragraph).not.toContainText("Added sentence.");
+  await page.keyboard.press(redoKey);
+  await expect(paragraph).toContainText("Added sentence.");
+
+  await expect.poll(() => api.state.chapters[0].content).toContain("Added sentence.");
+  await page.reload();
+  await expect(page.getByRole("textbox", { name: "Chapter canvas" }).locator("h1")).toHaveText("Existing title");
+  await expect(page.getByRole("textbox", { name: "Chapter canvas" }).locator("strong")).toHaveText("old formatting");
+  await expect(page.getByRole("textbox", { name: "Chapter canvas" })).toContainText("Added sentence.");
+});
 
 test("keeps the newest debounced draft through a controlled save response", async ({ page }) => {
   const api = await installWriteApi(page);
@@ -243,6 +355,6 @@ test("preserves the local draft and exposes a server conflict", async ({ page })
   await editCanvas(page, "local draft");
   await page.waitForTimeout(650);
   await expect(page.getByText("Conflict", { exact: true })).toBeVisible();
-  await expect(page.getByPlaceholder("Start writing here, or prompt the model to begin.")).toHaveValue("local draft");
+  await expect(page.getByRole("textbox", { name: "Chapter canvas" })).toHaveText("local draft");
   await expect(await reloadAndRead(page)).toContainText("server draft");
 });

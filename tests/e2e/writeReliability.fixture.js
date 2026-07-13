@@ -70,7 +70,7 @@ export async function installWriteApi(page, options = {}) {
     });
   }
 
-  const openingContent = options.longContent ? longChapterContent() : "saved opening";
+  const openingContent = options.legacyContent ?? (options.longContent ? longChapterContent() : "saved opening");
   const state = {
     story: {
       id: "story-1",

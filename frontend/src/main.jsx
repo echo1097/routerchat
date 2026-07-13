@@ -3769,7 +3769,6 @@ function WriteHistoryModal({ open, entries, title, onClose }) {
                   run={run}
                   open={openRuns[run.id] ?? index === runGroups.length - 1}
                   title={`Prompt ${index + 1}`}
-                  sequence={index + 1}
                   onToggle={() => toggleRun(run.id)}
                   expandedEntries={expandedEntries}
                   onToggleEntry={toggleExpanded}
@@ -3793,7 +3792,6 @@ function WriteHistoryRunAccordion({
   run,
   open,
   title,
-  sequence,
   onToggle,
   expandedEntries,
   onToggleEntry,
@@ -3817,19 +3815,14 @@ function WriteHistoryRunAccordion({
         aria-expanded={open}
         onClick={onToggle}
       >
-        <span className="flex min-w-0 items-center gap-3">
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white/[0.055] text-xs font-semibold tabular-nums text-zinc-400 shadow-[var(--shadow-border)]">
-            {String(sequence).padStart(2, "0")}
-          </span>
-          <span className="min-w-0">
-            <span className="flex min-w-0 items-center gap-2.5">
-              <span className="truncate text-sm font-semibold text-zinc-100">{title}</span>
-              <span className="shrink-0 text-[11px] font-medium tabular-nums text-zinc-600">
-                {actionCount} {actionCount === 1 ? "action" : "actions"}
-              </span>
+        <span className="min-w-0">
+          <span className="flex min-w-0 items-center gap-2.5">
+            <span className="truncate text-sm font-semibold text-zinc-100">{title}</span>
+            <span className="shrink-0 text-[11px] font-medium tabular-nums text-zinc-600">
+              {actionCount} {actionCount === 1 ? "action" : "actions"}
             </span>
-            <span className="mt-0.5 block truncate text-xs leading-5 text-zinc-500">{promptText}</span>
           </span>
+          <span className="mt-0.5 block truncate text-xs leading-5 text-zinc-500">{promptText}</span>
         </span>
         <span className="t-acc-chevron grid h-9 w-9 shrink-0 place-items-center rounded-full text-zinc-500">
           <ChevronDown size={17} strokeWidth={1.8} aria-hidden="true" />

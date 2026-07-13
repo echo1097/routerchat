@@ -21,6 +21,13 @@ async function canvasMetrics(page) {
   }));
 }
 
+async function thinkingMetrics(page) {
+  return page.getByTestId("write-thinking-scroll").evaluate((node) => ({
+    scrollTop: node.scrollTop,
+    maxScroll: Math.max(node.scrollHeight - node.clientHeight, 0),
+  }));
+}
+
 test.describe.configure({ mode: "serial" });
 
 test("keeps the newest debounced draft through a controlled save response", async ({ page }) => {
@@ -127,6 +134,69 @@ test("resumes chapter auto-follow when the user returns to the bottom", async ({
 
   const afterGeneration = await canvasMetrics(page);
   expect(afterGeneration.maxScroll - afterGeneration.scrollTop).toBeLessThan(2);
+});
+
+test("thinking dropdown follows new reasoning until the reader scrolls away", async ({ page }) => {
+  const api = await installWriteApi(page, { controlledReasoningStream: true });
+  await api.open();
+  await page.getByPlaceholder(/Ask Test model to write anything/).fill("think through this");
+  await page.getByRole("button", { name: "Send" }).click();
+  await api.waitForReasoningStream();
+
+  const openingReasoning = Array.from(
+    { length: 36 },
+    (_, index) => `step ${index + 1} checks another part of the scene before choosing what happens next.`,
+  ).join("\n\n");
+  await api.pushReasoning(`${openingReasoning}\n\n\`\`\`text\nquiet code block\n\`\`\``);
+
+  const toggle = page.getByRole("button", { name: "Expand thinking details" });
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  expect((await toggle.boundingBox())?.height).toBeGreaterThanOrEqual(40);
+
+  await toggle.focus();
+  await toggle.press("Enter");
+  await expect(page.getByRole("region", { name: "Thinking details" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Collapse thinking details" })).toHaveAttribute("aria-expanded", "true");
+  await expect.poll(async () => {
+    const metrics = await thinkingMetrics(page);
+    return metrics.maxScroll - metrics.scrollTop;
+  }).toBeLessThan(2);
+
+  await api.pushReasoning("\n\na new thought arrives while the reader is following the output.");
+  await expect.poll(async () => {
+    const metrics = await thinkingMetrics(page);
+    return metrics.maxScroll - metrics.scrollTop;
+  }).toBeLessThan(2);
+
+  const thinkingScroll = page.getByTestId("write-thinking-scroll");
+  await thinkingScroll.evaluate((node) => {
+    node.dispatchEvent(new WheelEvent("wheel", { deltaY: -500, bubbles: true }));
+    node.scrollTop = Math.max(node.scrollTop - 180, 0);
+    node.dispatchEvent(new Event("scroll", { bubbles: true }));
+  });
+  const pausedMetrics = await thinkingMetrics(page);
+  await api.pushReasoning("\n\nthis update should not steal the readers place.");
+  await page.waitForTimeout(100);
+  const afterPausedUpdate = await thinkingMetrics(page);
+  expect(afterPausedUpdate.scrollTop).toBe(pausedMetrics.scrollTop);
+  expect(afterPausedUpdate.maxScroll - afterPausedUpdate.scrollTop).toBeGreaterThan(32);
+
+  await thinkingScroll.evaluate((node) => {
+    node.scrollTop = node.scrollHeight;
+    node.dispatchEvent(new Event("scroll", { bubbles: true }));
+  });
+  await api.pushReasoning("\n\nfollowing resumes after the reader returns to the bottom.");
+  await expect.poll(async () => {
+    const metrics = await thinkingMetrics(page);
+    return metrics.maxScroll - metrics.scrollTop;
+  }).toBeLessThan(2);
+
+  await page.setViewportSize({ width: 390, height: 700 });
+  const popoverBox = await page.getByRole("region", { name: "Thinking details" }).boundingBox();
+  expect(popoverBox?.x).toBeGreaterThanOrEqual(15);
+  expect((popoverBox?.x || 0) + (popoverBox?.width || 0)).toBeLessThanOrEqual(375);
+
+  await api.closeReasoningStream();
 });
 
 test("stopping a pending generation does not persist partial output", async ({ page }) => {

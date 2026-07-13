@@ -41,6 +41,35 @@ export function createDeferred() {
 }
 
 export async function installWriteApi(page, options = {}) {
+  if (options.controlledReasoningStream) {
+    await page.addInitScript(() => {
+      const nativeFetch = window.fetch.bind(window);
+
+      window.__writeReasoningStream = null;
+      window.fetch = async (input, init = {}) => {
+        const requestUrl = typeof input === "string" ? input : input?.url || "";
+        const isChapterGeneration = /\/api\/stories\/[^/]+\/chapters\/[^/]+\/generate\/stream(?:\?|$)/.test(requestUrl);
+        if (!isChapterGeneration) return nativeFetch(input, init);
+
+        const requestBody = JSON.parse(String(init.body || "{}"));
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream({
+          start(controller) {
+            window.__writeReasoningStream = {
+              controller,
+              requestBody,
+            };
+          },
+        });
+
+        return new Response(stream, {
+          status: 200,
+          headers: { "Content-Type": "application/x-ndjson" },
+        });
+      };
+    });
+  }
+
   const openingContent = options.longContent ? longChapterContent() : "saved opening";
   const state = {
     story: {
@@ -158,6 +187,33 @@ export async function installWriteApi(page, options = {}) {
     async open(chapterId = "chapter-1") {
       await page.goto(`/write/story/story-1/chapter/${chapterId}`);
       await expect(page.getByRole("heading", { name: chapterId === "chapter-1" ? "Opening" : "Second" })).toBeVisible();
+    },
+    async waitForReasoningStream() {
+      await expect.poll(() => page.evaluate(() => Boolean(window.__writeReasoningStream))).toBe(true);
+    },
+    async pushReasoning(value) {
+      await page.evaluate((nextValue) => {
+        const reasoningStream = window.__writeReasoningStream;
+        if (!reasoningStream) throw new Error("reasoning stream is not ready");
+
+        const event = {
+          type: "reasoning",
+          runId: reasoningStream.requestBody.generation_run_id,
+          storyId: "story-1",
+          chapterId: "chapter-1",
+          revision: reasoningStream.requestBody.chapter_revision,
+          value: nextValue,
+        };
+        reasoningStream.controller.enqueue(
+          new TextEncoder().encode(`${JSON.stringify(event)}\n`),
+        );
+      }, value);
+    },
+    async closeReasoningStream() {
+      await page.evaluate(() => {
+        window.__writeReasoningStream?.controller.close();
+        window.__writeReasoningStream = null;
+      });
     },
   };
 }

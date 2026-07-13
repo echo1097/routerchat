@@ -604,16 +604,17 @@ function writeLocalAppSettings(next) {
   window.localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify(merged));
 }
 
-function useRafScroller(streamRef) {
+function useRafScroller(streamRef, followThreshold = 120) {
   const followRef = useRef(true);
   const rafRef = useRef(null);
   const touchYRef = useRef(null);
+  const lastScrollTopRef = useRef(null);
 
   const isNearBottom = useCallback(() => {
     const node = streamRef.current;
     if (!node) return true;
-    return node.scrollHeight - node.scrollTop - node.clientHeight < 120;
-  }, [streamRef]);
+    return node.scrollHeight - node.scrollTop - node.clientHeight < followThreshold;
+  }, [followThreshold, streamRef]);
 
   const cancelScrollFrame = useCallback(() => {
     if (!rafRef.current) return;
@@ -627,8 +628,18 @@ function useRafScroller(streamRef) {
   }, [cancelScrollFrame]);
 
   const markUserScroll = useCallback(() => {
-    followRef.current = isNearBottom();
-  }, [isNearBottom]);
+    const node = streamRef.current;
+    if (!node) return;
+
+    const lastScrollTop = lastScrollTopRef.current;
+    const movedUp = typeof lastScrollTop === "number" && node.scrollTop < lastScrollTop - 1;
+    if (movedUp) {
+      followRef.current = false;
+    } else if (isNearBottom()) {
+      followRef.current = true;
+    }
+    lastScrollTopRef.current = node.scrollTop;
+  }, [isNearBottom, streamRef]);
 
   const markWheelIntent = useCallback(
     (event) => {
@@ -659,7 +670,10 @@ function useRafScroller(streamRef) {
         rafRef.current = null;
         if (!force && !followRef.current) return;
         const node = streamRef.current;
-        if (node) node.scrollTop = node.scrollHeight;
+        if (node) {
+          node.scrollTop = node.scrollHeight;
+          lastScrollTopRef.current = node.scrollTop;
+        }
       });
     },
     [streamRef],
@@ -2430,6 +2444,16 @@ function WriteOperationStatus({ status, reasoning = "", reasoningStreaming = fal
   const [shownStatus, setShownStatus] = useState(status);
   const [reasoningOpen, setReasoningOpen] = useState(false);
   const statusRef = useRef(null);
+  const reasoningScrollRef = useRef(null);
+  const popoverId = useId();
+  const {
+    markUserScroll: markReasoningScroll,
+    markWheelIntent: markReasoningWheelIntent,
+    markTouchStart: markReasoningTouchStart,
+    markTouchMove: markReasoningTouchMove,
+    scrollToBottom: scrollReasoningToBottom,
+    startFollowing: startReasoningFollowing,
+  } = useRafScroller(reasoningScrollRef, 32);
 
   useEffect(() => {
     const statusEl = statusRef.current;
@@ -2457,40 +2481,89 @@ function WriteOperationStatus({ status, reasoning = "", reasoningStreaming = fal
       ? `Thought for ${formatThoughtDuration(reasoningDurationMs)}`
       : "Thinking";
 
+  useEffect(() => {
+    if (!reasoningOpen) return;
+    startReasoningFollowing();
+  }, [reasoningOpen, startReasoningFollowing]);
+
+  useEffect(() => {
+    if (!reasoningOpen) return;
+    scrollReasoningToBottom();
+  }, [reasoning, reasoningOpen, scrollReasoningToBottom]);
+
   return (
     <span className="write-operation-wrap">
       <span className="write-operation-status" aria-live="polite">
-        {hasReasoning && (
+        {hasReasoning ? (
           <button
             type="button"
             onClick={() => setReasoningOpen((value) => !value)}
             className={cx("write-operation-thinking-toggle", CONTROL_MOTION)}
-            aria-label={reasoningOpen ? "Collapse thinking" : "Expand thinking"}
+            aria-label={reasoningOpen ? "Collapse thinking details" : "Expand thinking details"}
             aria-expanded={reasoningOpen}
+            aria-controls={popoverId}
           >
+            <span
+              ref={statusRef}
+              className="t-text-swap t-shimmer write-operation-label"
+              data-text={shownStatus}
+            >
+              {shownStatus}
+            </span>
             <ChevronDown
               size={14}
-              className={cx("transition-transform duration-150 ease-out", !reasoningOpen && "-rotate-90")}
+              aria-hidden="true"
+              className={cx(
+                "write-operation-thinking-chevron transition-transform duration-[var(--dropdown-open-dur)] ease-[var(--dropdown-ease)]",
+                !reasoningOpen && "-rotate-90",
+              )}
             />
           </button>
-        )}
-        <span
-          ref={statusRef}
-          className="t-text-swap t-shimmer write-operation-label"
-          data-text={shownStatus}
-        >
-          {shownStatus}
-        </span>
-      </span>
-      {hasReasoning && reasoningOpen && (
-        <span className="write-thinking-popover">
-          <span className="mb-2 flex items-center gap-2 text-xs font-medium text-zinc-300">
-            <span className={reasoningStreaming ? "t-shimmer" : undefined} data-text={reasoningLabel}>
-              {reasoningLabel}
-            </span>
-            {reasoningStreaming && <span className="h-1.5 w-1.5 rounded-full bg-accent" />}
+        ) : (
+          <span
+            ref={statusRef}
+            className="t-text-swap t-shimmer write-operation-label"
+            data-text={shownStatus}
+          >
+            {shownStatus}
           </span>
-          <span className="block max-h-64 overflow-y-auto border-l border-white/10 pl-4 text-left text-sm leading-6 text-zinc-500">
+        )}
+      </span>
+      {hasReasoning && (
+        <span
+          id={popoverId}
+          role="region"
+          aria-label="Thinking details"
+          aria-hidden={!reasoningOpen}
+          inert={reasoningOpen ? undefined : ""}
+          className={cx("t-dropdown write-thinking-popover", reasoningOpen && "is-open")}
+          data-origin="top-right"
+        >
+          <span className="write-thinking-popover-header">
+            <span className="write-thinking-popover-heading">
+              <span
+                className={cx("write-thinking-popover-title", reasoningStreaming && "t-shimmer")}
+                data-text={reasoningLabel}
+              >
+                {reasoningLabel}
+              </span>
+            </span>
+            {reasoningStreaming && (
+              <span className="write-thinking-streaming-indicator" aria-label="Reasoning in progress">
+                <span className="write-thinking-streaming-dot" aria-hidden="true" />
+                live
+              </span>
+            )}
+          </span>
+          <span
+            ref={reasoningScrollRef}
+            onScroll={markReasoningScroll}
+            onWheel={markReasoningWheelIntent}
+            onTouchStart={markReasoningTouchStart}
+            onTouchMove={markReasoningTouchMove}
+            className="write-thinking-popover-content"
+            data-testid="write-thinking-scroll"
+          >
             <ThinkingContent>{reasoning}</ThinkingContent>
           </span>
         </span>

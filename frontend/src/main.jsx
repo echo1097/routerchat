@@ -7190,7 +7190,7 @@ function App() {
       if (!result || !navigationIntentIsCurrent(navigationIntent)) return;
       commitStoryBundle(result);
       setStoryWorkspaceView("chapter");
-      writeRoute(storyRoute(story.id, null, "chapter"));
+      writeRoute(storyRoute(story.id, chapter.id, "chapter"));
       showToast("Story created");
     } catch (error) {
       setStatus(error.message);
@@ -7688,13 +7688,14 @@ function App() {
 
   async function generateStoryChapter(text = prompt.trim()) {
     if (isStreaming || hasActiveWriteGeneration() || !text || !activeStoryId || !activeChapterId) return;
+    const selectedGenerationMode = writeGenerationMode;
     const abortController = new AbortController();
     const run = {
       runId: crypto.randomUUID(),
       storyId: activeStoryId,
       chapterId: activeChapterId,
       baseRevision: 0,
-      generationMode: writeGenerationMode,
+      generationMode: selectedGenerationMode,
       status: "preparing",
       abortController,
       startedAt: Date.now(),
@@ -7714,7 +7715,6 @@ function App() {
     let targetChapterId = run.chapterId;
     let targetChapterContent = "";
     let targetChapterRevision = 0;
-    let shouldWaitForChapterPatch = false;
 
     try {
       await flushChapterSave(run.storyId, run.chapterId);
@@ -7727,9 +7727,11 @@ function App() {
         ?? chapterContentRef.current;
       targetChapterRevision = confirmedChapter?.revision ?? 0;
       run.baseRevision = targetChapterRevision;
-      shouldWaitForChapterPatch = writeGenerationMode === "edit" && Boolean(targetChapterContent.trim());
+      run.generationMode = selectedGenerationMode === "edit" && !targetChapterContent.trim()
+        ? "new"
+        : selectedGenerationMode;
       setPrompt("");
-      if (writeGenerationMode === "new") {
+      if (selectedGenerationMode === "new") {
         const chapter = await storyApi.createChapter(run.storyId, {
           title: `Chapter ${chapters.length + 1}`,
         });
@@ -7738,9 +7740,9 @@ function App() {
         targetChapterId = chapter.id;
         run.chapterId = chapter.id;
         run.baseRevision = chapter.revision;
+        run.generationMode = "new";
         targetChapterContent = "";
         targetChapterRevision = chapter.revision;
-        shouldWaitForChapterPatch = false;
         setChapters(nextChapters.map(chapterWithCoordinatorState));
         setActiveChapterId(chapter.id);
         setChapterContent("");
@@ -7757,7 +7759,7 @@ function App() {
         chapterId: targetChapterId,
         prompt: text,
         settings,
-        generationMode: writeGenerationMode,
+        generationMode: run.generationMode,
         chapterRevision: targetChapterRevision,
         generationRunId: run.runId,
         signal: abortController.signal,
@@ -7795,7 +7797,7 @@ function App() {
             }
             setStoryGenerationStatus("Writing");
             generatedText += value;
-            if (writeGenerationMode === "new") {
+            if (run.generationMode === "new") {
               setChapterContent(generatedText);
               chapterContentRef.current = generatedText;
             }

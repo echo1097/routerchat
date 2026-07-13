@@ -157,9 +157,12 @@ export async function installWriteApi(page, options = {}) {
         state.suppressNextGenerationCommit = false;
         return route.fulfill({ status: 200, contentType: "application/json", body: "" });
       }
+      const nextContent = target.content.trim()
+        ? `${target.content}\n\ngenerated text`
+        : "generated text";
       const nextChapter = {
         ...target,
-        content: `${target.content}\n\ngenerated text`,
+        content: nextContent,
         revision: target.revision + 1,
       };
       target.content = nextChapter.content;

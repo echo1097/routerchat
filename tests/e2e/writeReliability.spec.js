@@ -222,6 +222,30 @@ test("flushes typing before an existing-chapter generation starts", async ({ pag
   await expect(await reloadAndRead(page)).toContainText("generated text");
 });
 
+test("generates prose into a blank chapter while keeping Edit Chapter selected", async ({ page }) => {
+  const api = await installWriteApi(page, { legacyContent: "" });
+  await api.open();
+
+  const writingTools = page.getByRole("button", { name: /Writing tools/ });
+  await expect(writingTools).toContainText("Edit Chapter");
+
+  await page.getByPlaceholder(/Ask Test model to write anything/).fill("open with a storm");
+  await page.getByRole("button", { name: "Send" }).click();
+
+  await expect.poll(() => api.state.generationRequests.length).toBe(1);
+  expect(api.state.generationRequests[0].write_generation_mode).toBe("new");
+  expect(api.state.generationRequests[0].chapterId).toBe("chapter-1");
+  expect(api.state.chapters).toHaveLength(1);
+
+  const editor = page.getByRole("textbox", { name: "Chapter canvas" });
+  await expect(editor).toContainText("generated text");
+  await expect(editor).not.toContainText("chapterRevision");
+  await expect(writingTools).toContainText("Edit Chapter");
+
+  expect(api.state.chapters[0].content).toBe("generated text");
+  await expect(await reloadAndRead(page)).toContainText("generated text");
+});
+
 test("locks navigation during generation and keeps the other chapter unchanged", async ({ page }) => {
   const api = await installWriteApi(page, { twoChapters: true });
   await api.open();

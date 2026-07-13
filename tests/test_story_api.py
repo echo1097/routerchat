@@ -15,6 +15,7 @@ from backend.writing import (
     build_story_messages,
     chapter_blocks,
     chapter_edit_response_format,
+    effective_generation_mode,
     lorebook_history_label,
     parse_brainstorm_ideas,
     text_hash,
@@ -267,6 +268,42 @@ class StoryApiTest(unittest.TestCase):
             )
         self.assertEqual(response.status_code, 422)
         self.assertEqual(response.json()["detail"], "chapter_revision is required.")
+
+    def test_empty_chapter_edit_request_generates_plain_prose(self):
+        story = self.client.post("/api/stories", json={"title": "Blank Opening"}).json()["story"]
+        chapter = self.client.post(
+            f"/api/stories/{story['id']}/chapters",
+            json={"title": "Chapter 1"},
+        ).json()["chapter"]
+        main.cache_models([{
+            "id": "test/model",
+            "name": "test model",
+            "architecture": {"output_modalities": ["text"]},
+            "supported_parameters": ["structured_outputs"],
+        }])
+
+        response, requestBody = self.streamChapterGeneration(
+            story,
+            chapter,
+            "Rain pressed against the windows.",
+            mode="edit",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("response_format", requestBody)
+        self.assertIn(
+            "Return only the prose",
+            "\n".join(message["content"] for message in requestBody["messages"]),
+        )
+        self.assertEqual(effective_generation_mode("edit", "  \n"), "new")
+
+        events = [json.loads(line) for line in response.text.splitlines() if line]
+        self.assertNotIn("error", [event["type"] for event in events])
+        self.assertIn("chapter_updated", [event["type"] for event in events])
+
+        savedChapter = self.client.get(f"/api/stories/{story['id']}").json()["chapters"][0]
+        self.assertEqual(savedChapter["id"], chapter["id"])
+        self.assertEqual(savedChapter["content"], "Rain pressed against the windows.")
 
     def test_story_scaffold_creates_both_records_or_neither(self):
         response = self.client.post(

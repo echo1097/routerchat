@@ -579,7 +579,9 @@ function TimelineCanvas({ entry, locked, saving, onSave }) {
         spellCheck="true"
       />
       <div className="lorebook-timeline-footer">
-        <span>{locked ? "timeline locked while the model is writing" : saving ? "saving timeline" : "markdown bullets"}</span>
+        {(locked || saving) && (
+          <span>{locked ? "timeline locked while the model is writing" : "saving timeline"}</span>
+        )}
         <button
           type="button"
           onClick={handleSave}

@@ -2552,12 +2552,6 @@ function WriteOperationStatus({ status, reasoning = "", reasoningStreaming = fal
                 {reasoningLabel}
               </span>
             </span>
-            {reasoningStreaming && (
-              <span className="write-thinking-streaming-indicator" aria-label="Reasoning in progress">
-                <span className="write-thinking-streaming-dot" aria-hidden="true" />
-                live
-              </span>
-            )}
           </span>
           <span
             ref={reasoningScrollRef}

@@ -1321,6 +1321,7 @@ textarea {
   display: block;
   width: min(480px, calc(100vw - 32px));
   max-width: calc(100vw - 32px);
+  resize: none;
   padding: 6px;
   border-radius: 18px;
   background:
@@ -1359,35 +1360,12 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 
-.write-thinking-streaming-indicator {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 6px;
-  min-height: 24px;
-  padding: 0 8px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.045);
-  color: #a1a1aa;
-  font-size: 0.6875rem;
-  font-weight: 600;
-  line-height: 1;
-  box-shadow: var(--shadow-border);
-}
-
-.write-thinking-streaming-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: #d4d4d8;
-  box-shadow: 0 0 0 3px rgba(212, 212, 216, 0.08);
-}
-
 .write-thinking-popover-content {
   display: block;
   max-height: min(360px, calc(100dvh - 176px));
   min-height: 112px;
   overflow-y: auto;
+  resize: none;
   overscroll-behavior: contain;
   padding: 14px 16px;
   border-radius: 12px;

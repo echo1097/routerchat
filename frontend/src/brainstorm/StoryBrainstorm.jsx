@@ -22,16 +22,16 @@ function PromptNode({ data }) {
       <Handle type="target" position={Position.Left} className="brainstorm-handle" />
       <div className="brainstorm-node-eyebrow">
         <span>{failed ? data.status : data.status === "generating" ? "Thinking" : "Prompt"}</span>
-        {failed && (
-          <div className="brainstorm-node-actions nodrag">
+        <div className="brainstorm-node-actions nodrag">
+          {failed && (
             <button type="button" onClick={data.onRetry} aria-label="Retry prompt" title="Retry prompt">
               <RotateCcw size={15} />
             </button>
-            <button type="button" onClick={data.onDelete} aria-label="Delete prompt" title="Delete prompt">
-              <Trash2 size={15} />
-            </button>
-          </div>
-        )}
+          )}
+          <button type="button" onClick={data.onDelete} aria-label="Delete prompt" title="Delete prompt">
+            <Trash2 size={15} />
+          </button>
+        </div>
       </div>
       <p className="nowheel">{data.content}</p>
       {data.status === "generating" && <div className="brainstorm-thinking-line" aria-hidden="true" />}
@@ -120,6 +120,7 @@ export default function StoryBrainstorm({
   disabled,
   modelLabel,
   thinkingEnabled,
+  reasoningRequired,
   contextMeter,
   onBack,
   onGenerate,
@@ -374,7 +375,10 @@ export default function StoryBrainstorm({
                   aria-haspopup="menu"
                 >
                   <span className="brainstorm-model-name">{modelLabel}</span>
-                  <span className="brainstorm-thinking-state">{thinkingEnabled ? "Thinking" : "Instant"}</span>
+                  <span className="brainstorm-thinking-state">
+                    <span>{thinkingEnabled ? "Thinking" : "Instant"}</span>
+                    {reasoningRequired && <span className="brainstorm-thinking-required">Required</span>}
+                  </span>
                   <ChevronDown
                     size={14}
                     className={cx("brainstorm-model-chevron", modelMenuOpen && "is-open")}
@@ -397,13 +401,17 @@ export default function StoryBrainstorm({
                       type="button"
                       role="menuitem"
                       className={thinkingEnabled ? "is-active" : undefined}
+                      disabled={reasoningRequired}
                       onClick={() => {
                         onToggleThinking();
                         setModelMenuOpen(false);
                       }}
                     >
                       <span>Thinking</span>
-                      <span>{thinkingEnabled ? "On" : "Off"}</span>
+                      <span>
+                        <span>{thinkingEnabled ? "On" : "Off"}</span>
+                        {reasoningRequired && <span className="brainstorm-thinking-required">Required</span>}
+                      </span>
                     </button>
                   </div>
                 )}

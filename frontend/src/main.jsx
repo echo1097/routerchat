@@ -45,6 +45,11 @@ import NotificationStack from "./notifications/NotificationStack.jsx";
 import { useNotifications } from "./notifications/useNotifications.js";
 import { createSaveCoordinator } from "./writing/saveCoordinator.js";
 import { createNavigationCoordinator } from "./writing/navigationCoordinator.js";
+import {
+  effectiveThinkingEnabled,
+  requiresThinking,
+  supportsThinking,
+} from "./modelReasoning.js";
 
 const ChapterCanvasEditor = lazy(() => import("./writing/ChapterCanvasEditor.jsx"));
 import {
@@ -136,6 +141,7 @@ function pickOpeningMessage(mode = "chat") {
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
+    cache: "no-store",
     headers: { "Content-Type": "application/json", ...(options.headers || {}) },
     ...options,
   });
@@ -424,14 +430,6 @@ function promptModelName(models, id) {
   return modelName(models, id)
     .replace(/^[^:]+:\s*/, "")
     .replace(/^[^/]+\//, "");
-}
-
-function supportsThinking(models, id) {
-  return Boolean(
-    models
-      .find((model) => model.id === id)
-      ?.supported_parameters?.includes("reasoning"),
-  );
 }
 
 function toFiniteNumber(value) {
@@ -3106,15 +3104,16 @@ function CharacterEditorModal({
   );
 }
 
-function ComposerMenuButton({ label, detail, active = false, dataTour, onClick }) {
+function ComposerMenuButton({ label, detail, active = false, dataTour, disabled = false, onClick }) {
   return (
     <button
       type="button"
       role="menuitem"
       data-tour={dataTour}
+      disabled={disabled}
       onClick={onClick}
       className={cx(
-        "flex min-h-10 w-full items-center justify-between gap-4 rounded-xl px-3 py-2 text-left text-sm transition-[background-color,color,scale] duration-150 ease-out hover:bg-white/[0.08] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30 active:scale-[0.96]",
+        "flex min-h-10 w-full items-center justify-between gap-4 rounded-xl px-3 py-2 text-left text-sm transition-[background-color,color,scale] duration-150 ease-out hover:bg-white/[0.08] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30 active:scale-[0.96] disabled:cursor-default disabled:hover:bg-transparent disabled:active:scale-100",
         active ? "text-zinc-100" : "text-zinc-300",
       )}
     >
@@ -3154,6 +3153,10 @@ function Composer({
   tourUi = null,
 }) {
   const canThink = supportsThinking(models, settings.model) || forceShowThinking;
+  const reasoningRequired = requiresThinking(models, settings.model);
+  const thinkingEnabled = effectiveThinkingEnabled(
+    models, settings.model, settings.thinking_enabled,
+  );
   const textareaRef = useRef(null);
   const composerControlsRef = useRef(null);
   const tourUiRef = useRef(null);
@@ -3332,7 +3335,12 @@ function Composer({
                   )}
                 >
                   <span className="truncate">{promptModelName(models, settings.model)}</span>
-                  {canThink && <span className="hidden text-zinc-500 sm:inline">{settings.thinking_enabled ? "Thinking" : "Instant"}</span>}
+                  {canThink && (
+                    <span className="hidden text-zinc-500 sm:inline">
+                      <span>{thinkingEnabled ? "Thinking" : "Instant"}</span>
+                      {reasoningRequired && <span className="ml-1.5 text-zinc-600">Required</span>}
+                    </span>
+                  )}
                   <ChevronDown size={14} className={cx("thinking-toggle-chevron shrink-0 transition-transform duration-200", modelMenuOpen && "rotate-180")} />
                 </button>
                 {modelMenuOpen && (
@@ -3347,7 +3355,21 @@ function Composer({
                       )}
                       onClick={() => { onOpenSettings(); setModelMenuOpen(false); }}
                     />
-                    {canThink && <ComposerMenuButton label="Thinking" detail={settings.thinking_enabled ? "On" : "Off"} active={settings.thinking_enabled} dataTour="thinking-button" onClick={() => { onToggleThinking(); setModelMenuOpen(false); }} />}
+                    {canThink && (
+                      <ComposerMenuButton
+                        label="Thinking"
+                        detail={(
+                          <>
+                            <span>{thinkingEnabled ? "On" : "Off"}</span>
+                            {reasoningRequired && <span className="ml-1.5 text-zinc-600">Required</span>}
+                          </>
+                        )}
+                        active={thinkingEnabled}
+                        dataTour="thinking-button"
+                        disabled={reasoningRequired}
+                        onClick={() => { onToggleThinking(); setModelMenuOpen(false); }}
+                      />
+                    )}
                   </div>
                 )}
                 </div>
@@ -4131,7 +4153,12 @@ function SettingsDrawer({
   }
 
   function selectModel(model) {
-    commit({ model: model.id });
+    commit({
+      model: model.id,
+      thinking_enabled: model?.reasoning?.mandatory === true
+        ? true
+        : settings.thinking_enabled,
+    });
     onModelSelected(model.name || model.id);
     onClose();
   }
@@ -6208,7 +6235,9 @@ function App() {
           currentModel &&
           (activeChatId || activeStoryId || !hideFreeModels || !isFreeModel(currentModel))
         ) {
-          return current;
+          return requiresThinking(loaded, current.model)
+            ? { ...current, thinking_enabled: true }
+            : current;
         }
         const selectableModels = hideFreeModels
           ? loaded.filter((model) => !isFreeModel(model))
@@ -6217,7 +6246,13 @@ function App() {
         const fallbackModel = selectableModels.some((model) => model.id === savedDefaultModel)
           ? savedDefaultModel
           : selectableModels[0]?.id || loaded[0]?.id || DEFAULT_MODEL;
-        return { ...current, model: fallbackModel };
+        return {
+          ...current,
+          model: fallbackModel,
+          thinking_enabled: requiresThinking(loaded, fallbackModel)
+            ? true
+            : current.thinking_enabled,
+        };
       });
     } catch (error) {
       setStatus(error.message);
@@ -6322,7 +6357,9 @@ function App() {
       temperature: chat.temperature,
       max_tokens: chat.max_tokens,
       system_prompt: chat.system_prompt || "",
-      thinking_enabled: Boolean(chat.thinking_enabled),
+      thinking_enabled: effectiveThinkingEnabled(
+        models, chat.model, Boolean(chat.thinking_enabled),
+      ),
       reasoning_effort: chat.reasoning_effort || "medium",
       nitro_mode: nitroMode,
     });
@@ -7053,6 +7090,7 @@ function App() {
 
   function toggleThinking() {
     setSettings((current) => {
+      if (requiresThinking(models, current.model)) return current;
       const next = { ...current, thinking_enabled: !current.thinking_enabled };
       if (activeConversationId) persistSettings(next);
       return next;
@@ -7544,6 +7582,7 @@ function App() {
 
   async function deleteBrainstormNode(nodeId, hasDescendants = false, skipConfirm = false) {
     if (!activeStoryId || isStreaming) return;
+    const nodeType = brainstormNodes.find((node) => node.id === nodeId)?.node_type;
     const performDelete = async () => {
       try {
         const payload = await storyApi.deleteBrainstormNode(
@@ -7556,7 +7595,9 @@ function App() {
         setBrainstormEdges((current) => current.filter((edge) => (
           !deletedIds.has(edge.source_node_id) && !deletedIds.has(edge.target_node_id)
         )));
-        if (!skipConfirm) showToast(hasDescendants ? "Branch deleted" : "Idea deleted");
+        if (!skipConfirm) {
+          showToast(hasDescendants ? "Branch deleted" : `${nodeType === "prompt" ? "Prompt" : "Idea"} deleted`);
+        }
       } catch (error) {
         setStatus(error.message);
         throw error;
@@ -7993,7 +8034,10 @@ function App() {
             reasoning={brainstormReasoning}
             disabled={!keyStatus.has_key}
             modelLabel={promptModelName(models, settings.model)}
-            thinkingEnabled={settings.thinking_enabled}
+            thinkingEnabled={effectiveThinkingEnabled(
+              models, settings.model, settings.thinking_enabled,
+            )}
+            reasoningRequired={requiresThinking(models, settings.model)}
             contextMeter={<ContextWindowMeter info={contextWindowInfo} />}
             onBack={() => {
               setStoryWorkspaceView("chapter");

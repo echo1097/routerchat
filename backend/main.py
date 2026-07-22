@@ -12,7 +12,7 @@ from typing import Any, AsyncIterator, Literal
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -40,11 +40,20 @@ app = FastAPI(title="RouterChat", version="0.1.0")
 class FrontendStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope: dict[str, Any]) -> Any:
         try:
-            return await super().get_response(path, scope)
+            response = await super().get_response(path, scope)
         except StarletteHTTPException as exc:
             if exc.status_code == 404:
-                return await super().get_response("index.html", scope)
-            raise
+                response = await super().get_response("index.html", scope)
+            else:
+                raise
+
+        if response.media_type == "text/html":
+            response.headers["Cache-Control"] = "no-store, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+        elif path.startswith("assets/"):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+
+        return response
 
 
 def configure_static_files(target_app: FastAPI, static_dir: Path) -> None:
@@ -719,7 +728,7 @@ def normalize_key_status(data: dict[str, Any] | None, has_key: bool) -> dict[str
 
 
 def normalize_model(model: dict[str, Any]) -> dict[str, Any]:
-    return {
+    normalizedModel = {
         "id": model.get("id"),
         "name": model.get("name") or model.get("id"),
         "context_length": model.get("context_length"),
@@ -729,6 +738,10 @@ def normalize_model(model: dict[str, Any]) -> dict[str, Any]:
         "supported_parameters": model.get("supported_parameters") or [],
         "description": model.get("description"),
     }
+    if isinstance(model.get("reasoning"), dict):
+        normalizedModel["reasoning"] = model["reasoning"]
+
+    return normalizedModel
 
 
 def outputs_text_model(model: dict[str, Any]) -> bool:
@@ -849,7 +862,9 @@ def row_to_chat(row: sqlite3.Row) -> dict[str, Any]:
         "system_prompt": row["system_prompt"],
         "temperature": row["temperature"],
         "max_tokens": row["max_tokens"],
-        "thinking_enabled": bool(row["thinking_enabled"]),
+        "thinking_enabled": effective_thinking_enabled(
+            row["model"], bool(row["thinking_enabled"])
+        ),
         "reasoning_effort": row["reasoning_effort"],
         "temporary": bool(row["temporary"]),
         "pinned": bool(row["pinned"]),
@@ -889,7 +904,9 @@ def row_to_writing_thread(row: sqlite3.Row) -> dict[str, Any]:
         "system_prompt": row["system_prompt"],
         "temperature": row["temperature"],
         "max_tokens": row["max_tokens"],
-        "thinking_enabled": bool(row["thinking_enabled"]),
+        "thinking_enabled": effective_thinking_enabled(
+            row["model"], bool(row["thinking_enabled"])
+        ),
         "reasoning_effort": row["reasoning_effort"],
         "temporary": bool(row["temporary"]),
         "created_at": row["created_at"],
@@ -1011,7 +1028,8 @@ def update_app_settings(payload: AppSettingsPatchRequest) -> dict[str, Any]:
 
 
 @app.get("/api/models")
-async def get_models() -> dict[str, Any]:
+async def get_models(response: Response) -> dict[str, Any]:
+    response.headers["Cache-Control"] = "no-store"
     api_key = read_openrouter_key()
     if not api_key:
         models = cached_models()
@@ -1668,19 +1686,56 @@ def build_openrouter_writing_messages(
     return messages
 
 
-def model_supports_reasoning(model_id: str) -> bool:
-    for model in cached_models():
-        if model.get("id") == model_id:
-            return "reasoning" in (model.get("supported_parameters") or [])
-    return False
-
-
-def model_supports_structured_output(model_id: str) -> bool:
+def model_metadata(model_id: str) -> dict[str, Any] | None:
     normalizedModelId = str(model_id or "").removesuffix(":nitro")
     for model in cached_models():
         if model.get("id") in {model_id, normalizedModelId}:
-            return "structured_outputs" in (model.get("supported_parameters") or [])
-    return False
+            return model
+    return None
+
+
+def model_supports_reasoning(model_id: str) -> bool:
+    model = model_metadata(model_id)
+    if not model:
+        return False
+    return (
+        "reasoning" in (model.get("supported_parameters") or [])
+        or isinstance(model.get("reasoning"), dict)
+    )
+
+
+def model_requires_reasoning(model_id: str) -> bool:
+    model = model_metadata(model_id)
+    if not model:
+        return False
+    return (model.get("reasoning") or {}).get("mandatory") is True
+
+
+def effective_thinking_enabled(model_id: str, thinking_enabled: bool) -> bool:
+    return thinking_enabled or model_requires_reasoning(model_id)
+
+
+def enabled_reasoning_config(
+    model_id: str,
+    thinking_enabled: bool,
+    reasoning_effort: ReasoningEffort,
+) -> dict[str, Any] | None:
+    if not model_supports_reasoning(model_id):
+        return None
+    if not effective_thinking_enabled(model_id, thinking_enabled):
+        return None
+    return {
+        "enabled": True,
+        "exclude": False,
+        "effort": reasoning_effort,
+    }
+
+
+def model_supports_structured_output(model_id: str) -> bool:
+    model = model_metadata(model_id)
+    if not model:
+        return False
+    return "structured_outputs" in (model.get("supported_parameters") or [])
 
 
 def openrouter_error_message(status_code: int, response_text: str) -> str:
@@ -1821,15 +1876,17 @@ async def stream_openrouter_response(
         "max_tokens": payload.max_tokens,
         "stream": True,
     }
-    supports_reasoning = model_supports_reasoning(payload.model)
-    if supports_reasoning and payload.thinking_enabled:
-        body["reasoning"] = {
-            "enabled": True,
-            "exclude": False,
-            "effort": payload.reasoning_effort,
-        }
+    supportsReasoning = model_supports_reasoning(payload.model)
+    effectiveThinkingEnabled = effective_thinking_enabled(
+        payload.model, payload.thinking_enabled
+    )
+    reasoningConfig = enabled_reasoning_config(
+        payload.model, payload.thinking_enabled, payload.reasoning_effort
+    )
+    if reasoningConfig:
+        body["reasoning"] = reasoningConfig
         body["reasoning_effort"] = payload.reasoning_effort
-    elif supports_reasoning:
+    elif supportsReasoning:
         body["reasoning"] = {"enabled": False, "exclude": True}
         body["reasoning_effort"] = "none"
         body["include_reasoning"] = False
@@ -1887,7 +1944,7 @@ async def stream_openrouter_response(
                         stream_completed = True
                     delta = choice.get("delta") or {}
                     reasoning = delta.get("reasoning") or delta.get("reasoning_content")
-                    if reasoning and payload.thinking_enabled:
+                    if reasoning and effectiveThinkingEnabled:
                         value = str(reasoning)
                         reasoning_text.append(value)
                         yield stream_event("reasoning", value)
@@ -2279,6 +2336,8 @@ app.include_router(
             write_system_prompt=writeSystemPrompt,
             openrouter_request_model=openrouter_request_model,
             model_supports_reasoning=model_supports_reasoning,
+            effective_thinking_enabled=effective_thinking_enabled,
+            enabled_reasoning_config=enabled_reasoning_config,
             model_supports_structured_output=model_supports_structured_output,
             openrouter_error_message=openrouter_error_message,
             normalize_usage=normalize_usage,

@@ -531,8 +531,15 @@
 }
 
 .brainstorm-thinking-state {
+  display: inline-flex;
   flex: none;
+  align-items: center;
   color: #71717a;
+}
+
+.brainstorm-thinking-required {
+  margin-left: 6px;
+  color: #52525b;
 }
 
 .brainstorm-model-chevron {
@@ -585,6 +592,16 @@
 
 .brainstorm-model-menu button:active {
   scale: 0.96;
+}
+
+.brainstorm-model-menu button:disabled {
+  color: #f4f4f5;
+  background: transparent;
+  cursor: default;
+}
+
+.brainstorm-model-menu button:disabled:active {
+  scale: 1;
 }
 
 .brainstorm-model-menu button > span:last-child {

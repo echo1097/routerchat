@@ -719,6 +719,161 @@ class StoryApiTest(unittest.TestCase):
         self.assertTrue(statusResponse.json()["has_key"])
         self.assertEqual(modelsResponse.status_code, 502)
 
+    def test_model_reasoning_metadata_round_trips_and_drives_capabilities(self):
+        mandatoryModel = main.normalize_model({
+            "id": "test/mandatory",
+            "name": "Mandatory model",
+            "supported_parameters": ["reasoning"],
+            "reasoning": {
+                "supported_efforts": ["high", "medium"],
+                "default_effort": "medium",
+                "default_enabled": True,
+                "mandatory": True,
+            },
+        })
+        optionalModel = main.normalize_model({
+            "id": "test/optional",
+            "supported_parameters": ["reasoning"],
+            "reasoning": {"mandatory": False},
+        })
+        instantModel = main.normalize_model({
+            "id": "test/instant",
+            "supported_parameters": [],
+        })
+
+        main.cache_models([mandatoryModel, optionalModel, instantModel])
+
+        cachedModel = next(
+            model for model in main.cached_models() if model["id"] == "test/mandatory"
+        )
+        self.assertTrue(cachedModel["reasoning"]["mandatory"])
+        self.assertTrue(main.model_supports_reasoning("test/mandatory:nitro"))
+        self.assertTrue(main.model_requires_reasoning("test/mandatory:nitro"))
+        self.assertTrue(main.effective_thinking_enabled("test/mandatory", False))
+        self.assertFalse(main.effective_thinking_enabled("test/optional", False))
+        self.assertIsNone(main.enabled_reasoning_config("test/optional", False, "medium"))
+        self.assertIsNone(main.enabled_reasoning_config("test/instant", True, "medium"))
+        self.assertEqual(
+            main.enabled_reasoning_config("test/mandatory", False, "high"),
+            {"enabled": True, "exclude": False, "effort": "high"},
+        )
+
+        with patch.object(main, "read_openrouter_key", return_value=None):
+            modelsResponse = self.client.get("/api/models")
+        self.assertEqual(modelsResponse.headers["cache-control"], "no-store")
+        responseModel = next(
+            model for model in modelsResponse.json()["models"]
+            if model["id"] == "test/mandatory"
+        )
+        self.assertTrue(responseModel["reasoning"]["mandatory"])
+
+    def test_frontend_cache_headers_refresh_html_and_reuse_hashed_assets(self):
+        htmlResponse = self.client.get("/")
+        self.assertEqual(htmlResponse.status_code, 200)
+        self.assertEqual(
+            htmlResponse.headers["cache-control"], "no-store, max-age=0"
+        )
+        self.assertEqual(htmlResponse.headers["pragma"], "no-cache")
+
+        assetPath = next((main.STATIC_DIR / "assets").glob("index-*.js"))
+        assetResponse = self.client.get(f"/assets/{assetPath.name}")
+        self.assertEqual(assetResponse.status_code, 200)
+        self.assertEqual(
+            assetResponse.headers["cache-control"],
+            "public, max-age=31536000, immutable",
+        )
+
+    def test_mandatory_reasoning_is_enabled_for_chat_when_preference_is_off(self):
+        main.cache_models([main.normalize_model({
+            "id": "test/model",
+            "supported_parameters": ["reasoning"],
+            "reasoning": {"mandatory": True},
+        })])
+        chat = self.client.post(
+            "/api/chats",
+            json={"title": "Required reasoning", "model": "test/model"},
+        ).json()["chat"]
+        requestBody = {}
+
+        class FakeResponse:
+            status_code = 200
+            headers = {}
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_):
+                return False
+
+            async def aiter_lines(self):
+                yield "data: [DONE]"
+
+        class FakeClient:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_):
+                return False
+
+            def stream(self, *_args, **kwargs):
+                requestBody.update(kwargs.get("json") or {})
+                return FakeResponse()
+
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
+            "backend.main.httpx.AsyncClient", FakeClient
+        ):
+            response = self.client.post(
+                f"/api/chats/{chat['id']}/messages/stream",
+                json={
+                    "message": "hello",
+                    "model": "test/model",
+                    "thinking_enabled": False,
+                    "reasoning_effort": "high",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            requestBody["reasoning"],
+            {"enabled": True, "exclude": False, "effort": "high"},
+        )
+        self.assertEqual(requestBody["reasoning_effort"], "high")
+        self.assertNotIn("include_reasoning", requestBody)
+        with main.get_db() as conn:
+            savedChat = conn.execute(
+                "SELECT thinking_enabled FROM chats WHERE id = ?", (chat["id"],)
+            ).fetchone()
+        self.assertFalse(bool(savedChat["thinking_enabled"]))
+        loadedChat = self.client.get(f"/api/chats/{chat['id']}").json()["chat"]
+        self.assertTrue(loadedChat["thinking_enabled"])
+
+    def test_mandatory_reasoning_is_enabled_for_chapter_when_preference_is_off(self):
+        main.cache_models([main.normalize_model({
+            "id": "test/model",
+            "supported_parameters": ["reasoning"],
+            "reasoning": {"mandatory": True},
+        })])
+        story = self.client.post(
+            "/api/stories", json={"title": "Required reasoning story"}
+        ).json()["story"]
+        chapter = self.client.post(
+            f"/api/stories/{story['id']}/chapters",
+            json={"title": "Opening"},
+        ).json()["chapter"]
+
+        response, requestBody = self.streamChapterGeneration(
+            story, chapter, "the next paragraph", mode="new"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            requestBody["reasoning"],
+            {"enabled": True, "exclude": False, "effort": "medium"},
+        )
+
     def test_brainstorm_graph_persists_edits_viewport_and_cascade_deletion(self):
         story = self.client.post("/api/stories", json={"title": "Branch Test"}).json()["story"]
         now = main.utc_now()
@@ -873,6 +1028,47 @@ class StoryApiTest(unittest.TestCase):
         self.assertNotIn("endChar", editContext)
         self.assertNotIn("replaceBlocks", editMessages[-3]["content"])
 
+    def test_write_and_edit_requests_exclude_brainstorm_nodes(self):
+        story = self.client.post(
+            "/api/stories",
+            json={"title": "Separate Brainstorm Context"},
+        ).json()["story"]
+        chapter = self.client.post(
+            f"/api/stories/{story['id']}/chapters",
+            json={"title": "First", "content": "the actual chapter"},
+        ).json()["chapter"]
+        brainstormSentinel = "SENTINEL_BRAINSTORM_IDEA_MUST_STAY_OUT"
+
+        with main.get_db() as conn:
+            now = main.utc_now()
+            conn.execute(
+                """
+                INSERT INTO brainstorm_nodes (
+                  id, story_id, node_type, title, content, position_x, position_y,
+                  status, created_at, updated_at
+                ) VALUES (?, ?, 'idea', 'Secret idea', ?, 0, 0, 'complete', ?, ?)
+                """,
+                (str(uuid.uuid4()), story["id"], brainstormSentinel, now, now),
+            )
+
+        editOutput = json.dumps({
+            "operation": "appendToChapter",
+            "chapterRevision": 0,
+            "newText": "edited text",
+        })
+        _, editRequest = self.streamChapterGeneration(story, chapter, editOutput, mode="edit")
+        _, writeRequest = self.streamChapterGeneration(
+            story,
+            chapter,
+            "written text",
+            revision=1,
+            mode="new",
+            runId="run-write-context-test",
+        )
+
+        self.assertNotIn(brainstormSentinel, json.dumps(editRequest["messages"]))
+        self.assertNotIn(brainstormSentinel, json.dumps(writeRequest["messages"]))
+
     def test_brainstorm_output_parser_accepts_a_single_complete_idea(self):
         parsed = parse_brainstorm_ideas(
             '{"ideas": ['
@@ -890,6 +1086,11 @@ class StoryApiTest(unittest.TestCase):
             parse_brainstorm_ideas('{"ideas": []}')
 
     def test_brainstorm_generation_saves_complete_branch_atomically(self):
+        main.cache_models([main.normalize_model({
+            "id": "test/model",
+            "supported_parameters": ["reasoning"],
+            "reasoning": {"mandatory": True},
+        })])
         story = self.client.post("/api/stories", json={"title": "Stream Story"}).json()["story"]
         self.client.post(
             f"/api/stories/{story['id']}/chapters",
@@ -903,6 +1104,7 @@ class StoryApiTest(unittest.TestCase):
                 {"title": "broadcast it", "content": "They let the whole city hear the warning."},
             ]
         })
+        requestBody = {}
 
         class FakeResponse:
             status_code = 200
@@ -928,7 +1130,8 @@ class StoryApiTest(unittest.TestCase):
             async def __aexit__(self, *_):
                 return False
 
-            def stream(self, *_args, **_kwargs):
+            def stream(self, *_args, **kwargs):
+                requestBody.update(kwargs.get("json") or {})
                 return FakeResponse()
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
@@ -945,6 +1148,10 @@ class StoryApiTest(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            requestBody["reasoning"],
+            {"enabled": True, "exclude": False, "effort": "medium"},
+        )
         events = [json.loads(line) for line in response.text.splitlines() if line]
         self.assertEqual([event["type"] for event in events], ["prompt", "ideas"])
         self.assertEqual(events[0]["value"]["node"]["position_x"], 0)

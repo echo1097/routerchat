@@ -71,6 +71,13 @@ export async function installWriteApi(page, options = {}) {
   }
 
   const openingContent = options.legacyContent ?? (options.longContent ? longChapterContent() : "saved opening");
+  const model = options.model || {
+    id: "test/model",
+    name: "Test model",
+    pricing: {},
+    architecture: { output_modalities: ["text"] },
+    supported_parameters: [],
+  };
   const state = {
     story: {
       id: "story-1",
@@ -121,7 +128,7 @@ export async function installWriteApi(page, options = {}) {
     if (method === "GET" && path === "/api/settings/key-status") return response(route, { has_key: true });
     if (method === "GET" && path === "/api/settings") return response(route, { default_model: "test/model" });
     if (method === "GET" && path === "/api/models") {
-      return response(route, { models: [{ id: "test/model", name: "Test model", pricing: {}, architecture: { output_modalities: ["text"] }, supported_parameters: [] }] });
+      return response(route, { models: [model] });
     }
     if (method === "GET" && path === "/api/chats") return response(route, { chats: [] });
     if (method === "GET" && path === "/api/stories") return response(route, { stories: [state.story] });

@@ -27,6 +27,35 @@ async function thinkingMetrics(page) {
 
 test.describe.configure({ mode: "serial" });
 
+test("shows mandatory model reasoning as required even when the saved preference is off", async ({ page }) => {
+  const api = await installWriteApi(page, {
+    model: {
+      id: "test/model",
+      name: "Test model",
+      pricing: {},
+      architecture: { output_modalities: ["text"] },
+      supported_parameters: ["reasoning"],
+      reasoning: { mandatory: true, default_enabled: true },
+    },
+  });
+  await api.open();
+
+  const modelButton = page.locator('[data-tour="model-button"]');
+  await expect(modelButton).toBeVisible();
+  await expect(modelButton).toContainText("Test model");
+  await expect(modelButton).toContainText("Thinking");
+  await expect(modelButton).toContainText("Required");
+  await modelButton.click();
+
+  const thinkingRow = page.locator('[data-tour="thinking-button"]');
+  await expect(thinkingRow).toBeVisible();
+  await expect(thinkingRow).toContainText("Thinking");
+  await expect(thinkingRow).toContainText("On");
+  await expect(thinkingRow).toContainText("Required");
+  await expect(thinkingRow).toBeDisabled();
+  expect(api.state.story.thinking_enabled).toBe(false);
+});
+
 test("opens existing Markdown in the rich canvas without rewriting it", async ({ page }) => {
   const legacyContent = [
     "# Legacy chapter",

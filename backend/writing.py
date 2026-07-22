@@ -130,6 +130,8 @@ class WritingDeps:
     write_system_prompt: Callable[[Any], str]
     openrouter_request_model: Callable[[str, bool], str]
     model_supports_reasoning: Callable[[str], bool]
+    effective_thinking_enabled: Callable[[str, bool], bool]
+    enabled_reasoning_config: Callable[[str, bool, str], dict[str, Any] | None]
     model_supports_structured_output: Callable[[str], bool]
     openrouter_error_message: Callable[[int, str], str]
     normalize_usage: Callable[[dict[str, Any] | None], dict[str, Any] | None]
@@ -1341,12 +1343,14 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
             "max_tokens": payload.max_tokens,
             "stream": True,
         }
-        if deps.model_supports_reasoning(payload.model) and payload.thinking_enabled:
-            body["reasoning"] = {
-                "enabled": True,
-                "exclude": False,
-                "effort": payload.reasoning_effort,
-            }
+        effectiveThinkingEnabled = deps.effective_thinking_enabled(
+            payload.model, payload.thinking_enabled
+        )
+        reasoningConfig = deps.enabled_reasoning_config(
+            payload.model, payload.thinking_enabled, payload.reasoning_effort
+        )
+        if reasoningConfig:
+            body["reasoning"] = reasoningConfig
         if generation_mode == "edit" and deps.model_supports_structured_output(payload.model):
             body["response_format"] = chapter_edit_response_format()
 
@@ -1430,7 +1434,7 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                         finish_reason = choice.get("finish_reason") or finish_reason
                         delta = choice.get("delta") or {}
                         reasoning = delta.get("reasoning") or delta.get("reasoning_content")
-                        if reasoning and payload.thinking_enabled:
+                        if reasoning and effectiveThinkingEnabled:
                             if reasoning_started_at is None:
                                 reasoning_started_at = time.perf_counter()
                             value = str(reasoning)
@@ -2294,12 +2298,14 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
             "max_tokens": payload.max_tokens,
             "stream": True,
         }
-        if deps.model_supports_reasoning(payload.model) and payload.thinking_enabled:
-            body["reasoning"] = {
-                "enabled": True,
-                "exclude": False,
-                "effort": payload.reasoning_effort,
-            }
+        effectiveThinkingEnabled = deps.effective_thinking_enabled(
+            payload.model, payload.thinking_enabled
+        )
+        reasoningConfig = deps.enabled_reasoning_config(
+            payload.model, payload.thinking_enabled, payload.reasoning_effort
+        )
+        if reasoningConfig:
+            body["reasoning"] = reasoningConfig
 
         generated_text: list[str] = []
         generation_id: str | None = None
@@ -2390,7 +2396,7 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                         finish_reason = choice.get("finish_reason") or finish_reason
                         delta = choice.get("delta") or {}
                         reasoning = delta.get("reasoning") or delta.get("reasoning_content")
-                        if reasoning and payload.thinking_enabled:
+                        if reasoning and effectiveThinkingEnabled:
                             yield deps.stream_event("reasoning", str(reasoning))
                         content = delta.get("content")
                         if content:

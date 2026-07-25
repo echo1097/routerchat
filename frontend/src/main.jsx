@@ -2260,6 +2260,49 @@ function StoryRail({
   onChatModeChange,
   navigationLocked = false,
 }) {
+  const [renameTarget, setRenameTarget] = useState(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const renameInputRef = useRef(null);
+  const skipRenameCommitRef = useRef(false);
+
+  function startRename(entityType, item) {
+    skipRenameCommitRef.current = false;
+    setRenameTarget({ entityType, id: item.id });
+    setRenameDraft(item.title || "");
+  }
+
+  function cancelRename() {
+    skipRenameCommitRef.current = true;
+    setRenameTarget(null);
+    setRenameDraft("");
+  }
+
+  async function commitRename(entityType, item) {
+    if (skipRenameCommitRef.current) {
+      skipRenameCommitRef.current = false;
+      return;
+    }
+
+    const nextTitle = renameDraft.trim();
+    if (!nextTitle || nextTitle === item.title) {
+      setRenameTarget(null);
+      setRenameDraft("");
+      return;
+    }
+
+    try {
+      if (entityType === "story") {
+        await onRenameStory(item, nextTitle);
+      } else {
+        await onRenameChapter(item, nextTitle);
+      }
+      setRenameTarget(null);
+      setRenameDraft("");
+    } catch {
+      requestAnimationFrame(() => renameInputRef.current?.focus());
+    }
+  }
+
   return (
     <>
       <div
@@ -2337,6 +2380,8 @@ function StoryRail({
             ) : (
               stories.map((story) => {
                 const active = story.id === activeStoryId;
+                const renamingStory =
+                  renameTarget?.entityType === "story" && renameTarget.id === story.id;
                 return (
                   <div key={story.id} className="space-y-1">
                     <div
@@ -2346,23 +2391,44 @@ function StoryRail({
                         active ? "bg-white/[0.08] shadow-[var(--shadow-border)]" : "hover:bg-white/[0.045]",
                       )}
                     >
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (navigationLocked) return;
-                          onSelectStory(story.id);
-                          onCloseMobile();
-                        }}
-                        disabled={navigationLocked}
-                        className="min-w-0 rounded-xl px-1 py-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
-                      >
-                        <div className="truncate text-sm font-medium leading-4 text-zinc-100">
-                          {story.title}
+                      {renamingStory ? (
+                        <div className="min-h-8 min-w-0 rounded-xl px-1 py-0.5">
+                          <input
+                            ref={renameInputRef}
+                            autoFocus
+                            aria-label="Rename story"
+                            value={renameDraft}
+                            onChange={(event) => setRenameDraft(event.target.value)}
+                            onBlur={() => commitRename("story", story)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") event.currentTarget.blur();
+                              if (event.key === "Escape") {
+                                event.preventDefault();
+                                cancelRename();
+                              }
+                            }}
+                            className="block h-7 w-full min-w-0 rounded-md bg-white/[0.06] px-1.5 text-sm font-medium text-zinc-100 outline-none shadow-[var(--shadow-border)]"
+                          />
                         </div>
-                      </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (navigationLocked) return;
+                            onSelectStory(story.id);
+                            onCloseMobile();
+                          }}
+                          disabled={navigationLocked}
+                          className="min-w-0 rounded-xl px-1 py-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
+                        >
+                          <div className="truncate text-sm font-medium leading-4 text-zinc-100">
+                            {story.title}
+                          </div>
+                        </button>
+                      )}
                       <StoryHistoryActions
                         story={story}
-                        onRename={onRenameStory}
+                        onRename={(item) => startRename("story", item)}
                         onDelete={onDeleteStory}
                       />
                     </div>
@@ -2383,47 +2449,73 @@ function StoryRail({
                             No chapters yet.
                           </div>
                         ) : (
-                          chapters.map((chapter) => (
-                            <div
-                              key={chapter.id}
-                              className={cx(
-                                "group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-xl px-2 py-1",
-                                chapter.id === activeChapterId
-                                  ? chapter.disabled
-                                    ? "bg-white/[0.075] text-zinc-400"
-                                    : "bg-white/[0.075] text-zinc-100"
-                                  : chapter.disabled
-                                    ? "text-zinc-600 hover:bg-white/[0.04] hover:text-zinc-300"
-                                    : "text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-100",
-                              )}
-                            >
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (navigationLocked) return;
-                                  onSelectChapter(chapter.id);
-                                  onCloseMobile();
-                                }}
-                                disabled={navigationLocked}
-                                className="flex min-w-0 items-center gap-1.5 text-left text-xs leading-5 focus:outline-none"
-                              >
-                                <span className="min-w-0 flex-1 truncate">{chapter.title}</span>
-                                {chapter.disabled && (
-                                  <EyeOff
-                                    size={13}
-                                    className="shrink-0 text-zinc-500"
-                                    aria-hidden="true"
-                                  />
+                          chapters.map((chapter) => {
+                            const renamingChapter =
+                              renameTarget?.entityType === "chapter"
+                              && renameTarget.id === chapter.id;
+                            return (
+                              <div
+                                key={chapter.id}
+                                className={cx(
+                                  "group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-xl px-2 py-1",
+                                  chapter.id === activeChapterId
+                                    ? chapter.disabled
+                                      ? "bg-white/[0.075] text-zinc-400"
+                                      : "bg-white/[0.075] text-zinc-100"
+                                    : chapter.disabled
+                                      ? "text-zinc-600 hover:bg-white/[0.04] hover:text-zinc-300"
+                                      : "text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-100",
                                 )}
-                              </button>
-                              <ChapterHistoryActions
-                                chapter={chapter}
-                                onRename={onRenameChapter}
-                                onDelete={onDeleteChapter}
-                                onToggleContext={onToggleChapterContext}
-                              />
-                            </div>
-                          ))
+                              >
+                                {renamingChapter ? (
+                                  <input
+                                    ref={renameInputRef}
+                                    autoFocus
+                                    aria-label="Rename chapter"
+                                    value={renameDraft}
+                                    onChange={(event) => setRenameDraft(event.target.value)}
+                                    onBlur={() => commitRename("chapter", chapter)}
+                                    onKeyDown={(event) => {
+                                      if (event.key === "Enter") event.currentTarget.blur();
+                                      if (event.key === "Escape") {
+                                        event.preventDefault();
+                                        cancelRename();
+                                      }
+                                    }}
+                                    className="block h-6 w-full min-w-0 rounded-md bg-white/[0.06] px-1.5 text-xs font-medium text-zinc-100 outline-none shadow-[var(--shadow-border)]"
+                                  />
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (navigationLocked) return;
+                                      onSelectChapter(chapter.id);
+                                      onCloseMobile();
+                                    }}
+                                    disabled={navigationLocked}
+                                    className="flex min-w-0 items-center gap-1.5 text-left text-xs leading-5 focus:outline-none"
+                                  >
+                                    <span className="min-w-0 flex-1 truncate">
+                                      {chapter.title}
+                                    </span>
+                                    {chapter.disabled && (
+                                      <EyeOff
+                                        size={13}
+                                        className="shrink-0 text-zinc-500"
+                                        aria-hidden="true"
+                                      />
+                                    )}
+                                  </button>
+                                )}
+                                <ChapterHistoryActions
+                                  chapter={chapter}
+                                  onRename={(item) => startRename("chapter", item)}
+                                  onDelete={onDeleteChapter}
+                                  onToggleContext={onToggleChapterContext}
+                                />
+                              </div>
+                            );
+                          })
                         )}
                       </div>
                     )}
@@ -7324,41 +7416,50 @@ function App() {
     }
   }
 
-  async function renameStoryItem(story) {
-    const title = window.prompt("rename story", story.title);
-    if (!title?.trim()) return;
+  async function renameStoryItem(story, title) {
     try {
-      await storyApi.updateStory(story.id, { title: title.trim() });
+      await storyApi.updateStory(story.id, { title });
       await loadStories();
       if (story.id === activeStoryIdRef.current) {
         const navigationIntent = beginNavigationIntent();
-        const result = await loadStoryBundle(story.id, activeChapterIdRef.current, { navigationIntent });
-        if (result && navigationIntentIsCurrent(navigationIntent)) commitStoryBundle(result);
+        const result = await loadStoryBundle(
+          story.id,
+          activeChapterIdRef.current,
+          { navigationIntent },
+        );
+        if (result && navigationIntentIsCurrent(navigationIntent)) {
+          commitStoryBundle(result);
+        }
       }
     } catch (error) {
       setStatus(error.message);
+      throw error;
     }
   }
 
-  async function renameChapterItem(chapter) {
-    const title = window.prompt("rename chapter", chapter.title);
-    if (!title?.trim() || !activeStoryId) return;
+  async function renameChapterItem(chapter, title) {
+    const storyId = activeStoryIdRef.current;
+    if (!storyId) return;
+
     try {
-      await flushChapterSave(activeStoryId, chapter.id);
+      await flushChapterSave(storyId, chapter.id);
       const confirmedChapter = chapterSaveCoordinator.getConfirmedChapter(
-        activeStoryId,
+        storyId,
         chapter.id,
       ) || chapter;
-      const updated = await storyApi.updateChapter(activeStoryId, chapter.id, {
-        title: title.trim(),
+      const updated = await storyApi.updateChapter(storyId, chapter.id, {
+        title,
         revision: confirmedChapter.revision,
       });
       chapterSaveCoordinator.rememberServerChapter(updated);
       setChapters((current) =>
-        current.map((item) => (item.id === updated.id ? chapterWithCoordinatorState(updated) : item)),
+        current.map((item) => (
+          item.id === updated.id ? chapterWithCoordinatorState(updated) : item
+        )),
       );
     } catch (error) {
       setStatus(error.message);
+      throw error;
     }
   }
 

@@ -27,6 +27,97 @@ async function thinkingMetrics(page) {
 
 test.describe.configure({ mode: "serial" });
 
+test("renames a story inline like chat mode", async ({ page }) => {
+  const nativeDialogs = [];
+  page.on("dialog", async (dialog) => {
+    nativeDialogs.push(dialog.type());
+    await dialog.dismiss();
+  });
+
+  const api = await installWriteApi(page);
+  await api.open();
+
+  const storyActions = page.getByRole("button", {
+    name: "Story actions for Reliability story",
+  });
+  await storyActions.click();
+  await page.getByRole("menuitem", { name: "Edit name" }).click();
+
+  const nameInput = page.getByRole("textbox", { name: "Rename story" });
+  await expect(nameInput).toBeFocused();
+  await expect(nameInput).toHaveValue("Reliability story");
+
+  await nameInput.fill("Cancelled title");
+  await nameInput.press("Escape");
+  await expect(nameInput).toBeHidden();
+  expect(api.state.story.title).toBe("Reliability story");
+
+  await storyActions.click();
+  await page.getByRole("menuitem", { name: "Edit name" }).click();
+  await nameInput.fill("Retitled story");
+  await nameInput.press("Enter");
+
+  await expect(nameInput).toBeHidden();
+  expect(api.state.story.title).toBe("Retitled story");
+  expect(api.state.renameRequests).toContainEqual({
+    entityType: "story",
+    title: "Retitled story",
+  });
+  expect(nativeDialogs).toEqual([]);
+});
+
+test("renames a chapter inline after flushing its draft and keeps failures editable", async ({ page }) => {
+  const nativeDialogs = [];
+  page.on("dialog", async (dialog) => {
+    nativeDialogs.push(dialog.type());
+    await dialog.dismiss();
+  });
+
+  const api = await installWriteApi(page);
+  await api.open();
+  await editCanvas(page, "draft saved before rename");
+
+  const chapterActions = page.getByRole("button", {
+    name: "Chapter actions for Opening",
+  });
+  await chapterActions.click();
+  await page.getByRole("menuitem", { name: "Edit name" }).click();
+
+  const nameInput = page.getByRole("textbox", { name: "Rename chapter" });
+  await expect(nameInput).toBeFocused();
+  await expect(nameInput).toHaveValue("Opening");
+  await nameInput.fill("Renamed opening");
+  await nameInput.press("Tab");
+
+  await expect(nameInput).toBeHidden();
+  await expect.poll(() => api.state.saveRequests.length).toBe(1);
+  expect(api.state.saveRequests[0].content).toBe("draft saved before rename");
+  expect(api.state.renameRequests).toContainEqual({
+    entityType: "chapter",
+    chapterId: "chapter-1",
+    title: "Renamed opening",
+    revision: 1,
+  });
+  expect(api.state.chapters[0].title).toBe("Renamed opening");
+
+  api.state.failNextRename = "chapter";
+  await page.getByRole("button", {
+    name: "Chapter actions for Renamed opening",
+  }).click();
+  await page.getByRole("menuitem", { name: "Edit name" }).click();
+  await nameInput.fill("Failed rename");
+  await nameInput.press("Enter");
+
+  await expect(nameInput).toBeVisible();
+  await expect(nameInput).toBeFocused();
+  await expect(page.getByText("Rename failed")).toBeVisible();
+  expect(api.state.chapters[0].title).toBe("Renamed opening");
+
+  await nameInput.press("Escape");
+  await expect(nameInput).toBeHidden();
+  expect(nativeDialogs).toEqual([]);
+});
+
 test("shows mandatory model reasoning as required even when the saved preference is off", async ({ page }) => {
   const api = await installWriteApi(page, {
     model: {

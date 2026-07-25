@@ -98,9 +98,11 @@ export async function installWriteApi(page, options = {}) {
       : [chapter("chapter-1", "Opening", openingContent)],
     saveRequests: [],
     saveGates: [],
+    renameRequests: [],
     generationRequests: [],
     generationGates: [],
     conflictNextSave: false,
+    failNextRename: null,
     suppressNextGenerationCommit: false,
   };
 
@@ -137,6 +139,28 @@ export async function installWriteApi(page, options = {}) {
     if (method === "GET" && path === "/api/stories/story-1/lorebook") return response(route, { entries: [] });
 
     const chapterId = segments[4];
+    if (method === "PATCH" && path === "/api/stories/story-1") {
+      if (state.failNextRename === "story") {
+        state.failNextRename = null;
+        return response(route, { detail: "Rename failed" }, 500);
+      }
+      state.renameRequests.push({ entityType: "story", ...body });
+      state.story = { ...state.story, ...body };
+      return response(route, { story: clone(state.story) });
+    }
+
+    if (method === "PATCH" && segments[1] === "stories" && segments[3] === "chapters" && segments.length === 5) {
+      const target = findChapter(chapterId);
+      if (state.failNextRename === "chapter") {
+        state.failNextRename = null;
+        return response(route, { detail: "Rename failed" }, 500);
+      }
+      state.renameRequests.push({ entityType: "chapter", chapterId, ...body });
+      target.title = body.title;
+      target.revision += 1;
+      return response(route, { chapter: clone(target) });
+    }
+
     if (method === "PATCH" && segments[1] === "stories" && segments[3] === "chapters" && segments[5] === "content") {
       const target = findChapter(chapterId);
       state.saveRequests.push({ chapterId, ...body });

@@ -45,6 +45,7 @@ test("renames a story inline like chat mode", async ({ page }) => {
 
   const nameInput = page.getByRole("textbox", { name: "Rename story" });
   await expect(nameInput).toBeFocused();
+  await expect(nameInput).toHaveAttribute("data-1p-ignore", "true");
   await expect(nameInput).toHaveValue("Reliability story");
 
   await nameInput.fill("Cancelled title");
@@ -85,6 +86,7 @@ test("renames a chapter inline after flushing its draft and keeps failures edita
 
   const nameInput = page.getByRole("textbox", { name: "Rename chapter" });
   await expect(nameInput).toBeFocused();
+  await expect(nameInput).toHaveAttribute("data-1p-ignore", "true");
   await expect(nameInput).toHaveValue("Opening");
   await nameInput.fill("Renamed opening");
   await nameInput.press("Tab");

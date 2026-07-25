@@ -2397,6 +2397,7 @@ function StoryRail({
                             ref={renameInputRef}
                             autoFocus
                             aria-label="Rename story"
+                            data-1p-ignore="true"
                             value={renameDraft}
                             onChange={(event) => setRenameDraft(event.target.value)}
                             onBlur={() => commitRename("story", story)}
@@ -2472,6 +2473,7 @@ function StoryRail({
                                     ref={renameInputRef}
                                     autoFocus
                                     aria-label="Rename chapter"
+                                    data-1p-ignore="true"
                                     value={renameDraft}
                                     onChange={(event) => setRenameDraft(event.target.value)}
                                     onBlur={() => commitRename("chapter", chapter)}

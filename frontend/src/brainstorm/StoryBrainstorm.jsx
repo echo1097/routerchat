@@ -12,29 +12,143 @@ import {
 import { ArrowLeft, Check, ChevronDown, Edit3, RotateCcw, Square, Trash2, X } from "lucide-react";
 import "@xyflow/react/dist/style.css";
 import "./StoryBrainstorm.css";
+import ThinkingContent from "../ThinkingContent.jsx";
 import { CONTROL_MOTION, cx } from "../uiShared.js";
+
+function brainstormDurationLabel(node) {
+  let durationMs = Number(node.duration_ms);
+  if (!Number.isFinite(durationMs) || durationMs <= 0) {
+    const createdAt = Date.parse(node.created_at || "");
+    const updatedAt = Date.parse(node.updated_at || "");
+    durationMs = Number.isFinite(createdAt) && Number.isFinite(updatedAt)
+      ? updatedAt - createdAt
+      : 0;
+  }
+
+  const seconds = Math.max(1, Math.round(durationMs / 1000));
+  return `${seconds} ${seconds === 1 ? "second" : "seconds"}`;
+}
 
 function PromptNode({ data }) {
   const failed = data.status === "failed" || data.status === "cancelled";
+  const actionsLocked = Boolean(data.operationInProgress);
+  const isGenerating = data.status === "generating";
+  const isThinking = isGenerating && data.generation_phase === "thinking";
+  const isWorking = isGenerating && data.generation_phase === "working";
+  const hasThinking = Boolean(data.reasoning) || isThinking;
+  const showWritingStatus = isWorking && !hasThinking;
+  let operationLabel = "Thinking";
+  if (isWorking) operationLabel = "Writing";
+  if (data.status === "complete") {
+    operationLabel = `Finished in ${brainstormDurationLabel(data)}`;
+  }
+  const [thinkingOpen, setThinkingOpen] = useState(isThinking);
+  let thinkingAriaLabel = thinkingOpen ? "Collapse thinking" : "Expand thinking";
+  if (isWorking) thinkingAriaLabel = "Writing in progress";
+  if (isThinking) thinkingAriaLabel = "Thinking in progress";
+  const thinkingScrollRef = useRef(null);
+  const followThinkingRef = useRef(true);
+
+  useEffect(() => {
+    if (isThinking) {
+      followThinkingRef.current = true;
+      setThinkingOpen(true);
+      return;
+    }
+
+    if (isWorking) {
+      setThinkingOpen(false);
+      return;
+    }
+
+    if (!isGenerating) setThinkingOpen(false);
+  }, [isGenerating, isThinking, isWorking]);
+
+  useEffect(() => {
+    const scrollNode = thinkingScrollRef.current;
+    if (!thinkingOpen || !scrollNode || !followThinkingRef.current) return;
+    scrollNode.scrollTop = scrollNode.scrollHeight;
+  }, [data.reasoning, thinkingOpen]);
 
   return (
     <article className={cx("brainstorm-node brainstorm-prompt-node", failed && "is-failed")}>
-      <Handle type="target" position={Position.Left} className="brainstorm-handle" />
+      {data.hasIncomingEdge && (
+        <Handle type="target" position={Position.Left} className="brainstorm-handle" />
+      )}
       <div className="brainstorm-node-eyebrow">
-        <span>{failed ? data.status : data.status === "generating" ? "Thinking" : "Prompt"}</span>
+        <span>{failed ? data.status : "Your prompt"}</span>
         <div className="brainstorm-node-actions nodrag">
-          {failed && (
+          {failed && !actionsLocked && (
             <button type="button" onClick={data.onRetry} aria-label="Retry prompt" title="Retry prompt">
               <RotateCcw size={15} />
             </button>
           )}
-          <button type="button" onClick={data.onDelete} aria-label="Delete prompt" title="Delete prompt">
+          <button
+            type="button"
+            onClick={data.onDelete}
+            disabled={actionsLocked}
+            aria-label="Delete prompt"
+            title="Delete prompt"
+          >
             <Trash2 size={15} />
           </button>
         </div>
       </div>
-      <p className="nowheel">{data.content}</p>
-      {data.status === "generating" && <div className="brainstorm-thinking-line" aria-hidden="true" />}
+      <p className="brainstorm-prompt-content nowheel">{data.content}</p>
+      {showWritingStatus && (
+        <div className="brainstorm-writing-status">
+          <span className="brainstorm-thinking-label t-shimmer" data-text="Writing">
+            Writing
+          </span>
+        </div>
+      )}
+      {hasThinking && (
+        <div
+          className={cx("brainstorm-thinking nodrag nopan", thinkingOpen && "is-open")}
+        >
+          <button
+            type="button"
+            className="brainstorm-thinking-trigger nodrag nopan"
+            onClick={() => {
+              if (isGenerating) return;
+              followThinkingRef.current = true;
+              setThinkingOpen((open) => !open);
+            }}
+            disabled={isGenerating}
+            aria-expanded={thinkingOpen}
+            aria-label={thinkingAriaLabel}
+          >
+            <span
+              className={cx("brainstorm-thinking-label", isGenerating && "t-shimmer")}
+              data-text={isGenerating ? operationLabel : undefined}
+            >
+              {operationLabel}
+            </span>
+            {!isGenerating && <ChevronDown size={14} aria-hidden="true" />}
+          </button>
+          <div
+            className="brainstorm-thinking-panel"
+            aria-hidden={!thinkingOpen}
+            inert={thinkingOpen ? undefined : ""}
+          >
+            <div
+              ref={thinkingScrollRef}
+              className="brainstorm-thinking-content nodrag nopan nowheel"
+              onScroll={(event) => {
+                const node = event.currentTarget;
+                const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight;
+                followThinkingRef.current = distanceFromBottom < 24;
+              }}
+            >
+              {data.reasoning ? (
+                <ThinkingContent>{data.reasoning}</ThinkingContent>
+              ) : (
+                <span className="brainstorm-thinking-waiting">Waiting for the model</span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       <Handle type="source" position={Position.Right} className="brainstorm-handle" />
     </article>
   );
@@ -89,7 +203,13 @@ function IdeaNode({ data, selected }) {
               <button type="button" onClick={() => setEditing(true)} aria-label="Edit idea" title="Edit idea">
                 <Edit3 size={15} />
               </button>
-              <button type="button" onClick={data.onDelete} aria-label="Delete idea" title="Delete idea">
+              <button
+                type="button"
+                onClick={data.onDelete}
+                disabled={data.operationInProgress}
+                aria-label="Delete idea"
+                title="Delete idea"
+              >
                 <Trash2 size={15} />
               </button>
             </div>
@@ -116,7 +236,6 @@ export default function StoryBrainstorm({
   prompt,
   setPrompt,
   isStreaming,
-  reasoning,
   disabled,
   modelLabel,
   thinkingEnabled,
@@ -142,6 +261,11 @@ export default function StoryBrainstorm({
   const textareaRef = useRef(null);
   const ideaMenuRef = useRef(null);
   const modelMenuRef = useRef(null);
+  const previousNodeIdsRef = useRef(null);
+  const pendingFrameRef = useRef(false);
+  const nodeOperationInProgress = isStreaming || graphNodes.some(
+    (node) => node.status === "generating",
+  );
 
   const descendantsByNode = useMemo(() => {
     const childMap = new Map();
@@ -152,6 +276,16 @@ export default function StoryBrainstorm({
     });
     return childMap;
   }, [graphEdges]);
+
+  const incomingNodeIds = useMemo(
+    () => new Set(graphEdges.map((edge) => edge.target_node_id)),
+    [graphEdges],
+  );
+
+  const graphNodeIdsKey = useMemo(
+    () => graphNodes.map((node) => node.id).sort().join("|"),
+    [graphNodes],
+  );
 
   const deleteNode = useCallback((nodeId) => {
     const hasDescendants = (descendantsByNode.get(nodeId) || []).length > 0;
@@ -166,20 +300,58 @@ export default function StoryBrainstorm({
     onGenerate(node.content, parentIds);
   }, [graphEdges, onDeleteNode, onGenerate]);
 
+  const nodeDataDeps = useMemo(
+    () => ({ deleteNode, retryPrompt, onUpdateNode, incomingNodeIds, nodeOperationInProgress }),
+    [deleteNode, incomingNodeIds, nodeOperationInProgress, onUpdateNode, retryPrompt],
+  );
+
+  // Reuse the React Flow node objects instead of rebuilding them. They carry `measured`, and a
+  // node without it renders as `visibility: hidden` until the resize observer catches up, which
+  // during streaming drops the node out of hit testing on every token.
   useEffect(() => {
-    setNodes(graphNodes.map((node) => ({
-      id: node.id,
-      type: node.node_type,
-      position: { x: node.position_x, y: node.position_y },
-      selected: selectedIdeaIds.includes(node.id),
-      data: {
-        ...node,
-        onSave: (changes) => onUpdateNode(node.id, changes),
-        onDelete: () => deleteNode(node.id),
-        onRetry: () => retryPrompt(node),
-      },
-    })));
-  }, [deleteNode, graphNodes, onUpdateNode, retryPrompt, selectedIdeaIds, setNodes]);
+    setNodes((currentNodes) => {
+      const currentById = new Map(currentNodes.map((node) => [node.id, node]));
+      return graphNodes.map((graphNode) => {
+        const existing = currentById.get(graphNode.id);
+        if (
+          existing
+          && existing.data.deps === nodeDataDeps
+          && existing.data.source === graphNode
+          && existing.position.x === graphNode.position_x
+          && existing.position.y === graphNode.position_y
+        ) {
+          return existing;
+        }
+
+        return {
+          ...existing,
+          id: graphNode.id,
+          type: graphNode.node_type,
+          position: { x: graphNode.position_x, y: graphNode.position_y },
+          selected: existing?.selected ?? false,
+          data: {
+            ...graphNode,
+            source: graphNode,
+            deps: nodeDataDeps,
+            hasIncomingEdge: incomingNodeIds.has(graphNode.id),
+            operationInProgress: nodeOperationInProgress,
+            onSave: (changes) => onUpdateNode(graphNode.id, changes),
+            onDelete: () => deleteNode(graphNode.id),
+            onRetry: () => retryPrompt(graphNode),
+          },
+        };
+      });
+    });
+  }, [
+    deleteNode,
+    graphNodes,
+    incomingNodeIds,
+    nodeDataDeps,
+    nodeOperationInProgress,
+    onUpdateNode,
+    retryPrompt,
+    setNodes,
+  ]);
 
   useEffect(() => {
     setEdges(graphEdges.map((edge) => ({
@@ -187,8 +359,8 @@ export default function StoryBrainstorm({
       source: edge.source_node_id,
       target: edge.target_node_id,
       type: "smoothstep",
-      markerEnd: { type: MarkerType.ArrowClosed, color: "rgba(255,255,255,0.2)" },
-      style: { stroke: "rgba(255,255,255,0.16)", strokeWidth: 1.5 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: "rgba(255,255,255,0.16)" },
+      style: { stroke: "rgba(255,255,255,0.12)", strokeWidth: 1.25 },
     })));
   }, [graphEdges, setEdges]);
 
@@ -197,6 +369,64 @@ export default function StoryBrainstorm({
     flowInstance.setViewport(viewport, { duration: 0 });
     viewportAppliedRef.current = true;
   }, [flowInstance, viewport]);
+
+  useEffect(() => {
+    const liveIdeaIds = new Set(
+      graphNodes
+        .filter((node) => node.node_type === "idea")
+        .map((node) => node.id),
+    );
+    setSelectedIdeaIds((currentIds) => {
+      const nextIds = currentIds.filter((nodeId) => liveIdeaIds.has(nodeId));
+      return nextIds.length === currentIds.length ? currentIds : nextIds;
+    });
+  }, [graphNodes]);
+
+  useEffect(() => {
+    if (previousNodeIdsRef.current === null) {
+      previousNodeIdsRef.current = graphNodeIdsKey;
+      return;
+    }
+    if (previousNodeIdsRef.current === graphNodeIdsKey) return;
+
+    previousNodeIdsRef.current = graphNodeIdsKey;
+    pendingFrameRef.current = true;
+  }, [graphNodeIdsKey]);
+
+  useEffect(() => {
+    if (!flowInstance || !pendingFrameRef.current) return;
+
+    const renderedNodeIdsKey = nodes.map((node) => node.id).sort().join("|");
+    if (renderedNodeIdsKey !== graphNodeIdsKey) return;
+
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const duration = reducedMotion ? 0 : 250;
+    if (nodes.length === 0) {
+      pendingFrameRef.current = false;
+      void flowInstance.setViewport({ x: 0, y: 0, zoom: 1 }, { duration });
+      return;
+    }
+
+    const nodesMeasured = nodes.every(
+      (node) => Number(node.measured?.width) > 0 && Number(node.measured?.height) > 0,
+    );
+    if (!nodesMeasured) return;
+
+    pendingFrameRef.current = false;
+    void flowInstance.fitView({
+      nodes: nodes.map((node) => ({ id: node.id })),
+      padding: {
+        top: "120px",
+        right: "56px",
+        bottom: "190px",
+        left: "56px",
+      },
+      minZoom: 0.25,
+      maxZoom: 1.1,
+      duration,
+      interpolate: "smooth",
+    });
+  }, [flowInstance, graphNodeIdsKey, nodes]);
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -251,6 +481,13 @@ export default function StoryBrainstorm({
     });
   }, []);
 
+  const clearSelection = useCallback(() => {
+    setSelectedIdeaIds([]);
+    setNodes((currentNodes) => currentNodes.map((node) => (
+      node.selected ? { ...node, selected: false } : node
+    )));
+  }, [setNodes]);
+
   return (
     <section data-tour="write-brainstorm" className="brainstorm-workspace">
       <header className="brainstorm-header">
@@ -262,7 +499,6 @@ export default function StoryBrainstorm({
           <div className="brainstorm-story-title">{story.title}</div>
           <h1>Brainstorm</h1>
         </div>
-        {reasoning && isStreaming && <div className="brainstorm-status">Thinking through the branch</div>}
       </header>
 
       <div className="brainstorm-canvas" aria-label="Story brainstorm canvas">
@@ -287,7 +523,7 @@ export default function StoryBrainstorm({
           deleteKeyCode={null}
           proOptions={{ hideAttribution: true }}
         >
-          <Background color="rgba(255,255,255,0.07)" gap={28} size={1} />
+          <Background color="rgba(255,255,255,0.045)" gap={28} size={1} />
           <Controls position="top-right" showInteractive={false} />
         </ReactFlow>
 
@@ -358,7 +594,7 @@ export default function StoryBrainstorm({
                 </div>
               </div>
               {selectedIdeaIds.length > 0 && (
-                <button type="button" className="brainstorm-selection-pill" onClick={() => setSelectedIdeaIds([])}>
+                <button type="button" className="brainstorm-selection-pill" onClick={clearSelection}>
                   <span className="tabular-nums">{selectedIdeaIds.length}</span> selected
                   <X size={14} />
                 </button>

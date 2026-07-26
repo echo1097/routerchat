@@ -39,6 +39,7 @@ import packageInfo from "../../package.json";
 import openingMessages from "./openingMessages.json";
 import { cx, CONTROL_MOTION, PROMPT_BAR_CONTROL_MOTION, SOFT_SURFACE, FADE_MOTION } from "./uiShared.js";
 import HelpTourButton from "./HelpTourButton.jsx";
+import ThinkingContent from "./ThinkingContent.jsx";
 import StoryBrainstorm from "./brainstorm/StoryBrainstorm.jsx";
 import StoryLorebook from "./lorebook/StoryLorebook.jsx";
 import NotificationStack from "./notifications/NotificationStack.jsx";
@@ -415,12 +416,6 @@ const storyApi = {
     }
   },
 };
-
-function formatThinkingMarkdown(value) {
-  return (value || "")
-    .replace(/([^\n])\s+(\d+\.\s+)/g, "$1\n$2")
-    .replace(/:\n(\d+\.\s+)/g, ":\n\n$1");
-}
 
 function modelName(models, id) {
   return models.find((model) => model.id === id)?.name || id || "No model";
@@ -1651,33 +1646,6 @@ function PromptNavigationRail({ messages, streamRef, visible, activeChatId }) {
     </nav>
   );
 }
-
-const ThinkingContent = memo(function ThinkingContent({ children }) {
-  return (
-    <ReactMarkdown
-      components={{
-        p: ({ node, ...props }) => <p className="mb-3 text-pretty last:mb-0" {...props} />,
-        code: ({ inline, ...props }) =>
-          inline ? (
-            <code className="rounded bg-white/[0.06] px-1 py-0.5 text-[0.92em] text-zinc-400" {...props} />
-          ) : (
-            <code {...props} />
-          ),
-        pre: ({ node, ...props }) => (
-          <pre className="my-3 overflow-x-auto rounded-xl bg-black/25 p-3 text-xs leading-5 text-zinc-400 shadow-[var(--shadow-border)]" {...props} />
-        ),
-        ul: ({ node, ...props }) => (
-          <ul className="my-3 list-disc space-y-1 pl-5 text-pretty marker:text-zinc-600" {...props} />
-        ),
-        ol: ({ node, ...props }) => (
-          <ol className="my-3 list-decimal space-y-1 pl-5 text-pretty marker:text-zinc-600" {...props} />
-        ),
-      }}
-    >
-      {formatThinkingMarkdown(children)}
-    </ReactMarkdown>
-  );
-});
 
 function formatThoughtDuration(ms) {
   const seconds = Math.max(1, Math.round(ms / 1000));
@@ -5725,7 +5693,6 @@ function App() {
   const [brainstormEdges, setBrainstormEdges] = useState([]);
   const [brainstormViewport, setBrainstormViewport] = useState({ x: 0, y: 0, zoom: 1 });
   const [brainstormPrompt, setBrainstormPrompt] = useState("");
-  const [brainstormReasoning, setBrainstormReasoning] = useState("");
   const [latestBrainstormGeneration, setLatestBrainstormGeneration] = useState(null);
   const [activeStoryId, setActiveStoryId] = useState(null);
   const [activeChapterId, setActiveChapterId] = useState(null);
@@ -5791,6 +5758,7 @@ function App() {
   const streamRef = useRef(null);
   const previousRailStateRef = useRef(null);
   const brainstormViewportTimeoutRef = useRef(null);
+  const brainstormPromptNodeIdRef = useRef(null);
   const chapterContentRef = useRef("");
   const chaptersRef = useRef([]);
   const activeStoryIdRef = useRef(null);
@@ -7732,8 +7700,12 @@ function App() {
 
   async function generateBrainstorm(text = brainstormPrompt.trim(), selectedIdeaIds = [], ideaCount = 3) {
     if (isStreaming || !text || !activeStoryId) return;
+    const brainstormThinkingEnabled = effectiveThinkingEnabled(
+      models,
+      settings.model,
+      settings.thinking_enabled,
+    );
     setIsStreaming(true);
-    setBrainstormReasoning("");
     setStatus("");
     setBrainstormPrompt("");
     abortRef.current = new AbortController();
@@ -7751,9 +7723,15 @@ function App() {
           if (event.type === "prompt") {
             const value = event.value || {};
             if (value.node) {
+              brainstormPromptNodeIdRef.current = value.node.id;
               setBrainstormNodes((current) => [
                 ...current.filter((node) => node.id !== value.node.id),
-                value.node,
+                {
+                  ...value.node,
+                  generation_phase: value.node.generation_phase
+                    || (brainstormThinkingEnabled ? "thinking" : "working"),
+                  reasoning: value.node.reasoning || "",
+                },
               ]);
             }
             if (Array.isArray(value.edges)) {
@@ -7765,14 +7743,39 @@ function App() {
             return;
           }
           if (event.type === "reasoning") {
-            setBrainstormReasoning((current) => `${current}${String(event.value || "")}`);
+            const promptNodeId = brainstormPromptNodeIdRef.current;
+            const reasoningValue = String(event.value || "");
+            if (!promptNodeId || !reasoningValue) return;
+            setBrainstormNodes((current) => current.map((node) => (
+              node.id === promptNodeId
+                ? { ...node, reasoning: `${node.reasoning || ""}${reasoningValue}` }
+                : node
+            )));
+            return;
+          }
+          if (event.type === "working") {
+            const promptNodeId = brainstormPromptNodeIdRef.current;
+            if (!promptNodeId) return;
+            setBrainstormNodes((current) => current.map((node) => (
+              node.id === promptNodeId
+                ? { ...node, generation_phase: "working" }
+                : node
+            )));
             return;
           }
           if (event.type === "ideas") {
             const value = event.value || {};
+            const promptNodeId = brainstormPromptNodeIdRef.current;
             setBrainstormNodes((current) => [
               ...current.map((node) => (
-                node.status === "generating" ? { ...node, status: "complete" } : node
+                node.id === promptNodeId
+                  ? {
+                      ...node,
+                      status: "complete",
+                      generation_phase: "complete",
+                      duration_ms: value.duration_ms,
+                    }
+                  : node
               )),
               ...(value.nodes || []),
             ]);
@@ -7798,7 +7801,7 @@ function App() {
       }
     } finally {
       setIsStreaming(false);
-      setBrainstormReasoning("");
+      brainstormPromptNodeIdRef.current = null;
       abortRef.current = null;
       try {
         await loadBrainstormBundle(activeStoryId);
@@ -8134,7 +8137,6 @@ function App() {
             prompt={brainstormPrompt}
             setPrompt={setBrainstormPrompt}
             isStreaming={isStreaming}
-            reasoning={brainstormReasoning}
             disabled={!keyStatus.has_key}
             modelLabel={promptModelName(models, settings.model)}
             thinkingEnabled={effectiveThinkingEnabled(

@@ -17,6 +17,7 @@ from backend.writing import (
     chapter_edit_response_format,
     effective_generation_mode,
     lorebook_history_label,
+    next_brainstorm_root_position,
     parse_brainstorm_ideas,
     text_hash,
 )
@@ -36,6 +37,42 @@ class StoryApiTest(unittest.TestCase):
         main.DATA_DIR = self.originalDataDir
         main.DB_PATH = self.originalDbPath
         self.tempDir.cleanup()
+
+    def test_brainstorm_root_layout_reuses_the_nearest_open_slot(self):
+        firstRoot = {"id": "root-1", "position_y": 180}
+        firstIdeas = [
+            {"id": "idea-1", "position_y": -30},
+            {"id": "idea-2", "position_y": 180},
+            {"id": "idea-3", "position_y": 390},
+        ]
+        firstNodes = [firstRoot, *firstIdeas]
+        firstEdges = [
+            {"source_node_id": "root-1", "target_node_id": idea["id"]}
+            for idea in firstIdeas
+        ]
+
+        self.assertEqual(next_brainstorm_root_position([], [], 3), (0.0, 180.0))
+        secondPosition = next_brainstorm_root_position(firstNodes, firstEdges, 3)
+        self.assertEqual(secondPosition, (0.0, 940.0))
+
+        secondRoot = {"id": "root-2", "position_y": secondPosition[1]}
+        secondIdeas = [
+            {"id": "idea-4", "position_y": secondPosition[1] - 210},
+            {"id": "idea-5", "position_y": secondPosition[1]},
+            {"id": "idea-6", "position_y": secondPosition[1] + 210},
+        ]
+        secondNodes = [secondRoot, *secondIdeas]
+        secondEdges = [
+            {"source_node_id": "root-2", "target_node_id": idea["id"]}
+            for idea in secondIdeas
+        ]
+        allNodes = [*firstNodes, *secondNodes]
+        allEdges = [*firstEdges, *secondEdges]
+
+        thirdPosition = next_brainstorm_root_position(allNodes, allEdges, 3)
+        self.assertEqual(thirdPosition, (0.0, -580.0))
+        reusedPosition = next_brainstorm_root_position(secondNodes, secondEdges, 3)
+        self.assertEqual(reusedPosition, (0.0, 180.0))
 
     def streamChapterGeneration(self, story, chapter, output, revision=None, mode="edit", runId="run-test", complete=True):
         chunks = output if isinstance(output, list) else [output]
@@ -1117,6 +1154,8 @@ class StoryApiTest(unittest.TestCase):
                 return False
 
             async def aiter_lines(self):
+                yield f"data: {json.dumps({'choices': [{'delta': {'reasoning': 'First inspect the signal. '}}]})}"
+                yield f"data: {json.dumps({'choices': [{'delta': {'reasoning_content': 'Then split the outcomes.'}}]})}"
                 yield f"data: {json.dumps({'choices': [{'delta': {'content': output}, 'finish_reason': 'stop'}]})}"
                 yield "data: [DONE]"
 
@@ -1153,9 +1192,16 @@ class StoryApiTest(unittest.TestCase):
             {"enabled": True, "exclude": False, "effort": "medium"},
         )
         events = [json.loads(line) for line in response.text.splitlines() if line]
-        self.assertEqual([event["type"] for event in events], ["prompt", "ideas"])
+        self.assertEqual(
+            [event["type"] for event in events],
+            ["prompt", "reasoning", "reasoning", "working", "ideas"],
+        )
         self.assertEqual(events[0]["value"]["node"]["position_x"], 0)
         self.assertEqual(events[0]["value"]["node"]["position_y"], 180)
+        self.assertEqual(
+            events[0]["value"]["node"]["generation_phase"],
+            "thinking",
+        )
         graph = self.client.get(f"/api/stories/{story['id']}/brainstorm").json()
         self.assertEqual(len(graph["nodes"]), 4)
         self.assertEqual(len(graph["edges"]), 3)
@@ -1163,6 +1209,46 @@ class StoryApiTest(unittest.TestCase):
             [node["status"] for node in graph["nodes"] if node["node_type"] == "prompt"],
             ["complete"],
         )
+        savedPrompt = next(
+            node for node in graph["nodes"] if node["node_type"] == "prompt"
+        )
+        self.assertEqual(
+            savedPrompt["reasoning"],
+            "First inspect the signal. Then split the outcomes.",
+        )
+        self.assertGreater(savedPrompt["duration_ms"], 0)
+        self.assertGreater(events[-1]["value"]["duration_ms"], 0)
+        self.assertTrue(all(
+            node["reasoning"] is None
+            for node in graph["nodes"]
+            if node["node_type"] == "idea"
+        ))
+
+        selectedIdea = next(
+            node for node in graph["nodes"] if node["node_type"] == "idea"
+        )
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
+            "backend.writing.httpx.AsyncClient", FakeClient
+        ):
+            branchResponse = self.client.post(
+                f"/api/stories/{story['id']}/brainstorm/generate/stream",
+                json={
+                    "message": "branch from this idea",
+                    "model": "test/model",
+                    "max_tokens": 1000,
+                    "selected_idea_ids": [selectedIdea["id"]],
+                },
+            )
+
+        branchEvents = [
+            json.loads(line) for line in branchResponse.text.splitlines() if line
+        ]
+        branchPrompt = branchEvents[0]["value"]["node"]
+        self.assertEqual(
+            branchPrompt["position_x"],
+            selectedIdea["position_x"] + 390,
+        )
+        self.assertEqual(branchPrompt["position_y"], selectedIdea["position_y"])
 
     def test_malformed_brainstorm_generation_keeps_only_failed_prompt(self):
         story = self.client.post("/api/stories", json={"title": "Bad Stream"}).json()["story"]
@@ -1204,10 +1290,18 @@ class StoryApiTest(unittest.TestCase):
             )
 
         events = [json.loads(line) for line in response.text.splitlines() if line]
-        self.assertEqual([event["type"] for event in events], ["prompt", "error"])
+        self.assertEqual(
+            [event["type"] for event in events],
+            ["prompt", "working", "error"],
+        )
+        self.assertEqual(
+            events[0]["value"]["node"]["generation_phase"],
+            "working",
+        )
         graph = self.client.get(f"/api/stories/{story['id']}/brainstorm").json()
         self.assertEqual(len(graph["nodes"]), 1)
         self.assertEqual(graph["nodes"][0]["status"], "failed")
+        self.assertIsNone(graph["nodes"][0]["reasoning"])
         self.assertEqual(graph["edges"], [])
 
     def test_lorebook_history_labels_describe_updates_and_timeline_changes(self):

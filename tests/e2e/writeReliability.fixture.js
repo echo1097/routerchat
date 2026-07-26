@@ -17,6 +17,19 @@ function chapter(id, title, content, revision = 0) {
   };
 }
 
+function brainstormNode(id, nodeType, title, content, positionX, positionY) {
+  return {
+    id,
+    story_id: "story-1",
+    node_type: nodeType,
+    title,
+    content,
+    position_x: positionX,
+    position_y: positionY,
+    status: "complete",
+  };
+}
+
 function longChapterContent() {
   return Array.from(
     { length: 48 },
@@ -70,6 +83,34 @@ export async function installWriteApi(page, options = {}) {
     });
   }
 
+  if (options.controlledBrainstormStream) {
+    await page.addInitScript(() => {
+      const nativeFetch = window.fetch.bind(window);
+
+      window.__brainstormStream = null;
+      window.fetch = async (input, init = {}) => {
+        const requestUrl = typeof input === "string" ? input : input?.url || "";
+        const isBrainstormGeneration = /\/api\/stories\/[^/]+\/brainstorm\/generate\/stream(?:\?|$)/.test(requestUrl);
+        if (!isBrainstormGeneration) return nativeFetch(input, init);
+
+        const requestBody = JSON.parse(String(init.body || "{}"));
+        const stream = new ReadableStream({
+          start(controller) {
+            window.__brainstormStream = {
+              controller,
+              requestBody,
+            };
+          },
+        });
+
+        return new Response(stream, {
+          status: 200,
+          headers: { "Content-Type": "application/x-ndjson" },
+        });
+      };
+    });
+  }
+
   const openingContent = options.legacyContent ?? (options.longContent ? longChapterContent() : "saved opening");
   const model = options.model || {
     id: "test/model",
@@ -86,7 +127,7 @@ export async function installWriteApi(page, options = {}) {
       temperature: 0.7,
       max_tokens: 30000,
       system_prompt: "",
-      thinking_enabled: false,
+      thinking_enabled: options.thinkingEnabled ?? false,
       reasoning_effort: "medium",
       updated_at: "2026-01-01T00:00:00Z",
     },
@@ -96,6 +137,13 @@ export async function installWriteApi(page, options = {}) {
           chapter("chapter-2", "Second", options.secondContent ?? "saved second"),
         ]
       : [chapter("chapter-1", "Opening", openingContent)],
+    brainstormNodes: clone(options.brainstormNodes || []),
+    brainstormEdges: clone(options.brainstormEdges || []),
+    brainstormViewport: clone(options.brainstormViewport || { x: 0, y: 0, zoom: 1 }),
+    brainstormGenerationRequests: [],
+    brainstormNodeUpdateRequests: [],
+    brainstormViewportRequests: [],
+    brainstormGenerationCount: 0,
     saveRequests: [],
     saveGates: [],
     renameRequests: [],
@@ -137,6 +185,127 @@ export async function installWriteApi(page, options = {}) {
     if (method === "GET" && path === "/api/stories/story-1") return response(route, storyBundle());
     if (method === "GET" && path === "/api/stories/story-1/chapters") return response(route, { chapters: clone(state.chapters) });
     if (method === "GET" && path === "/api/stories/story-1/lorebook") return response(route, { entries: [] });
+    if (method === "GET" && path === "/api/stories/story-1/brainstorm") {
+      return response(route, {
+        nodes: clone(state.brainstormNodes),
+        edges: clone(state.brainstormEdges),
+        viewport: clone(state.brainstormViewport),
+        latest_generation: null,
+      });
+    }
+
+    if (method === "PATCH" && path === "/api/stories/story-1/brainstorm/viewport") {
+      state.brainstormViewportRequests.push(clone(body));
+      state.brainstormViewport = {
+        x: body.position_x,
+        y: body.position_y,
+        zoom: body.zoom,
+      };
+      return response(route, { viewport: clone(state.brainstormViewport) });
+    }
+
+    if (method === "PATCH" && segments[3] === "brainstorm" && segments[4] === "nodes") {
+      const nodeId = segments[5];
+      const nodeIndex = state.brainstormNodes.findIndex((node) => node.id === nodeId);
+      if (nodeIndex === -1) return response(route, { detail: "Brainstorm node not found" }, 404);
+
+      state.brainstormNodeUpdateRequests.push({ nodeId, changes: clone(body) });
+      state.brainstormNodes[nodeIndex] = {
+        ...state.brainstormNodes[nodeIndex],
+        ...clone(body),
+      };
+      return response(route, { node: clone(state.brainstormNodes[nodeIndex]) });
+    }
+
+    if (method === "DELETE" && segments[3] === "brainstorm" && segments[4] === "nodes") {
+      const nodeId = segments[5];
+      const deleteIds = new Set([nodeId]);
+      const pendingIds = [nodeId];
+      if (url.searchParams.get("cascade") === "true") {
+        while (pendingIds.length > 0) {
+          const currentId = pendingIds.pop();
+          state.brainstormEdges
+            .filter((edge) => edge.source_node_id === currentId)
+            .forEach((edge) => {
+              if (deleteIds.has(edge.target_node_id)) return;
+              deleteIds.add(edge.target_node_id);
+              pendingIds.push(edge.target_node_id);
+            });
+        }
+      }
+      state.brainstormNodes = state.brainstormNodes.filter((node) => !deleteIds.has(node.id));
+      state.brainstormEdges = state.brainstormEdges.filter((edge) => (
+        !deleteIds.has(edge.source_node_id) && !deleteIds.has(edge.target_node_id)
+      ));
+      return response(route, { deleted_node_ids: [...deleteIds] });
+    }
+
+    if (method === "POST" && path === "/api/stories/story-1/brainstorm/generate/stream") {
+      state.brainstormGenerationRequests.push(clone(body));
+      state.brainstormGenerationCount += 1;
+      const count = state.brainstormGenerationCount;
+      const promptNode = brainstormNode(
+        `generated-prompt-${count}`,
+        "prompt",
+        "Prompt",
+        body.message,
+        0,
+        180,
+      );
+      const brainstormReasoning = options.brainstormReasoning || "";
+      const brainstormDurationMs = options.brainstormDurationMs || 4200;
+      if (brainstormReasoning) promptNode.reasoning = brainstormReasoning;
+      promptNode.duration_ms = brainstormDurationMs;
+      const ideaNode = brainstormNode(
+        `generated-idea-${count}`,
+        "idea",
+        "Generated idea",
+        "A generated direction.",
+        390,
+        180,
+      );
+      const promptEdges = (body.selected_idea_ids || []).map((sourceId, index) => ({
+        id: `generated-parent-edge-${count}-${index}`,
+        story_id: "story-1",
+        source_node_id: sourceId,
+        target_node_id: promptNode.id,
+      }));
+      const ideaEdge = {
+        id: `generated-idea-edge-${count}`,
+        story_id: "story-1",
+        source_node_id: promptNode.id,
+        target_node_id: ideaNode.id,
+      };
+      state.brainstormNodes.push(promptNode, ideaNode);
+      state.brainstormEdges.push(...promptEdges, ideaEdge);
+      const streamPromptNode = {
+        ...promptNode,
+        status: "generating",
+        generation_phase: "thinking",
+        reasoning: "",
+        duration_ms: null,
+      };
+      const events = [
+        { type: "prompt", value: { node: streamPromptNode, edges: promptEdges } },
+        ...(brainstormReasoning
+          ? [{ type: "reasoning", value: brainstormReasoning }]
+          : []),
+        { type: "working", value: null },
+        {
+          type: "ideas",
+          value: {
+            nodes: [ideaNode],
+            edges: [ideaEdge],
+            duration_ms: brainstormDurationMs,
+          },
+        },
+      ];
+      return route.fulfill({
+        status: 200,
+        contentType: "application/x-ndjson",
+        body: events.map((event) => JSON.stringify(event)).join("\n"),
+      });
+    }
 
     const chapterId = segments[4];
     if (method === "PATCH" && path === "/api/stories/story-1") {
@@ -225,8 +394,31 @@ export async function installWriteApi(page, options = {}) {
       await page.goto(`/write/story/story-1/chapter/${chapterId}`);
       await expect(page.getByRole("heading", { name: chapterId === "chapter-1" ? "Opening" : "Second" })).toBeVisible();
     },
+    async openBrainstorm() {
+      await page.goto("/write/story/story-1/brainstorm");
+      await expect(page.getByRole("heading", { name: "Brainstorm" })).toBeVisible();
+    },
     async waitForReasoningStream() {
       await expect.poll(() => page.evaluate(() => Boolean(window.__writeReasoningStream))).toBe(true);
+    },
+    async waitForBrainstormStream() {
+      await expect.poll(() => page.evaluate(() => Boolean(window.__brainstormStream))).toBe(true);
+    },
+    async pushBrainstormEvent(event) {
+      await page.evaluate((nextEvent) => {
+        const brainstormStream = window.__brainstormStream;
+        if (!brainstormStream) throw new Error("brainstorm stream is not ready");
+
+        brainstormStream.controller.enqueue(
+          new TextEncoder().encode(`${JSON.stringify(nextEvent)}\n`),
+        );
+      }, event);
+    },
+    async closeBrainstormStream() {
+      await page.evaluate(() => {
+        window.__brainstormStream?.controller.close();
+        window.__brainstormStream = null;
+      });
     },
     async pushReasoning(value) {
       await page.evaluate((nextValue) => {

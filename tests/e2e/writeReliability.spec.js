@@ -27,6 +27,526 @@ async function thinkingMetrics(page) {
 
 test.describe.configure({ mode: "serial" });
 
+test("stabilizes brainstorm handles, selection, and structural framing", async ({ page }) => {
+  const api = await installWriteApi(page, {
+    brainstormNodes: [
+      {
+        id: "root-prompt",
+        story_id: "story-1",
+        node_type: "prompt",
+        title: "Prompt",
+        content: "Root prompt",
+        position_x: 0,
+        position_y: 180,
+        status: "complete",
+      },
+      {
+        id: "parent-idea",
+        story_id: "story-1",
+        node_type: "idea",
+        title: "Parent idea",
+        content: "The branch starts here.",
+        position_x: 390,
+        position_y: 80,
+        status: "complete",
+      },
+      {
+        id: "branch-prompt",
+        story_id: "story-1",
+        node_type: "prompt",
+        title: "Prompt",
+        content: "Branch prompt",
+        position_x: 780,
+        position_y: 80,
+        status: "complete",
+      },
+      {
+        id: "disposable-idea",
+        story_id: "story-1",
+        node_type: "idea",
+        title: "Disposable",
+        content: "Delete this selected idea.",
+        position_x: 390,
+        position_y: 360,
+        status: "complete",
+      },
+    ],
+    brainstormEdges: [
+      {
+        id: "edge-root-parent",
+        source_node_id: "root-prompt",
+        target_node_id: "parent-idea",
+      },
+      {
+        id: "edge-parent-branch",
+        source_node_id: "parent-idea",
+        target_node_id: "branch-prompt",
+      },
+      {
+        id: "edge-root-disposable",
+        source_node_id: "root-prompt",
+        target_node_id: "disposable-idea",
+      },
+    ],
+    brainstormViewport: { x: 120, y: 80, zoom: 0.8 },
+  });
+  await api.openBrainstorm();
+
+  const workspace = page.locator(".brainstorm-workspace");
+  await expect.poll(() => workspace.evaluate((node) => (
+    getComputedStyle(node).backgroundImage
+  ))).toBe("none");
+
+  const rootPrompt = page.locator(".react-flow__node-prompt").filter({ hasText: "Root prompt" });
+  const branchPrompt = page.locator(".react-flow__node-prompt").filter({ hasText: "Branch prompt" });
+  await expect(rootPrompt).toHaveClass(/draggable/);
+  await expect(rootPrompt).toHaveCSS("cursor", "grab");
+  await expect(rootPrompt.locator(".react-flow__handle-left")).toHaveCount(0);
+  await expect(rootPrompt.locator(".react-flow__handle-right")).toHaveCount(1);
+  await expect(branchPrompt.locator(".react-flow__handle-left")).toHaveCount(1);
+
+  const viewport = page.locator(".react-flow__viewport");
+  const initialTransform = await viewport.getAttribute("style");
+  const disposableIdea = page.locator(".react-flow__node-idea").filter({ hasText: "Disposable" });
+  await disposableIdea.click();
+  await disposableIdea.hover();
+  await disposableIdea.getByRole("button", { name: "Delete idea" }).click();
+  await expect(disposableIdea).toBeHidden();
+  await expect.poll(() => api.state.brainstormViewportRequests.length).toBeGreaterThan(0);
+  await expect.poll(() => viewport.getAttribute("style")).not.toBe(initialTransform);
+  const viewportRequestsAfterDelete = api.state.brainstormViewportRequests.length;
+
+  const promptInput = page.getByRole("textbox", { name: "Brainstorm prompt" });
+  await promptInput.fill("Try another root direction");
+  await promptInput.press("Enter");
+  await expect.poll(() => api.state.brainstormGenerationRequests.length).toBe(1);
+  expect(api.state.brainstormGenerationRequests[0].selected_idea_ids).toEqual([]);
+  await expect.poll(
+    () => api.state.brainstormViewportRequests.length,
+  ).toBeGreaterThan(viewportRequestsAfterDelete);
+});
+
+test("resets the brainstorm camera after deleting the final node", async ({ page }) => {
+  const api = await installWriteApi(page, {
+    brainstormNodes: [
+      {
+        id: "only-prompt",
+        story_id: "story-1",
+        node_type: "prompt",
+        title: "Prompt",
+        content: "Only prompt",
+        position_x: 0,
+        position_y: 180,
+        status: "complete",
+      },
+    ],
+    brainstormViewport: { x: 180, y: 120, zoom: 0.7 },
+  });
+  await api.openBrainstorm();
+
+  const onlyPrompt = page.locator(".react-flow__node-prompt").filter({ hasText: "Only prompt" });
+  await onlyPrompt.hover();
+  await onlyPrompt.getByRole("button", { name: "Delete prompt" }).click();
+  await expect(page.getByText("Start anywhere")).toBeVisible();
+  await expect.poll(() => api.state.brainstormViewportRequests.at(-1)).toEqual({
+    position_x: 0,
+    position_y: 0,
+    zoom: 1,
+  });
+});
+
+test("keeps completed brainstorm thinking on its prompt node", async ({ page }) => {
+  const reasoning = "The signal should force a choice before it explains itself.";
+  const api = await installWriteApi(page, {
+    brainstormReasoning: reasoning,
+    brainstormNodes: [
+      {
+        id: "failed-prompt",
+        story_id: "story-1",
+        node_type: "prompt",
+        title: "Prompt",
+        content: "Retry this failed direction.",
+        position_x: -390,
+        position_y: 180,
+        status: "failed",
+      },
+    ],
+  });
+  await api.openBrainstorm();
+
+  const promptInput = page.getByRole("textbox", { name: "Brainstorm prompt" });
+  await promptInput.fill("How should the signal change the story?");
+  await promptInput.press("Enter");
+
+  const promptNode = page.locator(".react-flow__node-prompt").filter({
+    hasText: "How should the signal change the story?",
+  });
+  const thinkingButton = promptNode.getByRole("button", { name: "Expand thinking" });
+  await expect(thinkingButton).toBeVisible();
+  await expect(thinkingButton).toHaveAttribute("aria-expanded", "false");
+  await expect(thinkingButton).toContainText("Finished in 4 seconds");
+
+  await thinkingButton.click();
+  await expect(promptNode.getByText(reasoning)).toBeVisible();
+  await expect(
+    promptNode.getByRole("button", { name: "Collapse thinking" }),
+  ).toHaveAttribute("aria-expanded", "true");
+
+  await page.reload();
+  const restoredPromptNode = page.locator(".react-flow__node-prompt").filter({
+    hasText: "How should the signal change the story?",
+  });
+  await expect(
+    restoredPromptNode.getByRole("button", { name: "Expand thinking" }),
+  ).toBeVisible();
+  const failedPrompt = page.locator(".react-flow__node-prompt").filter({
+    hasText: "Retry this failed direction.",
+  });
+  await expect(failedPrompt.getByRole("button", { name: "Retry prompt" })).toBeEnabled();
+  await expect(failedPrompt.getByRole("button", { name: "Delete prompt" })).toBeEnabled();
+});
+
+test("transitions brainstorm reasoning from locked thinking to writing to completed", async ({ page }) => {
+  const api = await installWriteApi(page, {
+    controlledBrainstormStream: true,
+    thinkingEnabled: true,
+    model: {
+      id: "test/model",
+      name: "Test model",
+      pricing: {},
+      architecture: { output_modalities: ["text"] },
+      supported_parameters: ["reasoning"],
+      reasoning: { mandatory: false },
+    },
+  });
+  await api.openBrainstorm();
+
+  const promptInput = page.getByRole("textbox", { name: "Brainstorm prompt" });
+  await promptInput.fill("Follow the full reasoning lifecycle.");
+  await promptInput.press("Enter");
+  await api.waitForBrainstormStream();
+
+  const promptNodeValue = {
+    id: "controlled-prompt",
+    story_id: "story-1",
+    node_type: "prompt",
+    title: "Prompt",
+    content: "Follow the full reasoning lifecycle.",
+    position_x: 0,
+    position_y: 180,
+    status: "generating",
+  };
+  await api.pushBrainstormEvent({
+    type: "prompt",
+    value: { node: promptNodeValue, edges: [] },
+  });
+
+  const promptNode = page.locator(".react-flow__node-prompt").filter({
+    hasText: "Follow the full reasoning lifecycle.",
+  });
+  const thinkingTrigger = promptNode.getByRole("button", {
+    name: "Thinking in progress",
+  });
+  await expect(thinkingTrigger).toBeDisabled();
+  await expect(thinkingTrigger).toHaveAttribute("aria-expanded", "true");
+  await expect(thinkingTrigger).toHaveText("Thinking");
+
+  await api.pushBrainstormEvent({
+    type: "reasoning",
+    value: "The signal needs one final consequence.",
+  });
+  await expect(
+    promptNode.getByText("The signal needs one final consequence."),
+  ).toBeVisible();
+
+  await api.pushBrainstormEvent({ type: "working", value: null });
+  const writingTrigger = promptNode.getByRole("button", {
+    name: "Writing in progress",
+  });
+  await expect(writingTrigger).toBeDisabled();
+  await expect(writingTrigger).toHaveAttribute("aria-expanded", "false");
+  await expect(writingTrigger).toHaveText("Writing");
+  const writingPanel = promptNode.locator(".brainstorm-thinking-panel");
+  await expect(writingPanel).toHaveAttribute("aria-hidden", "true");
+  await expect.poll(
+    () => writingPanel.evaluate((panel) => Math.round(panel.getBoundingClientRect().height)),
+  ).toBe(0);
+
+  await api.pushBrainstormEvent({
+    type: "ideas",
+    value: {
+      nodes: [],
+      edges: [],
+      duration_ms: 4200,
+    },
+  });
+  const completedTrigger = promptNode.getByRole("button", {
+    name: "Expand thinking",
+  });
+  await expect(completedTrigger).toBeEnabled();
+  await expect(completedTrigger).toHaveAttribute("aria-expanded", "false");
+  await expect(completedTrigger).toHaveText("Finished in 4 seconds");
+
+  await api.closeBrainstormStream();
+});
+
+test("keeps brainstorm nodes measured while reasoning streams", async ({ page }) => {
+  const api = await installWriteApi(page, {
+    controlledBrainstormStream: true,
+    thinkingEnabled: true,
+    model: {
+      id: "test/model",
+      name: "Test model",
+      pricing: {},
+      architecture: { output_modalities: ["text"] },
+      supported_parameters: ["reasoning"],
+      reasoning: { mandatory: false },
+    },
+  });
+  await api.openBrainstorm();
+
+  const promptInput = page.getByRole("textbox", { name: "Brainstorm prompt" });
+  await promptInput.fill("Hold the cursor over this node.");
+  await promptInput.press("Enter");
+  await api.waitForBrainstormStream();
+
+  await api.pushBrainstormEvent({
+    type: "prompt",
+    value: {
+      node: {
+        id: "measured-prompt",
+        story_id: "story-1",
+        node_type: "prompt",
+        title: "Prompt",
+        content: "Hold the cursor over this node.",
+        position_x: 0,
+        position_y: 180,
+        status: "generating",
+      },
+      edges: [],
+    },
+  });
+
+  const promptNode = page.locator(".react-flow__node-prompt").filter({
+    hasText: "Hold the cursor over this node.",
+  });
+  await expect(promptNode).toBeVisible();
+
+  // A node that loses its measured dimensions renders as `visibility: hidden`, which drops it out
+  // of hit testing and makes the cursor flicker to the canvas pan cursor mid-generation.
+  await page.evaluate(() => {
+    window.__hiddenNodeCount = 0;
+    window.__nodeVisibilityObserver = new MutationObserver((records) => {
+      for (const record of records) {
+        if (record.target.style?.visibility === "hidden") window.__hiddenNodeCount += 1;
+      }
+    });
+    for (const node of document.querySelectorAll(".react-flow__node")) {
+      window.__nodeVisibilityObserver.observe(node, {
+        attributes: true,
+        attributeFilter: ["style"],
+      });
+    }
+  });
+
+  for (let index = 0; index < 10; index += 1) {
+    await api.pushBrainstormEvent({
+      type: "reasoning",
+      value: `Reasoning chunk ${index} keeps the node growing. `,
+    });
+  }
+  await expect(promptNode.getByText(/Reasoning chunk 9/)).toBeVisible();
+
+  expect(await page.evaluate(() => window.__hiddenNodeCount)).toBe(0);
+
+  await api.closeBrainstormStream();
+});
+
+test("locks active brainstorm thinking and skips thoughts for instant writing", async ({ page }) => {
+  const api = await installWriteApi(page, {
+    brainstormNodes: [
+      {
+        id: "thinking-prompt",
+        story_id: "story-1",
+        node_type: "prompt",
+        title: "Prompt",
+        content: "Think through the signal.",
+        reasoning: "Checking the signal against every known consequence.",
+        generation_phase: "thinking",
+        position_x: 0,
+        position_y: 120,
+        status: "generating",
+      },
+      {
+        id: "working-prompt",
+        story_id: "story-1",
+        node_type: "prompt",
+        title: "Prompt",
+        content: "Answer without thinking.",
+        reasoning: "",
+        generation_phase: "working",
+        position_x: 390,
+        position_y: 120,
+        status: "generating",
+      },
+      {
+        id: "failed-prompt",
+        story_id: "story-1",
+        node_type: "prompt",
+        title: "Prompt",
+        content: "A failed direction waiting for retry.",
+        position_x: 780,
+        position_y: 120,
+        status: "failed",
+      },
+    ],
+  });
+  await api.openBrainstorm();
+
+  const thinkingNode = page.locator(".react-flow__node-prompt").filter({
+    hasText: "Think through the signal.",
+  });
+  const thinkingTrigger = thinkingNode.getByRole("button", {
+    name: "Thinking in progress",
+  });
+  await expect(thinkingTrigger).toBeDisabled();
+  await expect(thinkingTrigger).toHaveAttribute("aria-expanded", "true");
+  await expect(thinkingTrigger).toContainText("Thinking");
+  await expect(thinkingTrigger.locator("svg")).toHaveCount(0);
+  await expect(
+    thinkingNode.getByText("Checking the signal against every known consequence."),
+  ).toBeVisible();
+
+  await thinkingTrigger.evaluate((button) => button.click());
+  await expect(thinkingTrigger).toHaveAttribute("aria-expanded", "true");
+  await expect(thinkingNode.getByRole("button", { name: "Delete prompt" })).toBeDisabled();
+
+  const workingNode = page.locator(".react-flow__node-prompt").filter({
+    hasText: "Answer without thinking.",
+  });
+  await expect(workingNode.getByRole("button", { name: "Delete prompt" })).toBeDisabled();
+  await expect(workingNode.locator(".brainstorm-writing-status")).toHaveText("Writing");
+  await expect(workingNode.locator(".brainstorm-thinking")).toHaveCount(0);
+  await expect(workingNode.locator(".brainstorm-thinking-trigger")).toHaveCount(0);
+
+  const failedNode = page.locator(".react-flow__node-prompt").filter({
+    hasText: "A failed direction waiting for retry.",
+  });
+  await expect(failedNode.getByRole("button", { name: "Retry prompt" })).toHaveCount(0);
+  await expect(failedNode.getByRole("button", { name: "Delete prompt" })).toBeDisabled();
+});
+
+test("collapses and locks completed thoughts while a brainstorm response is writing", async ({ page }) => {
+  const reasoning = Array.from(
+    { length: 18 },
+    (_, index) => `Reasoning step ${index + 1} checks a different consequence.`,
+  ).join("\n\n");
+  const api = await installWriteApi(page, {
+    brainstormNodes: [
+      {
+        id: "live-prompt",
+        story_id: "story-1",
+        node_type: "prompt",
+        title: "Prompt",
+        content: "Explore the consequences of the signal.",
+        reasoning,
+        generation_phase: "working",
+        position_x: 0,
+        position_y: 180,
+        status: "generating",
+      },
+    ],
+  });
+  await api.openBrainstorm();
+
+  const promptNode = page.locator(".react-flow__node-prompt").filter({
+    hasText: "Explore the consequences of the signal.",
+  });
+  await expect(promptNode.getByRole("button", { name: "Delete prompt" })).toBeDisabled();
+  const thinkingTrigger = promptNode.getByRole("button", { name: "Writing in progress" });
+  await expect(thinkingTrigger).toBeDisabled();
+  await expect(thinkingTrigger).toHaveAttribute("aria-expanded", "false");
+  await expect(promptNode.locator(".brainstorm-thinking-panel")).toHaveAttribute(
+    "aria-hidden",
+    "true",
+  );
+  await expect.poll(
+    () => promptNode.locator(".brainstorm-thinking-panel").evaluate(
+      (panel) => Math.round(panel.getBoundingClientRect().height),
+    ),
+  ).toBe(0);
+  const thinkingLabel = promptNode.locator(".brainstorm-thinking-label");
+  await expect(thinkingLabel).toHaveClass(/t-shimmer/);
+  await expect(thinkingLabel).toHaveAttribute("data-text", "Writing");
+  await expect(thinkingLabel).toHaveText("Writing");
+
+  const thinkingChevron = promptNode.locator(".brainstorm-thinking-trigger svg");
+  await expect(thinkingChevron).toHaveCount(0);
+  await expect(thinkingTrigger).toHaveCSS("cursor", "default");
+  await expect(thinkingTrigger).toHaveClass(/nodrag/);
+  await expect(thinkingTrigger).toHaveClass(/nopan/);
+  const thinkingWrapper = promptNode.locator(".brainstorm-thinking");
+  await expect(thinkingWrapper).toHaveClass(/nodrag/);
+  await expect(thinkingWrapper).toHaveClass(/nopan/);
+  await expect(thinkingWrapper).toHaveCSS("cursor", "default");
+  await expect(thinkingTrigger).toHaveCSS("padding-right", "4px");
+
+  async function readTriggerHitTargets() {
+    return thinkingTrigger.evaluate((button) => {
+      const rect = button.getBoundingClientRect();
+      return [0.08, 0.5, 0.9, 0.97].map((horizontalPosition) => {
+        const target = document.elementFromPoint(
+          rect.left + rect.width * horizontalPosition,
+          rect.top + rect.height / 2,
+        );
+        return {
+          ownsHit: target === button,
+          cursor: target ? getComputedStyle(target).cursor : null,
+        };
+      });
+    });
+  }
+
+  await expect.poll(readTriggerHitTargets).toEqual(
+    Array.from({ length: 4 }, () => ({ ownsHit: true, cursor: "default" })),
+  );
+
+  const nodeTransform = await promptNode.evaluate((node) => getComputedStyle(node).transform);
+  await thinkingTrigger.evaluate((button) => button.click());
+  await expect(thinkingTrigger).toHaveAttribute("aria-expanded", "false");
+  await expect.poll(readTriggerHitTargets).toEqual(
+    Array.from({ length: 4 }, () => ({ ownsHit: true, cursor: "default" })),
+  );
+  await expect.poll(
+    () => promptNode.evaluate((node) => getComputedStyle(node).transform),
+  ).toBe(nodeTransform);
+
+  const promptBox = await promptNode.boundingBox();
+  expect(promptBox).not.toBeNull();
+  await expect(promptNode).toHaveClass(/draggable/);
+  await expect(promptNode).toHaveCSS("cursor", "grab");
+  const dragStart = {
+    x: promptBox.x + 18,
+    y: promptBox.y + 10,
+  };
+  const dragTargetCursor = await page.evaluate(({ x, y }) => {
+    const target = document.elementFromPoint(x, y);
+    return target ? getComputedStyle(target).cursor : null;
+  }, dragStart);
+  expect(dragTargetCursor).toBe("grab");
+
+  const transformBeforeDrag = await promptNode.evaluate((node) => getComputedStyle(node).transform);
+  await page.mouse.move(dragStart.x, dragStart.y);
+  await page.mouse.down();
+  await page.mouse.move(dragStart.x + 36, dragStart.y + 24, { steps: 4 });
+  await page.mouse.up();
+
+  await expect.poll(() => api.state.brainstormNodeUpdateRequests.length).toBe(1);
+  await expect.poll(
+    () => promptNode.evaluate((node) => getComputedStyle(node).transform),
+  ).not.toBe(transformBeforeDrag);
+});
+
 test("renames a story inline like chat mode", async ({ page }) => {
   const nativeDialogs = [];
   page.on("dialog", async (dialog) => {

@@ -386,6 +386,8 @@ def init_db() -> None:
               story_id TEXT NOT NULL,
               prompt_node_id TEXT NOT NULL,
               prompt TEXT NOT NULL,
+              reasoning TEXT,
+              duration_ms REAL,
               model TEXT NOT NULL,
               finish_reason TEXT,
               error TEXT,
@@ -419,6 +421,7 @@ def init_db() -> None:
         ensure_story_settings_columns(conn)
         ensure_chapter_context_column(conn)
         ensure_chapter_revision_column(conn)
+        ensure_brainstorm_generation_columns(conn)
         clean_lorebook_categories(conn)
 
 
@@ -474,6 +477,17 @@ def ensure_chapter_revision_column(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE chapters ADD COLUMN revision INTEGER NOT NULL DEFAULT 0"
         )
+
+
+def ensure_brainstorm_generation_columns(conn: sqlite3.Connection) -> None:
+    existingColumns = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(brainstorm_generations)").fetchall()
+    }
+    if "reasoning" not in existingColumns:
+        conn.execute("ALTER TABLE brainstorm_generations ADD COLUMN reasoning TEXT")
+    if "duration_ms" not in existingColumns:
+        conn.execute("ALTER TABLE brainstorm_generations ADD COLUMN duration_ms REAL")
 
 
 def clean_lorebook_categories(conn: sqlite3.Connection) -> None:

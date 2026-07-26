@@ -720,6 +720,83 @@ def parse_brainstorm_ideas(raw_output: str) -> list[dict[str, str]]:
     return ideas
 
 
+def next_brainstorm_root_position(
+    nodes: list[Any],
+    edges: list[Any],
+    ideaCount: int,
+) -> tuple[float, float]:
+    rootX = 0.0
+    anchorY = 180.0
+    ideaGap = 210.0
+    nodeHalfHeight = 130.0
+    branchClearance = 80.0
+
+    if not nodes:
+        return rootX, anchorY
+
+    childIdsBySource: dict[str, list[str]] = {}
+    incomingIds: set[str] = set()
+    nodesById = {str(node["id"]): node for node in nodes}
+    for edge in edges:
+        sourceId = str(edge["source_node_id"])
+        targetId = str(edge["target_node_id"])
+        if sourceId not in nodesById or targetId not in nodesById:
+            continue
+        childIdsBySource.setdefault(sourceId, []).append(targetId)
+        incomingIds.add(targetId)
+
+    occupiedBounds: list[tuple[float, float]] = []
+    for rootNode in nodes:
+        rootId = str(rootNode["id"])
+        if rootId in incomingIds:
+            continue
+
+        branchIds = {rootId}
+        pendingIds = [rootId]
+        while pendingIds:
+            currentId = pendingIds.pop()
+            for childId in childIdsBySource.get(currentId, []):
+                if childId in branchIds:
+                    continue
+                branchIds.add(childId)
+                pendingIds.append(childId)
+
+        branchY = [float(nodesById[nodeId]["position_y"]) for nodeId in branchIds]
+        occupiedBounds.append((
+            min(branchY) - nodeHalfHeight,
+            max(branchY) + nodeHalfHeight,
+        ))
+
+    if not occupiedBounds:
+        return rootX, anchorY
+
+    newBranchHalfHeight = ((max(1, ideaCount) - 1) * ideaGap / 2) + nodeHalfHeight
+    candidateY = {anchorY}
+    for lowerBound, upperBound in occupiedBounds:
+        candidateY.add(upperBound + branchClearance + newBranchHalfHeight)
+        candidateY.add(lowerBound - branchClearance - newBranchHalfHeight)
+
+    def slotIsOpen(centerY: float) -> bool:
+        nextLower = centerY - newBranchHalfHeight
+        nextUpper = centerY + newBranchHalfHeight
+        return all(
+            nextUpper + branchClearance <= lowerBound
+            or nextLower - branchClearance >= upperBound
+            for lowerBound, upperBound in occupiedBounds
+        )
+
+    openSlots = [centerY for centerY in candidateY if slotIsOpen(centerY)]
+    bestY = min(
+        openSlots,
+        key=lambda centerY: (
+            abs(centerY - anchorY),
+            0 if centerY >= anchorY else 1,
+            centerY,
+        ),
+    )
+    return rootX, bestY
+
+
 def request_updates(payload: BaseModel, reject_null: bool = False) -> dict[str, Any]:
     if hasattr(payload, "model_dump"):
         updates = payload.model_dump(exclude_unset=True)
@@ -819,7 +896,11 @@ def row_to_story_generation(row: sqlite3.Row) -> dict[str, Any]:
     }
 
 
-def row_to_brainstorm_node(row: sqlite3.Row) -> dict[str, Any]:
+def row_to_brainstorm_node(
+    row: sqlite3.Row,
+    reasoning: str | None = None,
+    duration_ms: float | None = None,
+) -> dict[str, Any]:
     return {
         "id": row["id"],
         "story_id": row["story_id"],
@@ -829,6 +910,8 @@ def row_to_brainstorm_node(row: sqlite3.Row) -> dict[str, Any]:
         "position_x": row["position_x"],
         "position_y": row["position_y"],
         "status": row["status"],
+        "reasoning": reasoning,
+        "duration_ms": duration_ms,
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
@@ -2117,6 +2200,15 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                 "SELECT * FROM brainstorm_viewports WHERE story_id = ?",
                 (story_id,),
             ).fetchone()
+            generation_rows = conn.execute(
+                """
+                SELECT prompt_node_id, reasoning, duration_ms
+                FROM brainstorm_generations
+                WHERE story_id = ?
+                ORDER BY created_at ASC
+                """,
+                (story_id,),
+            ).fetchall()
             latest_generation = conn.execute(
                 """
                 SELECT * FROM brainstorm_generations
@@ -2127,6 +2219,16 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                 (story_id,),
             ).fetchone()
 
+        reasoningByPromptId = {
+            row["prompt_node_id"]: row["reasoning"]
+            for row in generation_rows
+            if row["reasoning"]
+        }
+        durationByPromptId = {
+            row["prompt_node_id"]: row["duration_ms"]
+            for row in generation_rows
+            if row["duration_ms"] is not None
+        }
         usage = None
         if latest_generation:
             usage = {
@@ -2142,7 +2244,14 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                 "latency": latest_generation["latency"],
             }
         return {
-            "nodes": [row_to_brainstorm_node(row) for row in nodes],
+            "nodes": [
+                row_to_brainstorm_node(
+                    row,
+                    reasoningByPromptId.get(row["id"]),
+                    durationByPromptId.get(row["id"]),
+                )
+                for row in nodes
+            ],
             "edges": [row_to_brainstorm_edge(row) for row in edges],
             "viewport": (
                 {
@@ -2308,16 +2417,20 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
             body["reasoning"] = reasoningConfig
 
         generated_text: list[str] = []
+        reasoning_text: list[str] = []
+        generation_started_at = time.perf_counter()
+        duration_ms: float | None = None
         generation_id: str | None = None
         finish_reason: str | None = None
         usage: dict[str, Any] = {}
         saved_generation = False
 
         def save_generation(status: str, error: str | None = None) -> None:
-            nonlocal saved_generation
+            nonlocal duration_ms, saved_generation
             if saved_generation:
                 return
             saved_generation = True
+            duration_ms = (time.perf_counter() - generation_started_at) * 1000
             with deps.get_db() as conn:
                 conn.execute(
                     "UPDATE brainstorm_nodes SET status = ?, updated_at = ? WHERE id = ?",
@@ -2326,16 +2439,19 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                 conn.execute(
                     """
                     INSERT INTO brainstorm_generations (
-                      id, story_id, prompt_node_id, prompt, model, finish_reason, error,
+                      id, story_id, prompt_node_id, prompt, reasoning, duration_ms,
+                      model, finish_reason, error,
                       generation_id, prompt_tokens, completion_tokens, reasoning_tokens,
                       total_tokens, cost, provider_name, generation_time, latency, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         generation_row_id,
                         story_id,
                         prompt_node_id,
                         payload.message,
+                        "".join(reasoning_text) or None,
+                        duration_ms,
                         payload.model,
                         finish_reason,
                         error,
@@ -2353,13 +2469,18 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                 )
 
         try:
+            promptNodeValue = row_to_brainstorm_node(prompt_node)
+            promptNodeValue["generation_phase"] = (
+                "thinking" if effectiveThinkingEnabled else "working"
+            )
             yield deps.stream_event(
                 "prompt",
                 {
-                    "node": row_to_brainstorm_node(prompt_node),
+                    "node": promptNodeValue,
                     "edges": [row_to_brainstorm_edge(edge) for edge in prompt_edges],
                 },
             )
+            working_started = False
             async with httpx.AsyncClient(timeout=OPENROUTER_TIMEOUT) as client:
                 async with client.stream(
                     "POST",
@@ -2397,9 +2518,14 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                         delta = choice.get("delta") or {}
                         reasoning = delta.get("reasoning") or delta.get("reasoning_content")
                         if reasoning and effectiveThinkingEnabled:
-                            yield deps.stream_event("reasoning", str(reasoning))
+                            reasoningValue = str(reasoning)
+                            reasoning_text.append(reasoningValue)
+                            yield deps.stream_event("reasoning", reasoningValue)
                         content = delta.get("content")
                         if content:
+                            if not working_started:
+                                working_started = True
+                                yield deps.stream_event("working", None)
                             generated_text.append(str(content))
 
             if generation_id:
@@ -2462,7 +2588,12 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                     created_edges.append(row_to_brainstorm_edge(edge_row))
             save_generation("complete")
             yield deps.stream_event(
-                "ideas", {"nodes": created_nodes, "edges": created_edges}
+                "ideas",
+                {
+                    "nodes": created_nodes,
+                    "edges": created_edges,
+                    "duration_ms": duration_ms,
+                },
             )
             if usage:
                 yield deps.stream_event(
@@ -2542,12 +2673,11 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                     float(nodes_by_id[node_id]["position_y"]) for node_id in selected_ids
                 ) / len(selected_ids)
             else:
-                root_nodes = [
-                    row for row in all_nodes
-                    if not any(edge["target_node_id"] == row["id"] for edge in all_edges)
-                ]
-                prompt_x = 0
-                prompt_y = max((float(row["position_y"]) for row in root_nodes), default=-100) + 280
+                prompt_x, prompt_y = next_brainstorm_root_position(
+                    all_nodes,
+                    all_edges,
+                    payload.brainstorm_idea_count,
+                )
 
             conn.execute(
                 """

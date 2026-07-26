@@ -742,6 +742,12 @@
   outline: none;
 }
 
+/* react flow only paints cursor: grab on draggable nodes, and a locked node still drags the canvas
+   under it, so keep the grab cursor rather than falling back to default */
+.brainstorm-workspace .react-flow__node:not(.draggable) {
+  cursor: grab;
+}
+
 .brainstorm-workspace .react-flow__selection {
   border: 1px solid rgba(255, 255, 255, 0.42);
   background: rgba(255, 255, 255, 0.035);

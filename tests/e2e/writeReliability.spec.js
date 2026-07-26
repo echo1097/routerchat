@@ -521,9 +521,11 @@ test("collapses and locks completed thoughts while a brainstorm response is writ
     () => promptNode.evaluate((node) => getComputedStyle(node).transform),
   ).toBe(nodeTransform);
 
+  // a node that is still generating stays pinned to the canvas — dragging it pans the viewport
+  // instead, so the node keeps its own transform and never gets a position PATCH
   const promptBox = await promptNode.boundingBox();
   expect(promptBox).not.toBeNull();
-  await expect(promptNode).toHaveClass(/draggable/);
+  await expect(promptNode).not.toHaveClass(/draggable/);
   await expect(promptNode).toHaveCSS("cursor", "grab");
   const dragStart = {
     x: promptBox.x + 18,
@@ -536,15 +538,18 @@ test("collapses and locks completed thoughts while a brainstorm response is writ
   expect(dragTargetCursor).toBe("grab");
 
   const transformBeforeDrag = await promptNode.evaluate((node) => getComputedStyle(node).transform);
+  const viewportRequestsBeforeDrag = api.state.brainstormViewportRequests.length;
   await page.mouse.move(dragStart.x, dragStart.y);
   await page.mouse.down();
   await page.mouse.move(dragStart.x + 36, dragStart.y + 24, { steps: 4 });
   await page.mouse.up();
 
-  await expect.poll(() => api.state.brainstormNodeUpdateRequests.length).toBe(1);
   await expect.poll(
-    () => promptNode.evaluate((node) => getComputedStyle(node).transform),
-  ).not.toBe(transformBeforeDrag);
+    () => api.state.brainstormViewportRequests.length,
+  ).toBeGreaterThan(viewportRequestsBeforeDrag);
+  expect(api.state.brainstormNodeUpdateRequests).toHaveLength(0);
+  expect(await promptNode.evaluate((node) => getComputedStyle(node).transform))
+    .toBe(transformBeforeDrag);
 });
 
 test("renames a story inline like chat mode", async ({ page }) => {

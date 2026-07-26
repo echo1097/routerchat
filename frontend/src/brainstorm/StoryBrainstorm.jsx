@@ -313,12 +313,18 @@ export default function StoryBrainstorm({
       const currentById = new Map(currentNodes.map((node) => [node.id, node]));
       return graphNodes.map((graphNode) => {
         const existing = currentById.get(graphNode.id);
+
+        // mid-drag the stored position is stale by definition, so leave the node alone entirely or
+        // we yank it back to where it started on every streamed token
+        const beingDragged = Boolean(existing?.dragging);
         if (
           existing
           && existing.data.deps === nodeDataDeps
           && existing.data.source === graphNode
-          && existing.position.x === graphNode.position_x
-          && existing.position.y === graphNode.position_y
+          && (beingDragged || (
+            existing.position.x === graphNode.position_x
+            && existing.position.y === graphNode.position_y
+          ))
         ) {
           return existing;
         }
@@ -327,8 +333,13 @@ export default function StoryBrainstorm({
           ...existing,
           id: graphNode.id,
           type: graphNode.node_type,
-          position: { x: graphNode.position_x, y: graphNode.position_y },
+          position: beingDragged
+            ? existing.position
+            : { x: graphNode.position_x, y: graphNode.position_y },
           selected: existing?.selected ?? false,
+          // keyed off status, not the client-only generation_phase, so the lock survives a bundle
+          // reload or a stuck generating row
+          draggable: !nodeOperationInProgress,
           data: {
             ...graphNode,
             source: graphNode,

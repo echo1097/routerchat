@@ -7642,7 +7642,16 @@ function App() {
     try {
       const updated = await storyApi.updateBrainstormNode(activeStoryId, nodeId, changes);
       setBrainstormNodes((current) => current.map((node) => (
-        node.id === updated.id ? updated : node
+        node.id === updated.id
+          ? {
+              ...node,
+              ...updated,
+              // the row the server hands back knows nothing about the live stream, so dont let it
+              // clobber what we have been accumulating
+              generation_phase: node.generation_phase,
+              reasoning: updated.reasoning ?? node.reasoning,
+            }
+          : node
       )));
     } catch (error) {
       setStatus(error.message);

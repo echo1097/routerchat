@@ -264,6 +264,7 @@ def init_db() -> None:
               thinking_enabled INTEGER NOT NULL,
               reasoning_effort TEXT NOT NULL DEFAULT 'medium',
               temporary INTEGER NOT NULL DEFAULT 0,
+              lorebook_auto INTEGER NOT NULL DEFAULT 0,
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
             );
@@ -325,8 +326,10 @@ def init_db() -> None:
               story_id TEXT NOT NULL,
               chapter_id TEXT NOT NULL,
               generation_id TEXT,
+              openrouter_generation_id TEXT,
               raw_output TEXT NOT NULL,
               applied_updates_json TEXT NOT NULL,
+              cost REAL,
               error TEXT,
               created_at TEXT NOT NULL,
               FOREIGN KEY(story_id) REFERENCES stories(id) ON DELETE CASCADE,
@@ -342,6 +345,9 @@ def init_db() -> None:
               label TEXT NOT NULL,
               detail TEXT NOT NULL DEFAULT '',
               entry_order INTEGER NOT NULL,
+              words_added INTEGER,
+              words_removed INTEGER,
+              cost REAL,
               created_at TEXT NOT NULL,
               FOREIGN KEY(story_id) REFERENCES stories(id) ON DELETE CASCADE,
               FOREIGN KEY(chapter_id) REFERENCES chapters(id) ON DELETE CASCADE
@@ -422,6 +428,8 @@ def init_db() -> None:
         ensure_chapter_context_column(conn)
         ensure_chapter_revision_column(conn)
         ensure_brainstorm_generation_columns(conn)
+        ensure_chapter_history_columns(conn)
+        ensure_lorebook_run_usage_columns(conn)
         clean_lorebook_categories(conn)
 
 
@@ -459,6 +467,8 @@ def ensure_story_settings_columns(conn: sqlite3.Connection) -> None:
     }
     if "temporary" not in existingColumns:
         conn.execute("ALTER TABLE stories ADD COLUMN temporary INTEGER NOT NULL DEFAULT 0")
+    if "lorebook_auto" not in existingColumns:
+        conn.execute("ALTER TABLE stories ADD COLUMN lorebook_auto INTEGER NOT NULL DEFAULT 0")
 
 
 def ensure_chapter_context_column(conn: sqlite3.Connection) -> None:
@@ -488,6 +498,46 @@ def ensure_brainstorm_generation_columns(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE brainstorm_generations ADD COLUMN reasoning TEXT")
     if "duration_ms" not in existingColumns:
         conn.execute("ALTER TABLE brainstorm_generations ADD COLUMN duration_ms REAL")
+
+
+def ensure_chapter_history_columns(conn: sqlite3.Connection) -> None:
+    existingColumns = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(chapter_history_entries)").fetchall()
+    }
+    #these briefly shipped counting lines, rename rather than re-add so the counts already recorded survive
+    if "lines_added" in existingColumns and "words_added" not in existingColumns:
+        conn.execute(
+            "ALTER TABLE chapter_history_entries RENAME COLUMN lines_added TO words_added"
+        )
+        existingColumns.add("words_added")
+    if "lines_removed" in existingColumns and "words_removed" not in existingColumns:
+        conn.execute(
+            "ALTER TABLE chapter_history_entries RENAME COLUMN lines_removed TO words_removed"
+        )
+        existingColumns.add("words_removed")
+
+    #nullable on purpose, history written before this feature has no numbers and a zero would be a lie
+    if "words_added" not in existingColumns:
+        conn.execute("ALTER TABLE chapter_history_entries ADD COLUMN words_added INTEGER")
+    if "words_removed" not in existingColumns:
+        conn.execute("ALTER TABLE chapter_history_entries ADD COLUMN words_removed INTEGER")
+    if "cost" not in existingColumns:
+        conn.execute("ALTER TABLE chapter_history_entries ADD COLUMN cost REAL")
+
+
+def ensure_lorebook_run_usage_columns(conn: sqlite3.Connection) -> None:
+    existingColumns = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(lorebook_update_runs)").fetchall()
+    }
+    #generation_id was already taken by the story_generations fk so the openrouter one needs its own name
+    if "openrouter_generation_id" not in existingColumns:
+        conn.execute(
+            "ALTER TABLE lorebook_update_runs ADD COLUMN openrouter_generation_id TEXT"
+        )
+    if "cost" not in existingColumns:
+        conn.execute("ALTER TABLE lorebook_update_runs ADD COLUMN cost REAL")
 
 
 def clean_lorebook_categories(conn: sqlite3.Connection) -> None:

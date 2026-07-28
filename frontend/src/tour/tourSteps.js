@@ -68,7 +68,7 @@ export const WRITE_TOUR_STEPS = [
   {
     id: "lorebook",
     selector: '[data-tour="write-lorebook"]',
-    body: "The Lorebook keeps characters, locations, items, events, notes, summaries, and the timeline updated to help with story continuity.",
+    body: "The Lorebook holds characters, locations, items, events, notes, summaries, and the timeline to help with story continuity. Writing tools lets you keep it updated automatically after each generation, or on demand.",
     workspaceView: "lorebook",
   },
   {

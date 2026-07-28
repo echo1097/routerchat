@@ -38,6 +38,42 @@ class StoryApiTest(unittest.TestCase):
         main.DB_PATH = self.originalDbPath
         self.tempDir.cleanup()
 
+    def test_history_column_migration_upgrades_an_old_table_and_is_idempotent(self):
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        #the shape this table had before diff stats and cost existed
+        conn.execute(
+            """
+            CREATE TABLE chapter_history_entries (
+              id TEXT PRIMARY KEY,
+              story_id TEXT NOT NULL,
+              chapter_id TEXT NOT NULL,
+              run_id TEXT NOT NULL,
+              label TEXT NOT NULL,
+              detail TEXT NOT NULL DEFAULT '',
+              entry_order INTEGER NOT NULL,
+              created_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO chapter_history_entries VALUES ('e1','s1','c1','r1','User prompt','hi',0,'now')"
+        )
+
+        main.ensure_chapter_history_columns(conn)
+        main.ensure_chapter_history_columns(conn) #running twice must not blow up or duplicate anything
+
+        columns = [row["name"] for row in conn.execute("PRAGMA table_info(chapter_history_entries)")]
+        self.assertEqual(columns.count("words_added"), 1)
+        self.assertEqual(columns.count("words_removed"), 1)
+        self.assertEqual(columns.count("cost"), 1)
+
+        #history written before the upgrade stays readable and reads as unknown, not as zero
+        row = conn.execute("SELECT * FROM chapter_history_entries WHERE id = 'e1'").fetchone()
+        self.assertIsNone(row["words_added"])
+        self.assertIsNone(row["cost"])
+        conn.close()
+
     def test_brainstorm_root_layout_reuses_the_nearest_open_slot(self):
         firstRoot = {"id": "root-1", "position_y": 180}
         firstIdeas = [
@@ -74,9 +110,11 @@ class StoryApiTest(unittest.TestCase):
         reusedPosition = next_brainstorm_root_position(secondNodes, secondEdges, 3)
         self.assertEqual(reusedPosition, (0.0, 180.0))
 
-    def streamChapterGeneration(self, story, chapter, output, revision=None, mode="edit", runId="run-test", complete=True):
+    def streamChapterGeneration(self, story, chapter, output, revision=None, mode="edit", runId="run-test", complete=True, lorebookUpdates=None):
         chunks = output if isinstance(output, list) else [output]
         requestBody = {}
+        lorebookCalls = []
+        lorebookContent = json.dumps({"updates": lorebookUpdates or []})
 
         class FakeResponse:
             status_code = 200
@@ -96,9 +134,10 @@ class StoryApiTest(unittest.TestCase):
 
         class FakeLorebookResponse:
             status_code = 200
+            headers = {}
 
             def json(self):
-                return {"choices": [{"message": {"content": '{"updates": []}'}}]}
+                return {"choices": [{"message": {"content": lorebookContent}}]}
 
         class FakeClient:
             def __init__(self, *_args, **_kwargs):
@@ -114,7 +153,8 @@ class StoryApiTest(unittest.TestCase):
                 requestBody.update(kwargs.get("json") or {})
                 return FakeResponse()
 
-            async def post(self, *_args, **_kwargs):
+            async def post(self, *_args, **kwargs):
+                lorebookCalls.append(kwargs.get("json") or {})
                 return FakeLorebookResponse()
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
@@ -130,7 +170,484 @@ class StoryApiTest(unittest.TestCase):
                     "generation_run_id": runId,
                 },
             )
+        #hung off self so the ten existing two-value call sites keep working
+        self.lastLorebookCalls = lorebookCalls
         return response, requestBody
+
+    def callLorebookUpdate(self, story, chapter, updates=None, rawOutput=None):
+        calls = []
+        content = rawOutput if rawOutput is not None else json.dumps({"updates": updates or []})
+
+        class FakeLorebookResponse:
+            status_code = 200
+            headers = {}
+
+            def json(self):
+                return {"choices": [{"message": {"content": content}}]}
+
+        class FakeClient:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_):
+                return False
+
+            async def post(self, *_args, **kwargs):
+                calls.append(kwargs.get("json") or {})
+                return FakeLorebookResponse()
+
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
+            "backend.writing.httpx.AsyncClient", FakeClient
+        ):
+            response = self.client.post(
+                f"/api/stories/{story['id']}/lorebook/update",
+                json={"chapter_id": chapter["id"]},
+            )
+        return response, calls
+
+    def storyWithChapter(self, title, content):
+        story = self.client.post("/api/stories", json={"title": title}).json()["story"]
+        chapter = self.client.post(
+            f"/api/stories/{story['id']}/chapters",
+            json={"title": "Chapter 1", "content": content},
+        ).json()["chapter"]
+        return story, chapter
+
+    def lorebookRow(self, story, name):
+        with main.get_db() as conn:
+            return conn.execute(
+                "SELECT * FROM lorebook_entries WHERE story_id = ? AND lower(name) = lower(?)",
+                (story["id"], name),
+            ).fetchone()
+
+    def test_manual_lorebook_update_applies_entries_and_records_the_run(self):
+        story, chapter = self.storyWithChapter("Manual Lore", "Chloe walked the long hall.")
+
+        response, calls = self.callLorebookUpdate(
+            story,
+            chapter,
+            updates=[
+                {
+                    "action": "create",
+                    "name": "Chloe",
+                    "category": "character",
+                    "description": "walks the long hall",
+                }
+            ],
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual([update["action"] for update in payload["applied"]], ["create"])
+        self.assertIsNone(payload["error"])
+        self.assertEqual(len(calls), 1)
+        self.assertIn("Chloe", [entry["name"] for entry in payload["entries"]])
+
+        labels = [entry["label"] for entry in payload["history"]]
+        self.assertTrue(any(label.endswith("added Chloe to Lorebook") for label in labels))
+        self.assertIn("finished editing Lorebook after", labels[-1])
+
+        with main.get_db() as conn:
+            run = conn.execute(
+                "SELECT * FROM lorebook_update_runs WHERE story_id = ?", (story["id"],)
+            ).fetchone()
+            historyCount = conn.execute(
+                "SELECT COUNT(*) AS total FROM chapter_history_entries WHERE chapter_id = ?",
+                (chapter["id"],),
+            ).fetchone()["total"]
+        self.assertIsNotNone(run)
+        self.assertIsNone(run["generation_id"])
+        self.assertEqual(historyCount, len(payload["history"]))
+
+    def test_manual_lorebook_update_records_line_counts_and_puts_cost_on_the_summary(self):
+        story, chapter = self.storyWithChapter("Lore Stats", "Chloe walked the long hall.")
+
+        response, _ = self.callLorebookUpdate(
+            story,
+            chapter,
+            updates=[
+                {
+                    "action": "create",
+                    "name": "Chloe",
+                    "category": "character",
+                    "description": "walks the long hall\nkeeps to herself",
+                }
+            ],
+        )
+
+        payload = response.json()
+        #"category: character" + the two description lines + "alias: Chloe"
+        self.assertEqual(payload["applied"][0]["wordsAdded"], 11)
+        self.assertEqual(payload["applied"][0]["wordsRemoved"], 0)
+
+        entryRow, summaryRow = payload["history"]
+        self.assertEqual(entryRow["words_added"], 11)
+        self.assertEqual(entryRow["words_removed"], 0)
+        #one api call means one cost and it belongs on the closing line, never smeared across the entries
+        self.assertIsNone(entryRow["cost"])
+        #the closing line carries the run totals the same way the run header carries the cost subtotal
+        self.assertEqual(summaryRow["words_added"], 11)
+        self.assertEqual(summaryRow["words_removed"], 0)
+
+    def test_manual_lorebook_update_counts_removed_lines_on_a_delete(self):
+        story, chapter = self.storyWithChapter("Lore Removal", "Mara was never real.")
+        self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={
+                "name": "Mara",
+                "category": "character",
+                "description": "first line\nsecond line\nthird line",
+            },
+        )
+
+        response, _ = self.callLorebookUpdate(
+            story,
+            chapter,
+            updates=[{"action": "delete", "name": "Mara"}],
+        )
+
+        payload = response.json()
+        #"category: character" plus the three two-word description lines
+        self.assertEqual(payload["applied"][0]["wordsRemoved"], 8)
+        self.assertEqual(payload["applied"][0]["wordsAdded"], 0)
+        self.assertEqual(payload["history"][0]["words_removed"], 8)
+
+    def test_lorebook_alias_only_change_still_reports_a_diff(self):
+        story, chapter = self.storyWithChapter("Alias Only", "Kael rode north.")
+        self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={
+                "name": "Kael",
+                "category": "character",
+                "description": "a knight",
+                "aliases": ["Kae"],
+            },
+        )
+
+        response, _ = self.callLorebookUpdate(
+            story,
+            chapter,
+            updates=[
+                {
+                    "action": "update",
+                    "name": "Kael",
+                    "category": "character",
+                    "description": "a knight",
+                    "aliases": ["Kae", "The Knight"],
+                }
+            ],
+        )
+
+        payload = response.json()
+        #description is untouched, only "alias: The Knight" arrived, and that still has to read as an edit
+        self.assertEqual(payload["applied"][0]["wordsAdded"], 3)
+        self.assertEqual(payload["applied"][0]["wordsRemoved"], 0)
+        self.assertEqual(payload["history"][0]["words_added"], 3)
+
+    def test_lorebook_update_that_changes_nothing_is_not_recorded(self):
+        story, chapter = self.storyWithChapter("No Op", "Kael rode north.")
+        self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={"name": "Kael", "category": "character", "description": "a knight"},
+        )
+
+        response, _ = self.callLorebookUpdate(
+            story,
+            chapter,
+            updates=[
+                {
+                    "action": "update",
+                    "name": "Kael",
+                    "category": "character",
+                    "description": "a knight",
+                    "aliases": [],
+                }
+            ],
+        )
+
+        payload = response.json()
+        #claiming an update that changed nothing left a bare row in the history with no diff to show
+        self.assertEqual(payload["applied"], [])
+        labels = [entry["label"] for entry in payload["history"]]
+        self.assertEqual(len(labels), 1)
+        self.assertIn("found no Lorebook changes after", labels[0])
+
+    def test_manual_lorebook_update_skips_a_blank_chapter(self):
+        story, chapter = self.storyWithChapter("Empty Chapter", "   ")
+
+        response, calls = self.callLorebookUpdate(story, chapter, updates=[])
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["skipped"])
+        self.assertEqual(payload["applied"], [])
+        self.assertEqual(payload["history"], []) #no model call ran so there is nothing to log
+        self.assertEqual(calls, [])
+
+    def test_manual_lorebook_update_corrects_an_entry_the_model_calls_new(self):
+        story, chapter = self.storyWithChapter("Contradiction", "Chloe's hair was black as pitch.")
+        self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={"name": "Chloe", "category": "character", "description": "red hair"},
+        )
+
+        response, _ = self.callLorebookUpdate(
+            story,
+            chapter,
+            updates=[
+                {
+                    "action": "create",
+                    "name": "Chloe",
+                    "category": "character",
+                    "description": "black hair",
+                }
+            ],
+        )
+
+        self.assertEqual([update["action"] for update in response.json()["applied"]], ["update"])
+        self.assertEqual(self.lorebookRow(story, "Chloe")["description"], "black hair")
+
+    def test_manual_lorebook_update_corrects_a_disabled_entry_without_re_enabling_it(self):
+        story, chapter = self.storyWithChapter("Disabled Entry", "Mara returned to the wall.")
+        self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={
+                "name": "Mara",
+                "category": "character",
+                "description": "stale",
+                "disabled": True,
+            },
+        )
+
+        response, _ = self.callLorebookUpdate(
+            story,
+            chapter,
+            updates=[
+                {
+                    "action": "create",
+                    "name": "Mara",
+                    "category": "character",
+                    "description": "returned to the wall",
+                }
+            ],
+        )
+
+        self.assertEqual([update["action"] for update in response.json()["applied"]], ["update"])
+        row = self.lorebookRow(story, "Mara")
+        self.assertEqual(row["description"], "returned to the wall")
+        self.assertEqual(row["disabled"], 1)
+
+    def test_manual_lorebook_update_soft_deletes_retired_entries(self):
+        story, chapter = self.storyWithChapter("Retired Lore", "The Blackwall had been torn down.")
+        self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={"name": "The Blackwall", "category": "location", "description": "still stands"},
+        )
+
+        response, _ = self.callLorebookUpdate(
+            story,
+            chapter,
+            updates=[{"action": "delete", "name": "The Blackwall", "category": "location"}],
+        )
+
+        payload = response.json()
+        self.assertEqual([update["action"] for update in payload["applied"]], ["delete"])
+        self.assertTrue(any(
+            entry["label"].endswith("removed The Blackwall from Lorebook")
+            for entry in payload["history"]
+        ))
+
+        row = self.lorebookRow(story, "The Blackwall")
+        self.assertIsNotNone(row)
+        self.assertEqual(row["disabled"], 1)
+        self.assertEqual(row["description"], "still stands")
+
+        with main.get_db() as conn:
+            storyRow = conn.execute(
+                "SELECT * FROM stories WHERE id = ?", (story["id"],)
+            ).fetchone()
+            chapterRow = conn.execute(
+                "SELECT * FROM chapters WHERE id = ?", (chapter["id"],)
+            ).fetchone()
+            loreRows = conn.execute(
+                "SELECT * FROM lorebook_entries WHERE story_id = ?", (story["id"],)
+            ).fetchall()
+
+        context = build_story_messages(storyRow, chapterRow, loreRows, "continue", "")[-2]["content"]
+        self.assertNotIn("still stands", context)
+
+    def test_manual_lorebook_update_refuses_to_delete_the_timeline(self):
+        story, chapter = self.storyWithChapter("Timeline Guard", "Nothing much happened.")
+        self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={"name": "Timeline", "category": "timeline", "description": "- the bells rang"},
+        )
+
+        response, _ = self.callLorebookUpdate(
+            story,
+            chapter,
+            updates=[{"action": "delete", "name": "Timeline", "category": "timeline"}],
+        )
+
+        self.assertEqual(response.json()["applied"], [])
+        self.assertEqual(self.lorebookRow(story, "Timeline")["disabled"], 0)
+
+    def test_manual_lorebook_update_ignores_a_delete_for_an_unknown_name(self):
+        story, chapter = self.storyWithChapter("Unknown Delete", "A quiet afternoon.")
+
+        response, _ = self.callLorebookUpdate(
+            story,
+            chapter,
+            updates=[{"action": "delete", "name": "Nobody", "category": "character"}],
+        )
+
+        payload = response.json()
+        self.assertEqual(payload["applied"], [])
+        self.assertEqual(payload["entries"], [])
+
+        #a run that changes nothing still belongs in the log
+        labels = [entry["label"] for entry in payload["history"]]
+        self.assertEqual(len(labels), 1)
+        self.assertIn("found no Lorebook changes after", labels[0])
+
+    def test_manual_lorebook_update_rejects_a_missing_chapter(self):
+        story, _ = self.storyWithChapter("Missing Chapter", "text")
+
+        response, _ = self.callLorebookUpdate(story, {"id": str(uuid.uuid4())})
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_lorebook_auto_defaults_off_and_round_trips_through_patch(self):
+        story, _ = self.storyWithChapter("Auto Setting", "text")
+        self.assertFalse(story["lorebook_auto"])
+
+        patched = self.client.patch(
+            f"/api/stories/{story['id']}", json={"lorebook_auto": True}
+        )
+        self.assertEqual(patched.status_code, 200)
+        self.assertTrue(patched.json()["story"]["lorebook_auto"])
+
+        self.assertTrue(self.client.get(f"/api/stories/{story['id']}").json()["story"]["lorebook_auto"])
+        with main.get_db() as conn:
+            row = conn.execute(
+                "SELECT lorebook_auto FROM stories WHERE id = ?", (story["id"],)
+            ).fetchone()
+        self.assertEqual(row["lorebook_auto"], 1)
+
+    def test_write_history_entry_records_the_chapter_word_diff(self):
+        story, chapter = self.storyWithChapter("Diff Stats", "Chloe waited by the gate.")
+
+        response, _ = self.streamChapterGeneration(
+            story, chapter, "She crossed the bridge at dusk.", mode="new"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        events = [json.loads(line) for line in response.text.splitlines() if line]
+        wrote = [
+            event["value"]
+            for event in events
+            if event["type"] == "history" and "wrote for" in event["value"]["label"]
+        ][0]
+
+        #"She crossed the bridge at dusk." arrives whole and nothing is lost
+        self.assertEqual(wrote["words_added"], 6)
+        self.assertEqual(wrote["words_removed"], 0)
+
+        prompt = [
+            event["value"]
+            for event in events
+            if event["type"] == "history" and event["value"]["label"] == "User prompt"
+        ][0]
+        self.assertIsNone(prompt["words_added"])
+
+    def test_write_history_scores_a_replacement_by_words_not_whole_paragraphs(self):
+        story, chapter = self.storyWithChapter(
+            "Replace Stats", "first paragraph\n\nsecond paragraph"
+        )
+        blocks = chapter_blocks(chapter["content"])
+        operation = {
+            "operation": "replaceBlock",
+            "chapterRevision": chapter["revision"],
+            "blockId": blocks[1]["blockId"],
+            "expectedTextHash": blocks[1]["textHash"],
+            "newText": "second paragraph rewritten",
+        }
+
+        response, _ = self.streamChapterGeneration(story, chapter, json.dumps(operation))
+
+        self.assertEqual(response.status_code, 200)
+        events = [json.loads(line) for line in response.text.splitlines() if line]
+        wrote = [
+            event["value"]
+            for event in events
+            if event["type"] == "history" and "wrote for" in event["value"]["label"]
+        ][0]
+        #one word was appended to the paragraph, so it scores 1 rather than the whole paragraph twice over
+        self.assertEqual((wrote["words_added"], wrote["words_removed"]), (1, 0))
+
+    def test_generation_leaves_the_lorebook_alone_when_updates_are_manual(self):
+        story, chapter = self.storyWithChapter("Manual Mode", "Chloe waited by the gate.")
+
+        response, _ = self.streamChapterGeneration(
+            story, chapter, "She crossed the bridge at dusk.", mode="new"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.lastLorebookCalls, [])
+
+        events = [json.loads(line) for line in response.text.splitlines() if line]
+        self.assertNotIn("lorebook", [event["type"] for event in events])
+        labels = [
+            event["value"]["label"] for event in events if event["type"] == "history"
+        ]
+        self.assertFalse(any("Lorebook" in label for label in labels))
+
+    def test_generation_updates_the_lorebook_when_updates_are_auto(self):
+        story, chapter = self.storyWithChapter("Auto Mode", "Chloe waited by the gate.")
+        self.client.patch(f"/api/stories/{story['id']}", json={"lorebook_auto": True})
+
+        response, _ = self.streamChapterGeneration(
+            story,
+            chapter,
+            "She crossed the bridge at dusk.",
+            mode="new",
+            lorebookUpdates=[
+                {
+                    "action": "create",
+                    "name": "Chloe",
+                    "category": "character",
+                    "description": "waits by the gate",
+                }
+            ],
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(self.lastLorebookCalls), 1)
+
+        #auto sends the whole saved chapter, not just the sentence that was generated
+        prose = json.loads(self.lastLorebookCalls[0]["messages"][-1]["content"])["new_prose"]
+        self.assertIn("Chloe waited by the gate.", prose)
+        self.assertIn("She crossed the bridge at dusk.", prose)
+
+        events = [json.loads(line) for line in response.text.splitlines() if line]
+        self.assertIn("lorebook", [event["type"] for event in events])
+        labels = [
+            event["value"]["label"] for event in events if event["type"] == "history"
+        ]
+        self.assertTrue(any(label.endswith("added Chloe to Lorebook") for label in labels))
+        self.assertTrue(any("finished editing Lorebook after" in label for label in labels))
+
+        entries = self.client.get(f"/api/stories/{story['id']}/lorebook").json()["entries"]
+        self.assertIn("Chloe", [entry["name"] for entry in entries])
+
+        with main.get_db() as conn:
+            run = conn.execute(
+                "SELECT * FROM lorebook_update_runs WHERE story_id = ?", (story["id"],)
+            ).fetchone()
+        self.assertIsNotNone(run["generation_id"]) #an auto run is tied to the generation that caused it
 
     def test_story_chapter_and_lorebook_crud(self):
         storyResponse = self.client.post(
@@ -443,7 +960,7 @@ class StoryApiTest(unittest.TestCase):
         self.assertEqual(updateEvents[0]["revision"], 1)
         self.assertEqual(self.client.get(f"/api/stories/{story['id']}").json()["chapters"][0]["content"], updatedChapter["content"])
         self.assertNotIn("response_format", requestBody)
-        self.assertIn("lorebook", [event["type"] for event in events])
+        self.assertNotIn("lorebook", [event["type"] for event in events])
 
     def test_range_edit_commits_deleted_blocks_and_preserves_surrounding_text(self):
         story = self.client.post("/api/stories", json={"title": "Range Edit"}).json()["story"]
@@ -1065,6 +1582,46 @@ class StoryApiTest(unittest.TestCase):
         self.assertNotIn("endChar", editContext)
         self.assertNotIn("replaceBlocks", editMessages[-3]["content"])
 
+    def test_multi_line_lorebook_entries_stay_nested_in_context(self):
+        story = self.client.post("/api/stories", json={"title": "Nested Lore"}).json()["story"]
+        chapter = self.client.post(
+            f"/api/stories/{story['id']}/chapters",
+            json={"title": "First", "content": "the bells stop"},
+        ).json()["chapter"]
+        self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={
+                "name": "Timeline",
+                "category": "timeline",
+                "description": "- the bells rang\n- Chloe left the hall",
+            },
+        )
+        self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={"name": "Chloe", "category": "character", "description": "A smith."},
+        )
+
+        with main.get_db() as conn:
+            storyRow = conn.execute("SELECT * FROM stories WHERE id = ?", (story["id"],)).fetchone()
+            chapterRow = conn.execute(
+                "SELECT * FROM chapters WHERE id = ?", (chapter["id"],)
+            ).fetchone()
+            loreRows = conn.execute(
+                "SELECT * FROM lorebook_entries WHERE story_id = ? ORDER BY created_at ASC",
+                (story["id"],),
+            ).fetchall()
+
+        context = build_story_messages(storyRow, chapterRow, loreRows, "continue", "")[-2]["content"]
+
+        #every top level bullet must be a real entry, timeline bullets stay indented under theirs
+        topLevel = [
+            line for line in context.splitlines()
+            if line.startswith("- ") and "(" in line and "):" in line
+        ]
+        self.assertEqual(len(topLevel), 2)
+        self.assertIn("  - Chloe left the hall", context)
+        self.assertNotIn("\n- Chloe left the hall", context)
+
     def test_write_and_edit_requests_exclude_brainstorm_nodes(self):
         story = self.client.post(
             "/api/stories",
@@ -1318,6 +1875,10 @@ class StoryApiTest(unittest.TestCase):
         self.assertEqual(
             lorebook_history_label(modelLabel, {"action": "update", "name": "timeline"}),
             "Glm 5.2 updated Timeline",
+        )
+        self.assertEqual(
+            lorebook_history_label(modelLabel, {"action": "delete", "name": "The Blackwall"}),
+            "Glm 5.2 removed The Blackwall from Lorebook",
         )
 
     def test_pinned_chats_are_ordered_and_temporary_chats_stay_hidden(self):

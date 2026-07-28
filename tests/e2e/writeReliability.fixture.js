@@ -129,6 +129,7 @@ export async function installWriteApi(page, options = {}) {
       system_prompt: "",
       thinking_enabled: options.thinkingEnabled ?? false,
       reasoning_effort: "medium",
+      lorebook_auto: options.lorebookAuto ?? false,
       updated_at: "2026-01-01T00:00:00Z",
     },
     chapters: options.twoChapters

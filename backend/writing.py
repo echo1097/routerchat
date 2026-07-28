@@ -1,4 +1,5 @@
 import asyncio
+import difflib
 import json
 import hashlib
 import re
@@ -39,6 +40,7 @@ class StoryCreateRequest(BaseModel):
     thinking_enabled: bool = False
     reasoning_effort: str = "medium"
     temporary: bool = False
+    lorebook_auto: bool = False
 
 
 class StoryPatchRequest(BaseModel):
@@ -52,6 +54,7 @@ class StoryPatchRequest(BaseModel):
     max_tokens: int | None = None
     thinking_enabled: bool | None = None
     reasoning_effort: str | None = None
+    lorebook_auto: bool | None = None
 
 
 class ChapterCreateRequest(BaseModel):
@@ -84,6 +87,10 @@ class LorebookEntryRequest(BaseModel):
     tags: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
     disabled: bool = False
+
+
+class LorebookUpdateRequest(BaseModel):
+    chapter_id: str = Field(min_length=1)
 
 
 class BrainstormNodePatchRequest(BaseModel):
@@ -161,6 +168,37 @@ def word_count(value: str) -> int:
     return len(value.split())
 
 
+def word_diff_counts(before: str, after: str) -> tuple[int, int]:
+    #words not lines, because a prose line is a whole paragraph and one swapped word would otherwise score the same as a full rewrite
+    beforeLines = [line for line in (before or "").splitlines() if line.strip()]
+    afterLines = [line for line in (after or "").splitlines() if line.strip()]
+
+    wordsAdded = 0
+    wordsRemoved = 0
+    #line pass first so the expensive word pass only runs on the blocks that actually moved
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, beforeLines, afterLines).get_opcodes():
+        if tag == "equal":
+            continue
+        if tag == "insert":
+            wordsAdded += sum(len(line.split()) for line in afterLines[j1:j2])
+            continue
+        if tag == "delete":
+            wordsRemoved += sum(len(line.split()) for line in beforeLines[i1:i2])
+            continue
+
+        beforeWords = " ".join(beforeLines[i1:i2]).split()
+        afterWords = " ".join(afterLines[j1:j2]).split()
+        #autojunk off, it treats common words like "the" as noise and wrecks the counts on real prose
+        matcher = difflib.SequenceMatcher(None, beforeWords, afterWords, autojunk=False)
+        for wordTag, a1, a2, b1, b2 in matcher.get_opcodes():
+            if wordTag in {"replace", "delete"}:
+                wordsRemoved += a2 - a1
+            if wordTag in {"replace", "insert"}:
+                wordsAdded += b2 - b1
+
+    return wordsAdded, wordsRemoved
+
+
 def text_hash(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
@@ -178,12 +216,53 @@ def display_model_name(model: str) -> str:
 
 def lorebook_history_label(model_label: str, update: dict[str, Any]) -> str:
     name = str(update.get("name") or "entry").strip() or "entry"
+    action = str(update.get("action") or "").lower()
+    if action == "delete":
+        return f"{model_label} removed {name} from Lorebook"
     if name.casefold() == "timeline":
         return f"{model_label} updated Timeline"
 
-    action = "added" if update.get("action") == "create" else "updated"
+    action = "added" if action == "create" else "updated"
     destination = "in" if action == "updated" else "to"
     return f"{model_label} {action} {name} {destination} Lorebook"
+
+
+def lorebook_run_history_actions(
+    model_label: str,
+    applied: list[dict[str, Any]],
+    duration_ms: float,
+    cost: float | None = None,
+) -> list[dict[str, Any]]:
+    #a quiet run is still a run, so both endings get a line instead of pretending nothing happened
+    actions = [
+        {
+            "label": lorebook_history_label(model_label, update),
+            "words_added": update.get("wordsAdded"),
+            "words_removed": update.get("wordsRemoved"),
+            "cost": None,
+        }
+        for update in applied
+    ]
+    if applied:
+        summary = f"{model_label} finished editing Lorebook after {format_duration(duration_ms)}"
+        #run totals, same idea as the cost subtotal on the run header
+        totalAdded = sum(int(update.get("wordsAdded") or 0) for update in applied)
+        totalRemoved = sum(int(update.get("wordsRemoved") or 0) for update in applied)
+    else:
+        summary = f"{model_label} found no Lorebook changes after {format_duration(duration_ms)}"
+        totalAdded = None
+        totalRemoved = None
+
+    #one api call means one cost, so it rides on the closing line instead of being faked across every entry
+    actions.append(
+        {
+            "label": summary,
+            "words_added": totalAdded,
+            "words_removed": totalRemoved,
+            "cost": cost,
+        }
+    )
+    return actions
 
 
 def normalize_lorebook_category(category: str | None) -> str:
@@ -220,6 +299,33 @@ def sanitize_lorebook_aliases(category: str, aliases: Any, fallback_name: str = 
     if isinstance(aliases, list):
         return aliases
     return [fallback_name] if fallback_name else []
+
+
+def lorebook_entry_snapshot(
+    category: str,
+    description: Any,
+    aliases: Any,
+    tags: Any,
+    metadata: Any,
+) -> str:
+    #flatten every field the model can touch, otherwise an alias or tag change diffs to nothing and the history row renders bare
+    lines = [f"category: {category}"]
+    lines.extend(line for line in str(description or "").splitlines() if line.strip())
+    lines.extend(f"alias: {alias}" for alias in (aliases if isinstance(aliases, list) else []))
+    lines.extend(f"tag: {tag}" for tag in (tags if isinstance(tags, list) else []))
+    if isinstance(metadata, dict):
+        lines.extend(f"{key}: {metadata[key]}" for key in sorted(metadata))
+    return "\n".join(lines)
+
+
+def lorebook_row_snapshot(row: sqlite3.Row) -> str:
+    return lorebook_entry_snapshot(
+        normalize_lorebook_category(row["category"]),
+        row["description"],
+        json_list(row["aliases_json"]),
+        json_list(row["tags_json"]),
+        json_dict(row["metadata_json"]),
+    )
 
 
 def sanitize_lorebook_metadata(category: str, metadata: Any) -> dict[str, Any]:
@@ -322,13 +428,14 @@ def chapter_blocks(content: str) -> list[dict[str, Any]]:
 
 
 def block_map_for_prompt(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    #called expectedTextHash here because that is the field name the operation has to send back, showing it as textHash just taught the model the wrong name
     return [
         {
             "blockId": block["blockId"],
             "type": block["type"],
             "index": block["index"],
             "preview": block["preview"],
-            "textHash": block["textHash"],
+            "expectedTextHash": block["textHash"],
         }
         for block in blocks
     ]
@@ -446,6 +553,28 @@ def clean_insert_text(value: Any) -> str:
     return str(value or "").strip()
 
 
+#models shorten these constantly and losing a whole generation over a field nickname is a stupid way to die
+CHAPTER_EDIT_FIELD_ALIASES = {
+    "textHash": "expectedTextHash",
+    "hash": "expectedTextHash",
+    "startTextHash": "startExpectedTextHash",
+    "endTextHash": "endExpectedTextHash",
+    "revision": "chapterRevision",
+    "text": "newText",
+}
+
+
+def normalize_chapter_operation_fields(operation: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(operation)
+    for alias, canonical in CHAPTER_EDIT_FIELD_ALIASES.items():
+        if alias not in normalized:
+            continue
+        #if the real name is already there the nickname is just noise, drop it either way
+        value = normalized.pop(alias)
+        normalized.setdefault(canonical, value)
+    return normalized
+
+
 def validate_chapter_operation(
     operation: dict[str, Any],
     baseRevision: int | None = None,
@@ -456,6 +585,8 @@ def validate_chapter_operation(
             CHAPTER_EDIT_INVALID_OPERATION,
             "chapter edit output must be a JSON object",
         )
+
+    operation = normalize_chapter_operation_fields(operation)
 
     operationType = operation.get("operation")
     if not isinstance(operationType, str) or operationType not in CHAPTER_EDIT_OPERATIONS:
@@ -580,7 +711,8 @@ def apply_chapter_operation(
     baseRevision: int | None = None,
 ) -> dict[str, Any]:
     blocks = chapter_blocks(content)
-    validate_chapter_operation(operation, baseRevision, blocks)
+    #take the returned copy, thats the one with any field nicknames renamed to what the code below reads
+    operation = validate_chapter_operation(operation, baseRevision, blocks)
     blocksById = {block["blockId"]: block for block in blocks}
     operationType = operation["operation"]
     newText = clean_insert_text(operation["newText"])
@@ -827,6 +959,7 @@ def row_to_story(row: sqlite3.Row) -> dict[str, Any]:
         "thinking_enabled": bool(row["thinking_enabled"]),
         "reasoning_effort": row["reasoning_effort"],
         "temporary": bool(row["temporary"]),
+        "lorebook_auto": bool(row["lorebook_auto"]),
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
@@ -856,6 +989,9 @@ def row_to_chapter_history_entry(row: sqlite3.Row) -> dict[str, Any]:
         "label": row["label"],
         "detail": row["detail"],
         "entry_order": row["entry_order"],
+        "words_added": row["words_added"],
+        "words_removed": row["words_removed"],
+        "cost": row["cost"],
         "created_at": row["created_at"],
     }
 
@@ -875,6 +1011,12 @@ def row_to_lorebook_entry(row: sqlite3.Row) -> dict[str, Any]:
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
+
+
+def lorebook_context_line(row: sqlite3.Row) -> str:
+    #indent the wrapped lines, otherwise a 20 bullet timeline reads like 20 separate entries
+    description = str(row["description"] or "").replace("\n", "\n  ")
+    return f"- {row['name']} ({row['category']}): {description}"
 
 
 def row_to_story_generation(row: sqlite3.Row) -> dict[str, Any]:
@@ -941,7 +1083,7 @@ def build_brainstorm_messages(
         for index, chapter in enumerate(visibleChapters)
     ) or "no visible chapters yet"
     lorebook_text = "\n".join(
-        f"- {row['name']} ({row['category']}): {row['description']}"
+        lorebook_context_line(row)
         for row in lorebook_rows
         if not bool(row["disabled"]) and row["description"].strip()
     ) or "no enabled lorebook entries"
@@ -1013,17 +1155,33 @@ def insert_chapter_history_entry(
     label: str,
     detail: str,
     now: str,
+    words_added: int | None = None,
+    words_removed: int | None = None,
+    cost: float | None = None,
 ) -> dict[str, Any]:
     entry_id = str(uuid.uuid4())
     entry_order = next_chapter_history_order(conn, chapter_id)
     conn.execute(
         """
         INSERT INTO chapter_history_entries (
-          id, story_id, chapter_id, run_id, label, detail, entry_order, created_at
+          id, story_id, chapter_id, run_id, label, detail, entry_order,
+          words_added, words_removed, cost, created_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (entry_id, story_id, chapter_id, run_id, label, detail, entry_order, now),
+        (
+            entry_id,
+            story_id,
+            chapter_id,
+            run_id,
+            label,
+            detail,
+            entry_order,
+            words_added,
+            words_removed,
+            cost,
+            now,
+        ),
     )
     return {
         "id": entry_id,
@@ -1033,6 +1191,9 @@ def insert_chapter_history_entry(
         "label": label,
         "detail": detail,
         "entry_order": entry_order,
+        "words_added": words_added,
+        "words_removed": words_removed,
+        "cost": cost,
         "created_at": now,
     }
 
@@ -1047,7 +1208,7 @@ def build_story_messages(
     blocks: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, str]]:
     lorebook_text = "\n".join(
-        f"- {row['name']} ({row['category']}): {row['description']}"
+        lorebook_context_line(row)
         for row in lorebook_rows
         if not bool(row["disabled"]) and row["description"].strip()
     )
@@ -1121,7 +1282,9 @@ def apply_lorebook_updates(
         category = normalize_lorebook_category(update.get("category"))
         if category == "timeline":
             name = "Timeline"
-            action = "update"
+            #everything timeline shaped is an update, except a delete which gets refused below
+            if action != "delete":
+                action = "update"
         if not name:
             continue
         description = str(update.get("description") or "").strip()
@@ -1150,8 +1313,40 @@ def apply_lorebook_updates(
                 (story_id, name),
             ).fetchone()
 
+        if action == "delete":
+            #timeline is a singleton the model doesnt get to retire
+            if not existing or category == "timeline" or name.casefold() == "timeline":
+                continue
+            conn.execute(
+                "UPDATE lorebook_entries SET disabled = 1, updated_at = ? WHERE id = ?",
+                (now, existing["id"]),
+            )
+            wordsAdded, wordsRemoved = word_diff_counts(lorebook_row_snapshot(existing), "")
+            applied.append(
+                {
+                    "action": "delete",
+                    "id": existing["id"],
+                    "name": name,
+                    "wordsAdded": wordsAdded,
+                    "wordsRemoved": wordsRemoved,
+                }
+            )
+            continue
+
+        #model often says create for something it already knows about, treat that as the update it meant
+        if action == "create" and existing and description:
+            action = "update"
+
         if action == "update" and existing:
             next_description = description or existing["description"]
+            beforeSnapshot = lorebook_row_snapshot(existing)
+            afterSnapshot = lorebook_entry_snapshot(
+                category, next_description, aliases, tags, metadata
+            )
+            #an update that changes nothing is not an edit, dont write it and dont claim it in the history
+            if beforeSnapshot == afterSnapshot:
+                continue
+
             conn.execute(
                 """
                 UPDATE lorebook_entries
@@ -1169,7 +1364,16 @@ def apply_lorebook_updates(
                     existing["id"],
                 ),
             )
-            applied.append({"action": "update", "id": existing["id"], "name": name})
+            wordsAdded, wordsRemoved = word_diff_counts(beforeSnapshot, afterSnapshot)
+            applied.append(
+                {
+                    "action": "update",
+                    "id": existing["id"],
+                    "name": name,
+                    "wordsAdded": wordsAdded,
+                    "wordsRemoved": wordsRemoved,
+                }
+            )
             continue
 
         if existing:
@@ -1197,7 +1401,18 @@ def apply_lorebook_updates(
                 now,
             ),
         )
-        applied.append({"action": "create", "id": entry_id, "name": name})
+        wordsAdded, wordsRemoved = word_diff_counts(
+            "", lorebook_entry_snapshot(category, description, aliases, tags, metadata)
+        )
+        applied.append(
+            {
+                "action": "create",
+                "id": entry_id,
+                "name": name,
+                "wordsAdded": wordsAdded,
+                "wordsRemoved": wordsRemoved,
+            }
+        )
     return applied
 
 
@@ -1263,17 +1478,17 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
             ),
         }
 
-    async def update_lorebook_after_generation(
+    async def run_lorebook_update(
         story_id: str,
         chapter_id: str,
-        generation_row_id: str,
+        source_text: str,
         model: str,
         max_tokens: int,
-        generated_text: str,
+        generation_row_id: str | None = None,
     ) -> dict[str, Any]:
         api_key = deps.read_openrouter_key()
-        if not api_key or not generated_text.strip():
-            return {"applied": []}
+        if not api_key or not source_text.strip():
+            return {"applied": [], "skipped": True}
 
         with deps.get_db() as conn:
             story = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
@@ -1287,7 +1502,7 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
             ).fetchall()
 
         current_lore = "\n".join(
-            f"- {row['name']} ({row['category']}): {row['description']}"
+            lorebook_context_line(row)
             for row in lorebook
             if not bool(row["disabled"])
         )
@@ -1295,16 +1510,24 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
             "story": row_to_story(story),
             "chapter": {"title": chapter["title"]},
             "existing_lorebook": current_lore,
-            "new_prose": generated_text,
+            "new_prose": source_text,
         }
         messages = [
             {
                 "role": "system",
                 "content": (
                     "Extract important durable lore from new prose. Return strict JSON only: "
-                    "{\"updates\":[{\"action\":\"create|update\",\"name\":\"\","
+                    "{\"updates\":[{\"action\":\"create|update|delete\",\"name\":\"\","
                     "\"category\":\"character|location|item|event|note|synopsis|timeline\","
                     "\"description\":\"\",\"aliases\":[],\"tags\":[],\"metadata\":{}}]}. "
+                    "Use action \"update\" for any name already present in existing_lorebook, and "
+                    "when the prose contradicts a stored detail, correct that entry so it matches "
+                    "the prose. "
+                    "If a previously-stored fact is no longer supported by the prose, note it for "
+                    "removal with action \"delete\". Only remove an entry when the prose actively "
+                    "contradicts it or explicitly retires it. Never remove an entry merely because "
+                    "this prose does not mention it. Most entries in existing_lorebook describe "
+                    "earlier parts of the story and must be left alone. "
                     "The aliases array is only for nicknames, shortened names, titles used as "
                     "names, or alternate names explicitly used in the story to refer to this "
                     "entry. Do not put jobs, roles, species, traits, descriptions, "
@@ -1328,6 +1551,8 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
         raw_output = ""
         error_text: str | None = None
         applied: list[dict[str, Any]] = []
+        usage: dict[str, Any] | None = None
+        lorebook_generation_id: str | None = None
         try:
             async with httpx.AsyncClient(timeout=45.0) as client:
                 response = await client.post(
@@ -1343,8 +1568,11 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
             if response.status_code >= 400:
                 error_text = deps.openrouter_error_message(response.status_code, response.text)
             else:
+                data = response.json()
+                lorebook_generation_id = response.headers.get("X-Generation-Id") or data.get("id")
+                usage = deps.normalize_usage(data.get("usage"))
                 raw_output = (
-                    response.json()
+                    data
                     .get("choices", [{}])[0]
                     .get("message", {})
                     .get("content")
@@ -1359,27 +1587,38 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
         except Exception as exc:  # noqa: BLE001
             error_text = str(exc)
 
+        #/generation is the only place cost reliably turns up, and this sits outside the try so a usage hiccup cant throw away updates we already committed
+        if lorebook_generation_id and not (usage or {}).get("cost"):
+            try:
+                fetched = await deps.fetch_generation_usage(api_key, lorebook_generation_id)
+                if fetched:
+                    usage = {**(usage or {}), **fetched}
+            except Exception:  # noqa: BLE001
+                pass
+
         with deps.get_db() as conn:
             conn.execute(
                 """
                 INSERT INTO lorebook_update_runs (
-                  id, story_id, chapter_id, generation_id, raw_output,
-                  applied_updates_json, error, created_at
+                  id, story_id, chapter_id, generation_id, openrouter_generation_id,
+                  raw_output, applied_updates_json, cost, error, created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     str(uuid.uuid4()),
                     story_id,
                     chapter_id,
                     generation_row_id,
+                    lorebook_generation_id,
                     raw_output or "",
                     json.dumps(applied),
+                    (usage or {}).get("cost"),
                     error_text,
                     deps.utc_now(),
                 ),
             )
-        return {"applied": applied, "error": error_text}
+        return {"applied": applied, "error": error_text, "cost": (usage or {}).get("cost")}
 
     async def stream_story_generation(
         story_id: str,
@@ -1452,7 +1691,13 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
         received_done = False
         cancelled = False
 
-        def save_history(label: str, detail: str = "") -> dict[str, Any]:
+        def save_history(
+            label: str,
+            detail: str = "",
+            words_added: int | None = None,
+            words_removed: int | None = None,
+            cost: float | None = None,
+        ) -> dict[str, Any]:
             with deps.get_db() as conn:
                 return insert_chapter_history_entry(
                     conn,
@@ -1462,6 +1707,9 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                     label=label,
                     detail=detail,
                     now=deps.utc_now(),
+                    words_added=words_added,
+                    words_removed=words_removed,
+                    cost=cost,
                 )
 
         def revision_conflict_event(conn: sqlite3.Connection) -> dict[str, Any]:
@@ -1560,7 +1808,6 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
         finally:
             content = "".join(generated_text)
             now = deps.utc_now()
-            content_for_lorebook = ""
             chapter_update_event: dict[str, Any] | None = None
             error_event: dict[str, Any] | None = None
             operation: dict[str, Any] | None = None
@@ -1633,7 +1880,6 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                                     "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
                                     (chapter_id, story_id),
                                 ).fetchone()
-                                content_for_lorebook = operation_result["appliedText"]
                                 chapter_update_event = {
                                     "chapter": row_to_chapter(savedChapter),
                                     "operation": operation_result["operation"],
@@ -1667,7 +1913,6 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                             "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
                             (chapter_id, story_id),
                         ).fetchone()
-                        content_for_lorebook = content
                         chapter_update_event = {
                             "chapter": row_to_chapter(savedChapter),
                             "operation": operation_result["operation"],
@@ -1716,42 +1961,72 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                 )
             if error_event is not None:
                 yield emit("error", error_event)
+                #a run that failed still burned tokens, so it gets a line and carries the cost the wrote for line never got to report
+                yield emit(
+                    "history",
+                    save_history(
+                        f"{model_label} could not apply the edit",
+                        detail=str(error_event.get("message") or ""),
+                        cost=usage.get("cost") if usage else None,
+                    ),
+                )
             if chapter_update_event is not None:
                 yield emit("chapter_updated", chapter_update_event, chapter_update_event["chapter"]["revision"])
                 if content_started_at is not None:
                     duration_ms = (time.perf_counter() - content_started_at) * 1000
-                    yield emit(
-                        "history",
-                        save_history(f"{model_label} wrote for {format_duration(duration_ms)}"),
+                    written_added, written_removed = word_diff_counts(
+                        current_content, chapter_update_event["chapter"]["content"]
                     )
-                    content_started_at = None
-                lorebook_started_at = time.perf_counter()
-                yield emit("lorebook_start", {"generation_id": story_generation_id})
-            else:
-                lorebook_started_at = None
-            if content_for_lorebook:
-                lorebook_result = await update_lorebook_after_generation(
-                    story_id,
-                    chapter_id,
-                    story_generation_id,
-                    payload.model,
-                    payload.max_tokens,
-                    content_for_lorebook,
-                )
-                for update in lorebook_result.get("applied") or []:
-                    yield emit(
-                        "history",
-                        save_history(lorebook_history_label(model_label, update)),
-                    )
-                if lorebook_started_at is not None:
-                    duration_ms = (time.perf_counter() - lorebook_started_at) * 1000
+                    #whole run rides here including any thinking tokens, the thought for line stays cost free on purpose
                     yield emit(
                         "history",
                         save_history(
-                            f"{model_label} finished editing Lorebook after {format_duration(duration_ms)}"
+                            f"{model_label} wrote for {format_duration(duration_ms)}",
+                            words_added=written_added,
+                            words_removed=written_removed,
+                            cost=usage.get("cost") if usage else None,
                         ),
                     )
-                yield emit("lorebook", lorebook_result)
+                    content_started_at = None
+
+                with deps.get_db() as conn:
+                    auto_row = conn.execute(
+                        "SELECT lorebook_auto FROM stories WHERE id = ?", (story_id,)
+                    ).fetchone()
+
+                #manual runs get their own button, this is only for the folks who opted into auto
+                if auto_row and bool(auto_row["lorebook_auto"]):
+                    lorebook_started_at = time.perf_counter()
+                    yield emit("lorebook_start", {"generation_id": story_generation_id})
+
+                    lorebook_result = await run_lorebook_update(
+                        story_id,
+                        chapter_id,
+                        chapter_update_event["chapter"]["content"],
+                        payload.model,
+                        payload.max_tokens,
+                        generation_row_id=story_generation_id,
+                    )
+                    lorebook_duration_ms = (time.perf_counter() - lorebook_started_at) * 1000
+                    #a skipped run never reached the model, so there is no activity to record
+                    if not lorebook_result.get("skipped"):
+                        for action in lorebook_run_history_actions(
+                            model_label,
+                            lorebook_result.get("applied") or [],
+                            lorebook_duration_ms,
+                            lorebook_result.get("cost"),
+                        ):
+                            yield emit(
+                                "history",
+                                save_history(
+                                    action["label"],
+                                    words_added=action["words_added"],
+                                    words_removed=action["words_removed"],
+                                    cost=action["cost"],
+                                ),
+                            )
+
+                    yield emit("lorebook", lorebook_result)
 
     @router.get("/api/stories")
     def list_stories() -> dict[str, Any]:
@@ -1772,9 +2047,9 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                 INSERT INTO stories (
                   id, title, author, language, synopsis, model, system_prompt,
                   temperature, max_tokens, thinking_enabled, reasoning_effort, temporary,
-                  created_at, updated_at
+                  lorebook_auto, created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     story_id,
@@ -1789,6 +2064,7 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                     int(payload.thinking_enabled),
                     payload.reasoning_effort,
                     int(payload.temporary),
+                    int(payload.lorebook_auto),
                     now,
                     now,
                 ),
@@ -1813,9 +2089,9 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                 INSERT INTO stories (
                   id, title, author, language, synopsis, model, system_prompt,
                   temperature, max_tokens, thinking_enabled, reasoning_effort, temporary,
-                  created_at, updated_at
+                  lorebook_auto, created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     story_id,
@@ -1830,6 +2106,7 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                     int(payload.thinking_enabled),
                     payload.reasoning_effort,
                     int(payload.temporary),
+                    int(payload.lorebook_auto),
                     now,
                     now,
                 ),
@@ -1871,7 +2148,7 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
         assignments: list[str] = []
         values: list[Any] = []
         for key, value in updates.items():
-            if key == "thinking_enabled":
+            if key in {"thinking_enabled", "lorebook_auto"}:
                 value = int(bool(value))
             if key == "title":
                 value = str(value).strip() or "New story"
@@ -2092,6 +2369,78 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                 (story_id,),
             ).fetchall()
         return {"entries": [row_to_lorebook_entry(row) for row in rows]}
+
+    @router.post("/api/stories/{story_id}/lorebook/update")
+    async def update_lorebook_from_chapter(
+        story_id: str, payload: LorebookUpdateRequest
+    ) -> dict[str, Any]:
+        with deps.get_db() as conn:
+            story = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
+            if not story:
+                raise HTTPException(status_code=404, detail="Story not found.")
+            chapter = conn.execute(
+                "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
+                (payload.chapter_id, story_id),
+            ).fetchone()
+            if not chapter:
+                raise HTTPException(status_code=404, detail="Chapter not found.")
+
+        source_text = chapter["content"] or ""
+        if not source_text.strip():
+            return {"applied": [], "skipped": True, "entries": [], "history": []}
+
+        started_at = time.perf_counter()
+        result = await run_lorebook_update(
+            story_id,
+            payload.chapter_id,
+            source_text,
+            story["model"],
+            story["max_tokens"],
+        )
+        applied = result.get("applied") or []
+
+        model_label = display_model_name(story["model"])
+        history_run_id = str(uuid.uuid4())
+        history_entries: list[dict[str, Any]] = []
+        duration_ms = (time.perf_counter() - started_at) * 1000
+        actions = lorebook_run_history_actions(
+            model_label, applied, duration_ms, result.get("cost")
+        )
+
+        with deps.get_db() as conn:
+            for action in actions:
+                history_entries.append(
+                    insert_chapter_history_entry(
+                        conn,
+                        story_id=story_id,
+                        chapter_id=payload.chapter_id,
+                        run_id=history_run_id,
+                        label=action["label"],
+                        detail="",
+                        now=deps.utc_now(),
+                        words_added=action["words_added"],
+                        words_removed=action["words_removed"],
+                        cost=action["cost"],
+                    )
+                )
+
+        with deps.get_db() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM lorebook_entries
+                WHERE story_id = ?
+                ORDER BY updated_at DESC, created_at DESC
+                """,
+                (story_id,),
+            ).fetchall()
+
+        return {
+            "applied": applied,
+            "error": result.get("error"),
+            "skipped": bool(result.get("skipped")),
+            "entries": [row_to_lorebook_entry(row) for row in rows],
+            "history": history_entries,
+        }
 
     @router.post("/api/stories/{story_id}/lorebook")
     def create_lorebook_entry(story_id: str, payload: LorebookEntryRequest) -> dict[str, Any]:

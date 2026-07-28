@@ -78,6 +78,7 @@ const newSettings = {
   thinking_enabled: false,
   reasoning_effort: "medium",
   nitro_mode: false,
+  lorebook_auto: false,
 };
 
 const REASONING_EFFORTS = [
@@ -104,6 +105,11 @@ const CHAT_MODES = [
 const WRITE_GENERATION_MODES = {
   edit: "Edit Chapter",
   new: "New Chapter",
+};
+
+const LOREBOOK_UPDATE_MODES = {
+  auto: "Auto Lorebook",
+  manual: "Manual Lorebook",
 };
 
 function rangeProgress(value, min, max) {
@@ -297,6 +303,13 @@ const storyApi = {
       `/api/stories/${encodeURIComponent(storyId)}/lorebook/${encodeURIComponent(entryId)}`,
       { method: "DELETE" },
     );
+  },
+
+  async updateLorebookFromChapter(storyId, chapterId) {
+    return api(`/api/stories/${encodeURIComponent(storyId)}/lorebook/update`, {
+      method: "POST",
+      body: JSON.stringify({ chapter_id: chapterId }),
+    });
   },
 
   async getBrainstorm(storyId) {
@@ -1678,6 +1691,14 @@ function historyRunGroups(entries) {
   return groups;
 }
 
+function historyCostTotal(entries) {
+  //old history predates cost tracking so anything non numeric just doesnt count toward the tally
+  return entries.reduce((total, entry) => {
+    const cost = toFiniteNumber(entry.cost);
+    return isFiniteNumber(cost) ? total + cost : total;
+  }, 0);
+}
+
 function isFiniteNumber(value) {
   return typeof value === "number" && Number.isFinite(value);
 }
@@ -2641,6 +2662,7 @@ function StoryWorkspace({
   contextWindowInfo,
   saveState,
   generationStatus,
+  lorebookStatus,
   writeReasoning,
   canvasScrollPosition,
   onOpenRail,
@@ -2658,7 +2680,11 @@ function StoryWorkspace({
   const generationActiveRef = useRef(false);
   const activeStory = stories.find((story) => story.id === activeStoryId);
   const activeChapter = chapters.find((chapter) => chapter.id === activeChapterId);
-  const writingLocked = Boolean(generationStatus);
+  const writingLocked = Boolean(generationStatus || lorebookStatus);
+
+  //lorebook runs borrow the shimmer but not the thinking text, which is still sitting there from the last generation
+  const writeStatus = generationStatus || lorebookStatus;
+  const statusReasoning = generationStatus ? writeReasoning : null;
   const {
     markUserScroll: markCanvasScroll,
     markWheelIntent: markCanvasWheelIntent,
@@ -2760,12 +2786,12 @@ function StoryWorkspace({
                 </h1>
               </div>
               <div className="flex shrink-0 items-center gap-3 text-xs text-zinc-500">
-                {generationStatus ? (
+                {writeStatus ? (
                   <WriteOperationStatus
-                    status={generationStatus}
-                    reasoning={writeReasoning?.text}
-                    reasoningStreaming={writeReasoning?.streaming}
-                    reasoningDurationMs={writeReasoning?.durationMs}
+                    status={writeStatus}
+                    reasoning={statusReasoning?.text}
+                    reasoningStreaming={statusReasoning?.streaming}
+                    reasoningDurationMs={statusReasoning?.durationMs}
                   />
                 ) : (
                   <span>{saveState || `${activeChapter.word_count || 0} words`}</span>
@@ -3210,6 +3236,9 @@ function Composer({
   writeHistoryTitle = "Chapter history",
   onOpenLorebook,
   onOpenBrainstorm,
+  onUpdateLorebook,
+  onSetLorebookAuto,
+  lorebookUpdating = false,
   systemPrompt = "",
   onSaveSystemPrompt,
   tourUi = null,
@@ -3373,7 +3402,19 @@ function Composer({
                       <ComposerMenuButton label="System Prompt" detail={systemPrompt.trim() ? "Custom instructions" : "Default instructions"} onClick={() => { setSystemPromptOpen(true); setContextMenuOpen(false); }} active={Boolean(systemPrompt.trim())} />
                       <ComposerMenuButton label="History" detail={`${writeHistoryEntries.length} saved events`} onClick={() => { setHistoryOpen(true); setContextMenuOpen(false); }} />
                       <div className="my-1 border-t border-white/[0.08]" />
-                      <ComposerMenuButton dataTour="write-generation-mode" label={WRITE_GENERATION_MODES[writeGenerationMode]} detail="Switch writing action" onClick={() => { onToggleWriteGenerationMode(); setContextMenuOpen(false); }} />
+                      <ComposerMenuButton dataTour="write-generation-mode" label={WRITE_GENERATION_MODES[writeGenerationMode]} detail="Switch writing action" onClick={onToggleWriteGenerationMode} />
+                      <ComposerMenuButton
+                        label={LOREBOOK_UPDATE_MODES[settings.lorebook_auto ? "auto" : "manual"]}
+                        detail="Switch update mode"
+                        disabled={isStreaming || lorebookUpdating}
+                        onClick={() => onSetLorebookAuto(!settings.lorebook_auto)}
+                      />
+                      <ComposerMenuButton
+                        label="Update Lorebook"
+                        detail="Save story details"
+                        disabled={lorebookUpdating || isStreaming}
+                        onClick={() => { onUpdateLorebook(); setContextMenuOpen(false); }}
+                      />
                     </div>
                   )}
                 </div>
@@ -3778,6 +3819,7 @@ function WriteHistoryModal({ open, entries, title, onClose }) {
   const isOpen = phase === "open";
   const runGroups = historyRunGroups(entries);
   const eventCount = entries.filter((entry) => entry.label !== "User prompt").length;
+  const totalCost = historyCostTotal(entries);
 
   function toggleExpanded(entryId) {
     setExpandedEntries((current) => ({
@@ -3819,11 +3861,21 @@ function WriteHistoryModal({ open, entries, title, onClose }) {
             <h2 id="write-history-title" className="text-balance text-lg font-semibold leading-6 tracking-[-0.01em] text-zinc-100">
               {title}
             </h2>
-            <p className="mt-1 text-sm leading-5 text-zinc-500">
-              {eventCount > 0
-                ? `${runGroups.length} ${runGroups.length === 1 ? "prompt" : "prompts"} · ${eventCount} ${eventCount === 1 ? "event" : "events"}`
-                : "Prompts and changes will appear here"}
-            </p>
+            {eventCount > 0 ? (
+              <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-sm leading-5 text-zinc-500">
+                <span>{runGroups.length} {runGroups.length === 1 ? "prompt" : "prompts"}</span>
+                <span aria-hidden="true">·</span>
+                <span>{eventCount} {eventCount === 1 ? "event" : "events"}</span>
+                {totalCost > 0 && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span className="tabular-nums text-zinc-400">{formatCost(totalCost)}</span>
+                  </>
+                )}
+              </p>
+            ) : (
+              <p className="mt-1 text-sm leading-5 text-zinc-500">Prompts and changes will appear here</p>
+            )}
           </div>
           <button
             ref={closeRef}
@@ -3875,6 +3927,7 @@ function WriteHistoryRunAccordion({
   onToggleEntry,
 }) {
   const actionCount = run.actions.length;
+  const runCost = historyCostTotal(run.actions);
   const promptText = run.prompt?.detail
     ? promptPreview(run.prompt.detail, 86)
     : "Prompt details unavailable";
@@ -3899,6 +3952,11 @@ function WriteHistoryRunAccordion({
             <span className="shrink-0 text-[11px] font-medium tabular-nums text-zinc-600">
               {actionCount} {actionCount === 1 ? "action" : "actions"}
             </span>
+            {runCost > 0 && (
+              <span className="shrink-0 text-[11px] font-medium tabular-nums text-zinc-600">
+                {formatCost(runCost)}
+              </span>
+            )}
           </span>
           <span className="mt-0.5 block truncate text-xs leading-5 text-zinc-500">{promptText}</span>
         </span>
@@ -3930,7 +3988,7 @@ function WriteHistoryRunAccordion({
           {run.actions.length > 0 ? (
             <ol>
               {run.actions.map((entry, index) => (
-                <li key={entry.id} className="grid grid-cols-[18px_minmax(0,1fr)] gap-3 px-1">
+                <li key={entry.id} className="grid grid-cols-[18px_minmax(0,1fr)_auto] gap-3 px-1">
                   <span className="relative flex justify-center" aria-hidden="true">
                     {index < run.actions.length - 1 && (
                       <span className="absolute bottom-0 top-[14px] w-px bg-white/[0.07]" />
@@ -3945,6 +4003,7 @@ function WriteHistoryRunAccordion({
                       onToggle={() => onToggleEntry(entry.id)}
                     />
                   </div>
+                  <WriteHistoryStats entry={entry} />
                 </li>
               ))}
             </ol>
@@ -3954,6 +4013,23 @@ function WriteHistoryRunAccordion({
         </div>
       </div>
     </section>
+  );
+}
+
+function WriteHistoryStats({ entry }) {
+  const wordsAdded = toFiniteNumber(entry.words_added) || 0;
+  const wordsRemoved = toFiniteNumber(entry.words_removed) || 0;
+  const cost = toFiniteNumber(entry.cost);
+  const hasCost = isFiniteNumber(cost) && cost > 0;
+  if (!wordsAdded && !wordsRemoved && !hasCost) return null;
+
+  //self-start keeps this on the labels first line, without it the span stretches to the whole row and centers itself six pixels low
+  return (
+    <span className="flex shrink-0 items-center gap-2 self-start text-[11px] font-medium leading-5 tabular-nums">
+      {wordsAdded > 0 && <span className="text-emerald-300">+{wordsAdded}</span>}
+      {wordsRemoved > 0 && <span className="text-red-300">&minus;{wordsRemoved}</span>}
+      {hasCost && <span className="text-zinc-500">{formatCost(cost)}</span>}
+    </span>
   );
 }
 
@@ -5689,6 +5765,7 @@ function App() {
   const [stories, setStories] = useState([]);
   const [chapters, setChapters] = useState([]);
   const [lorebookEntries, setLorebookEntries] = useState([]);
+  const [lorebookUpdating, setLorebookUpdating] = useState(false);
   const [brainstormNodes, setBrainstormNodes] = useState([]);
   const [brainstormEdges, setBrainstormEdges] = useState([]);
   const [brainstormViewport, setBrainstormViewport] = useState({ x: 0, y: 0, zoom: 1 });
@@ -6033,6 +6110,7 @@ function App() {
       thinking_enabled: Boolean(story.thinking_enabled),
       reasoning_effort: story.reasoning_effort || "medium",
       nitro_mode: nitroMode,
+      lorebook_auto: Boolean(story.lorebook_auto),
     });
   }
 
@@ -6424,6 +6502,7 @@ function App() {
       ),
       reasoning_effort: chat.reasoning_effort || "medium",
       nitro_mode: nitroMode,
+      lorebook_auto: false, //chats have no lorebook, this just keeps the object shape steady across modes
     });
   }
 
@@ -7159,6 +7238,14 @@ function App() {
     });
   }
 
+  function setLorebookAutoMode(autoEnabled) {
+    setSettings((current) => {
+      const next = { ...current, lorebook_auto: autoEnabled };
+      if (activeStoryId) persistSettings(next);
+      return next;
+    });
+  }
+
   function toggleWriteGenerationMode() {
     if (hasActiveWriteGeneration()) return setStatus("Finish or stop the current generation first.");
     setWriteGenerationMode((current) => (current === "new" ? "edit" : "new"));
@@ -7218,6 +7305,7 @@ function App() {
         max_tokens: settings.max_tokens,
         thinking_enabled: settings.thinking_enabled,
         reasoning_effort: settings.reasoning_effort,
+        lorebook_auto: settings.lorebook_auto,
         temporary: true,
       });
       storyId = story.id;
@@ -7274,6 +7362,7 @@ function App() {
           max_tokens: settings.max_tokens,
           thinking_enabled: settings.thinking_enabled,
           reasoning_effort: settings.reasoning_effort,
+          lorebook_auto: settings.lorebook_auto,
         },
         { title: "Chapter 1", content: "" },
       );
@@ -7286,6 +7375,7 @@ function App() {
       setStoryWorkspaceView("chapter");
       writeRoute(storyRoute(story.id, chapter.id, "chapter"));
       showToast("Story created");
+      showToast("Remember to update your Lorebook!");
     } catch (error) {
       setStatus(error.message);
     }
@@ -7593,6 +7683,31 @@ function App() {
     });
   }
 
+  async function updateLorebookNow() {
+    if (!activeStoryId || !activeChapterId || isStreaming || lorebookUpdating) return;
+
+    try {
+      setLorebookUpdating(true);
+      //the editor autosaves, so push any pending draft before the server reads the chapter
+      await flushChapterSave(activeStoryId, activeChapterId);
+      const result = await storyApi.updateLorebookFromChapter(activeStoryId, activeChapterId);
+
+      setLorebookEntries(result.entries || []);
+      (result.history || []).forEach(appendWriteHistoryEntry);
+
+      const appliedUpdates = Array.isArray(result.applied) ? result.applied : [];
+      if (result.error) {
+        setStatus("Lorebook update failed");
+      } else {
+        showToast(appliedUpdates.length ? "Lorebook updated" : "Nothing new to save");
+      }
+    } catch (error) {
+      setStatus(error.message);
+    } finally {
+      setLorebookUpdating(false);
+    }
+  }
+
   function updateChapterCanvasContent(content) {
     setChapterContent(content);
     chapterContentRef.current = content;
@@ -7837,7 +7952,7 @@ function App() {
   }
 
   async function generateStoryChapter(text = prompt.trim()) {
-    if (isStreaming || hasActiveWriteGeneration() || !text || !activeStoryId || !activeChapterId) return;
+    if (isStreaming || hasActiveWriteGeneration() || lorebookUpdating || !text || !activeStoryId || !activeChapterId) return;
     const selectedGenerationMode = writeGenerationMode;
     const abortController = new AbortController();
     const run = {
@@ -7985,11 +8100,7 @@ function App() {
             return;
           }
           if (event.type === "lorebook") {
-            const result = event.value || {};
-            const appliedUpdates = Array.isArray(result.applied) ? result.applied : [];
-            if (result.error || appliedUpdates.length === 0) {
-              setStatus("Lorebook update skipped");
-            }
+            //a run that changed nothing stays quiet, the history line already covers it
             void storyApi.listLorebook(run.storyId).then(setLorebookEntries).catch((error) => {
               setStatus(error.message);
             });
@@ -8177,6 +8288,7 @@ function App() {
             contextWindowInfo={contextWindowInfo}
             saveState={chapterSaveState}
             generationStatus={storyGenerationStatus}
+            lorebookStatus={lorebookUpdating ? "Updating Lorebook" : ""}
             writeReasoning={writeReasoning}
             canvasScrollPosition={chapterCanvasScrollPosition(activeStoryId, activeChapterId)}
             onOpenRail={() => setRailOpen(true)}
@@ -8284,6 +8396,9 @@ function App() {
               writeRoute(storyRoute(activeStoryId, activeChapterId, "lorebook"));
             }}
             onOpenBrainstorm={openBrainstorm}
+            onUpdateLorebook={updateLorebookNow}
+            onSetLorebookAuto={setLorebookAutoMode}
+            lorebookUpdating={lorebookUpdating}
             systemPrompt={isWritingMode ? settings.system_prompt : ""}
             onSaveSystemPrompt={isWritingMode ? saveStorySystemPrompt : null}
             forceShowThinking={Boolean(writeTour.currentStep?.forceThinkingVisible)}

@@ -2,14 +2,17 @@ import json
 import unittest
 
 from backend.writing import (
+    CHAPTER_EDIT_CONFLICTING_EDITS,
     CHAPTER_EDIT_INVALID_JSON,
     CHAPTER_EDIT_INVALID_OPERATION,
     CHAPTER_EDIT_REVISION_MISMATCH,
     CHAPTER_EDIT_TARGET_MISMATCH,
     ChapterEditError,
+    apply_chapter_edits,
     apply_chapter_operation,
     block_map_for_prompt,
     chapter_blocks,
+    parse_chapter_edit_batch,
     parse_chapter_operation,
     text_hash,
     word_diff_counts,
@@ -53,6 +56,149 @@ class WordDiffCountsTest(unittest.TestCase):
 
     def test_none_is_treated_as_empty(self):
         self.assertEqual(word_diff_counts(None, "one"), (1, 0))
+
+
+class ChapterEditBatchTest(unittest.TestCase):
+    def setUp(self):
+        self.content = "one alpha\n\ntwo bravo\n\nthree charlie\n\nfour delta"
+        self.blocks = chapter_blocks(self.content)
+
+    def edit(self, index, newText):
+        block = self.blocks[index]
+        return {
+            "operation": "replaceBlock",
+            "blockId": block["blockId"],
+            "expectedTextHash": block["textHash"],
+            "newText": newText,
+        }
+
+    def batch(self, *edits, revision=7):
+        return {"chapterRevision": revision, "edits": list(edits)}
+
+    def assertErrorCode(self, callback, code):
+        with self.assertRaises(ChapterEditError) as context:
+            callback()
+        self.assertEqual(context.exception.code, code)
+
+    def test_two_distant_edits_leave_the_middle_untouched(self):
+        #the entire reason this exists, before it the model had to sweep 1 through 4 and retype the middle from memory
+        result = apply_chapter_edits(
+            self.content,
+            self.batch(self.edit(0, "one EDITED"), self.edit(3, "four EDITED")),
+            baseRevision=7,
+        )
+        self.assertEqual(
+            result["content"],
+            "one EDITED\n\ntwo bravo\n\nthree charlie\n\nfour EDITED",
+        )
+
+    def test_order_in_the_array_does_not_matter(self):
+        forwards = apply_chapter_edits(
+            self.content,
+            self.batch(self.edit(0, "A"), self.edit(2, "B"), self.edit(3, "C")),
+            baseRevision=7,
+        )
+        backwards = apply_chapter_edits(
+            self.content,
+            self.batch(self.edit(3, "C"), self.edit(2, "B"), self.edit(0, "A")),
+            baseRevision=7,
+        )
+        self.assertEqual(forwards["content"], backwards["content"])
+        self.assertEqual(forwards["content"], "A\n\ntwo bravo\n\nB\n\nC")
+
+    def test_mixed_operations_apply_against_one_snapshot(self):
+        insert = {
+            "operation": "insertAfterBlock",
+            "blockId": self.blocks[0]["blockId"],
+            "expectedTextHash": self.blocks[0]["textHash"],
+            "newText": "inserted line",
+        }
+        result = apply_chapter_edits(
+            self.content, self.batch(insert, self.edit(3, "four EDITED")), baseRevision=7
+        )
+        self.assertEqual(
+            result["content"],
+            "one alpha\n\ninserted line\n\ntwo bravo\n\nthree charlie\n\nfour EDITED",
+        )
+
+    def test_two_edits_on_the_same_block_are_rejected(self):
+        self.assertErrorCode(
+            lambda: apply_chapter_edits(
+                self.content,
+                self.batch(self.edit(1, "first"), self.edit(1, "second")),
+                baseRevision=7,
+            ),
+            CHAPTER_EDIT_CONFLICTING_EDITS,
+        )
+
+    def test_a_range_overlapping_another_edit_is_rejected(self):
+        spanning = {
+            "operation": "replaceBlockRange",
+            "startBlockId": self.blocks[0]["blockId"],
+            "startExpectedTextHash": self.blocks[0]["textHash"],
+            "endBlockId": self.blocks[2]["blockId"],
+            "endExpectedTextHash": self.blocks[2]["textHash"],
+            "newText": "swept",
+        }
+        self.assertErrorCode(
+            lambda: apply_chapter_edits(
+                self.content, self.batch(spanning, self.edit(1, "clash")), baseRevision=7
+            ),
+            CHAPTER_EDIT_CONFLICTING_EDITS,
+        )
+
+    def test_two_appends_are_rejected(self):
+        append = {"operation": "appendToChapter", "newText": "tail"}
+        self.assertErrorCode(
+            lambda: apply_chapter_edits(
+                self.content, self.batch(append, dict(append)), baseRevision=7
+            ),
+            CHAPTER_EDIT_CONFLICTING_EDITS,
+        )
+
+    def test_an_empty_edits_array_is_rejected(self):
+        self.assertErrorCode(
+            lambda: apply_chapter_edits(self.content, self.batch(), baseRevision=7),
+            CHAPTER_EDIT_INVALID_OPERATION,
+        )
+
+    def test_envelope_revision_must_match(self):
+        self.assertErrorCode(
+            lambda: apply_chapter_edits(
+                self.content, self.batch(self.edit(0, "x"), revision=6), baseRevision=7
+            ),
+            CHAPTER_EDIT_REVISION_MISMATCH,
+        )
+
+    def test_a_leftover_revision_on_an_edit_is_tolerated(self):
+        noisy = {**self.edit(0, "one EDITED"), "chapterRevision": 7}
+        result = apply_chapter_edits(self.content, self.batch(noisy), baseRevision=7)
+        self.assertTrue(result["content"].startswith("one EDITED"))
+
+    def test_a_bare_single_operation_still_parses(self):
+        raw = json.dumps({
+            "operation": "replaceBlock",
+            "chapterRevision": 7,
+            "blockId": self.blocks[0]["blockId"],
+            "expectedTextHash": self.blocks[0]["textHash"],
+            "newText": "one EDITED",
+        })
+        batch = parse_chapter_edit_batch(raw)
+        self.assertEqual(batch["chapterRevision"], 7)
+        self.assertEqual(len(batch["edits"]), 1)
+        result = apply_chapter_edits(self.content, batch, baseRevision=7)
+        self.assertTrue(result["content"].startswith("one EDITED"))
+
+    def test_the_envelope_shape_parses(self):
+        raw = json.dumps({
+            "chapterRevision": 7,
+            "edits": [self.edit(0, "one EDITED"), self.edit(3, "four EDITED")],
+        })
+        result = apply_chapter_edits(self.content, parse_chapter_edit_batch(raw), baseRevision=7)
+        self.assertEqual(
+            result["content"],
+            "one EDITED\n\ntwo bravo\n\nthree charlie\n\nfour EDITED",
+        )
 
 
 class ChapterOperationTest(unittest.TestCase):

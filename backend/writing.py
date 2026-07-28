@@ -117,6 +117,7 @@ CHAPTER_EDIT_INVALID_JSON = "chapter_edit_invalid_json"
 CHAPTER_EDIT_INVALID_OPERATION = "chapter_edit_invalid_operation"
 CHAPTER_EDIT_REVISION_MISMATCH = "chapter_edit_revision_mismatch"
 CHAPTER_EDIT_TARGET_MISMATCH = "chapter_edit_target_mismatch"
+CHAPTER_EDIT_CONFLICTING_EDITS = "chapter_edit_conflicting_edits"
 CHAPTER_REVISION_CONFLICT = "chapter_revision_conflict"
 
 
@@ -455,7 +456,6 @@ def block_map_for_prompt(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def chapter_edit_operation_schema() -> dict[str, Any]:
     operationFields = {
         "operation": {"type": "string"},
-        "chapterRevision": {"type": "integer", "minimum": 0},
         "blockId": {"type": "string", "minLength": 1},
         "expectedTextHash": {
             "type": "string",
@@ -493,7 +493,7 @@ def chapter_edit_operation_schema() -> dict[str, Any]:
         "oneOf": [
             variant(
                 "replaceBlock",
-                ["operation", "chapterRevision", "blockId", "expectedTextHash", "newText"],
+                ["operation", "blockId", "expectedTextHash", "newText"],
             ),
             {
                 "type": "object",
@@ -505,7 +505,6 @@ def chapter_edit_operation_schema() -> dict[str, Any]:
                 },
                 "required": [
                     "operation",
-                    "chapterRevision",
                     "startBlockId",
                     "startExpectedTextHash",
                     "endBlockId",
@@ -515,14 +514,31 @@ def chapter_edit_operation_schema() -> dict[str, Any]:
             },
             variant(
                 "insertBeforeBlock",
-                ["operation", "chapterRevision", "blockId", "expectedTextHash", "newText"],
+                ["operation", "blockId", "expectedTextHash", "newText"],
             ),
             variant(
                 "insertAfterBlock",
-                ["operation", "chapterRevision", "blockId", "expectedTextHash", "newText"],
+                ["operation", "blockId", "expectedTextHash", "newText"],
             ),
-            variant("appendToChapter", ["operation", "chapterRevision", "newText"]),
+            variant("appendToChapter", ["operation", "newText"]),
         ],
+    }
+
+
+def chapter_edit_batch_schema() -> dict[str, Any]:
+    #chapterRevision lives on the envelope now, one statement of it instead of one per edit that can disagree with its neighbours
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "chapterRevision": {"type": "integer", "minimum": 0},
+            "edits": {
+                "type": "array",
+                "minItems": 1,
+                "items": chapter_edit_operation_schema(),
+            },
+        },
+        "required": ["chapterRevision", "edits"],
     }
 
 
@@ -530,14 +546,14 @@ def chapter_edit_response_format() -> dict[str, Any]:
     return {
         "type": "json_schema",
         "json_schema": {
-            "name": "chapter_edit_operation",
+            "name": "chapter_edit_batch",
             "strict": True,
-            "schema": chapter_edit_operation_schema(),
+            "schema": chapter_edit_batch_schema(),
         },
     }
 
 
-def parse_chapter_operation(raw_output: str) -> dict[str, Any]:
+def parse_chapter_edit_batch(raw_output: str) -> dict[str, Any]:
     if not isinstance(raw_output, str) or not raw_output.strip():
         raise ChapterEditError(
             CHAPTER_EDIT_INVALID_JSON,
@@ -557,7 +573,39 @@ def parse_chapter_operation(raw_output: str) -> dict[str, Any]:
             CHAPTER_EDIT_INVALID_OPERATION,
             "chapter edit output must be a JSON object",
         )
-    return validate_chapter_operation(parsed)
+
+    #a bare single operation is still the shape plenty of models reach for, so wrap it rather than reject it
+    if "edits" not in parsed and "operation" in parsed:
+        revision = parsed.get("chapterRevision")
+        edit = {key: value for key, value in parsed.items() if key != "chapterRevision"}
+        return {"chapterRevision": revision, "edits": [edit]}
+
+    edits = parsed.get("edits")
+    if not isinstance(edits, list):
+        raise ChapterEditError(
+            CHAPTER_EDIT_INVALID_OPERATION,
+            "chapter edit output must contain an edits array",
+        )
+    if not edits:
+        raise ChapterEditError(
+            CHAPTER_EDIT_INVALID_OPERATION,
+            "edits array must contain at least one edit",
+        )
+
+    return {"chapterRevision": parsed.get("chapterRevision"), "edits": edits}
+
+
+def parse_chapter_operation(raw_output: str) -> dict[str, Any]:
+    #kept for the single edit path, the batch parser is the real entry point now
+    batch = parse_chapter_edit_batch(raw_output)
+    if len(batch["edits"]) != 1:
+        raise ChapterEditError(
+            CHAPTER_EDIT_INVALID_OPERATION,
+            "expected exactly one chapter edit operation",
+        )
+    operation = dict(batch["edits"][0])
+    operation["chapterRevision"] = batch["chapterRevision"]
+    return validate_chapter_operation(operation)
 
 
 def clean_insert_text(value: Any) -> str:
@@ -590,6 +638,7 @@ def validate_chapter_operation(
     operation: dict[str, Any],
     baseRevision: int | None = None,
     blocks: list[dict[str, Any]] | None = None,
+    requireRevision: bool = True,
 ) -> dict[str, Any]:
     if not isinstance(operation, dict):
         raise ChapterEditError(
@@ -599,6 +648,10 @@ def validate_chapter_operation(
 
     operation = normalize_chapter_operation_fields(operation)
 
+    #inside a batch the revision is stated once on the envelope, a leftover copy on the edit is noise not an error
+    if not requireRevision:
+        operation.pop("chapterRevision", None)
+
     operationType = operation.get("operation")
     if not isinstance(operationType, str) or operationType not in CHAPTER_EDIT_OPERATIONS:
         raise ChapterEditError(
@@ -606,7 +659,9 @@ def validate_chapter_operation(
             f"unsupported chapter edit operation: {operationType or 'missing'}",
         )
 
-    requiredFields = {"operation", "chapterRevision", "newText"}
+    requiredFields = {"operation", "newText"}
+    if requireRevision:
+        requiredFields.add("chapterRevision")
     if operationType == "replaceBlockRange":
         requiredFields.update(
             {
@@ -629,17 +684,18 @@ def validate_chapter_operation(
             details.append(f"unsupported fields: {', '.join(sorted(extraFields))}")
         raise ChapterEditError(CHAPTER_EDIT_INVALID_OPERATION, "; ".join(details))
 
-    chapterRevision = operation.get("chapterRevision")
-    if type(chapterRevision) is not int or chapterRevision < 0:
-        raise ChapterEditError(
-            CHAPTER_EDIT_INVALID_OPERATION,
-            "chapterRevision must be a non-negative integer",
-        )
-    if baseRevision is not None and chapterRevision != baseRevision:
-        raise ChapterEditError(
-            CHAPTER_EDIT_REVISION_MISMATCH,
-            "operation chapterRevision does not match the generation base revision",
-        )
+    if requireRevision:
+        chapterRevision = operation.get("chapterRevision")
+        if type(chapterRevision) is not int or chapterRevision < 0:
+            raise ChapterEditError(
+                CHAPTER_EDIT_INVALID_OPERATION,
+                "chapterRevision must be a non-negative integer",
+            )
+        if baseRevision is not None and chapterRevision != baseRevision:
+            raise ChapterEditError(
+                CHAPTER_EDIT_REVISION_MISMATCH,
+                "operation chapterRevision does not match the generation base revision",
+            )
 
     newText = operation.get("newText")
     if not isinstance(newText, str) or not newText.strip():
@@ -721,76 +777,148 @@ def apply_chapter_operation(
     operation: dict[str, Any],
     baseRevision: int | None = None,
 ) -> dict[str, Any]:
-    blocks = chapter_blocks(content)
-    #take the returned copy, thats the one with any field nicknames renamed to what the code below reads
-    operation = validate_chapter_operation(operation, baseRevision, blocks)
-    blocksById = {block["blockId"]: block for block in blocks}
+    batch = {"chapterRevision": operation.get("chapterRevision"), "edits": [operation]}
+    result = apply_chapter_edits(content, batch, baseRevision)
+    #single edit shape kept intact so the old callers and tests still read the same keys
+    return {"content": result["content"], **result["edits"][0]}
+
+
+def chapter_edit_footprint(
+    operation: dict[str, Any],
+    blocks: list[dict[str, Any]],
+    blocksById: dict[str, dict[str, Any]],
+    contentLength: int,
+) -> dict[str, Any]:
+    #where the edit lands and which blocks it consumes, both resolved against one snapshot so a batch can be checked before anything is written
     operationType = operation["operation"]
-    newText = clean_insert_text(operation["newText"])
 
     if operationType == "appendToChapter":
-        nextContent = insert_with_spacing(content, len(content), newText, "after")
-        return {
-            "content": nextContent,
-            "operation": operationType,
-            "deletedBlockIds": [],
-            "insertedBlockIds": [],
-            "appliedText": newText,
-        }
+        return {"start": contentLength, "end": contentLength, "blockIds": []}
 
     if operationType == "replaceBlockRange":
         startBlock = blocksById[operation["startBlockId"].strip()]
         endBlock = blocksById[operation["endBlockId"].strip()]
-        deletedBlockIds = [
-            block["blockId"]
-            for block in blocks
-            if startBlock["startChar"] <= block["startChar"] <= endBlock["startChar"]
-        ]
-        nextContent = (
-            f"{content[:startBlock['startChar']]}"
-            f"{newText}"
-            f"{content[endBlock['endChar']:]}"
+        return {
+            "start": startBlock["startChar"],
+            "end": endBlock["endChar"],
+            "blockIds": [
+                block["blockId"]
+                for block in blocks
+                if startBlock["startChar"] <= block["startChar"] <= endBlock["startChar"]
+            ],
+        }
+
+    block = blocksById[operation["blockId"].strip()]
+    if operationType == "insertBeforeBlock":
+        return {"start": block["startChar"], "end": block["startChar"], "blockIds": [block["blockId"]]}
+    if operationType == "insertAfterBlock":
+        return {"start": block["endChar"], "end": block["endChar"], "blockIds": [block["blockId"]]}
+
+    return {"start": block["startChar"], "end": block["endChar"], "blockIds": [block["blockId"]]}
+
+
+def apply_single_edit(content: str, operation: dict[str, Any], footprint: dict[str, Any]) -> str:
+    #splices on positions taken from the original snapshot, which stay valid because the batch applies back to front
+    operationType = operation["operation"]
+    newText = clean_insert_text(operation["newText"])
+
+    if operationType == "appendToChapter":
+        return insert_with_spacing(content, len(content), newText, "after")
+    if operationType == "insertBeforeBlock":
+        return insert_with_spacing(content, footprint["start"], newText, "before")
+    if operationType == "insertAfterBlock":
+        return insert_with_spacing(content, footprint["start"], newText, "after")
+
+    return f"{content[:footprint['start']]}{newText}{content[footprint['end']:]}"
+
+
+def validate_chapter_edit_batch(
+    batch: dict[str, Any],
+    baseRevision: int | None = None,
+    blocks: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    edits = batch.get("edits")
+    if not isinstance(edits, list) or not edits:
+        raise ChapterEditError(
+            CHAPTER_EDIT_INVALID_OPERATION,
+            "edits array must contain at least one edit",
         )
-        return {
-            "content": nextContent,
-            "operation": operationType,
-            "deletedBlockIds": deletedBlockIds,
-            "insertedBlockIds": [startBlock["blockId"]],
-            "appliedText": newText,
-        }
 
-    blockId = operation["blockId"].strip()
-    block = blocksById[blockId]
-    if operationType in {"insertBeforeBlock", "insertAfterBlock"}:
-        position = block["startChar"] if operationType == "insertBeforeBlock" else block["endChar"]
-        nextContent = insert_with_spacing(
-            content,
-            position,
-            newText,
-            "before" if operationType == "insertBeforeBlock" else "after",
+    chapterRevision = batch.get("chapterRevision")
+    if type(chapterRevision) is not int or chapterRevision < 0:
+        raise ChapterEditError(
+            CHAPTER_EDIT_INVALID_OPERATION,
+            "chapterRevision must be a non-negative integer",
         )
-        return {
-            "content": nextContent,
-            "operation": operationType,
-            "deletedBlockIds": [],
-            "insertedBlockIds": [],
-            "appliedText": newText,
-        }
+    if baseRevision is not None and chapterRevision != baseRevision:
+        raise ChapterEditError(
+            CHAPTER_EDIT_REVISION_MISMATCH,
+            "chapterRevision does not match the generation base revision",
+        )
 
-    nextContent = f"{content[:block['startChar']]}{newText}{content[block['endChar']:]}"
-    if operationType == "replaceBlock":
-        return {
-            "content": nextContent,
-            "operation": operationType,
-            "deletedBlockIds": [blockId],
-            "insertedBlockIds": [blockId],
-            "appliedText": newText,
-        }
+    validated = [
+        validate_chapter_operation(edit, None, blocks, requireRevision=False) for edit in edits
+    ]
+    return {"chapterRevision": chapterRevision, "edits": validated}
 
-    raise ChapterEditError(
-        CHAPTER_EDIT_INVALID_OPERATION,
-        f"unsupported chapter edit operation: {operationType}",
-    )
+
+def apply_chapter_edits(
+    content: str,
+    batch: dict[str, Any],
+    baseRevision: int | None = None,
+) -> dict[str, Any]:
+    blocks = chapter_blocks(content)
+    blocksById = {block["blockId"]: block for block in blocks}
+    batch = validate_chapter_edit_batch(batch, baseRevision, blocks)
+
+    footprints = [
+        chapter_edit_footprint(edit, blocks, blocksById, len(content)) for edit in batch["edits"]
+    ]
+
+    #one block, one edit. a range consumes every block it spans, so this single rule also catches overlapping ranges and inserts anchored on a block someone else is replacing
+    claimedBy: dict[str, int] = {}
+    appendCount = 0
+    for index, (edit, footprint) in enumerate(zip(batch["edits"], footprints)):
+        if edit["operation"] == "appendToChapter":
+            appendCount += 1
+            if appendCount > 1:
+                raise ChapterEditError(
+                    CHAPTER_EDIT_CONFLICTING_EDITS,
+                    "only one appendToChapter is allowed per generation",
+                )
+        for blockId in footprint["blockIds"]:
+            if blockId in claimedBy:
+                raise ChapterEditError(
+                    CHAPTER_EDIT_CONFLICTING_EDITS,
+                    f"edits {claimedBy[blockId] + 1} and {index + 1} both change {blockId}",
+                )
+            claimedBy[blockId] = index
+
+    #back to front, so every edit still sees the offsets it was resolved against
+    order = sorted(range(len(batch["edits"])), key=lambda index: footprints[index]["start"], reverse=True)
+    nextContent = content
+    for index in order:
+        nextContent = apply_single_edit(nextContent, batch["edits"][index], footprints[index])
+
+    applied = [
+        {
+            "operation": edit["operation"],
+            "deletedBlockIds": (
+                footprint["blockIds"]
+                if edit["operation"] in {"replaceBlock", "replaceBlockRange"}
+                else []
+            ),
+            "insertedBlockIds": (
+                footprint["blockIds"][:1]
+                if edit["operation"] in {"replaceBlock", "replaceBlockRange"}
+                else []
+            ),
+            "appliedText": clean_insert_text(edit["newText"]),
+        }
+        for edit, footprint in zip(batch["edits"], footprints)
+    ]
+
+    return {"content": nextContent, "edits": applied}
 
 
 def append_chapter_text(content: str, text: str) -> dict[str, Any]:
@@ -1252,23 +1380,27 @@ def build_story_messages(
             {
                 "role": "system",
                 "content": (
-                    "You are editing the active chapter using exactly one JSON operation. Return "
-                    "only one JSON object with no markdown, explanation, or wrapper text. The "
-                    "chapterRevision must exactly match the chapter revision in the context. "
+                    "You are editing the active chapter. Return only one JSON object with no "
+                    "markdown, explanation, or wrapper text, shaped as {\"chapterRevision\": N, "
+                    "\"edits\": [ ... ]}. The chapterRevision must exactly match the chapter "
+                    "revision in the context and is stated once, not per edit. "
+                    "Emit one entry in edits for every place you are changing. Never widen an "
+                    "edit to span text you are not changing in order to reach a later one: if two "
+                    "paragraphs need changing and the ones between them do not, emit two separate "
+                    "edits. Every block you touch must belong to exactly one edit. "
                     "Supported operations are replaceBlock, replaceBlockRange, insertBeforeBlock, "
-                    "insertAfterBlock, and appendToChapter. Every operation includes operation, "
-                    "chapterRevision, and non-empty newText. Targeted single-block operations "
-                    "include blockId and the exact lowercase SHA-256 expectedTextHash from the "
-                    "block map. replaceBlockRange replaces an inclusive contiguous range and "
-                    "includes startBlockId, startExpectedTextHash, endBlockId, and "
-                    "endExpectedTextHash. To rewrite everything after a paragraph, leave that "
-                    "anchor paragraph untouched, select the next block through the final block, "
-                    "and use replaceBlockRange. Do not use appendToChapter unless the user "
-                    "explicitly asks to continue at the end. Replacement operations delete the "
-                    "targeted text first and insert the replacement in the same position. Do not "
-                    "preserve, duplicate, append beside, or restate replaced text unless the user "
-                    "explicitly asks for it. Use the block map to resolve references like 4th "
-                    "paragraph; paragraph indexes are 1-based."
+                    "insertAfterBlock, and appendToChapter. Every edit includes operation and "
+                    "non-empty newText. Targeted single-block operations include blockId and the "
+                    "exact lowercase SHA-256 expectedTextHash from the block map. "
+                    "replaceBlockRange replaces an inclusive contiguous range and includes "
+                    "startBlockId, startExpectedTextHash, endBlockId, and endExpectedTextHash; "
+                    "use it only when every block in that range is genuinely being rewritten. "
+                    "Do not use appendToChapter unless the user explicitly asks to continue at "
+                    "the end. Replacement operations delete the targeted text first and insert "
+                    "the replacement in the same position. Do not preserve, duplicate, append "
+                    "beside, or restate replaced text unless the user explicitly asks for it. Use "
+                    "the block map to resolve references like 4th paragraph; paragraph indexes "
+                    "are 1-based."
                 ),
             }
         )
@@ -1849,7 +1981,7 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
             now = deps.utc_now()
             chapter_update_event: dict[str, Any] | None = None
             error_event: dict[str, Any] | None = None
-            operation: dict[str, Any] | None = None
+            edit_batch: dict[str, Any] | None = None
 
             if not stream_completed and not error_text:
                 error_text = "generation_incomplete_stream"
@@ -1865,15 +1997,14 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
 
             if stream_completed and generation_mode == "edit" and content:
                 try:
-                    parsedOperation = parse_chapter_operation(content)
-                    operation = validate_chapter_operation(
-                        parsedOperation,
+                    edit_batch = validate_chapter_edit_batch(
+                        parse_chapter_edit_batch(content),
                         baseRevision=base_revision,
                     )
                 except ChapterEditError as exc:
                     error_event = {"code": exc.code, "message": exc.message}
                     error_text = f"{exc.code}: {exc.message}"
-                    operation = None
+                    edit_batch = None
 
             with deps.get_db() as conn:
                 if stream_completed and content:
@@ -1884,15 +2015,15 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                 ).fetchone()
                 current_content = current["content"] if current else ""
 
-                if stream_completed and content and generation_mode == "edit" and operation is not None:
+                if stream_completed and content and generation_mode == "edit" and edit_batch is not None:
                     try:
                         if not current or current["revision"] != base_revision:
                             error_event = revision_conflict_event(conn)
                             error_text = CHAPTER_REVISION_CONFLICT
                         else:
-                            operation_result = apply_chapter_operation(
+                            operation_result = apply_chapter_edits(
                                 current_content,
-                                operation,
+                                edit_batch,
                                 baseRevision=base_revision,
                             )
                             nextContent = operation_result["content"]
@@ -1921,10 +2052,7 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                                 ).fetchone()
                                 chapter_update_event = {
                                     "chapter": row_to_chapter(savedChapter),
-                                    "operation": operation_result["operation"],
-                                    "appliedText": operation_result["appliedText"],
-                                    "deletedBlockIds": operation_result["deletedBlockIds"],
-                                    "insertedBlockIds": operation_result["insertedBlockIds"],
+                                    "edits": operation_result["edits"],
                                 }
                     except ChapterEditError as exc:
                         error_event = {"code": exc.code, "message": exc.message}
@@ -1954,10 +2082,14 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                         ).fetchone()
                         chapter_update_event = {
                             "chapter": row_to_chapter(savedChapter),
-                            "operation": operation_result["operation"],
-                            "appliedText": operation_result["appliedText"],
-                            "deletedBlockIds": operation_result["deletedBlockIds"],
-                            "insertedBlockIds": operation_result["insertedBlockIds"],
+                            "edits": [
+                                {
+                                    "operation": operation_result["operation"],
+                                    "deletedBlockIds": operation_result["deletedBlockIds"],
+                                    "insertedBlockIds": operation_result["insertedBlockIds"],
+                                    "appliedText": operation_result["appliedText"],
+                                }
+                            ],
                         }
                     else:
                         error_event = revision_conflict_event(conn)

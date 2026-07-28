@@ -1257,7 +1257,7 @@ class StoryApiTest(unittest.TestCase):
             "keep before\n\nrewritten section\n\nkeep after",
         )
         self.assertEqual(updateEvent["value"]["chapter"]["revision"], 1)
-        self.assertEqual(updateEvent["value"]["deletedBlockIds"], ["p_002", "s_001", "p_003"])
+        self.assertEqual(updateEvent["value"]["edits"][0]["deletedBlockIds"], ["p_002", "s_001", "p_003"])
         persisted = self.client.get(f"/api/stories/{story['id']}").json()["chapters"][0]
         self.assertEqual(persisted["revision"], 1)
         self.assertEqual(persisted["content"], updateEvent["value"]["chapter"]["content"])

@@ -129,7 +129,8 @@ describe("save coordinator", () => {
     await expect(flushPromise).resolves.toMatchObject({ content: "second", revision: 2 });
   });
 
-  it("preserves local content and records the server snapshot on conflict", async () => {
+  it("retires the draft and takes the server snapshot on conflict", async () => {
+    //the old behaviour pinned the draft here forever, which is how a committed generation edit ended up invisible until a reload
     const { calls, coordinator } = setupCoordinator();
     coordinator.queueDraft("story", "chapter", "local draft", 0);
     const flushPromise = coordinator.flush("story", "chapter");
@@ -140,12 +141,66 @@ describe("save coordinator", () => {
     });
 
     await expect(flushPromise).rejects.toMatchObject({ code: "chapter_revision_conflict" });
-    expect(coordinator.getDraft("story", "chapter")).toBe("local draft");
+    expect(coordinator.getDraft("story", "chapter")).toBeNull();
     expect(coordinator.getConfirmedChapter("story", "chapter")).toMatchObject({
       content: "server draft",
       revision: 1,
     });
-    expect(coordinator.getState("story", "chapter").state).toBe("conflict");
+    expect(coordinator.getState("story", "chapter").state).toBe("saved");
+  });
+
+  it("keeps saving after a conflict instead of 409ing forever", async () => {
+    const { calls, coordinator } = setupCoordinator();
+    coordinator.queueDraft("story", "chapter", "local draft", 0);
+    const flushPromise = coordinator.flush("story", "chapter");
+    calls[0].reject({
+      status: 409,
+      code: "chapter_revision_conflict",
+      chapter: chapter("server draft", 1),
+    });
+    await expect(flushPromise).rejects.toMatchObject({ code: "chapter_revision_conflict" });
+
+    coordinator.queueDraft("story", "chapter", "typed after the conflict", 1);
+    const retryFlush = coordinator.flush("story", "chapter");
+    expect(calls).toHaveLength(2);
+    expect(calls[1].request.revision).toBe(1);
+    calls[1].resolve(chapter("typed after the conflict", 2));
+    await expect(retryFlush).resolves.toMatchObject({ revision: 2 });
+  });
+
+  it("lets the server win once it has moved past the draft", async () => {
+    const { coordinator } = setupCoordinator();
+    coordinator.queueDraft("story", "chapter", "typed against revision one", 1);
+    expect(coordinator.getDraft("story", "chapter")).toBe("typed against revision one");
+
+    //a generation committing on top of the same base is exactly this
+    coordinator.rememberServerChapter(chapter("edited by the model", 2));
+
+    expect(coordinator.getDraft("story", "chapter")).toBeNull();
+    expect(coordinator.getState("story", "chapter").draft).toBeNull();
+    expect(coordinator.getPendingDrafts()).toEqual([]);
+  });
+
+  it("keeps a draft that is still level with the server", async () => {
+    const { coordinator } = setupCoordinator();
+    coordinator.queueDraft("story", "chapter", "mid sentence", 2);
+    coordinator.rememberServerChapter(chapter("same revision", 2));
+
+    expect(coordinator.getDraft("story", "chapter")).toBe("mid sentence");
+  });
+
+  it("does not retire a draft out from under an in-flight save", async () => {
+    const { calls, coordinator } = setupCoordinator();
+    coordinator.queueDraft("story", "chapter", "still typing", 1);
+    const flushPromise = coordinator.flush("story", "chapter");
+    expect(calls).toHaveLength(1);
+
+    //the save that is already on the wire is what moves the revision, it must not eat its own draft
+    coordinator.rememberServerChapter(chapter("landed elsewhere", 2));
+    expect(coordinator.getDraft("story", "chapter")).toBe("still typing");
+
+    calls[0].resolve(chapter("still typing", 3));
+    await flushPromise;
   });
 
   it("keeps transient failures retryable", async () => {

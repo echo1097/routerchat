@@ -55,6 +55,7 @@ import {
 const ChapterCanvasEditor = lazy(() => import("./writing/ChapterCanvasEditor.jsx"));
 import {
   chapterFromUpdateEvent,
+  chapterRunTargetsOpenChapter,
   chapterGenerationErrorMessage,
   chapterGenerationEventMatchesRun,
   chapterUpdateMatchesRun,
@@ -5894,10 +5895,9 @@ function App() {
           saving: "Saving",
           saved: "Saved",
           failed: "Save failed",
-          conflict: "Conflict",
         };
         setChapterSaveState(labels[snapshot.state] || "");
-        if ((snapshot.state === "failed" || snapshot.state === "conflict") && snapshot.error) {
+        if (snapshot.state === "failed" && snapshot.error) {
           setStatus(snapshot.error.message);
         }
       },
@@ -5962,13 +5962,18 @@ function App() {
 
       chapterSaveCoordinator.rememberServerChapter(chapter);
       const key = `${draft.storyId}/${draft.chapterId}`;
-      if (!chapterSaveCoordinator.getDraft(draft.storyId, draft.chapterId)) {
+      const draftBaseRevision = Number.isInteger(draft.baseRevision)
+        ? draft.baseRevision
+        : chapter.revision;
+      //a stored draft the server has already moved past is not worth restoring, it would only fight whatever moved it
+      const draftIsStale = Number(draftBaseRevision) < Number(chapter.revision);
+      if (!chapterSaveCoordinator.getDraft(draft.storyId, draft.chapterId) && !draftIsStale) {
         if (chapter.content !== draft.content) {
           chapterSaveCoordinator.queueDraft(
             draft.storyId,
             draft.chapterId,
             String(draft.content || ""),
-            Number.isInteger(draft.baseRevision) ? draft.baseRevision : chapter.revision,
+            draftBaseRevision,
           );
         }
       }
@@ -6146,6 +6151,14 @@ function App() {
       && activeStoryIdRef.current === run.storyId;
   }
 
+  function generationRunTargetsOpenChapter(run) {
+    return chapterRunTargetsOpenChapter(
+      run,
+      activeStoryIdRef.current,
+      activeChapterIdRef.current,
+    );
+  }
+
   async function reconcileGenerationRun(run) {
     if (run.navigationIntent !== currentNavigationIntent()) return;
     const payload = await storyApi.getStory(run.storyId);
@@ -6159,8 +6172,7 @@ function App() {
     setLorebookEntries(payload.lorebook || []);
     setLatestStoryGeneration(payload.latest_generation || null);
 
-    const route = routeRef.current;
-    if (route?.page !== "story" || route.storyId !== run.storyId || route.chapterId !== run.chapterId) return;
+    if (!generationRunTargetsOpenChapter(run)) return;
     const targetChapter = visibleChapters.find((chapter) => chapter.id === run.chapterId);
     if (!targetChapter) return;
     setChapterContent(targetChapter.content || "");
@@ -6623,7 +6635,8 @@ function App() {
       await flushChapterSave(activeStoryIdRef.current, activeChapterIdRef.current);
       if (!navigationIntentIsCurrent(navigationIntent)) return;
     } catch (error) {
-      setChapterSaveState(error.code === "chapter_revision_conflict" ? "Conflict" : "Save failed");
+      //a conflict now settles itself in the coordinator, the chapter is already back in sync so only a real failure earns a label
+      if (error.code !== "chapter_revision_conflict") setChapterSaveState("Save failed");
       setStatus(error.message);
       return;
     }
@@ -7454,7 +7467,8 @@ function App() {
       setStoryWorkspaceView("chapter");
       writeRoute(storyRoute(storyId, nextChapter.id, "chapter"));
     } catch (error) {
-      setChapterSaveState(error.code === "chapter_revision_conflict" ? "Conflict" : "Save failed");
+      //a conflict now settles itself in the coordinator, the chapter is already back in sync so only a real failure earns a label
+      if (error.code !== "chapter_revision_conflict") setChapterSaveState("Save failed");
       setStatus(error.message);
     }
   }
@@ -8103,8 +8117,7 @@ function App() {
             setChapters((current) => current.map((chapter) => (
               chapter.id === run.chapterId ? { ...chapter, ...updatedChapter } : chapter
             )));
-            const route = routeRef.current;
-            if (route?.page === "story" && route.storyId === run.storyId && route.chapterId === run.chapterId) {
+            if (generationRunTargetsOpenChapter(run)) {
               setChapterContent(nextContent);
               chapterContentRef.current = nextContent;
             }

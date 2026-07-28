@@ -76,6 +76,32 @@ describe("chapter Markdown compatibility", () => {
     expect(result.exportedMarkdown).toContain("emoji 🐉 — café");
   });
 
+  it("round trips scene breaks without escaping them", () => {
+    //the exporter used to turn *** into \*\*\*, which autosaved back to the server and stopped is_scene_break matching, shifting every paragraph id after it
+    const source = "first paragraph\n\n***\n\nlast paragraph";
+    const result = migrateMarkdown(source);
+
+    expect(result.importError).toBeNull();
+    expect(result.exportedMarkdown).toBe(source);
+    expect(result.exportedMarkdown).not.toContain("\\*");
+  });
+
+  it("round trips the other separator shapes the backend treats as scene breaks", () => {
+    for (const separator of ["***", "---", "___", "****"]) {
+      const source = `before\n\n${separator}\n\nafter`;
+      expect(migrateMarkdown(source).exportedMarkdown).toBe(source);
+    }
+  });
+
+  it("still escapes literal asterisks inside real prose", () => {
+    const result = migrateMarkdown("a lone * in the middle of a sentence");
+
+    expect(result.importError).toBeNull();
+    //stable under a second pass is what matters, the escape survives re-import as the same character
+    expect(migrateMarkdown(result.exportedMarkdown).exportedMarkdown)
+      .toBe(result.exportedMarkdown);
+  });
+
   it("normalizes legacy line endings only when exported after editing", () => {
     const result = migrateMarkdown("first\r\n\r\nsecond");
 

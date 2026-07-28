@@ -20,12 +20,21 @@ function conflictError(entry, error) {
   return nextError;
 }
 
+//a draft only speaks for the chapter while the server has not moved past the revision it was typed against
+function draftIsCurrent(entry) {
+  if (!entry.localDraft) return false;
+  //its own save is on the wire and about to move the revision, so it stays the truth until that lands
+  if (entry.inFlight) return true;
+  if (!entry.confirmedChapter) return true;
+  return Number(entry.localDraft.baseRevision) >= Number(entry.confirmedChapter.revision);
+}
+
 function snapshotEntry(entry) {
   return {
     storyId: entry.storyId,
     chapterId: entry.chapterId,
     state: entry.state,
-    draft: entry.localDraft ? { ...entry.localDraft } : null,
+    draft: draftIsCurrent(entry) ? { ...entry.localDraft } : null,
     confirmedChapter: entry.confirmedChapter,
     queued: entry.queuedDraft ? { ...entry.queuedDraft } : null,
     inFlight: entry.inFlight
@@ -57,6 +66,7 @@ export function createSaveCoordinator({
         chapterId,
         state: "saved",
         localDraft: null,
+        supersededDraft: null,
         confirmedChapter: null,
         queuedDraft: null,
         inFlight: null,
@@ -79,9 +89,20 @@ export function createSaveCoordinator({
     entry.timer = null;
   }
 
+  //the server already carries whatever this draft was based on, so it stops being the truth. kept on the side rather than dropped so nobody's words are actually destroyed
+  function retireDraft(entry) {
+    if (!entry.localDraft) return;
+    clearTimer(entry);
+    entry.supersededDraft = entry.localDraft;
+    entry.localDraft = null;
+    entry.queuedDraft = null;
+    entry.error = null;
+    entry.state = "saved";
+  }
+
   function scheduleEntry(entry) {
     clearTimer(entry);
-    if (!entry.queuedDraft || entry.state === "conflict") return;
+    if (!entry.queuedDraft) return;
 
     entry.timer = setTimeout(() => {
       entry.timer = null;
@@ -93,7 +114,6 @@ export function createSaveCoordinator({
     if (isDisposed) throw new Error("Save coordinator is disposed.");
     if (entry.inFlight) return entry.inFlight.promise;
     if (!entry.queuedDraft) return entry.confirmedChapter;
-    if (entry.state === "conflict") throw entry.error;
 
     const request = { ...entry.queuedDraft };
     entry.queuedDraft = null;
@@ -115,8 +135,10 @@ export function createSaveCoordinator({
         entry.error = null;
         entry.inFlight = null;
 
+        //our own save just moved the revision, so carry the live draft forward with it or it would look stale against the chapter it created
+        if (entry.localDraft) entry.localDraft.baseRevision = savedChapter.revision;
+
         if (entry.queuedDraft) {
-          if (entry.localDraft) entry.localDraft.baseRevision = savedChapter.revision;
           entry.queuedDraft = {
             ...entry.queuedDraft,
             baseRevision: savedChapter.revision,
@@ -141,14 +163,16 @@ export function createSaveCoordinator({
             || error?.payload?.detail?.chapter
             || error?.payload?.chapter;
           if (serverChapter) entry.confirmedChapter = serverChapter;
-          entry.error = nextError;
-          entry.state = "conflict";
-        } else {
-          entry.queuedDraft = entry.queuedDraft || request;
-          entry.error = error;
-          entry.state = "failed";
+          //a 409 means the server moved on without us, so retiring beats re-queueing, which would save this stale text right back over whatever moved it
+          entry.localDraft = entry.localDraft || { ...request };
+          retireDraft(entry);
+          emit(entry);
+          throw nextError;
         }
 
+        entry.queuedDraft = entry.queuedDraft || request;
+        entry.error = error;
+        entry.state = "failed";
         emit(entry);
         throw error;
       }
@@ -160,11 +184,9 @@ export function createSaveCoordinator({
 
   async function flushEntry(entry) {
     clearTimer(entry);
-    if (entry.state === "conflict") throw entry.error;
     if (entry.state === "failed" && !entry.inFlight) throw entry.error;
 
     while (entry.inFlight || entry.queuedDraft) {
-      if (entry.state === "conflict") throw entry.error;
       if (entry.inFlight) {
         await entry.inFlight.promise;
       } else {
@@ -205,10 +227,8 @@ export function createSaveCoordinator({
       entry.sequence = draft.sequence;
       entry.localDraft = { content, baseRevision };
       entry.queuedDraft = draft;
-      if (entry.state !== "conflict") {
-        entry.error = null;
-        entry.state = "queued";
-      }
+      entry.error = null;
+      entry.state = "queued";
       scheduleEntry(entry);
       emit(entry);
       return snapshotEntry(entry);
@@ -233,7 +253,6 @@ export function createSaveCoordinator({
     async retry(storyId, chapterId) {
       assertUsable();
       const entry = ensureEntry(storyId, chapterId);
-      if (entry.state === "conflict") throw entry.error;
       if (!entry.queuedDraft && entry.localDraft) {
         entry.queuedDraft = {
           ...entry.localDraft,
@@ -261,6 +280,7 @@ export function createSaveCoordinator({
         || Number(chapter.revision) >= Number(entry.confirmedChapter.revision)
       ) {
         entry.confirmedChapter = chapter;
+        if (!draftIsCurrent(entry)) retireDraft(entry);
         emit(entry);
       }
       return entry.confirmedChapter;
@@ -272,8 +292,8 @@ export function createSaveCoordinator({
     },
 
     getDraft(storyId, chapterId) {
-      const draft = entries.get(makeKey(storyId, chapterId))?.localDraft;
-      return draft ? draft.content : null;
+      const entry = entries.get(makeKey(storyId, chapterId));
+      return entry && draftIsCurrent(entry) ? entry.localDraft.content : null;
     },
 
     getConfirmedChapter(storyId, chapterId) {
@@ -282,7 +302,7 @@ export function createSaveCoordinator({
 
     getPendingDrafts() {
       return [...entries.values()]
-        .filter((entry) => entry.localDraft && (entry.queuedDraft || entry.inFlight))
+        .filter((entry) => draftIsCurrent(entry) && (entry.queuedDraft || entry.inFlight))
         .map((entry) => ({
           storyId: entry.storyId,
           chapterId: entry.chapterId,

@@ -26,8 +26,15 @@ function chapterUpdateMatchesRun(event, run) {
   return Number.isInteger(revision) && revision === run.baseRevision + 1;
 }
 
+//the url legitimately carries a null chapterId in a few states, autoload and story switching among them, so the open chapter is the workspace's answer and never the route's
+function chapterRunTargetsOpenChapter(run, openStoryId, openChapterId) {
+  if (!run) return false;
+  return openStoryId === run.storyId && openChapterId === run.chapterId;
+}
+
 export {
   chapterFromUpdateEvent,
+  chapterRunTargetsOpenChapter,
   chapterGenerationErrorMessage,
   chapterGenerationEventMatchesRun,
   chapterUpdateMatchesRun,

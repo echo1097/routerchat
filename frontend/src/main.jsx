@@ -1675,10 +1675,15 @@ function promptPreview(value, maxLength = 140) {
   return `${compact.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
+function isPromptEntry(entry) {
+  //kind is authoritative, the label check only covers rows written before kind existed
+  return entry.kind === "prompt" || entry.label === "User prompt";
+}
+
 function historyRunGroups(entries) {
   const groups = [];
   entries.forEach((entry) => {
-    if (entry.label === "User prompt" || groups.length === 0) {
+    if (isPromptEntry(entry) || groups.length === 0) {
       groups.push({
         id: entry.id,
         prompt: entry,
@@ -3818,7 +3823,7 @@ function WriteHistoryModal({ open, entries, title, onClose }) {
 
   const isOpen = phase === "open";
   const runGroups = historyRunGroups(entries);
-  const eventCount = entries.filter((entry) => entry.label !== "User prompt").length;
+  const eventCount = entries.filter((entry) => !isPromptEntry(entry)).length;
   const totalCost = historyCostTotal(entries);
 
   function toggleExpanded(entryId) {
@@ -4023,11 +4028,16 @@ function WriteHistoryStats({ entry }) {
   const hasCost = isFiniteNumber(cost) && cost > 0;
   if (!wordsAdded && !wordsRemoved && !hasCost) return null;
 
+  //a hide destroys nothing, it just drops the entry out of context, so it doesnt get to wear the deletion colour
+  const isHide = entry.kind === "lore_hide";
+
   //self-start keeps this on the labels first line, without it the span stretches to the whole row and centers itself six pixels low
   return (
     <span className="flex shrink-0 items-center gap-2 self-start text-[11px] font-medium leading-5 tabular-nums">
-      {wordsAdded > 0 && <span className="text-emerald-300">+{wordsAdded}</span>}
-      {wordsRemoved > 0 && <span className="text-red-300">&minus;{wordsRemoved}</span>}
+      {wordsAdded > 0 && !isHide && <span className="text-emerald-300">+{wordsAdded}</span>}
+      {wordsRemoved > 0 && (
+        <span className={isHide ? "text-zinc-500" : "text-red-300"}>&minus;{wordsRemoved}</span>
+      )}
       {hasCost && <span className="text-zinc-500">{formatCost(cost)}</span>}
     </span>
   );
@@ -4036,7 +4046,7 @@ function WriteHistoryStats({ entry }) {
 function WriteHistoryDetail({ entry, expanded, onToggle, promptCard = false }) {
   if (!entry.detail) return null;
 
-  const isPrompt = entry.label === "User prompt";
+  const isPrompt = isPromptEntry(entry);
   const isLongPrompt = isPrompt && entry.detail.length > 140;
 
   if (!isLongPrompt) {

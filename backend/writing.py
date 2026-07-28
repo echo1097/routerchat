@@ -214,11 +214,19 @@ def display_model_name(model: str) -> str:
     return " ".join(part[:1].upper() + part[1:] for part in name.split())
 
 
+def lorebook_update_kind(update: dict[str, Any]) -> str:
+    action = str(update.get("action") or "").lower()
+    if action == "delete":
+        return "lore_hide"
+    return "lore_create" if action == "create" else "lore_update"
+
+
 def lorebook_history_label(model_label: str, update: dict[str, Any]) -> str:
     name = str(update.get("name") or "entry").strip() or "entry"
     action = str(update.get("action") or "").lower()
+    #nothing is deleted here, disabled just drops it from context, and the wording matches the include/exclude toggle that undoes it
     if action == "delete":
-        return f"{model_label} removed {name} from Lorebook"
+        return f"{model_label} excluded {name} from context"
     if name.casefold() == "timeline":
         return f"{model_label} updated Timeline"
 
@@ -237,6 +245,7 @@ def lorebook_run_history_actions(
     actions = [
         {
             "label": lorebook_history_label(model_label, update),
+            "kind": lorebook_update_kind(update),
             "words_added": update.get("wordsAdded"),
             "words_removed": update.get("wordsRemoved"),
             "cost": None,
@@ -245,9 +254,10 @@ def lorebook_run_history_actions(
     ]
     if applied:
         summary = f"{model_label} finished editing Lorebook after {format_duration(duration_ms)}"
-        #run totals, same idea as the cost subtotal on the run header
-        totalAdded = sum(int(update.get("wordsAdded") or 0) for update in applied)
-        totalRemoved = sum(int(update.get("wordsRemoved") or 0) for update in applied)
+        #run totals, same idea as the cost subtotal on the run header. hides sit out because nothing was written, the text just left context
+        changed = [update for update in applied if lorebook_update_kind(update) != "lore_hide"]
+        totalAdded = sum(int(update.get("wordsAdded") or 0) for update in changed)
+        totalRemoved = sum(int(update.get("wordsRemoved") or 0) for update in changed)
     else:
         summary = f"{model_label} found no Lorebook changes after {format_duration(duration_ms)}"
         totalAdded = None
@@ -257,6 +267,7 @@ def lorebook_run_history_actions(
     actions.append(
         {
             "label": summary,
+            "kind": "lore_summary",
             "words_added": totalAdded,
             "words_removed": totalRemoved,
             "cost": cost,
@@ -989,6 +1000,7 @@ def row_to_chapter_history_entry(row: sqlite3.Row) -> dict[str, Any]:
         "label": row["label"],
         "detail": row["detail"],
         "entry_order": row["entry_order"],
+        "kind": row["kind"],
         "words_added": row["words_added"],
         "words_removed": row["words_removed"],
         "cost": row["cost"],
@@ -1155,6 +1167,7 @@ def insert_chapter_history_entry(
     label: str,
     detail: str,
     now: str,
+    kind: str | None = None,
     words_added: int | None = None,
     words_removed: int | None = None,
     cost: float | None = None,
@@ -1165,9 +1178,9 @@ def insert_chapter_history_entry(
         """
         INSERT INTO chapter_history_entries (
           id, story_id, chapter_id, run_id, label, detail, entry_order,
-          words_added, words_removed, cost, created_at
+          kind, words_added, words_removed, cost, created_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             entry_id,
@@ -1177,6 +1190,7 @@ def insert_chapter_history_entry(
             label,
             detail,
             entry_order,
+            kind,
             words_added,
             words_removed,
             cost,
@@ -1191,6 +1205,7 @@ def insert_chapter_history_entry(
         "label": label,
         "detail": detail,
         "entry_order": entry_order,
+        "kind": kind,
         "words_added": words_added,
         "words_removed": words_removed,
         "cost": cost,
@@ -1294,11 +1309,12 @@ def apply_lorebook_updates(
         tags = update.get("tags") if isinstance(update.get("tags"), list) else []
         metadata = sanitize_lorebook_metadata(category, update.get("metadata"))
 
+        #disabled = 0 on both lookups, a hidden entry has to be invisible to the write path too, not just to the context the model reads
         if category == "timeline":
             existing = conn.execute(
                 """
                 SELECT * FROM lorebook_entries
-                WHERE story_id = ? AND lower(name) = lower('Timeline')
+                WHERE story_id = ? AND lower(name) = lower('Timeline') AND disabled = 0
                 LIMIT 1
                 """,
                 (story_id,),
@@ -1307,7 +1323,7 @@ def apply_lorebook_updates(
             existing = conn.execute(
                 """
                 SELECT * FROM lorebook_entries
-                WHERE story_id = ? AND lower(name) = lower(?)
+                WHERE story_id = ? AND lower(name) = lower(?) AND disabled = 0
                 LIMIT 1
                 """,
                 (story_id, name),
@@ -1694,6 +1710,7 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
         def save_history(
             label: str,
             detail: str = "",
+            kind: str | None = None,
             words_added: int | None = None,
             words_removed: int | None = None,
             cost: float | None = None,
@@ -1707,6 +1724,7 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                     label=label,
                     detail=detail,
                     now=deps.utc_now(),
+                    kind=kind,
                     words_added=words_added,
                     words_removed=words_removed,
                     cost=cost,
@@ -1726,7 +1744,7 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
         try:
             yield emit(
                 "history",
-                save_history("User prompt", " ".join(payload.message.split())),
+                save_history("User prompt", " ".join(payload.message.split()), kind="prompt"),
             )
             async with httpx.AsyncClient(timeout=OPENROUTER_TIMEOUT) as client:
                 async with client.stream(
@@ -1778,7 +1796,8 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                                 yield emit(
                                     "history",
                                     save_history(
-                                        f"{model_label} thought for {format_duration(duration_ms)}"
+                                        f"{model_label} thought for {format_duration(duration_ms)}",
+                                        kind="thinking",
                                     ),
                                 )
                                 reasoning_started_at = None
@@ -1967,6 +1986,7 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                     save_history(
                         f"{model_label} could not apply the edit",
                         detail=str(error_event.get("message") or ""),
+                        kind="write_failed",
                         cost=usage.get("cost") if usage else None,
                     ),
                 )
@@ -1982,6 +2002,7 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                         "history",
                         save_history(
                             f"{model_label} wrote for {format_duration(duration_ms)}",
+                            kind="write",
                             words_added=written_added,
                             words_removed=written_removed,
                             cost=usage.get("cost") if usage else None,
@@ -2020,6 +2041,7 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                                 "history",
                                 save_history(
                                     action["label"],
+                                    kind=action["kind"],
                                     words_added=action["words_added"],
                                     words_removed=action["words_removed"],
                                     cost=action["cost"],
@@ -2418,6 +2440,7 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                         label=action["label"],
                         detail="",
                         now=deps.utc_now(),
+                        kind=action["kind"],
                         words_added=action["words_added"],
                         words_removed=action["words_removed"],
                         cost=action["cost"],

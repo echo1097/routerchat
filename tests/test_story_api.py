@@ -74,6 +74,69 @@ class StoryApiTest(unittest.TestCase):
         self.assertIsNone(row["cost"])
         conn.close()
 
+    def test_history_kind_migration_backfills_old_rows_and_is_idempotent(self):
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        #the shape this table had before kind existed
+        conn.execute(
+            """
+            CREATE TABLE chapter_history_entries (
+              id TEXT PRIMARY KEY,
+              story_id TEXT NOT NULL,
+              chapter_id TEXT NOT NULL,
+              run_id TEXT NOT NULL,
+              label TEXT NOT NULL,
+              detail TEXT NOT NULL DEFAULT '',
+              entry_order INTEGER NOT NULL,
+              created_at TEXT NOT NULL
+            )
+            """
+        )
+        oldLabels = [
+            "User prompt",
+            "Glm 5.2 thought for 8 seconds",
+            "Glm 5.2 wrote for 24 seconds",
+            "Glm 5.2 could not apply the edit",
+            "Glm 5.2 added Pip to Lorebook",
+            "Glm 5.2 updated Pip in Lorebook",
+            "Glm 5.2 updated Timeline",
+            "Glm 5.2 removed Mara from Lorebook",
+            "Glm 5.2 finished editing Lorebook after 4 seconds",
+            "Glm 5.2 found no Lorebook changes after 2 seconds",
+        ]
+        for index, label in enumerate(oldLabels):
+            conn.execute(
+                "INSERT INTO chapter_history_entries VALUES (?,'s1','c1','r1',?,'',?,'now')",
+                (f"e{index}", label, index),
+            )
+
+        main.ensure_chapter_history_columns(conn)
+        main.ensure_chapter_history_columns(conn) #twice, must not blow up or double apply
+
+        columns = [row["name"] for row in conn.execute("PRAGMA table_info(chapter_history_entries)")]
+        self.assertEqual(columns.count("kind"), 1)
+
+        kinds = [
+            row["kind"]
+            for row in conn.execute("SELECT kind FROM chapter_history_entries ORDER BY entry_order")
+        ]
+        self.assertEqual(
+            kinds,
+            [
+                "prompt",
+                "thinking",
+                "write",
+                "write_failed",
+                "lore_create",
+                "lore_update",
+                "lore_update",
+                "lore_hide",
+                "lore_summary",
+                "lore_summary",
+            ],
+        )
+        conn.close()
+
     def test_brainstorm_root_layout_reuses_the_nearest_open_slot(self):
         firstRoot = {"id": "root-1", "position_y": 180}
         firstIdeas = [
@@ -410,7 +473,7 @@ class StoryApiTest(unittest.TestCase):
         self.assertEqual([update["action"] for update in response.json()["applied"]], ["update"])
         self.assertEqual(self.lorebookRow(story, "Chloe")["description"], "black hair")
 
-    def test_manual_lorebook_update_corrects_a_disabled_entry_without_re_enabling_it(self):
+    def test_a_hidden_entry_is_untouchable_and_the_model_starts_a_fresh_one(self):
         story, chapter = self.storyWithChapter("Disabled Entry", "Mara returned to the wall.")
         self.client.post(
             f"/api/stories/{story['id']}/lorebook",
@@ -435,10 +498,96 @@ class StoryApiTest(unittest.TestCase):
             ],
         )
 
-        self.assertEqual([update["action"] for update in response.json()["applied"]], ["update"])
-        row = self.lorebookRow(story, "Mara")
-        self.assertEqual(row["description"], "returned to the wall")
-        self.assertEqual(row["disabled"], 1)
+        #hidden means invisible, so the model cannot land on it and writes a new entry instead
+        self.assertEqual([update["action"] for update in response.json()["applied"]], ["create"])
+        with main.get_db() as conn:
+            rows = conn.execute(
+                "SELECT description, disabled FROM lorebook_entries WHERE story_id = ? AND lower(name) = 'mara' ORDER BY disabled",
+                (story["id"],),
+            ).fetchall()
+        self.assertEqual(len(rows), 2)
+        self.assertEqual((rows[0]["description"], rows[0]["disabled"]), ("returned to the wall", 0))
+        #the hidden one is byte identical, the model never reached it
+        self.assertEqual((rows[1]["description"], rows[1]["disabled"]), ("stale", 1))
+
+    def test_a_hidden_entry_cannot_be_hidden_again(self):
+        story, chapter = self.storyWithChapter("Already Hidden", "Mara is gone.")
+        self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={
+                "name": "Mara",
+                "category": "character",
+                "description": "stale",
+                "disabled": True,
+            },
+        )
+
+        response, _ = self.callLorebookUpdate(
+            story, chapter, updates=[{"action": "delete", "name": "Mara"}]
+        )
+
+        payload = response.json()
+        self.assertEqual(payload["applied"], [])
+        labels = [entry["label"] for entry in payload["history"]]
+        self.assertEqual(len(labels), 1)
+        self.assertIn("found no Lorebook changes after", labels[0])
+
+    def test_a_hidden_timeline_does_not_block_a_new_one(self):
+        story, chapter = self.storyWithChapter("Hidden Timeline", "Mara crossed the wall.")
+        self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={
+                "name": "Timeline",
+                "category": "timeline",
+                "description": "- old chronology",
+                "disabled": True,
+            },
+        )
+
+        response, _ = self.callLorebookUpdate(
+            story,
+            chapter,
+            updates=[
+                {
+                    "action": "update",
+                    "name": "Timeline",
+                    "category": "timeline",
+                    "description": "- Mara crossed the wall",
+                }
+            ],
+        )
+
+        self.assertEqual([update["action"] for update in response.json()["applied"]], ["create"])
+        with main.get_db() as conn:
+            rows = conn.execute(
+                "SELECT description, disabled FROM lorebook_entries WHERE story_id = ? AND lower(name) = 'timeline' ORDER BY disabled",
+                (story["id"],),
+            ).fetchall()
+        #the singleton rule applies to what the model can see, the hidden one keeps its old chronology
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["description"], "- Mara crossed the wall")
+        self.assertEqual(rows[1]["description"], "- old chronology")
+
+    def test_hiding_an_entry_reads_as_excluded_from_context(self):
+        story, chapter = self.storyWithChapter("Hide Wording", "Mara was never real.")
+        self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={"name": "Mara", "category": "character", "description": "first\nsecond"},
+        )
+
+        response, _ = self.callLorebookUpdate(
+            story, chapter, updates=[{"action": "delete", "name": "Mara"}]
+        )
+
+        payload = response.json()
+        hideRow, summaryRow = payload["history"]
+        #nothing was deleted so the label names the include/exclude toggle that undoes it
+        self.assertTrue(hideRow["label"].endswith("excluded Mara from context"))
+        self.assertEqual(hideRow["kind"], "lore_hide")
+        self.assertEqual(summaryRow["kind"], "lore_summary")
+        #a hide moves no content, so it stays out of the run totals
+        self.assertEqual(summaryRow["words_added"], 0)
+        self.assertEqual(summaryRow["words_removed"], 0)
 
     def test_manual_lorebook_update_soft_deletes_retired_entries(self):
         story, chapter = self.storyWithChapter("Retired Lore", "The Blackwall had been torn down.")
@@ -456,7 +605,7 @@ class StoryApiTest(unittest.TestCase):
         payload = response.json()
         self.assertEqual([update["action"] for update in payload["applied"]], ["delete"])
         self.assertTrue(any(
-            entry["label"].endswith("removed The Blackwall from Lorebook")
+            entry["label"].endswith("excluded The Blackwall from context")
             for entry in payload["history"]
         ))
 
@@ -1878,7 +2027,7 @@ class StoryApiTest(unittest.TestCase):
         )
         self.assertEqual(
             lorebook_history_label(modelLabel, {"action": "delete", "name": "The Blackwall"}),
-            "Glm 5.2 removed The Blackwall from Lorebook",
+            "Glm 5.2 excluded The Blackwall from context",
         )
 
     def test_pinned_chats_are_ordered_and_temporary_chats_stay_hidden(self):

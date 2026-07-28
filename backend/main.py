@@ -345,6 +345,7 @@ def init_db() -> None:
               label TEXT NOT NULL,
               detail TEXT NOT NULL DEFAULT '',
               entry_order INTEGER NOT NULL,
+              kind TEXT,
               words_added INTEGER,
               words_removed INTEGER,
               cost REAL,
@@ -524,6 +525,32 @@ def ensure_chapter_history_columns(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE chapter_history_entries ADD COLUMN words_removed INTEGER")
     if "cost" not in existingColumns:
         conn.execute("ALTER TABLE chapter_history_entries ADD COLUMN cost REAL")
+    if "kind" not in existingColumns:
+        conn.execute("ALTER TABLE chapter_history_entries ADD COLUMN kind TEXT")
+        backfill_chapter_history_kinds(conn)
+
+
+def backfill_chapter_history_kinds(conn: sqlite3.Connection) -> None:
+    #one time pass so old rows stop leaning on the label text forever, ordered so the lorebook ones dont steal each others patterns
+    rules = [
+        ("prompt", "label = 'User prompt'"),
+        ("thinking", "label LIKE '% thought for %'"),
+        ("write", "label LIKE '% wrote for %'"),
+        ("write_failed", "label LIKE '% could not apply the edit'"),
+        (
+            "lore_summary",
+            "(label LIKE '%finished editing Lorebook after %'"
+            " OR label LIKE '%found no Lorebook changes after %')",
+        ),
+        ("lore_hide", "label LIKE '% from Lorebook'"),
+        ("lore_create", "label LIKE '% to Lorebook'"),
+        ("lore_update", "(label LIKE '% in Lorebook' OR label LIKE '% updated Timeline')"),
+    ]
+    for kind, condition in rules:
+        conn.execute(
+            f"UPDATE chapter_history_entries SET kind = ? WHERE kind IS NULL AND {condition}",
+            (kind,),
+        )
 
 
 def ensure_lorebook_run_usage_columns(conn: sqlite3.Connection) -> None:

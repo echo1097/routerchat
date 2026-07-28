@@ -3309,7 +3309,10 @@ function Composer({
     }
 
     tourUiRef.current = tourUi;
-    setContextMenuOpen(["tools", "generationMode"].includes(tourUi));
+    //every one of these lives inside the writing tools menu, so the menu has to be open for the tour to point at them
+    setContextMenuOpen(
+      ["tools", "generationMode", "lorebookMode", "lorebookUpdate"].includes(tourUi),
+    );
     setModelMenuOpen(tourUi === "model");
     setSystemPromptOpen(tourUi === "systemPrompt");
     setHistoryOpen(tourUi === "history");
@@ -3409,12 +3412,14 @@ function Composer({
                       <div className="my-1 border-t border-white/[0.08]" />
                       <ComposerMenuButton dataTour="write-generation-mode" label={WRITE_GENERATION_MODES[writeGenerationMode]} detail="Switch writing action" onClick={onToggleWriteGenerationMode} />
                       <ComposerMenuButton
+                        dataTour="write-lorebook-mode"
                         label={LOREBOOK_UPDATE_MODES[settings.lorebook_auto ? "auto" : "manual"]}
                         detail="Switch update mode"
                         disabled={isStreaming || lorebookUpdating}
                         onClick={() => onSetLorebookAuto(!settings.lorebook_auto)}
                       />
                       <ComposerMenuButton
+                        dataTour="write-lorebook-update"
                         label="Update Lorebook"
                         detail="Save story details"
                         disabled={lorebookUpdating || isStreaming}

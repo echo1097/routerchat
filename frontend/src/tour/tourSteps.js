@@ -68,8 +68,22 @@ export const WRITE_TOUR_STEPS = [
   {
     id: "lorebook",
     selector: '[data-tour="write-lorebook"]',
-    body: "The Lorebook holds characters, locations, items, events, notes, summaries, and the timeline to help with story continuity. Writing tools lets you keep it updated automatically after each generation, or on demand.",
+    body: "The Lorebook remembers your story: characters, locations, items, events, notes, summaries and a timeline. The model reads it every time it writes, so details stay consistent between chapters.",
     workspaceView: "lorebook",
+  },
+  {
+    id: "lorebookUpdate",
+    selector: '[data-tour="write-lorebook-update"]',
+    body: "Update Lorebook reads the current chapter and records anything new it finds, adding entries and correcting ones that the story has moved past.",
+    workspaceView: "chapter",
+    composerUi: "lorebookUpdate",
+  },
+  {
+    id: "lorebookMode",
+    selector: '[data-tour="write-lorebook-mode"]',
+    body: "This switches between Auto and Manual. On Auto the Lorebook updates itself after every generation. On Manual nothing changes until you press Update Lorebook yourself.",
+    workspaceView: "chapter",
+    composerUi: "lorebookMode",
   },
   {
     id: "brainstorm",

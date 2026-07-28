@@ -1744,6 +1744,9 @@ textarea {
 .tour-popover {
   position: fixed;
   pointer-events: auto;
+  /* column so a long step body can scroll on its own instead of shoving the buttons off screen */
+  display: flex;
+  flex-direction: column;
   border-radius: 18px;
   background: #18181a;
   box-shadow:

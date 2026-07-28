@@ -7,13 +7,16 @@ from backend.writing import (
     CHAPTER_EDIT_INVALID_OPERATION,
     CHAPTER_EDIT_REVISION_MISMATCH,
     CHAPTER_EDIT_TARGET_MISMATCH,
+    CHAPTER_EDIT_TRUNCATED,
     ChapterEditError,
     apply_chapter_edits,
     apply_chapter_operation,
     block_map_for_prompt,
     chapter_blocks,
+    chapter_edit_operation_schema,
     parse_chapter_edit_batch,
     parse_chapter_operation,
+    validate_chapter_operation,
     word_diff_counts,
 )
 
@@ -155,6 +158,76 @@ class ChapterEditBatchTest(unittest.TestCase):
             CHAPTER_EDIT_CONFLICTING_EDITS,
         )
 
+    def badAnchorEdit(self, newText="orphan"):
+        return {
+            "operation": "replaceBlock",
+            "blockId": "p_999",
+            "anchorText": "a sentence that appears nowhere in this chapter at all",
+            "newText": newText,
+        }
+
+    def test_partial_keeps_the_good_edits_and_reports_the_bad_one(self):
+        #the whole point of flaw 3, one bad anchor used to take three good edits down with it
+        result = apply_chapter_edits(
+            self.content,
+            self.batch(self.edit(0, "one EDITED"), self.badAnchorEdit(), self.edit(3, "four EDITED")),
+            baseRevision=7,
+            partial=True,
+        )
+
+        self.assertEqual(
+            result["content"],
+            "one EDITED\n\ntwo bravo\n\nthree charlie\n\nfour EDITED",
+        )
+        self.assertEqual(len(result["edits"]), 2)
+        self.assertEqual(len(result["rejected"]), 1)
+        self.assertEqual(result["rejected"][0]["code"], CHAPTER_EDIT_TARGET_MISMATCH)
+        self.assertEqual(result["rejected"][0]["operation"]["newText"], "orphan")
+
+    def test_partial_still_fails_when_nothing_survives(self):
+        self.assertErrorCode(
+            lambda: apply_chapter_edits(
+                self.content,
+                self.batch(self.badAnchorEdit(), self.badAnchorEdit("also orphan")),
+                baseRevision=7,
+                partial=True,
+            ),
+            CHAPTER_EDIT_TARGET_MISMATCH,
+        )
+
+    def test_partial_lets_the_first_claim_on_a_block_win(self):
+        result = apply_chapter_edits(
+            self.content,
+            self.batch(self.edit(1, "first"), self.edit(1, "second")),
+            baseRevision=7,
+            partial=True,
+        )
+
+        self.assertIn("first", result["content"])
+        self.assertNotIn("second", result["content"])
+        self.assertEqual(result["rejected"][0]["code"], CHAPTER_EDIT_CONFLICTING_EDITS)
+
+    def test_partial_keeps_the_first_append_and_drops_the_second(self):
+        append = {"operation": "appendToChapter", "newText": "tail"}
+        result = apply_chapter_edits(
+            self.content,
+            self.batch(append, {"operation": "appendToChapter", "newText": "second tail"}),
+            baseRevision=7,
+            partial=True,
+        )
+
+        self.assertTrue(result["content"].endswith("four delta\n\ntail"))
+        self.assertEqual(result["rejected"][0]["code"], CHAPTER_EDIT_CONFLICTING_EDITS)
+
+    def test_partial_leaves_a_clean_batch_with_nothing_rejected(self):
+        result = apply_chapter_edits(
+            self.content,
+            self.batch(self.edit(0, "one EDITED")),
+            baseRevision=7,
+            partial=True,
+        )
+        self.assertEqual(result["rejected"], [])
+
     def test_an_empty_edits_array_is_rejected(self):
         self.assertErrorCode(
             lambda: apply_chapter_edits(self.content, self.batch(), baseRevision=7),
@@ -198,6 +271,72 @@ class ChapterEditBatchTest(unittest.TestCase):
             result["content"],
             "one EDITED\n\ntwo bravo\n\nthree charlie\n\nfour EDITED",
         )
+
+    def test_a_batch_cut_off_mid_array_keeps_the_complete_edits(self):
+        raw = json.dumps({
+            "chapterRevision": 7,
+            "edits": [self.edit(0, "one EDITED"), self.edit(3, "four EDITED")],
+        })
+        #chopped partway through the second edit, exactly what max_tokens does
+        truncated = raw[:raw.rindex("four EDITED") + 4]
+
+        batch = parse_chapter_edit_batch(truncated)
+        self.assertTrue(batch["truncated"])
+        self.assertEqual(batch["chapterRevision"], 7)
+        self.assertEqual(len(batch["edits"]), 1)
+
+        result = apply_chapter_edits(self.content, batch, baseRevision=7, partial=True)
+        self.assertTrue(result["content"].startswith("one EDITED"))
+
+    def test_a_batch_cut_off_before_any_edit_closed_is_still_an_error(self):
+        self.assertErrorCode(
+            lambda: parse_chapter_edit_batch('{"chapterRevision": 7, "edits": [{"operation": "repl'),
+            CHAPTER_EDIT_TRUNCATED,
+        )
+
+    def test_a_wrong_block_id_is_recovered_from_the_anchor(self):
+        #the quoted prose is the stronger signal, the model only got its own bookkeeping wrong
+        misfiled = {**self.edit(2, "three EDITED"), "blockId": "p_001"}
+        result = apply_chapter_edits(self.content, self.batch(misfiled), baseRevision=7, partial=True)
+
+        self.assertEqual(result["rejected"], [])
+        self.assertEqual(
+            result["content"],
+            "one alpha\n\ntwo bravo\n\nthree EDITED\n\nfour delta",
+        )
+
+    def test_an_anchor_that_could_be_two_blocks_is_not_guessed_at(self):
+        content = "the same line here\n\nsomething else entirely\n\nthe same line here"
+        blocks = chapter_blocks(content)
+        ambiguous = {
+            "operation": "replaceBlock",
+            "blockId": "p_009",
+            "anchorText": blocks[0]["anchorText"],
+            "newText": "guessed",
+        }
+        self.assertErrorCode(
+            lambda: apply_chapter_edits(
+                content, self.batch(ambiguous), baseRevision=7, partial=True
+            ),
+            CHAPTER_EDIT_TARGET_MISMATCH,
+        )
+
+    def test_the_schema_no_longer_advertises_fields_the_validator_refuses(self):
+        variants = {
+            variant["properties"]["operation"]["const"]: set(variant["properties"])
+            for variant in chapter_edit_operation_schema()["oneOf"]
+        }
+        self.assertEqual(variants["appendToChapter"], {"operation", "newText"})
+        self.assertNotIn("blockId", variants["replaceBlockRange"])
+        for name, properties in variants.items():
+            self.assertEqual(
+                properties,
+                set(next(
+                    variant["required"]
+                    for variant in chapter_edit_operation_schema()["oneOf"]
+                    if variant["properties"]["operation"]["const"] == name
+                )),
+            )
 
 
 class ChapterOperationTest(unittest.TestCase):
@@ -418,7 +557,7 @@ class ChapterOperationTest(unittest.TestCase):
             CHAPTER_EDIT_TARGET_MISMATCH,
         )
 
-    def test_replace_block_range_requires_its_exact_fields(self):
+    def test_replace_block_range_drops_a_stray_field_instead_of_dying_on_it(self):
         operation = self.operation(
             "replaceBlockRange",
             startBlockId="p_001",
@@ -429,8 +568,19 @@ class ChapterOperationTest(unittest.TestCase):
             extra=True,
         )
 
+        parsed = parse_chapter_operation(json.dumps(operation))
+        self.assertNotIn("extra", validate_chapter_operation(parsed))
+
+    def test_replace_block_range_still_needs_every_required_field(self):
+        operation = self.operation(
+            "replaceBlockRange",
+            startBlockId="p_001",
+            startAnchorText="first paragraph",
+            newText="replacement",
+        )
+
         self.assertErrorCode(
-            lambda: parse_chapter_operation(json.dumps(operation)),
+            lambda: validate_chapter_operation(parse_chapter_operation(json.dumps(operation))),
             CHAPTER_EDIT_INVALID_OPERATION,
         )
 
@@ -469,25 +619,30 @@ class ChapterOperationTest(unittest.TestCase):
             CHAPTER_EDIT_REVISION_MISMATCH,
         )
 
-    def test_parser_requires_exact_canonical_json(self):
+    def test_parser_digs_the_json_out_of_whatever_the_model_wrapped_it_in(self):
         raw = (
             '{"operation":"appendToChapter","chapterRevision":7,'
             '"newText":"continue"}'
         )
-        self.assertEqual(parse_chapter_operation(raw), {
+        expected = {
             "operation": "appendToChapter",
             "chapterRevision": 7,
             "newText": "continue",
-        })
-        self.assertErrorCode(lambda: parse_chapter_operation("```json\n" + raw + "\n```"), CHAPTER_EDIT_INVALID_JSON)
-        self.assertErrorCode(lambda: parse_chapter_operation("here is the edit: " + raw), CHAPTER_EDIT_INVALID_JSON)
+        }
+        self.assertEqual(parse_chapter_operation(raw), expected)
+        self.assertEqual(parse_chapter_operation("```json\n" + raw + "\n```"), expected)
+        self.assertEqual(parse_chapter_operation("here is the edit: " + raw), expected)
+        self.assertEqual(parse_chapter_operation(raw + "\n\nlet me know what you think"), expected)
+
+    def test_parser_still_rejects_output_with_no_object_in_it(self):
         self.assertErrorCode(lambda: parse_chapter_operation("[]"), CHAPTER_EDIT_INVALID_OPERATION)
+        self.assertErrorCode(lambda: parse_chapter_operation("no json here at all"), CHAPTER_EDIT_INVALID_JSON)
+        self.assertErrorCode(lambda: parse_chapter_operation("   "), CHAPTER_EDIT_INVALID_JSON)
 
     def test_parser_rejects_legacy_shapes_and_invalid_fields(self):
         cases = [
             {"type": "appendToChapter", "chapterRevision": 7, "newText": "x"},
             {"operation": "replaceBlocks", "chapterRevision": 7, "newText": "x"},
-            {"operation": "appendToChapter", "chapterRevision": 7, "newText": "x", "extra": True},
             {"operation": "appendToChapter", "chapterRevision": 7, "newText": ""},
             {"operation": "appendToChapter", "chapterRevision": True, "newText": "x"},
         ]
@@ -496,6 +651,18 @@ class ChapterOperationTest(unittest.TestCase):
                 lambda operation=operation: parse_chapter_operation(json.dumps(operation)),
                 CHAPTER_EDIT_INVALID_OPERATION,
             )
+
+    def test_a_stray_field_no_longer_bins_the_whole_edit(self):
+        #the schema advertised blockId on appendToChapter while the validator called it unsupported, so a legal response could still be thrown away
+        operation = {
+            "operation": "appendToChapter",
+            "chapterRevision": 7,
+            "newText": "x",
+            "blockId": "p_001",
+            "extra": True,
+        }
+        validated = validate_chapter_operation(parse_chapter_operation(json.dumps(operation)))
+        self.assertEqual(set(validated), {"operation", "chapterRevision", "newText"})
 
     def test_target_validation_rejects_missing_and_changed_targets(self):
         missingAnchor = self.operation(

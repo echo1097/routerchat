@@ -1,14 +1,24 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  chapterAppliedEditSummary,
   chapterFromUpdateEvent,
+  chapterGenerationErrorIsRepairable,
   chapterGenerationErrorMessage,
   chapterGenerationEventMatchesRun,
+  chapterRepairContext,
   chapterRunTargetsOpenChapter,
   chapterUpdateMatchesRun,
 } from "../../../frontend/src/writing/chapterGenerationEvents.js";
 import { createSaveCoordinator } from "../../../frontend/src/writing/saveCoordinator.js";
 
 describe("chapter generation events", () => {
+  it("uses the right agreement for applied edit counts", () => {
+    expect(chapterAppliedEditSummary(1)).toBe("1 edit was applied and has been kept");
+    expect(chapterAppliedEditSummary(2)).toBe("2 edits were applied and have been kept");
+    expect(chapterAppliedEditSummary(1, 1)).toBe("1 of 2 edits was applied and has been kept");
+    expect(chapterAppliedEditSummary(2, 1)).toBe("2 of 3 edits were applied and have been kept");
+  });
+
   it("reads the complete chapter from a canonical update event", () => {
     const chapter = {
       id: "chapter",
@@ -29,6 +39,43 @@ describe("chapter generation events", () => {
       .toBe("chapter_edit_invalid_json");
     expect(chapterGenerationErrorMessage("network error")).toBe("network error");
     expect(chapterGenerationErrorMessage(null)).toBe("Story generation failed");
+  });
+
+  it("offers a repair only when the backend said it can be repaired", () => {
+    //the backend clears this on a repair run, which is the only thing stopping the offer from looping
+    expect(chapterGenerationErrorIsRepairable({ code: "chapter_edit_truncated", repairable: true })).toBe(true);
+    expect(chapterGenerationErrorIsRepairable({ code: "chapter_edit_truncated", repairable: false })).toBe(false);
+    expect(chapterGenerationErrorIsRepairable({ code: "chapter_revision_conflict" })).toBe(false);
+    expect(chapterGenerationErrorIsRepairable("network error")).toBe(false);
+    expect(chapterGenerationErrorIsRepairable(null)).toBe(false);
+  });
+
+  it("builds a repair context out of the rejected edits", () => {
+    const value = {
+      rejected: [
+        {
+          index: 1,
+          code: "chapter_edit_target_mismatch",
+          message: "anchorText does not match p_002",
+          operation: { operation: "replaceBlock", newText: "the prose it already wrote" },
+        },
+      ],
+    };
+
+    expect(chapterRepairContext(value, "{raw output}", 3)).toEqual({
+      previous_output: "{raw output}",
+      errors: ["anchorText does not match p_002"],
+      failed_edits: [{ operation: "replaceBlock", newText: "the prose it already wrote" }],
+      applied_count: 3,
+    });
+  });
+
+  it("falls back to the error message when nothing was itemised", () => {
+    const context = chapterRepairContext({ code: "chapter_edit_truncated", message: "cut off" }, "partial", 0);
+
+    expect(context.errors).toEqual(["cut off"]);
+    expect(context.failed_edits).toEqual([]);
+    expect(context.applied_count).toBe(0);
   });
 
   it("accepts only events for the active target and next revision", () => {

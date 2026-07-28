@@ -107,6 +107,14 @@ class AppSettingsPatchRequest(BaseModel):
     smooth_streaming: bool | None = None
 
 
+class ChapterRepairContext(BaseModel):
+    #what the model produced last time and why it did not stick, so the retry is not a blind reroll
+    previous_output: str = ""
+    errors: list[str] = Field(default_factory=list)
+    failed_edits: list[dict[str, Any]] = Field(default_factory=list)
+    applied_count: int = Field(default=0, ge=0)
+
+
 class StreamMessageRequest(BaseModel):
     message: str = Field(min_length=1)
     model: str
@@ -124,6 +132,7 @@ class StreamMessageRequest(BaseModel):
     generation_run_id: str | None = Field(default=None, min_length=1)
     selected_idea_ids: list[str] = Field(default_factory=list)
     brainstorm_idea_count: int = Field(default=3, ge=1, le=8)
+    repair_context: ChapterRepairContext | None = None
 
 
 class MessageUpdateRequest(BaseModel):

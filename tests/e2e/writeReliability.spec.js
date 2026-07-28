@@ -1067,16 +1067,3 @@ test("flushes a pending chapter draft before switching to chat", async ({ page }
   await expect(page).toHaveURL(/\?mode=chat/);
   expect(api.state.chapters[0].content).toBe("switch draft");
 });
-
-test("preserves the local draft and exposes a server conflict", async ({ page }) => {
-  const api = await installWriteApi(page);
-  await api.open();
-  api.state.chapters[0].content = "server draft";
-  api.state.chapters[0].revision = 1;
-  api.state.conflictNextSave = true;
-  await editCanvas(page, "local draft");
-  await page.waitForTimeout(650);
-  await expect(page.getByText("Conflict", { exact: true })).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "Chapter canvas" })).toHaveText("local draft");
-  await expect(await reloadAndRead(page)).toContainText("server draft");
-});

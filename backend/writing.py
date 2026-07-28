@@ -117,6 +117,7 @@ CHAPTER_EDIT_INVALID_OPERATION = "chapter_edit_invalid_operation"
 CHAPTER_EDIT_REVISION_MISMATCH = "chapter_edit_revision_mismatch"
 CHAPTER_EDIT_TARGET_MISMATCH = "chapter_edit_target_mismatch"
 CHAPTER_EDIT_CONFLICTING_EDITS = "chapter_edit_conflicting_edits"
+CHAPTER_EDIT_TRUNCATED = "chapter_edit_truncated"
 CHAPTER_REVISION_CONFLICT = "chapter_revision_conflict"
 
 
@@ -435,6 +436,26 @@ def anchor_for_block(text: str) -> str:
     return head.strip()
 
 
+def resolve_block_by_anchor(
+    blocks: list[dict[str, Any]],
+    normalizedAnchor: str,
+) -> dict[str, Any] | None:
+    #only an unambiguous hit counts, two candidates means we have no idea which one the model meant and guessing would rewrite the wrong paragraph
+    matches = [
+        block
+        for block in blocks
+        if normalizedAnchor and normalizedAnchor in normalize_anchor(block["text"])
+    ]
+    if len(matches) != 1:
+        return None
+
+    #still has to be a real quote rather than a couple of words that happened to land once
+    block = matches[0]
+    if len(normalizedAnchor) < min(ANCHOR_MINIMUM_LENGTH, len(normalize_anchor(block["text"]))):
+        return None
+    return block
+
+
 def chapter_blocks(content: str) -> list[dict[str, Any]]:
     blocks: list[dict[str, Any]] = []
     paragraph_index = 0
@@ -493,11 +514,12 @@ def chapter_edit_operation_schema() -> dict[str, Any]:
     }
 
     def variant(operationType: str, requiredFields: list[str]) -> dict[str, Any]:
+        #properties come from this variants own required list, otherwise the schema advertises fields the validator will not take
         return {
             "type": "object",
             "additionalProperties": False,
             "properties": {
-                **operationFields,
+                **{field: operationFields[field] for field in requiredFields},
                 "operation": {"const": operationType},
             },
             "required": requiredFields,
@@ -521,7 +543,7 @@ def chapter_edit_operation_schema() -> dict[str, Any]:
                 "type": "object",
                 "additionalProperties": False,
                 "properties": {
-                    **operationFields,
+                    "newText": operationFields["newText"],
                     **rangeFields,
                     "operation": {"const": "replaceBlockRange"},
                 },
@@ -575,6 +597,108 @@ def chapter_edit_response_format() -> dict[str, Any]:
     }
 
 
+def strip_code_fences(raw: str) -> str:
+    #```json ... ``` is the single most common way a model wraps output it was told not to wrap
+    text = raw.strip()
+    if not text.startswith("```"):
+        return text
+    newline = text.find("\n")
+    if newline == -1:
+        return text
+    body = text[newline + 1:]
+    closing = body.rfind("```")
+    return (body[:closing] if closing != -1 else body).strip()
+
+
+def extract_json_object(raw: str) -> tuple[str | None, bool]:
+    #returns the first balanced json object and whether it ran off the end, so prose around the json stops being fatal
+    text = strip_code_fences(raw)
+    start = text.find("{")
+    if start == -1:
+        return None, False
+
+    depth = 0
+    inString = False
+    escaped = False
+    for index in range(start, len(text)):
+        char = text[index]
+
+        if inString:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                inString = False
+            continue
+
+        if char == '"':
+            inString = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:index + 1], False
+
+    #never closed, so whatever we have is a cut off object
+    return text[start:], True
+
+
+def salvage_truncated_batch(partial: str) -> dict[str, Any] | None:
+    #walks the edits array keeping every element that parses on its own, a run cut off at max_tokens still has good edits in it
+    editsKey = partial.find('"edits"')
+    if editsKey == -1:
+        return None
+    arrayStart = partial.find("[", editsKey)
+    if arrayStart == -1:
+        return None
+
+    revision: Any = None
+    revisionMatch = re.search(r'"chapterRevision"\s*:\s*(\d+)', partial)
+    if revisionMatch:
+        revision = int(revisionMatch.group(1))
+
+    edits: list[Any] = []
+    depth = 0
+    inString = False
+    escaped = False
+    elementStart: int | None = None
+
+    for index in range(arrayStart + 1, len(partial)):
+        char = partial[index]
+
+        if inString:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                inString = False
+            continue
+
+        if char == '"':
+            inString = True
+        elif char == "{":
+            if depth == 0:
+                elementStart = index
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0 and elementStart is not None:
+                try:
+                    edits.append(json.loads(partial[elementStart:index + 1]))
+                except json.JSONDecodeError:
+                    break
+                elementStart = None
+        elif char == "]" and depth == 0:
+            break
+
+    if not edits:
+        return None
+    return {"chapterRevision": revision, "edits": edits, "truncated": True}
+
+
 def parse_chapter_edit_batch(raw_output: str) -> dict[str, Any]:
     if not isinstance(raw_output, str) or not raw_output.strip():
         raise ChapterEditError(
@@ -582,13 +706,36 @@ def parse_chapter_edit_batch(raw_output: str) -> dict[str, Any]:
             "model output was empty",
         )
 
-    try:
-        parsed = json.loads(raw_output.strip())
-    except json.JSONDecodeError as exc:
+    extracted, wasTruncated = extract_json_object(raw_output)
+    parsed: Any = None
+
+    if extracted is not None and not wasTruncated:
+        try:
+            parsed = json.loads(extracted)
+        except json.JSONDecodeError:
+            parsed = None
+
+    if parsed is None:
+        #either it never closed or the closed thing was not valid json, either way try to keep the complete edits
+        salvaged = salvage_truncated_batch(extracted or strip_code_fences(raw_output))
+        if salvaged is not None:
+            return salvaged
+        try:
+            #valid json that simply is not an object is a shape problem, not a parse problem
+            json.loads(strip_code_fences(raw_output))
+        except json.JSONDecodeError:
+            pass
+        else:
+            raise ChapterEditError(
+                CHAPTER_EDIT_INVALID_OPERATION,
+                "chapter edit output must be a JSON object",
+            )
         raise ChapterEditError(
-            CHAPTER_EDIT_INVALID_JSON,
-            "model output was not exactly one JSON object",
-        ) from exc
+            CHAPTER_EDIT_TRUNCATED if wasTruncated else CHAPTER_EDIT_INVALID_JSON,
+            "the response was cut off before a single complete edit came through"
+            if wasTruncated
+            else "model output was not exactly one JSON object",
+        )
 
     if not isinstance(parsed, dict):
         raise ChapterEditError(
@@ -600,7 +747,7 @@ def parse_chapter_edit_batch(raw_output: str) -> dict[str, Any]:
     if "edits" not in parsed and "operation" in parsed:
         revision = parsed.get("chapterRevision")
         edit = {key: value for key, value in parsed.items() if key != "chapterRevision"}
-        return {"chapterRevision": revision, "edits": [edit]}
+        return {"chapterRevision": revision, "edits": [edit], "truncated": False}
 
     edits = parsed.get("edits")
     if not isinstance(edits, list):
@@ -614,7 +761,7 @@ def parse_chapter_edit_batch(raw_output: str) -> dict[str, Any]:
             "edits array must contain at least one edit",
         )
 
-    return {"chapterRevision": parsed.get("chapterRevision"), "edits": edits}
+    return {"chapterRevision": parsed.get("chapterRevision"), "edits": edits, "truncated": False}
 
 
 def parse_chapter_operation(raw_output: str) -> dict[str, Any]:
@@ -705,16 +852,15 @@ def validate_chapter_operation(
         )
     elif operationType != "appendToChapter":
         requiredFields.update({"blockId", "anchorText"})
-    actualFields = set(operation)
-    missingFields = requiredFields - actualFields
-    extraFields = actualFields - requiredFields
-    if missingFields or extraFields:
-        details = []
-        if missingFields:
-            details.append(f"missing fields: {', '.join(sorted(missingFields))}")
-        if extraFields:
-            details.append(f"unsupported fields: {', '.join(sorted(extraFields))}")
-        raise ChapterEditError(CHAPTER_EDIT_INVALID_OPERATION, "; ".join(details))
+    #a field this operation has no use for is noise, not a reason to bin prose the model already wrote
+    operation = {key: value for key, value in operation.items() if key in requiredFields}
+
+    missingFields = requiredFields - set(operation)
+    if missingFields:
+        raise ChapterEditError(
+            CHAPTER_EDIT_INVALID_OPERATION,
+            f"missing fields: {', '.join(sorted(missingFields))}",
+        )
 
     if requireRevision:
         chapterRevision = operation.get("chapterRevision")
@@ -765,27 +911,34 @@ def validate_chapter_operation(
         if blocks is not None:
             blocksById = {block["blockId"]: block for block in blocks}
             block = blocksById.get(blockId.strip())
-            if not block:
+            normalizedAnchor = normalize_anchor(anchorText)
+
+            if block is not None:
+                normalizedBlock = normalize_anchor(block["text"])
+                #a two word anchor would match half the chapter, so short blocks have to be quoted whole
+                if len(normalizedAnchor) < min(ANCHOR_MINIMUM_LENGTH, len(normalizedBlock)):
+                    raise ChapterEditError(
+                        CHAPTER_EDIT_INVALID_OPERATION,
+                        f"{anchorField} must quote at least "
+                        f"{min(ANCHOR_MINIMUM_LENGTH, len(normalizedBlock))} characters of {blockId}",
+                    )
+                if normalizedAnchor in normalizedBlock:
+                    targetBlocks.append(block)
+                    operation[blockIdField] = block["blockId"]
+                    continue
+
+            #the quoted prose is a better witness than the models block id bookkeeping, so let the anchor pick the block
+            block = resolve_block_by_anchor(blocks, normalizedAnchor)
+            if block is None:
                 raise ChapterEditError(
                     CHAPTER_EDIT_TARGET_MISMATCH,
-                    f"unknown block id: {blockId}",
+                    f"unknown block id: {blockId}"
+                    if blockId.strip() not in blocksById
+                    else f"anchorText does not match {blockId}",
                 )
 
-            normalizedAnchor = normalize_anchor(anchorText)
-            normalizedBlock = normalize_anchor(block["text"])
-            #a two word anchor would match half the chapter, so short blocks have to be quoted whole
-            if len(normalizedAnchor) < min(ANCHOR_MINIMUM_LENGTH, len(normalizedBlock)):
-                raise ChapterEditError(
-                    CHAPTER_EDIT_INVALID_OPERATION,
-                    f"{anchorField} must quote at least "
-                    f"{min(ANCHOR_MINIMUM_LENGTH, len(normalizedBlock))} characters of {blockId}",
-                )
-            if normalizedAnchor not in normalizedBlock:
-                raise ChapterEditError(
-                    CHAPTER_EDIT_TARGET_MISMATCH,
-                    f"anchorText does not match {blockId}",
-                )
             targetBlocks.append(block)
+            operation[blockIdField] = block["blockId"]
 
     if operationType == "replaceBlockRange" and len(targetBlocks) == 2:
         if targetBlocks[0]["startChar"] > targetBlocks[1]["startChar"]:
@@ -902,30 +1055,140 @@ def validate_chapter_edit_batch(
     return {"chapterRevision": chapterRevision, "edits": validated}
 
 
+def validate_chapter_edit_batch_partial(
+    batch: dict[str, Any],
+    baseRevision: int | None = None,
+    blocks: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    #same checks as the strict version, except one bad edit only costs that edit. envelope problems are still fatal because they are about the batch not one edit
+    edits = batch.get("edits")
+    if not isinstance(edits, list) or not edits:
+        raise ChapterEditError(
+            CHAPTER_EDIT_INVALID_OPERATION,
+            "edits array must contain at least one edit",
+        )
+
+    chapterRevision = batch.get("chapterRevision")
+    if type(chapterRevision) is not int or chapterRevision < 0:
+        raise ChapterEditError(
+            CHAPTER_EDIT_INVALID_OPERATION,
+            "chapterRevision must be a non-negative integer",
+        )
+    if baseRevision is not None and chapterRevision != baseRevision:
+        raise ChapterEditError(
+            CHAPTER_EDIT_REVISION_MISMATCH,
+            "chapterRevision does not match the generation base revision",
+        )
+
+    validated: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    for index, edit in enumerate(edits):
+        try:
+            validated.append(validate_chapter_operation(edit, None, blocks, requireRevision=False))
+        except ChapterEditError as exc:
+            rejected.append(rejected_edit(index, exc.code, exc.message, edit))
+
+    return {"chapterRevision": chapterRevision, "edits": validated, "rejected": rejected}
+
+
+#a repair run never offers another repair, which is what keeps this from turning into a loop that quietly bills someone
+REPAIRABLE_EDIT_CODES = {
+    CHAPTER_EDIT_INVALID_JSON,
+    CHAPTER_EDIT_INVALID_OPERATION,
+    CHAPTER_EDIT_TARGET_MISMATCH,
+    CHAPTER_EDIT_CONFLICTING_EDITS,
+    CHAPTER_EDIT_TRUNCATED,
+}
+
+
+def repairable_error_event(code: str, message: str, is_repair: bool = False) -> dict[str, Any]:
+    return {
+        "code": code,
+        "message": message,
+        "repairable": code in REPAIRABLE_EDIT_CODES and not is_repair,
+    }
+
+
+def format_edit_count(count: int) -> str:
+    return f"{count} {'edit' if count == 1 else 'edits'}"
+
+
+def rejected_edit(index: int, code: str, message: str, operation: Any) -> dict[str, Any]:
+    #carries enough for the repair turn to describe what failed without the model having to guess which edit we mean
+    return {
+        "index": index,
+        "code": code,
+        "message": message,
+        "operation": operation if isinstance(operation, dict) else {},
+    }
+
+
 def apply_chapter_edits(
     content: str,
     batch: dict[str, Any],
     baseRevision: int | None = None,
+    partial: bool = False,
 ) -> dict[str, Any]:
     blocks = chapter_blocks(content)
     blocksById = {block["blockId"]: block for block in blocks}
-    batch = validate_chapter_edit_batch(batch, baseRevision, blocks)
 
-    footprints = [
-        chapter_edit_footprint(edit, blocks, blocksById, len(content)) for edit in batch["edits"]
-    ]
+    if partial:
+        batch = validate_chapter_edit_batch_partial(batch, baseRevision, blocks)
+    else:
+        batch = validate_chapter_edit_batch(batch, baseRevision, blocks)
+    rejected: list[dict[str, Any]] = list(batch.get("rejected") or [])
+
+    keptEdits: list[dict[str, Any]] = []
+    footprints: list[dict[str, Any]] = []
+    for edit in batch["edits"]:
+        try:
+            footprints.append(chapter_edit_footprint(edit, blocks, blocksById, len(content)))
+        except (KeyError, ChapterEditError) as exc:
+            if not partial:
+                raise
+            rejected.append(
+                rejected_edit(len(keptEdits), CHAPTER_EDIT_TARGET_MISMATCH, str(exc), edit)
+            )
+            continue
+        keptEdits.append(edit)
+    batch = {**batch, "edits": keptEdits}
 
     #one block, one edit. a range consumes every block it spans, so this single rule also catches overlapping ranges and inserts anchored on a block someone else is replacing
     claimedBy: dict[str, int] = {}
     appendCount = 0
+    droppedIndexes: set[int] = set()
     for index, (edit, footprint) in enumerate(zip(batch["edits"], footprints)):
         if edit["operation"] == "appendToChapter":
             appendCount += 1
             if appendCount > 1:
-                raise ChapterEditError(
-                    CHAPTER_EDIT_CONFLICTING_EDITS,
-                    "only one appendToChapter is allowed per generation",
+                #in partial mode the first append wins and the extra one is reported, rather than the pair taking the batch down with them
+                if not partial:
+                    raise ChapterEditError(
+                        CHAPTER_EDIT_CONFLICTING_EDITS,
+                        "only one appendToChapter is allowed per generation",
+                    )
+                droppedIndexes.add(index)
+                rejected.append(
+                    rejected_edit(
+                        index,
+                        CHAPTER_EDIT_CONFLICTING_EDITS,
+                        "only one appendToChapter is allowed per generation",
+                        edit,
+                    )
                 )
+                continue
+        conflict = next((blockId for blockId in footprint["blockIds"] if blockId in claimedBy), None)
+        if conflict is not None and partial:
+            droppedIndexes.add(index)
+            rejected.append(
+                rejected_edit(
+                    index,
+                    CHAPTER_EDIT_CONFLICTING_EDITS,
+                    f"edits {claimedBy[conflict] + 1} and {index + 1} both change {conflict}",
+                    edit,
+                )
+            )
+            continue
         for blockId in footprint["blockIds"]:
             if blockId in claimedBy:
                 raise ChapterEditError(
@@ -934,31 +1197,40 @@ def apply_chapter_edits(
                 )
             claimedBy[blockId] = index
 
+    surviving = [index for index in range(len(batch["edits"])) if index not in droppedIndexes]
+    if not surviving:
+        #nothing landed, so this is a plain failure and the caller gets the most representative reason to show the user
+        first = rejected[0] if rejected else None
+        raise ChapterEditError(
+            first["code"] if first else CHAPTER_EDIT_INVALID_OPERATION,
+            first["message"] if first else "no edit in the batch could be applied",
+        )
+
     #back to front, so every edit still sees the offsets it was resolved against
-    order = sorted(range(len(batch["edits"])), key=lambda index: footprints[index]["start"], reverse=True)
+    order = sorted(surviving, key=lambda index: footprints[index]["start"], reverse=True)
     nextContent = content
     for index in order:
         nextContent = apply_single_edit(nextContent, batch["edits"][index], footprints[index])
 
     applied = [
         {
-            "operation": edit["operation"],
+            "operation": batch["edits"][index]["operation"],
             "deletedBlockIds": (
-                footprint["blockIds"]
-                if edit["operation"] in {"replaceBlock", "replaceBlockRange"}
+                footprints[index]["blockIds"]
+                if batch["edits"][index]["operation"] in {"replaceBlock", "replaceBlockRange"}
                 else []
             ),
             "insertedBlockIds": (
-                footprint["blockIds"][:1]
-                if edit["operation"] in {"replaceBlock", "replaceBlockRange"}
+                footprints[index]["blockIds"][:1]
+                if batch["edits"][index]["operation"] in {"replaceBlock", "replaceBlockRange"}
                 else []
             ),
-            "appliedText": clean_insert_text(edit["newText"]),
+            "appliedText": clean_insert_text(batch["edits"][index]["newText"]),
         }
-        for edit, footprint in zip(batch["edits"], footprints)
+        for index in surviving
     ]
 
-    return {"content": nextContent, "edits": applied}
+    return {"content": nextContent, "edits": applied, "rejected": rejected}
 
 
 def append_chapter_text(content: str, text: str) -> dict[str, Any]:
@@ -1389,6 +1661,7 @@ def build_story_messages(
     system_prompt: str,
     generation_mode: str = "new",
     blocks: list[dict[str, Any]] | None = None,
+    repair_context: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
     lorebook_text = "\n".join(
         lorebook_context_line(row)
@@ -1456,7 +1729,41 @@ def build_story_messages(
         )
     messages.append({"role": "user", "content": "\n\n".join(context_parts)})
     messages.append({"role": "user", "content": prompt})
+
+    #a repair sees its own failed output plus a block map rebuilt from the chapter as it stands now, which is the part it got wrong last time
+    if generation_mode == "edit" and repair_context:
+        previous = str(repair_context.get("previous_output") or "").strip()
+        if previous:
+            messages.append({"role": "assistant", "content": previous})
+        messages.append({"role": "user", "content": repair_instructions(repair_context)})
+
     return messages
+
+
+def repair_instructions(repair_context: dict[str, Any]) -> str:
+    errors = [str(error) for error in (repair_context.get("errors") or []) if str(error).strip()]
+    failed = [edit for edit in (repair_context.get("failed_edits") or []) if isinstance(edit, dict)]
+    applied_count = int(repair_context.get("applied_count") or 0)
+
+    parts = ["That response could not be applied as written."]
+    if applied_count:
+        parts.append(
+            f"{applied_count} of your edits did apply and are already part of the chapter draft "
+            "and block map above. Do not repeat, restate, or undo them."
+        )
+    if errors:
+        parts.append("What went wrong:\n" + "\n".join(f"- {error}" for error in errors))
+    if failed:
+        parts.append(
+            "These are the edits that failed. The prose in newText is fine, it is the targeting "
+            "that was wrong, so reuse the text and re-anchor it against the block map above:\n"
+            + json.dumps(failed, ensure_ascii=False, indent=2)
+        )
+    parts.append(
+        "Reply with one corrected JSON object in the same shape, containing only the edits that "
+        "still need to be made. Copy anchorText exactly from the block map."
+    )
+    return "\n\n".join(parts)
 
 
 def apply_lorebook_updates(
@@ -1857,6 +2164,11 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
         )
         starting_blocks = chapter_blocks(chapter["content"] or "") if generation_mode == "edit" else []
 
+        repair_context = getattr(payload, "repair_context", None)
+        if repair_context is not None and not isinstance(repair_context, dict):
+            repair_context = repair_context.model_dump()
+        is_repair = bool(repair_context)
+
         messages = build_story_messages(
             story,
             chapter,
@@ -1865,6 +2177,7 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
             deps.write_system_prompt(payload),
             generation_mode,
             starting_blocks,
+            repair_context,
         )
         body: dict[str, Any] = {
             "model": deps.openrouter_request_model(payload.model, payload.nitro_mode),
@@ -2035,15 +2348,21 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                     "message": "Generation was cancelled.",
                 }
 
+            edit_truncated = False
+
             if stream_completed and generation_mode == "edit" and content:
                 try:
-                    edit_batch = validate_chapter_edit_batch(
-                        parse_chapter_edit_batch(content),
-                        baseRevision=base_revision,
-                    )
+                    edit_batch = parse_chapter_edit_batch(content)
+                    edit_truncated = bool(edit_batch.get("truncated")) or finish_reason == "length"
                 except ChapterEditError as exc:
-                    error_event = {"code": exc.code, "message": exc.message}
-                    error_text = f"{exc.code}: {exc.message}"
+                    message = exc.message
+                    code = exc.code
+                    if finish_reason == "length" and code == CHAPTER_EDIT_INVALID_JSON:
+                        #the json was fine, it just never got to finish, and saying so beats blaming the model for bad output
+                        code = CHAPTER_EDIT_TRUNCATED
+                        message = "the response hit the token limit before a single complete edit came through"
+                    error_event = repairable_error_event(code, message, is_repair)
+                    error_text = f"{code}: {message}"
                     edit_batch = None
 
             with deps.get_db() as conn:
@@ -2065,6 +2384,7 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                                 current_content,
                                 edit_batch,
                                 baseRevision=base_revision,
+                                partial=True,
                             )
                             nextContent = operation_result["content"]
                             result = conn.execute(
@@ -2090,12 +2410,30 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                                     "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
                                     (chapter_id, story_id),
                                 ).fetchone()
+                                rejected_edits = operation_result.get("rejected") or []
+                                applied_count = len(operation_result["edits"])
+                                #a run cut off at the token limit lost whatever it had not written yet, and that work is invisible here: it never became an edit we could reject, so truncation has to count as incomplete on its own
+                                incomplete = bool(rejected_edits) or edit_truncated
                                 chapter_update_event = {
                                     "chapter": row_to_chapter(savedChapter),
                                     "edits": operation_result["edits"],
+                                    "rejected": rejected_edits,
+                                    "truncated": edit_truncated,
+                                    #the applied edits are committed by now, so a repair is a fresh run on top of them and can never take them back
+                                    "repairable": incomplete and not is_repair,
                                 }
+                                if rejected_edits:
+                                    error_text = (
+                                        f"partial: applied {applied_count} of "
+                                        f"{applied_count + len(rejected_edits)} edits"
+                                    )
+                                elif edit_truncated:
+                                    error_text = (
+                                        f"partial: applied {format_edit_count(applied_count)} "
+                                        "before the token limit"
+                                    )
                     except ChapterEditError as exc:
-                        error_event = {"code": exc.code, "message": exc.message}
+                        error_event = repairable_error_event(exc.code, exc.message, is_repair)
                         error_text = f"{exc.code}: {exc.message}"
                 elif stream_completed and content and generation_mode != "edit":
                     operation_result = append_chapter_text(current_content, content)
@@ -2190,10 +2528,28 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                         current_content, chapter_update_event["chapter"]["content"]
                     )
                     #whole run rides here including any thinking tokens, the thought for line stays cost free on purpose
+                    skipped = chapter_update_event.get("rejected") or []
+                    applied_count = len(chapter_update_event.get("edits") or [])
+                    if skipped:
+                        label = f"{model_label} applied {applied_count} of {applied_count + len(skipped)} edits"
+                        detail = "\n".join(
+                            f"skipped edit {item['index'] + 1}: {item['message']}" for item in skipped
+                        )
+                    elif chapter_update_event.get("truncated"):
+                        label = (
+                            f"{model_label} applied {format_edit_count(applied_count)} "
+                            "before the token limit"
+                        )
+                        detail = "the response was cut off, so any edits it had not written yet are missing"
+                    else:
+                        label = f"{model_label} wrote for {format_duration(duration_ms)}"
+                        detail = ""
+
                     yield emit(
                         "history",
                         save_history(
-                            f"{model_label} wrote for {format_duration(duration_ms)}",
+                            label,
+                            detail=detail,
                             kind="write",
                             words_added=written_added,
                             words_removed=written_removed,

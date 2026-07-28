@@ -172,7 +172,7 @@ class StoryApiTest(unittest.TestCase):
         reusedPosition = next_brainstorm_root_position(secondNodes, secondEdges, 3)
         self.assertEqual(reusedPosition, (0.0, 180.0))
 
-    def streamChapterGeneration(self, story, chapter, output, revision=None, mode="edit", runId="run-test", complete=True, lorebookUpdates=None):
+    def streamChapterGeneration(self, story, chapter, output, revision=None, mode="edit", runId="run-test", complete=True, lorebookUpdates=None, repairContext=None):
         chunks = output if isinstance(output, list) else [output]
         requestBody = {}
         lorebookCalls = []
@@ -230,6 +230,7 @@ class StoryApiTest(unittest.TestCase):
                     "write_generation_mode": mode,
                     "chapter_revision": revision if revision is not None else chapter["revision"],
                     "generation_run_id": runId,
+                    "repair_context": repairContext,
                 },
             )
         #hung off self so the ten existing two-value call sites keep working
@@ -1261,12 +1262,130 @@ class StoryApiTest(unittest.TestCase):
         self.assertEqual(persisted["revision"], 1)
         self.assertEqual(persisted["content"], updateEvent["value"]["chapter"]["content"])
 
+    def test_a_partly_bad_batch_commits_the_good_edits_and_offers_a_repair(self):
+        story = self.client.post("/api/stories", json={"title": "Partial Edit"}).json()["story"]
+        chapter = self.client.post(
+            f"/api/stories/{story['id']}/chapters",
+            json={"title": "Opening", "content": "first line\n\nsecond line\n\nthird line"},
+        ).json()["chapter"]
+        batch = json.dumps({
+            "chapterRevision": chapter["revision"],
+            "edits": [
+                {
+                    "operation": "replaceBlock",
+                    "blockId": "p_001",
+                    "anchorText": "first line",
+                    "newText": "first rewritten",
+                },
+                {
+                    "operation": "replaceBlock",
+                    "blockId": "p_002",
+                    "anchorText": "a line that is nowhere in this chapter",
+                    "newText": "never lands",
+                },
+            ],
+        })
+
+        response, _ = self.streamChapterGeneration(story, chapter, batch)
+
+        events = [json.loads(line) for line in response.text.splitlines() if line]
+        updateEvent = next(event for event in events if event["type"] == "chapter_updated")
+        self.assertEqual(
+            updateEvent["value"]["chapter"]["content"],
+            "first rewritten\n\nsecond line\n\nthird line",
+        )
+        self.assertEqual(len(updateEvent["value"]["edits"]), 1)
+        self.assertEqual(len(updateEvent["value"]["rejected"]), 1)
+        self.assertTrue(updateEvent["value"]["repairable"])
+        self.assertNotIn("never lands", updateEvent["value"]["chapter"]["content"])
+
+        #the good edit is committed before anyone is asked about a retry, so declining can never cost it
+        persisted = self.client.get(f"/api/stories/{story['id']}").json()["chapters"][0]
+        self.assertEqual(persisted["revision"], 1)
+        self.assertEqual(persisted["content"], "first rewritten\n\nsecond line\n\nthird line")
+
+    def test_a_truncated_batch_reports_itself_even_though_nothing_was_rejected(self):
+        #found by hand against a real model: the complete edits applied silently and the run looked clean, because the edits it never got to write were never rejects to count
+        story = self.client.post("/api/stories", json={"title": "Truncated"}).json()["story"]
+        chapter = self.client.post(
+            f"/api/stories/{story['id']}/chapters",
+            json={"title": "Opening", "content": "first line\n\nsecond line\n\nthird line"},
+        ).json()["chapter"]
+        full = json.dumps({
+            "chapterRevision": chapter["revision"],
+            "edits": [
+                {
+                    "operation": "replaceBlock",
+                    "blockId": "p_001",
+                    "anchorText": "first line",
+                    "newText": "first rewritten",
+                },
+                {
+                    "operation": "replaceBlock",
+                    "blockId": "p_002",
+                    "anchorText": "second line",
+                    "newText": "second rewritten",
+                },
+            ],
+        })
+        cutOff = full[:full.rindex("second rewritten") + 6]
+
+        response, _ = self.streamChapterGeneration(story, chapter, cutOff)
+
+        events = [json.loads(line) for line in response.text.splitlines() if line]
+        updateEvent = next(event for event in events if event["type"] == "chapter_updated")
+        self.assertEqual(updateEvent["value"]["rejected"], [])
+        self.assertTrue(updateEvent["value"]["truncated"])
+        self.assertTrue(updateEvent["value"]["repairable"])
+        self.assertEqual(len(updateEvent["value"]["edits"]), 1)
+        self.assertEqual(
+            updateEvent["value"]["chapter"]["content"],
+            "first rewritten\n\nsecond line\n\nthird line",
+        )
+
+        historyEvents = [event for event in events if event["type"] == "history"]
+        historyLabels = [event["value"]["label"] for event in historyEvents]
+        self.assertTrue(any(label.endswith("applied 1 edit before the token limit") for label in historyLabels))
+        self.assertFalse(any("1 edits" in label for label in historyLabels))
+
+    def test_a_repair_run_sends_the_failure_back_and_never_offers_another(self):
+        story = self.client.post("/api/stories", json={"title": "Repair"}).json()["story"]
+        chapter = self.client.post(
+            f"/api/stories/{story['id']}/chapters",
+            json={"title": "Opening", "content": "first line\n\nsecond line"},
+        ).json()["chapter"]
+        repairContext = {
+            "previous_output": "{\"operation\": \"appendToChapter\"}",
+            "errors": ["missing fields: newText"],
+            "failed_edits": [{"operation": "appendToChapter"}],
+            "applied_count": 1,
+        }
+
+        response, requestBody = self.streamChapterGeneration(
+            story,
+            chapter,
+            "still not json",
+            repairContext=repairContext,
+        )
+
+        prompts = "\n".join(message["content"] for message in requestBody["messages"])
+        self.assertIn("could not be applied", prompts)
+        self.assertIn("missing fields: newText", prompts)
+        self.assertIn("1 of your edits did apply", prompts)
+        self.assertIn(repairContext["previous_output"], prompts)
+
+        events = [json.loads(line) for line in response.text.splitlines() if line]
+        errorEvent = next(event for event in events if event["type"] == "error")
+        #a repair that fails again is the end of the road, otherwise this loops and quietly bills someone
+        self.assertFalse(errorEvent["value"]["repairable"])
+
     def test_invalid_edit_output_is_stored_and_does_not_mutate_chapter(self):
         story = self.client.post("/api/stories", json={"title": "Invalid Edit"}).json()["story"]
         chapter = self.client.post(
             f"/api/stories/{story['id']}/chapters",
             json={"title": "Opening", "content": "unchanged"},
         ).json()["chapter"]
+        #the prose wrapper is no longer fatal, this one dies on the genuinely missing newText instead
         rawOutput = "here is the edit: {\"operation\": \"appendToChapter\"}"
 
         response, _ = self.streamChapterGeneration(story, chapter, rawOutput)
@@ -1275,7 +1394,8 @@ class StoryApiTest(unittest.TestCase):
         self.assertNotIn("chapter_updated", [event["type"] for event in events])
         self.assertNotIn("lorebook", [event["type"] for event in events])
         errorEvents = [event for event in events if event["type"] == "error"]
-        self.assertEqual(errorEvents[0]["value"]["code"], "chapter_edit_invalid_json")
+        self.assertEqual(errorEvents[0]["value"]["code"], "chapter_edit_invalid_operation")
+        self.assertTrue(errorEvents[0]["value"]["repairable"])
         persisted = self.client.get(f"/api/stories/{story['id']}").json()["chapters"][0]
         self.assertEqual(persisted["content"], "unchanged")
         self.assertEqual(persisted["revision"], 0)
@@ -1285,7 +1405,7 @@ class StoryApiTest(unittest.TestCase):
                 (chapter["id"],),
             ).fetchone()
         self.assertEqual(generation["generated_text"], rawOutput)
-        self.assertTrue(generation["error"].startswith("chapter_edit_invalid_json"))
+        self.assertTrue(generation["error"].startswith("chapter_edit_invalid_operation"))
 
     def test_incomplete_stream_never_applies_partial_chapter_text(self):
         story = self.client.post("/api/stories", json={"title": "Incomplete Stream"}).json()["story"]

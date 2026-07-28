@@ -54,10 +54,13 @@ import {
 
 const ChapterCanvasEditor = lazy(() => import("./writing/ChapterCanvasEditor.jsx"));
 import {
+  chapterAppliedEditSummary,
   chapterFromUpdateEvent,
   chapterRunTargetsOpenChapter,
+  chapterGenerationErrorIsRepairable,
   chapterGenerationErrorMessage,
   chapterGenerationEventMatchesRun,
+  chapterRepairContext,
   chapterUpdateMatchesRun,
 } from "./writing/chapterGenerationEvents.js";
 import TourOverlay from "./tour/TourOverlay.jsx";
@@ -387,6 +390,7 @@ const storyApi = {
     generationMode,
     chapterRevision,
     generationRunId,
+    repairContext,
     onEvent,
     signal,
   }) {
@@ -402,6 +406,7 @@ const storyApi = {
           write_generation_mode: generationMode,
           chapter_revision: chapterRevision,
           generation_run_id: generationRunId,
+          repair_context: repairContext || null,
           message: prompt,
         }),
       },
@@ -2711,7 +2716,8 @@ function StoryWorkspace({
     canvas.scrollTop = Math.min(Math.max(savedScrollTop, 0), maxScroll);
 
     return undefined;
-  }, [activeChapterId, activeStoryId, canvasScrollPosition, generationStatus, workspaceView]);
+    //generationStatus is read above but deliberately not a dependency: re-running the moment a run ends restores the offset we remembered before the last paragraph landed, and that backward jump reads as a scroll upward and kills auto follow
+  }, [activeChapterId, activeStoryId, canvasScrollPosition, workspaceView]);
 
   const handleCanvasScroll = useCallback(() => {
     markCanvasScroll();
@@ -5624,11 +5630,17 @@ function ConfirmModal({ dialog, onClose }) {
             disabled={busy}
             onClick={confirm}
             className={cx(
-              "h-10 rounded-full bg-red-400 px-4 text-sm font-semibold text-zinc-950 hover:bg-red-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-200/60 disabled:cursor-not-allowed disabled:opacity-55",
+              "h-10 rounded-full px-4 text-sm font-semibold text-zinc-950 focus:outline-none disabled:cursor-not-allowed disabled:opacity-55",
+              //not every confirm is a delete, a retry styled blood red reads like it is about to eat your chapter
+              renderedDialog.tone === "neutral"
+                ? "bg-zinc-100 hover:bg-white focus-visible:ring-2 focus-visible:ring-white/40"
+                : "bg-red-400 hover:bg-red-300 focus-visible:ring-2 focus-visible:ring-red-200/60",
               CONTROL_MOTION,
             )}
           >
-            {busy ? "Deleting" : renderedDialog.confirmLabel || "Delete"}
+            {busy
+              ? renderedDialog.busyLabel || "Deleting"
+              : renderedDialog.confirmLabel || "Delete"}
           </button>
         </div>
       </section>
@@ -5835,6 +5847,9 @@ function App() {
   const [tourSampleChatActive, setTourSampleChatActive] = useState(false);
   const abortRef = useRef(null);
   const writeGenerationRunRef = useRef(null);
+  //held until the run settles so the retry offer never lands mid stream
+  const pendingRepairRef = useRef(null);
+  const generateStoryChapterRef = useRef(null);
   const previousChatModeTimeoutRef = useRef(null);
   const routeRef = useRef(parseRoute());
   const initialRouteHandledRef = useRef(false);
@@ -7980,9 +7995,9 @@ function App() {
     );
   }
 
-  async function generateStoryChapter(text = prompt.trim()) {
+  async function generateStoryChapter(text = prompt.trim(), repairContext = null) {
     if (isStreaming || hasActiveWriteGeneration() || lorebookUpdating || !text || !activeStoryId || !activeChapterId) return;
-    const selectedGenerationMode = writeGenerationMode;
+    const selectedGenerationMode = repairContext ? "edit" : writeGenerationMode;
     const abortController = new AbortController();
     const run = {
       runId: crypto.randomUUID(),
@@ -7996,6 +8011,7 @@ function App() {
       navigationIntent: currentNavigationIntent(),
     };
     writeGenerationRunRef.current = run;
+    pendingRepairRef.current = null;
     abortRef.current = abortController;
     setIsStreaming(true);
     setStoryGenerationStatus("Preparing");
@@ -8047,7 +8063,7 @@ function App() {
       }
 
       run.status = "streaming";
-      setStoryGenerationStatus("Writing");
+      setStoryGenerationStatus(repairContext ? "Fixing the edit" : "Writing");
       await storyApi.generateChapter({
         storyId: run.storyId,
         chapterId: targetChapterId,
@@ -8056,6 +8072,7 @@ function App() {
         generationMode: run.generationMode,
         chapterRevision: targetChapterRevision,
         generationRunId: run.runId,
+        repairContext,
         signal: abortController.signal,
         onEvent: (event) => {
           if (!chapterGenerationEventMatchesRun(event, run)) return;
@@ -8121,6 +8138,25 @@ function App() {
               setChapterContent(nextContent);
               chapterContentRef.current = nextContent;
             }
+
+            //the applied edits are already committed above, so the offer below can only ever add to them
+            const skipped = Array.isArray(result.rejected) ? result.rejected : [];
+            const appliedCount = (result.edits || []).length;
+            if (skipped.length || result.truncated) {
+              //a truncated run has no rejected list to count, the edits it never got to write simply are not here
+              setStatus(skipped.length
+                ? `Applied ${appliedCount} of ${appliedCount + skipped.length} edits — ${skipped.length} skipped.`
+                : `Applied ${appliedCount} edits before the response hit the token limit.`);
+              if (result.repairable) {
+                pendingRepairRef.current = {
+                  prompt: text,
+                  context: chapterRepairContext(result, generatedText, appliedCount),
+                  appliedCount,
+                  skippedCount: skipped.length,
+                  truncated: Boolean(result.truncated),
+                };
+              }
+            }
             return;
           }
           if (event.type === "lorebook_start") {
@@ -8144,6 +8180,15 @@ function App() {
               terminalStatus = "conflicted";
             } else {
               setStatus(chapterGenerationErrorMessage(errorValue));
+              if (chapterGenerationErrorIsRepairable(errorValue)) {
+                pendingRepairRef.current = {
+                  prompt: text,
+                  context: chapterRepairContext(errorValue, generatedText, 0),
+                  appliedCount: 0,
+                  skippedCount: 0,
+                  truncated: errorValue?.code === "chapter_edit_truncated",
+                };
+              }
             }
           }
         },
@@ -8189,6 +8234,47 @@ function App() {
       if (writeGenerationRunRef.current === run) writeGenerationRunRef.current = null;
       setStoryGenerationStatus("");
     }
+
+    //asked only once the run has fully settled, otherwise the modal lands on top of a chapter that is still moving
+    const pendingRepair = pendingRepairRef.current;
+    pendingRepairRef.current = null;
+    if (pendingRepair && !repairContext) offerChapterEditRepair(pendingRepair);
+  }
+
+  generateStoryChapterRef.current = generateStoryChapter;
+
+  function offerChapterEditRepair(pendingRepair) {
+    const { appliedCount, skippedCount, truncated } = pendingRepair;
+    const partial = appliedCount > 0;
+
+    const costNote = "This runs the model again and costs tokens.";
+    const appliedSummary = chapterAppliedEditSummary(appliedCount, skippedCount);
+    //a truncated run has no skipped count to quote, the edits it never wrote are simply absent
+    const partialBody = skippedCount
+      ? `${appliedSummary}. `
+        + `Retry the ${skippedCount === 1 ? "one that failed" : `${skippedCount} that failed`}? ${costNote}`
+      : `${appliedSummary}, `
+        + `but the response hit the token limit, so anything it had not written yet is missing. `
+        + `Ask for the rest? ${costNote}`;
+
+    setConfirmDialog({
+      title: partial
+        ? (skippedCount ? "Some edits did not apply" : "The response was cut off")
+        : "That edit could not be applied",
+      tone: "neutral",
+      confirmLabel: "Try again",
+      busyLabel: "Retrying",
+      body: partial
+        ? partialBody
+        : (truncated
+          ? "The response hit the token limit before a complete edit came through. "
+          : "The chapter is unchanged. ")
+          + `Retry with the error sent back to the model? ${costNote}`,
+      //through the ref, otherwise this closure still sees the isStreaming that was true when the dialog was built and the retry quietly does nothing
+      onConfirm: () => {
+        void generateStoryChapterRef.current?.(pendingRepair.prompt, pendingRepair.context);
+      },
+    });
   }
 
   const landingMessage = isWritingMode ? writingOpeningMessage : openingMessage;

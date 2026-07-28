@@ -11,6 +11,37 @@ function chapterGenerationErrorMessage(value) {
   return "Story generation failed";
 }
 
+function chapterAppliedEditSummary(appliedCount, skippedCount = 0) {
+  const subject = skippedCount
+    ? `${appliedCount} of ${appliedCount + skippedCount} edits`
+    : `${appliedCount} ${appliedCount === 1 ? "edit" : "edits"}`;
+  const agreement = appliedCount === 1
+    ? "was applied and has been kept"
+    : "were applied and have been kept";
+
+  return `${subject} ${agreement}`;
+}
+
+//only the backend decides this, a repair run never comes back marked repairable so the offer can never loop
+function chapterGenerationErrorIsRepairable(value) {
+  return Boolean(value && typeof value === "object" && value.repairable);
+}
+
+//what the repair turn needs to describe the failure back to the model
+function chapterRepairContext(value, previousOutput, appliedCount = 0) {
+  const rejected = Array.isArray(value?.rejected) ? value.rejected : [];
+  const errors = rejected.length
+    ? rejected.map((item) => String(item?.message || item?.code || "an edit could not be applied"))
+    : [chapterGenerationErrorMessage(value)];
+
+  return {
+    previous_output: String(previousOutput || ""),
+    errors,
+    failed_edits: rejected.map((item) => item?.operation).filter(Boolean),
+    applied_count: appliedCount,
+  };
+}
+
 function chapterGenerationEventMatchesRun(event, run) {
   if (!event || !run) return false;
   return event.runId === run.runId
@@ -33,9 +64,12 @@ function chapterRunTargetsOpenChapter(run, openStoryId, openChapterId) {
 }
 
 export {
+  chapterAppliedEditSummary,
   chapterFromUpdateEvent,
   chapterRunTargetsOpenChapter,
+  chapterGenerationErrorIsRepairable,
   chapterGenerationErrorMessage,
   chapterGenerationEventMatchesRun,
+  chapterRepairContext,
   chapterUpdateMatchesRun,
 };

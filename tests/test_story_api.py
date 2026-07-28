@@ -19,7 +19,6 @@ from backend.writing import (
     lorebook_history_label,
     next_brainstorm_root_position,
     parse_brainstorm_ideas,
-    text_hash,
 )
 
 
@@ -839,7 +838,7 @@ class StoryApiTest(unittest.TestCase):
             "operation": "replaceBlock",
             "chapterRevision": chapter["revision"],
             "blockId": blocks[1]["blockId"],
-            "expectedTextHash": blocks[1]["textHash"],
+            "anchorText": blocks[1]["anchorText"],
             "newText": "second paragraph rewritten",
         }
 
@@ -1208,7 +1207,7 @@ class StoryApiTest(unittest.TestCase):
             "operation": "replaceBlock",
             "chapterRevision": chapter["revision"],
             "blockId": "p_001",
-            "expectedTextHash": text_hash("first paragraph"),
+            "anchorText": "first paragraph",
             "newText": "rewritten paragraph",
         })
 
@@ -1242,9 +1241,9 @@ class StoryApiTest(unittest.TestCase):
             "operation": "replaceBlockRange",
             "chapterRevision": chapter["revision"],
             "startBlockId": "p_002",
-            "startExpectedTextHash": text_hash("old one"),
+            "startAnchorText": "old one",
             "endBlockId": "p_003",
-            "endExpectedTextHash": text_hash("old two"),
+            "endAnchorText": "old two",
             "newText": "rewritten section",
         })
 
@@ -1336,7 +1335,7 @@ class StoryApiTest(unittest.TestCase):
             "operation": "replaceBlock",
             "chapterRevision": chapter["revision"],
             "blockId": "p_001",
-            "expectedTextHash": text_hash("different"),
+            "anchorText": "a totally different paragraph",
             "newText": "must not apply",
         })
         response, _ = self.streamChapterGeneration(story, chapter, changedTarget)

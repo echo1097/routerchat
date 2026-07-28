@@ -1,7 +1,6 @@
 import asyncio
 import difflib
 import json
-import hashlib
 import re
 import sqlite3
 import time
@@ -198,10 +197,6 @@ def word_diff_counts(before: str, after: str) -> tuple[int, int]:
                 wordsAdded += b2 - b1
 
     return wordsAdded, wordsRemoved
-
-
-def text_hash(value: str) -> str:
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
 def format_duration(ms: float) -> str:
@@ -402,6 +397,44 @@ def is_scene_break(value: str) -> bool:
     return bool(re.fullmatch(r"[*_\-]{3,}", text))
 
 
+#a model that retypes a quote instead of copying it will hand back straight quotes and single spaces, so both sides get flattened the same way
+ANCHOR_CHARACTER_FOLDS = {
+    "‘": "'",
+    "’": "'",
+    "‚": "'",
+    "“": '"',
+    "”": '"',
+    "„": '"',
+    "–": "-",
+    "—": "-",
+    "…": "...",
+    " ": " ",
+}
+
+#long enough that it cannot match every paragraph by accident, short enough to stay copyable
+ANCHOR_MINIMUM_LENGTH = 24
+
+#what we hand the model in the block map, generous enough to clear the minimum even after it trims a word
+ANCHOR_PROMPT_LENGTH = 80
+
+
+def normalize_anchor(value: str) -> str:
+    folded = "".join(ANCHOR_CHARACTER_FOLDS.get(character, character) for character in str(value or ""))
+    return re.sub(r"\s+", " ", folded).strip()
+
+
+def anchor_for_block(text: str) -> str:
+    #cut on a word boundary so the anchor we advertise is never half a word the model has to guess how to finish
+    if len(text) <= ANCHOR_PROMPT_LENGTH:
+        return text
+
+    head = text[:ANCHOR_PROMPT_LENGTH]
+    lastSpace = head.rfind(" ")
+    if lastSpace >= ANCHOR_MINIMUM_LENGTH:
+        head = head[:lastSpace]
+    return head.strip()
+
+
 def chapter_blocks(content: str) -> list[dict[str, Any]]:
     blocks: list[dict[str, Any]] = []
     paragraph_index = 0
@@ -429,10 +462,9 @@ def chapter_blocks(content: str) -> list[dict[str, Any]]:
                 "type": block_type,
                 "index": block_index,
                 "text": text,
-                "preview": text[:140],
+                "anchorText": anchor_for_block(text),
                 "startChar": match.start(),
                 "endChar": match.start() + len(match.group(0).rstrip()),
-                "textHash": text_hash(text),
             }
         )
 
@@ -440,14 +472,13 @@ def chapter_blocks(content: str) -> list[dict[str, Any]]:
 
 
 def block_map_for_prompt(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    #called expectedTextHash here because that is the field name the operation has to send back, showing it as textHash just taught the model the wrong name
+    #same key the operation has to send back, so copying the value straight across is always a valid answer
     return [
         {
             "blockId": block["blockId"],
             "type": block["type"],
             "index": block["index"],
-            "preview": block["preview"],
-            "expectedTextHash": block["textHash"],
+            "anchorText": block["anchorText"],
         }
         for block in blocks
     ]
@@ -457,10 +488,7 @@ def chapter_edit_operation_schema() -> dict[str, Any]:
     operationFields = {
         "operation": {"type": "string"},
         "blockId": {"type": "string", "minLength": 1},
-        "expectedTextHash": {
-            "type": "string",
-            "pattern": "^[0-9a-f]{64}$",
-        },
+        "anchorText": {"type": "string", "minLength": 1},
         "newText": {"type": "string", "minLength": 1},
     }
 
@@ -477,15 +505,9 @@ def chapter_edit_operation_schema() -> dict[str, Any]:
 
     rangeFields = {
         "startBlockId": {"type": "string", "minLength": 1},
-        "startExpectedTextHash": {
-            "type": "string",
-            "pattern": "^[0-9a-f]{64}$",
-        },
+        "startAnchorText": {"type": "string", "minLength": 1},
         "endBlockId": {"type": "string", "minLength": 1},
-        "endExpectedTextHash": {
-            "type": "string",
-            "pattern": "^[0-9a-f]{64}$",
-        },
+        "endAnchorText": {"type": "string", "minLength": 1},
     }
 
     return {
@@ -493,7 +515,7 @@ def chapter_edit_operation_schema() -> dict[str, Any]:
         "oneOf": [
             variant(
                 "replaceBlock",
-                ["operation", "blockId", "expectedTextHash", "newText"],
+                ["operation", "blockId", "anchorText", "newText"],
             ),
             {
                 "type": "object",
@@ -506,19 +528,19 @@ def chapter_edit_operation_schema() -> dict[str, Any]:
                 "required": [
                     "operation",
                     "startBlockId",
-                    "startExpectedTextHash",
+                    "startAnchorText",
                     "endBlockId",
-                    "endExpectedTextHash",
+                    "endAnchorText",
                     "newText",
                 ],
             },
             variant(
                 "insertBeforeBlock",
-                ["operation", "blockId", "expectedTextHash", "newText"],
+                ["operation", "blockId", "anchorText", "newText"],
             ),
             variant(
                 "insertAfterBlock",
-                ["operation", "blockId", "expectedTextHash", "newText"],
+                ["operation", "blockId", "anchorText", "newText"],
             ),
             variant("appendToChapter", ["operation", "newText"]),
         ],
@@ -614,17 +636,27 @@ def clean_insert_text(value: Any) -> str:
 
 #models shorten these constantly and losing a whole generation over a field nickname is a stupid way to die
 CHAPTER_EDIT_FIELD_ALIASES = {
-    "textHash": "expectedTextHash",
-    "hash": "expectedTextHash",
-    "startTextHash": "startExpectedTextHash",
-    "endTextHash": "endExpectedTextHash",
+    "anchor": "anchorText",
+    "startAnchor": "startAnchorText",
+    "endAnchor": "endAnchorText",
     "revision": "chapterRevision",
     "text": "newText",
+}
+
+#hashes are gone but a model that learned the old shape still sends them, and dying over a field we no longer read would be dumb
+CHAPTER_EDIT_IGNORED_FIELDS = {
+    "expectedTextHash",
+    "startExpectedTextHash",
+    "endExpectedTextHash",
+    "textHash",
+    "hash",
 }
 
 
 def normalize_chapter_operation_fields(operation: dict[str, Any]) -> dict[str, Any]:
     normalized = dict(operation)
+    for ignored in CHAPTER_EDIT_IGNORED_FIELDS:
+        normalized.pop(ignored, None)
     for alias, canonical in CHAPTER_EDIT_FIELD_ALIASES.items():
         if alias not in normalized:
             continue
@@ -666,13 +698,13 @@ def validate_chapter_operation(
         requiredFields.update(
             {
                 "startBlockId",
-                "startExpectedTextHash",
+                "startAnchorText",
                 "endBlockId",
-                "endExpectedTextHash",
+                "endAnchorText",
             }
         )
     elif operationType != "appendToChapter":
-        requiredFields.update({"blockId", "expectedTextHash"})
+        requiredFields.update({"blockId", "anchorText"})
     actualFields = set(operation)
     missingFields = requiredFields - actualFields
     extraFields = actualFields - requiredFields
@@ -709,27 +741,25 @@ def validate_chapter_operation(
 
     if operationType == "replaceBlockRange":
         targetFields = [
-            ("startBlockId", "startExpectedTextHash"),
-            ("endBlockId", "endExpectedTextHash"),
+            ("startBlockId", "startAnchorText"),
+            ("endBlockId", "endAnchorText"),
         ]
     else:
-        targetFields = [("blockId", "expectedTextHash")]
+        targetFields = [("blockId", "anchorText")]
 
     targetBlocks: list[dict[str, Any]] = []
-    for blockIdField, expectedHashField in targetFields:
+    for blockIdField, anchorField in targetFields:
         blockId = operation.get(blockIdField)
-        expectedTextHash = operation.get(expectedHashField)
+        anchorText = operation.get(anchorField)
         if not isinstance(blockId, str) or not blockId.strip():
             raise ChapterEditError(
                 CHAPTER_EDIT_INVALID_OPERATION,
                 f"{blockIdField} must be a non-empty string",
             )
-        if not isinstance(expectedTextHash, str) or not re.fullmatch(
-            r"[0-9a-f]{64}", expectedTextHash
-        ):
+        if not isinstance(anchorText, str) or not anchorText.strip():
             raise ChapterEditError(
                 CHAPTER_EDIT_INVALID_OPERATION,
-                f"{expectedHashField} must be a lowercase SHA-256 hex digest",
+                f"{anchorField} must be a non-empty string",
             )
 
         if blocks is not None:
@@ -740,10 +770,20 @@ def validate_chapter_operation(
                     CHAPTER_EDIT_TARGET_MISMATCH,
                     f"unknown block id: {blockId}",
                 )
-            if expectedTextHash != block["textHash"]:
+
+            normalizedAnchor = normalize_anchor(anchorText)
+            normalizedBlock = normalize_anchor(block["text"])
+            #a two word anchor would match half the chapter, so short blocks have to be quoted whole
+            if len(normalizedAnchor) < min(ANCHOR_MINIMUM_LENGTH, len(normalizedBlock)):
+                raise ChapterEditError(
+                    CHAPTER_EDIT_INVALID_OPERATION,
+                    f"{anchorField} must quote at least "
+                    f"{min(ANCHOR_MINIMUM_LENGTH, len(normalizedBlock))} characters of {blockId}",
+                )
+            if normalizedAnchor not in normalizedBlock:
                 raise ChapterEditError(
                     CHAPTER_EDIT_TARGET_MISMATCH,
-                    f"text hash mismatch for {blockId}",
+                    f"anchorText does not match {blockId}",
                 )
             targetBlocks.append(block)
 
@@ -1390,10 +1430,10 @@ def build_story_messages(
                     "edits. Every block you touch must belong to exactly one edit. "
                     "Supported operations are replaceBlock, replaceBlockRange, insertBeforeBlock, "
                     "insertAfterBlock, and appendToChapter. Every edit includes operation and "
-                    "non-empty newText. Targeted single-block operations include blockId and the "
-                    "exact lowercase SHA-256 expectedTextHash from the block map. "
+                    "non-empty newText. Targeted single-block operations include blockId and "
+                    "anchorText, copied exactly from that block's anchorText in the block map. "
                     "replaceBlockRange replaces an inclusive contiguous range and includes "
-                    "startBlockId, startExpectedTextHash, endBlockId, and endExpectedTextHash; "
+                    "startBlockId, startAnchorText, endBlockId, and endAnchorText; "
                     "use it only when every block in that range is genuinely being rewritten. "
                     "Do not use appendToChapter unless the user explicitly asks to continue at "
                     "the end. Replacement operations delete the targeted text first and insert "

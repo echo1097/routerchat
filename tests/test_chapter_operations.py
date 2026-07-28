@@ -14,7 +14,6 @@ from backend.writing import (
     chapter_blocks,
     parse_chapter_edit_batch,
     parse_chapter_operation,
-    text_hash,
     word_diff_counts,
 )
 
@@ -68,7 +67,7 @@ class ChapterEditBatchTest(unittest.TestCase):
         return {
             "operation": "replaceBlock",
             "blockId": block["blockId"],
-            "expectedTextHash": block["textHash"],
+            "anchorText": block["anchorText"],
             "newText": newText,
         }
 
@@ -110,7 +109,7 @@ class ChapterEditBatchTest(unittest.TestCase):
         insert = {
             "operation": "insertAfterBlock",
             "blockId": self.blocks[0]["blockId"],
-            "expectedTextHash": self.blocks[0]["textHash"],
+            "anchorText": self.blocks[0]["anchorText"],
             "newText": "inserted line",
         }
         result = apply_chapter_edits(
@@ -135,9 +134,9 @@ class ChapterEditBatchTest(unittest.TestCase):
         spanning = {
             "operation": "replaceBlockRange",
             "startBlockId": self.blocks[0]["blockId"],
-            "startExpectedTextHash": self.blocks[0]["textHash"],
+            "startAnchorText": self.blocks[0]["anchorText"],
             "endBlockId": self.blocks[2]["blockId"],
-            "endExpectedTextHash": self.blocks[2]["textHash"],
+            "endAnchorText": self.blocks[2]["anchorText"],
             "newText": "swept",
         }
         self.assertErrorCode(
@@ -180,7 +179,7 @@ class ChapterEditBatchTest(unittest.TestCase):
             "operation": "replaceBlock",
             "chapterRevision": 7,
             "blockId": self.blocks[0]["blockId"],
-            "expectedTextHash": self.blocks[0]["textHash"],
+            "anchorText": self.blocks[0]["anchorText"],
             "newText": "one EDITED",
         })
         batch = parse_chapter_edit_batch(raw)
@@ -226,49 +225,68 @@ class ChapterOperationTest(unittest.TestCase):
             [block["blockId"] for block in self.blocks],
             ["p_001", "s_001", "p_002"],
         )
-        self.assertEqual(self.firstBlock["textHash"], text_hash("first paragraph"))
+        self.assertEqual(self.firstBlock["anchorText"], "first paragraph")
         promptBlock = block_map_for_prompt(self.blocks)[0]
         #the map has to advertise the same field name the operation must send back
         self.assertEqual(
             set(promptBlock),
-            {"blockId", "type", "index", "preview", "expectedTextHash"},
+            {"blockId", "type", "index", "anchorText"},
         )
-        self.assertEqual(promptBlock["expectedTextHash"], self.firstBlock["textHash"])
+        self.assertEqual(promptBlock["anchorText"], self.firstBlock["anchorText"])
 
-    def test_hash_field_nickname_is_accepted_instead_of_being_discarded(self):
+    def test_a_long_block_gets_a_word_trimmed_anchor(self):
+        #the advertised anchor has to be copyable, so it never ends halfway through a word
+        content = " ".join(["sentence"] * 40)
+        block = chapter_blocks(content)[0]
+        self.assertLess(len(block["anchorText"]), len(content))
+        self.assertTrue(content.startswith(block["anchorText"]))
+        self.assertFalse(block["anchorText"].endswith("sent"))
+
+        operation = self.operation(
+            "replaceBlock",
+            blockId=block["blockId"],
+            anchorText=block["anchorText"],
+            newText="rewritten",
+        )
+        self.assertEqual(
+            apply_chapter_operation(content, operation, baseRevision=7)["content"],
+            "rewritten",
+        )
+
+    def test_anchor_field_nickname_is_accepted_instead_of_being_discarded(self):
         #exactly what qwen sent: right block, right revision, good prose, one shortened field name
         operation = {
             "operation": "replaceBlock",
             "chapterRevision": 7,
             "blockId": self.firstBlock["blockId"],
-            "textHash": self.firstBlock["textHash"],
+            "anchor": self.firstBlock["anchorText"],
             "newText": "rewritten paragraph",
         }
         result = apply_chapter_operation(self.content, operation, baseRevision=7)
         self.assertEqual(result["content"], "rewritten paragraph\n\n***\n\nlast paragraph")
 
-    def test_range_hash_nicknames_are_accepted(self):
+    def test_range_anchor_nicknames_are_accepted(self):
         content = "before\n\nreplace one\n\nreplace two"
         blocks = chapter_blocks(content)
         operation = {
             "operation": "replaceBlockRange",
             "chapterRevision": 7,
             "startBlockId": blocks[1]["blockId"],
-            "startTextHash": blocks[1]["textHash"],
+            "startAnchor": blocks[1]["anchorText"],
             "endBlockId": blocks[2]["blockId"],
-            "endTextHash": blocks[2]["textHash"],
+            "endAnchor": blocks[2]["anchorText"],
             "newText": "merged",
         }
         result = apply_chapter_operation(content, operation, baseRevision=7)
         self.assertEqual(result["content"], "before\n\nmerged")
 
-    def test_a_wrong_hash_still_fails_under_the_nickname(self):
+    def test_a_wrong_anchor_still_fails_under_the_nickname(self):
         #tolerating the nickname must not tolerate a bad value
         operation = {
             "operation": "replaceBlock",
             "chapterRevision": 7,
             "blockId": self.firstBlock["blockId"],
-            "textHash": text_hash("something else entirely"),
+            "anchor": "something else entirely, from a different chapter",
             "newText": "rewritten paragraph",
         }
         self.assertErrorCode(
@@ -281,18 +299,59 @@ class ChapterOperationTest(unittest.TestCase):
             "operation": "replaceBlock",
             "chapterRevision": 7,
             "blockId": self.firstBlock["blockId"],
-            "expectedTextHash": self.firstBlock["textHash"],
-            "textHash": text_hash("stale nonsense"),
+            "anchorText": self.firstBlock["anchorText"],
+            "anchor": "stale nonsense from an older draft entirely",
             "newText": "rewritten paragraph",
         }
         result = apply_chapter_operation(self.content, operation, baseRevision=7)
         self.assertEqual(result["content"], "rewritten paragraph\n\n***\n\nlast paragraph")
 
+    def test_a_leftover_hash_field_is_ignored_rather_than_fatal(self):
+        #the hashes are gone but a model that learned the old shape should not lose a generation over it
+        operation = {
+            "operation": "replaceBlock",
+            "chapterRevision": 7,
+            "blockId": self.firstBlock["blockId"],
+            "anchorText": self.firstBlock["anchorText"],
+            "expectedTextHash": "0" * 64,
+            "newText": "rewritten paragraph",
+        }
+        result = apply_chapter_operation(self.content, operation, baseRevision=7)
+        self.assertEqual(result["content"], "rewritten paragraph\n\n***\n\nlast paragraph")
+
+    def test_a_retyped_anchor_still_matches(self):
+        #models reflow whitespace and straighten quotes when they retype instead of copying, none of that is a real mismatch
+        content = "she said “not tonight” and turned away—slowly\n\nlast paragraph"
+        blocks = chapter_blocks(content)
+        operation = self.operation(
+            "replaceBlock",
+            blockId=blocks[0]["blockId"],
+            anchorText='she said  "not tonight"  and turned away-slowly',
+            newText="rewritten",
+        )
+        result = apply_chapter_operation(content, operation, baseRevision=7)
+        self.assertEqual(result["content"], "rewritten\n\nlast paragraph")
+
+    def test_a_too_short_anchor_is_rejected_before_it_can_match_anything(self):
+        #"the" would match half the chapter, an anchor that weak is not a check at all
+        content = "the long opening paragraph that goes on for a while\n\nlast paragraph"
+        blocks = chapter_blocks(content)
+        operation = self.operation(
+            "replaceBlock",
+            blockId=blocks[0]["blockId"],
+            anchorText="the long",
+            newText="rewritten",
+        )
+        self.assertErrorCode(
+            lambda: apply_chapter_operation(content, operation, baseRevision=7),
+            CHAPTER_EDIT_INVALID_OPERATION,
+        )
+
     def test_replace_block(self):
         operation = self.operation(
             "replaceBlock",
             blockId=self.firstBlock["blockId"],
-            expectedTextHash=self.firstBlock["textHash"],
+            anchorText=self.firstBlock["anchorText"],
             newText="rewritten paragraph",
         )
         result = apply_chapter_operation(self.content, operation, baseRevision=7)
@@ -306,9 +365,9 @@ class ChapterOperationTest(unittest.TestCase):
         operation = self.operation(
             "replaceBlockRange",
             startBlockId=blocks[1]["blockId"],
-            startExpectedTextHash=blocks[1]["textHash"],
+            startAnchorText=blocks[1]["anchorText"],
             endBlockId=blocks[3]["blockId"],
-            endExpectedTextHash=blocks[3]["textHash"],
+            endAnchorText=blocks[3]["anchorText"],
             newText="rewritten middle",
         )
 
@@ -323,9 +382,9 @@ class ChapterOperationTest(unittest.TestCase):
         operation = self.operation(
             "replaceBlockRange",
             startBlockId=blocks[1]["blockId"],
-            startExpectedTextHash=blocks[1]["textHash"],
+            startAnchorText=blocks[1]["anchorText"],
             endBlockId=blocks[-1]["blockId"],
-            endExpectedTextHash=blocks[-1]["textHash"],
+            endAnchorText=blocks[-1]["anchorText"],
             newText="new ending",
         )
 
@@ -338,12 +397,12 @@ class ChapterOperationTest(unittest.TestCase):
         reversedRange = self.operation(
             "replaceBlockRange",
             startBlockId=blocks[2]["blockId"],
-            startExpectedTextHash=blocks[2]["textHash"],
+            startAnchorText=blocks[2]["anchorText"],
             endBlockId=blocks[0]["blockId"],
-            endExpectedTextHash=blocks[0]["textHash"],
+            endAnchorText=blocks[0]["anchorText"],
             newText="replacement",
         )
-        changedHash = {**reversedRange, "startExpectedTextHash": text_hash("changed")}
+        changedAnchor = {**reversedRange, "startAnchorText": "text that is nowhere in this chapter"}
         unknownBlock = {**reversedRange, "startBlockId": "p_999"}
 
         self.assertErrorCode(
@@ -351,7 +410,7 @@ class ChapterOperationTest(unittest.TestCase):
             CHAPTER_EDIT_TARGET_MISMATCH,
         )
         self.assertErrorCode(
-            lambda: apply_chapter_operation(self.content, changedHash, baseRevision=7),
+            lambda: apply_chapter_operation(self.content, changedAnchor, baseRevision=7),
             CHAPTER_EDIT_TARGET_MISMATCH,
         )
         self.assertErrorCode(
@@ -363,9 +422,9 @@ class ChapterOperationTest(unittest.TestCase):
         operation = self.operation(
             "replaceBlockRange",
             startBlockId="p_001",
-            startExpectedTextHash=text_hash("first paragraph"),
+            startAnchorText="first paragraph",
             endBlockId="p_002",
-            endExpectedTextHash=text_hash("last paragraph"),
+            endAnchorText="last paragraph",
             newText="replacement",
             extra=True,
         )
@@ -379,23 +438,23 @@ class ChapterOperationTest(unittest.TestCase):
         operation = self.operation(
             "replaceBlock",
             blockId=self.sceneBlock["blockId"],
-            expectedTextHash=self.sceneBlock["textHash"],
+            anchorText=self.sceneBlock["anchorText"],
             newText="a quiet turn",
         )
         result = apply_chapter_operation(self.content, operation, baseRevision=7)
         self.assertIn("first paragraph\n\na quiet turn\n\nlast paragraph", result["content"])
 
-    def test_insert_operations_use_target_hash(self):
+    def test_insert_operations_use_target_anchor(self):
         before = self.operation(
             "insertBeforeBlock",
             blockId=self.lastBlock["blockId"],
-            expectedTextHash=self.lastBlock["textHash"],
+            anchorText=self.lastBlock["anchorText"],
             newText="new setup\n\nsecond setup",
         )
         after = self.operation(
             "insertAfterBlock",
             blockId=self.firstBlock["blockId"],
-            expectedTextHash=self.firstBlock["textHash"],
+            anchorText=self.firstBlock["anchorText"],
             newText="new follow-up",
         )
         self.assertIn("second setup\n\nlast paragraph", apply_chapter_operation(self.content, before)["content"])
@@ -439,27 +498,27 @@ class ChapterOperationTest(unittest.TestCase):
             )
 
     def test_target_validation_rejects_missing_and_changed_targets(self):
-        missingHash = self.operation(
+        missingAnchor = self.operation(
             "replaceBlock",
             blockId=self.firstBlock["blockId"],
-            expectedTextHash="",
+            anchorText="",
             newText="replacement",
         )
-        changedHash = self.operation(
+        changedAnchor = self.operation(
             "replaceBlock",
             blockId=self.firstBlock["blockId"],
-            expectedTextHash=text_hash("different"),
+            anchorText="a different paragraph altogether",
             newText="replacement",
         )
         unknownBlock = self.operation(
             "replaceBlock",
             blockId="p_999",
-            expectedTextHash=text_hash("different"),
+            anchorText="a different paragraph altogether",
             newText="replacement",
         )
-        self.assertErrorCode(lambda: parse_chapter_operation(json.dumps(missingHash)), CHAPTER_EDIT_INVALID_OPERATION)
+        self.assertErrorCode(lambda: parse_chapter_operation(json.dumps(missingAnchor)), CHAPTER_EDIT_INVALID_OPERATION)
         self.assertErrorCode(
-            lambda: apply_chapter_operation(self.content, changedHash, baseRevision=7),
+            lambda: apply_chapter_operation(self.content, changedAnchor, baseRevision=7),
             CHAPTER_EDIT_TARGET_MISMATCH,
         )
         self.assertErrorCode(

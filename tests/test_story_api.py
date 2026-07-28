@@ -410,6 +410,124 @@ class StoryApiTest(unittest.TestCase):
         self.assertEqual(payload["applied"][0]["wordsRemoved"], 0)
         self.assertEqual(payload["history"][0]["words_added"], 3)
 
+    def seedKael(self, story):
+        self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={
+                "name": "Kael",
+                "category": "character",
+                "description": "a knight of the north",
+                "aliases": ["The Knight", "Kae"],
+                "tags": ["protagonist", "noble"],
+                "metadata": {"affiliation": "Northwatch"},
+            },
+        )
+
+    def test_a_description_only_update_keeps_aliases_tags_and_metadata(self):
+        story, chapter = self.storyWithChapter("Field Merge", "Kael lost his sword.")
+        self.seedKael(story)
+
+        #the shape the model actually sends, description only, no mention of the other fields
+        response, _ = self.callLorebookUpdate(
+            story,
+            chapter,
+            updates=[
+                {
+                    "action": "update",
+                    "name": "Kael",
+                    "category": "character",
+                    "description": "a knight of the north who lost his sword",
+                }
+            ],
+        )
+
+        self.assertEqual([update["action"] for update in response.json()["applied"]], ["update"])
+        entry = [e for e in response.json()["entries"] if e["name"] == "Kael"][0]
+        self.assertEqual(entry["description"], "a knight of the north who lost his sword")
+        #silence about a field is not permission to erase it
+        self.assertEqual(entry["aliases"], ["The Knight", "Kae"])
+        self.assertEqual(entry["tags"], ["protagonist", "noble"])
+        self.assertEqual(entry["metadata"], {"affiliation": "Northwatch"})
+
+    def test_null_or_malformed_fields_are_treated_as_unmentioned(self):
+        story, chapter = self.storyWithChapter("Field Merge Null", "Kael lost his sword.")
+        self.seedKael(story)
+
+        self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={"name": "Ignore", "category": "note", "description": "filler"},
+        )
+        response, _ = self.callLorebookUpdate(
+            story,
+            chapter,
+            updates=[
+                {
+                    "action": "update",
+                    "name": "Kael",
+                    "category": "character",
+                    "description": "a knight of the north who lost his sword",
+                    "aliases": None,
+                    "tags": "protagonist",
+                    "metadata": None,
+                }
+            ],
+        )
+
+        entry = [e for e in response.json()["entries"] if e["name"] == "Kael"][0]
+        self.assertEqual(entry["aliases"], ["The Knight", "Kae"])
+        self.assertEqual(entry["tags"], ["protagonist", "noble"])
+        self.assertEqual(entry["metadata"], {"affiliation": "Northwatch"})
+
+    def test_empty_lists_are_no_opinion_not_a_request_to_wipe(self):
+        story, chapter = self.storyWithChapter("Field Merge Empty", "Kael lost his sword.")
+        self.seedKael(story)
+
+        #this is the real shape models send, the system prompt hands them a template with aliases:[] tags:[] metadata:{} and they echo it back every time
+        response, _ = self.callLorebookUpdate(
+            story,
+            chapter,
+            updates=[
+                {
+                    "action": "update",
+                    "name": "Kael",
+                    "category": "character",
+                    "description": "a knight of the north who lost his sword",
+                    "aliases": [],
+                    "tags": [],
+                    "metadata": {},
+                }
+            ],
+        )
+
+        entry = [e for e in response.json()["entries"] if e["name"] == "Kael"][0]
+        self.assertEqual(entry["description"], "a knight of the north who lost his sword")
+        self.assertEqual(entry["aliases"], ["The Knight", "Kae"])
+        self.assertEqual(entry["tags"], ["protagonist", "noble"])
+        self.assertEqual(entry["metadata"], {"affiliation": "Northwatch"})
+
+    def test_a_non_empty_list_still_replaces_the_field(self):
+        story, chapter = self.storyWithChapter("Field Merge Replace", "They call Kael the Grey now.")
+        self.seedKael(story)
+
+        response, _ = self.callLorebookUpdate(
+            story,
+            chapter,
+            updates=[
+                {
+                    "action": "update",
+                    "name": "Kael",
+                    "category": "character",
+                    "description": "a knight of the north",
+                    "aliases": ["The Grey"],
+                }
+            ],
+        )
+
+        entry = [e for e in response.json()["entries"] if e["name"] == "Kael"][0]
+        #a real value is a real instruction, only emptiness is ignored
+        self.assertEqual(entry["aliases"], ["The Grey"])
+        self.assertEqual(entry["tags"], ["protagonist", "noble"])
+
     def test_lorebook_update_that_changes_nothing_is_not_recorded(self):
         story, chapter = self.storyWithChapter("No Op", "Kael rode north.")
         self.client.post(

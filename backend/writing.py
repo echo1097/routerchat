@@ -1355,9 +1355,29 @@ def apply_lorebook_updates(
 
         if action == "update" and existing:
             next_description = description or existing["description"]
+            #empty means no opinion, not "wipe it". the system prompt hands the model a template containing aliases:[] tags:[] metadata:{} so it echoes those back on every single update whether it meant anything by them or not
+            next_aliases = sanitize_lorebook_aliases(
+                category,
+                update["aliases"]
+                if isinstance(update.get("aliases"), list) and update["aliases"]
+                else json_list(existing["aliases_json"]),
+                name,
+            )
+            next_tags = (
+                update["tags"]
+                if isinstance(update.get("tags"), list) and update["tags"]
+                else json_list(existing["tags_json"])
+            )
+            next_metadata = sanitize_lorebook_metadata(
+                category,
+                update["metadata"]
+                if isinstance(update.get("metadata"), dict) and update["metadata"]
+                else json_dict(existing["metadata_json"]),
+            )
+
             beforeSnapshot = lorebook_row_snapshot(existing)
             afterSnapshot = lorebook_entry_snapshot(
-                category, next_description, aliases, tags, metadata
+                category, next_description, next_aliases, next_tags, next_metadata
             )
             #an update that changes nothing is not an edit, dont write it and dont claim it in the history
             if beforeSnapshot == afterSnapshot:
@@ -1373,9 +1393,9 @@ def apply_lorebook_updates(
                 (
                     category,
                     next_description,
-                    json.dumps(aliases),
-                    json.dumps(tags),
-                    json.dumps(metadata),
+                    json.dumps(next_aliases),
+                    json.dumps(next_tags),
+                    json.dumps(next_metadata),
                     now,
                     existing["id"],
                 ),

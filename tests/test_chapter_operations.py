@@ -339,6 +339,51 @@ class ChapterEditBatchTest(unittest.TestCase):
             )
 
 
+class SingleNewlineBlockGranularityTest(unittest.TestCase):
+    #prose pasted or imported without blank lines between paragraphs used to collapse into one giant block
+    def test_single_newline_paragraphs_do_not_collapse_into_one_block(self):
+        content = (
+            "first paragraph line\n"
+            "second paragraph line\n"
+            "third paragraph line"
+        )
+        blocks = chapter_blocks(content)
+        self.assertEqual(
+            [block["text"] for block in blocks],
+            ["first paragraph line", "second paragraph line", "third paragraph line"],
+        )
+
+    def test_editing_one_single_newline_block_leaves_its_neighbours_untouched(self):
+        content = (
+            "first paragraph line\n"
+            "second paragraph line\n"
+            "third paragraph line"
+        )
+        blocks = chapter_blocks(content)
+        edit = {
+            "operation": "replaceBlock",
+            "chapterRevision": 3,
+            "blockId": blocks[1]["blockId"],
+            "anchorText": blocks[1]["anchorText"],
+            "newText": "second paragraph line EDITED",
+        }
+        result = apply_chapter_edits(
+            content, {"chapterRevision": 3, "edits": [edit]}, baseRevision=3
+        )
+        self.assertEqual(
+            result["content"],
+            "first paragraph line\nsecond paragraph line EDITED\nthird paragraph line",
+        )
+
+    def test_scene_break_is_detected_across_single_newlines(self):
+        content = "before text here\n***\nafter text here"
+        blocks = chapter_blocks(content)
+        self.assertEqual(
+            [block["type"] for block in blocks],
+            ["paragraph", "sceneBreak", "paragraph"],
+        )
+
+
 class ChapterOperationTest(unittest.TestCase):
     def setUp(self):
         self.content = "first paragraph\n\n***\n\nlast paragraph"

@@ -461,7 +461,8 @@ def chapter_blocks(content: str) -> list[dict[str, Any]]:
     paragraph_index = 0
     scene_index = 0
 
-    for match in re.finditer(r"\S(?:.*?)(?=\n\s*\n|\Z)", content or "", re.DOTALL):
+    #dot stops at \n by default, so this is naturally one match per physical line, blank lines just fall through as separators
+    for match in re.finditer(r"\S.*", content or ""):
         text = match.group(0).strip()
         if not text:
             continue

@@ -62,6 +62,8 @@ import {
   chapterGenerationEventMatchesRun,
   chapterRepairContext,
   chapterUpdateMatchesRun,
+  nextEditPreview,
+  parseStreamingEditPreview,
 } from "./writing/chapterGenerationEvents.js";
 import TourOverlay from "./tour/TourOverlay.jsx";
 import { useTour } from "./tour/useTour.js";
@@ -2536,11 +2538,38 @@ function StoryRail({
   );
 }
 
-function WriteOperationStatus({ status, reasoning = "", reasoningStreaming = false, reasoningDurationMs = null }) {
+//turns an in flight edit operation into a human phrase instead of showing the raw operation/anchor json fields
+function editPreviewPhrase(operation, anchor) {
+  const snippet = anchor ? `“${anchor.length > 60 ? `${anchor.slice(0, 60)}…` : anchor}”` : "";
+  switch (operation) {
+    case "replaceBlock":
+      return snippet ? `Rewriting near ${snippet}` : "Rewriting a paragraph";
+    case "insertBeforeBlock":
+      return snippet ? `Inserting before ${snippet}` : "Inserting a paragraph";
+    case "insertAfterBlock":
+      return snippet ? `Inserting after ${snippet}` : "Inserting a paragraph";
+    case "replaceBlockRange":
+      return "Replacing a range";
+    case "appendToChapter":
+      return "Appending to the chapter";
+    default:
+      return "Writing an edit";
+  }
+}
+
+function WriteOperationStatus({
+  status,
+  reasoning = "",
+  reasoningStreaming = false,
+  reasoningDurationMs = null,
+  editPreview = null,
+}) {
   const [shownStatus, setShownStatus] = useState(status);
-  const [reasoningOpen, setReasoningOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const dismissedRef = useRef(false); //once you close it yourself we stop reopening it on you
   const statusRef = useRef(null);
   const reasoningScrollRef = useRef(null);
+  const editScrollRef = useRef(null);
   const popoverId = useId();
   const {
     markUserScroll: markReasoningScroll,
@@ -2550,6 +2579,14 @@ function WriteOperationStatus({ status, reasoning = "", reasoningStreaming = fal
     scrollToBottom: scrollReasoningToBottom,
     startFollowing: startReasoningFollowing,
   } = useRafScroller(reasoningScrollRef, 32);
+  const {
+    markUserScroll: markEditScroll,
+    markWheelIntent: markEditWheelIntent,
+    markTouchStart: markEditTouchStart,
+    markTouchMove: markEditTouchMove,
+    scrollToBottom: scrollEditToBottom,
+    startFollowing: startEditFollowing,
+  } = useRafScroller(editScrollRef, 32);
 
   useEffect(() => {
     const statusEl = statusRef.current;
@@ -2577,26 +2614,50 @@ function WriteOperationStatus({ status, reasoning = "", reasoningStreaming = fal
       ? `Thought for ${formatThoughtDuration(reasoningDurationMs)}`
       : "Thinking";
 
+  //cannot gate on operation alone, replaceBlockRange puts it last in the schema so its prose arrives first
+  const hasEditPreview = Boolean(editPreview && (editPreview.newText || editPreview.operation));
+  const editLabel = editPreview ? `Edit ${editPreview.editIndex + 1}` : "";
+  const editPhrase = editPreview ? editPreviewPhrase(editPreview.operation, editPreview.anchor) : "";
+  const editStreaming = Boolean(editPreview && !editPreview.newTextComplete);
+
+  const hasDetails = hasReasoning || hasEditPreview;
+
+  //the whole point of the edit preview is that you can watch it, so open the panel yourself the first time
+  //prose shows up, otherwise an edit run looks exactly like the old mute status label it was meant to replace
   useEffect(() => {
-    if (!reasoningOpen) return;
-    startReasoningFollowing();
-  }, [reasoningOpen, startReasoningFollowing]);
+    if (!hasEditPreview || dismissedRef.current) return;
+    setDetailsOpen(true);
+  }, [hasEditPreview]);
 
   useEffect(() => {
-    if (!reasoningOpen) return;
+    if (!detailsOpen) return;
+    startReasoningFollowing();
+    startEditFollowing();
+  }, [detailsOpen, startReasoningFollowing, startEditFollowing]);
+
+  useEffect(() => {
+    if (!detailsOpen) return;
     scrollReasoningToBottom();
-  }, [reasoning, reasoningOpen, scrollReasoningToBottom]);
+  }, [reasoning, detailsOpen, scrollReasoningToBottom]);
+
+  useEffect(() => {
+    if (!detailsOpen) return;
+    scrollEditToBottom();
+  }, [editPreview, detailsOpen, scrollEditToBottom]);
 
   return (
     <span className="write-operation-wrap">
       <span className="write-operation-status" aria-live="polite">
-        {hasReasoning ? (
+        {hasDetails ? (
           <button
             type="button"
-            onClick={() => setReasoningOpen((value) => !value)}
+            onClick={() => setDetailsOpen((value) => {
+              if (value) dismissedRef.current = true;
+              return !value;
+            })}
             className={cx("write-operation-thinking-toggle", CONTROL_MOTION)}
-            aria-label={reasoningOpen ? "Collapse thinking details" : "Expand thinking details"}
-            aria-expanded={reasoningOpen}
+            aria-label={detailsOpen ? "Collapse writing details" : "Expand writing details"}
+            aria-expanded={detailsOpen}
             aria-controls={popoverId}
           >
             <span
@@ -2611,7 +2672,7 @@ function WriteOperationStatus({ status, reasoning = "", reasoningStreaming = fal
               aria-hidden="true"
               className={cx(
                 "write-operation-thinking-chevron transition-transform duration-[var(--dropdown-open-dur)] ease-[var(--dropdown-ease)]",
-                !reasoningOpen && "-rotate-90",
+                !detailsOpen && "-rotate-90",
               )}
             />
           </button>
@@ -2625,37 +2686,68 @@ function WriteOperationStatus({ status, reasoning = "", reasoningStreaming = fal
           </span>
         )}
       </span>
-      {hasReasoning && (
+      {hasDetails && (
         <span
           id={popoverId}
           role="region"
-          aria-label="Thinking details"
-          aria-hidden={!reasoningOpen}
-          inert={reasoningOpen ? undefined : ""}
-          className={cx("t-dropdown write-thinking-popover", reasoningOpen && "is-open")}
+          aria-label="Writing details"
+          aria-hidden={!detailsOpen}
+          inert={detailsOpen ? undefined : ""}
+          className={cx("t-dropdown write-thinking-popover", detailsOpen && "is-open")}
           data-origin="top-right"
         >
-          <span className="write-thinking-popover-header">
-            <span className="write-thinking-popover-heading">
-              <span
-                className={cx("write-thinking-popover-title", reasoningStreaming && "t-shimmer")}
-                data-text={reasoningLabel}
-              >
-                {reasoningLabel}
+          {hasReasoning && (
+            <>
+              <span className="write-thinking-popover-header">
+                <span className="write-thinking-popover-heading">
+                  <span
+                    className={cx("write-thinking-popover-title", reasoningStreaming && "t-shimmer")}
+                    data-text={reasoningLabel}
+                  >
+                    {reasoningLabel}
+                  </span>
+                </span>
               </span>
-            </span>
-          </span>
-          <span
-            ref={reasoningScrollRef}
-            onScroll={markReasoningScroll}
-            onWheel={markReasoningWheelIntent}
-            onTouchStart={markReasoningTouchStart}
-            onTouchMove={markReasoningTouchMove}
-            className="write-thinking-popover-content"
-            data-testid="write-thinking-scroll"
-          >
-            <ThinkingContent>{reasoning}</ThinkingContent>
-          </span>
+              <span
+                ref={reasoningScrollRef}
+                onScroll={markReasoningScroll}
+                onWheel={markReasoningWheelIntent}
+                onTouchStart={markReasoningTouchStart}
+                onTouchMove={markReasoningTouchMove}
+                className="write-thinking-popover-content"
+                data-testid="write-thinking-scroll"
+              >
+                <ThinkingContent>{reasoning}</ThinkingContent>
+              </span>
+            </>
+          )}
+          {hasReasoning && hasEditPreview && <span className="write-thinking-popover-divider" />}
+          {hasEditPreview && (
+            <>
+              <span className="write-thinking-popover-header">
+                <span className="write-thinking-popover-heading">
+                  <span
+                    className={cx("write-thinking-popover-title", editStreaming && "t-shimmer")}
+                    data-text={editLabel}
+                  >
+                    {editLabel}
+                  </span>
+                  <span className="write-thinking-popover-subtitle">{editPhrase}</span>
+                </span>
+              </span>
+              <span
+                ref={editScrollRef}
+                onScroll={markEditScroll}
+                onWheel={markEditWheelIntent}
+                onTouchStart={markEditTouchStart}
+                onTouchMove={markEditTouchMove}
+                className="write-thinking-popover-content"
+                data-testid="write-edit-preview-scroll"
+              >
+                <ThinkingContent>{editPreview.newText}</ThinkingContent>
+              </span>
+            </>
+          )}
         </span>
       )}
     </span>
@@ -2675,6 +2767,7 @@ function StoryWorkspace({
   generationStatus,
   lorebookStatus,
   writeReasoning,
+  writeEditPreview,
   canvasScrollPosition,
   onOpenRail,
   onOpenLorebook,
@@ -2696,6 +2789,7 @@ function StoryWorkspace({
   //lorebook runs borrow the shimmer but not the thinking text, which is still sitting there from the last generation
   const writeStatus = generationStatus || lorebookStatus;
   const statusReasoning = generationStatus ? writeReasoning : null;
+  const statusEditPreview = generationStatus ? writeEditPreview : null;
   const {
     markUserScroll: markCanvasScroll,
     markWheelIntent: markCanvasWheelIntent,
@@ -2804,6 +2898,7 @@ function StoryWorkspace({
                     reasoning={statusReasoning?.text}
                     reasoningStreaming={statusReasoning?.streaming}
                     reasoningDurationMs={statusReasoning?.durationMs}
+                    editPreview={statusEditPreview}
                   />
                 ) : (
                   <span>{saveState || `${activeChapter.word_count || 0} words`}</span>
@@ -5806,6 +5901,7 @@ function App() {
   const [chapterSaveState, setChapterSaveState] = useState("");
   const [storyGenerationStatus, setStoryGenerationStatus] = useState("");
   const [writeReasoning, setWriteReasoning] = useState({ text: "", streaming: false, durationMs: null });
+  const [writeEditPreview, setWriteEditPreview] = useState(null);
   const [latestStoryGeneration, setLatestStoryGeneration] = useState(null);
   const [writeGenerationMode, setWriteGenerationMode] = useState("edit");
   const [writeHistoryEntries, setWriteHistoryEntries] = useState([]);
@@ -8016,6 +8112,7 @@ function App() {
     setIsStreaming(true);
     setStoryGenerationStatus("Preparing");
     setWriteReasoning({ text: "", streaming: false, durationMs: null });
+    setWriteEditPreview(null);
     writeReasoningStartedAtRef.current = null;
     writeReasoningStreamingRef.current = false;
     setStatus("");
@@ -8111,6 +8208,9 @@ function App() {
             if (run.generationMode === "new") {
               setChapterContent(generatedText);
               chapterContentRef.current = generatedText;
+            } else {
+              const preview = parseStreamingEditPreview(generatedText);
+              setWriteEditPreview((current) => nextEditPreview(current, preview));
             }
             return;
           }
@@ -8404,6 +8504,7 @@ function App() {
             generationStatus={storyGenerationStatus}
             lorebookStatus={lorebookUpdating ? "Updating Lorebook" : ""}
             writeReasoning={writeReasoning}
+            writeEditPreview={writeEditPreview}
             canvasScrollPosition={chapterCanvasScrollPosition(activeStoryId, activeChapterId)}
             onOpenRail={() => setRailOpen(true)}
             onOpenLorebook={() => {

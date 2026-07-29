@@ -63,6 +63,145 @@ function chapterRunTargetsOpenChapter(run, openStoryId, openChapterId) {
   return openStoryId === run.storyId && openChapterId === run.chapterId;
 }
 
+//pulls a closed "field": "value" out of a raw json fragment and decodes its escapes, only matches once the closing quote landed
+function decodeClosedJsonString(rawFragment, fieldName) {
+  const match = rawFragment.match(new RegExp(`"${fieldName}"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"`));
+  if (!match) return null;
+  try {
+    return JSON.parse(`"${match[1]}"`);
+  } catch {
+    return null;
+  }
+}
+
+//decodes however much of a json string value has arrived, the tail of a chunk can land mid escape sequence
+function decodePartialJsonString(rawValue, complete) {
+  let raw = rawValue;
+  if (!complete && raw.endsWith("\\")) raw = raw.slice(0, -1);
+
+  try {
+    return JSON.parse(`"${raw}"`);
+  } catch {
+    //shave the tail a char at a time until it decodes, a cut off \uXXXX needs more than one char off
+    let salvage = raw;
+    while (salvage.length) {
+      salvage = salvage.slice(0, -1);
+      try {
+        return JSON.parse(`"${salvage}"`);
+      } catch {
+        //keep shaving
+      }
+    }
+    return "";
+  }
+}
+
+//edit mode streams one json object of {chapterRevision, edits:[...]} so the prose the model is writing is
+//buried in newText, this walks the growing buffer the same brace and string aware way salvage_truncated_batch
+//does on the backend but also reports the still open edit rather than only the finished ones
+function parseStreamingEditPreview(rawText) {
+  const text = String(rawText || "");
+  const editsKey = text.indexOf('"edits"');
+  if (editsKey === -1) return { completedCount: 0, current: null };
+  const arrayStart = text.indexOf("[", editsKey);
+  if (arrayStart === -1) return { completedCount: 0, current: null };
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  let elementStart = null;
+  let completedCount = 0;
+
+  for (let index = arrayStart + 1; index < text.length; index += 1) {
+    const char = text[index];
+
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+    } else if (char === "{") {
+      if (depth === 0) elementStart = index;
+      depth += 1;
+    } else if (char === "}") {
+      depth -= 1;
+      if (depth === 0 && elementStart !== null) {
+        completedCount += 1;
+        elementStart = null;
+      }
+    } else if (char === "]" && depth === 0) {
+      elementStart = null;
+      break;
+    }
+  }
+
+  //an object still open at the end of the buffer is the edit being written right now
+  if (elementStart === null) return { completedCount, current: null };
+  const fragment = text.slice(elementStart);
+
+  const operation = decodeClosedJsonString(fragment, "operation") || "";
+  const anchor = ["anchorText", "blockId", "startAnchorText", "startBlockId"]
+    .map((field) => decodeClosedJsonString(fragment, field))
+    .find((value) => value) || "";
+
+  const newTextKey = fragment.match(/"newText"\s*:\s*"/);
+  if (!newTextKey) {
+    return { completedCount, current: { operation, anchor, newText: "", newTextComplete: false } };
+  }
+
+  let raw = "";
+  let complete = false;
+  let escapedChar = false;
+  for (let cursor = newTextKey.index + newTextKey[0].length; cursor < fragment.length; cursor += 1) {
+    const char = fragment[cursor];
+    if (escapedChar) {
+      raw += char;
+      escapedChar = false;
+      continue;
+    }
+    if (char === "\\") {
+      escapedChar = true;
+      raw += char;
+      continue;
+    }
+    if (char === '"') {
+      complete = true;
+      break;
+    }
+    raw += char;
+  }
+
+  return {
+    completedCount,
+    current: {
+      operation,
+      anchor,
+      newText: decodePartialJsonString(raw, complete),
+      newTextComplete: complete,
+    },
+  };
+}
+
+//folds a fresh parse into whatever is already on screen, an edit that has opened but not yet named itself
+//must not blank the panel or it tears down and rebuilds between every edit in the batch
+function nextEditPreview(current, parsed) {
+  const next = parsed && parsed.current;
+  if (!next || (!next.operation && !next.newText)) {
+    return current ? { ...current, newTextComplete: true } : null;
+  }
+  return {
+    editIndex: parsed.completedCount,
+    operation: next.operation,
+    anchor: next.anchor,
+    newText: next.newText,
+    newTextComplete: next.newTextComplete,
+  };
+}
+
 export {
   chapterAppliedEditSummary,
   chapterFromUpdateEvent,
@@ -72,4 +211,6 @@ export {
   chapterGenerationEventMatchesRun,
   chapterRepairContext,
   chapterUpdateMatchesRun,
+  nextEditPreview,
+  parseStreamingEditPreview,
 };

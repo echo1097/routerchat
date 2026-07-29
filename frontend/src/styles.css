@@ -1360,6 +1360,23 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 
+.write-thinking-popover-subtitle {
+  display: block;
+  overflow: hidden;
+  color: #71717a;
+  font-size: 0.75rem;
+  line-height: 1.125rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.write-thinking-popover-divider {
+  display: block;
+  height: 1px;
+  margin: 2px 10px 6px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .write-thinking-popover-content {
   display: block;
   max-height: min(360px, calc(100dvh - 176px));

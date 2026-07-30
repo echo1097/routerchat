@@ -814,6 +814,153 @@ test("remembers each chapter canvas position during the current app session", as
   await expect.poll(async () => (await canvasMetrics(page)).scrollTop).toBe(0);
 });
 
+test("confirms timeline repair, streams thinking, and keeps the dialog open until completion", async ({ page }) => {
+  const api = await installWriteApi(page, { controlledTimelineRepairStream: true });
+  await api.open();
+
+  await page.getByRole("button", { name: /Writing tools/ }).click();
+  await page.getByRole("menu").getByText("Lorebook", { exact: true }).click();
+  await page.getByRole("tab", { name: "Timeline", exact: true }).click();
+
+  const timeline = page.locator(".lorebook-timeline-canvas textarea");
+  await timeline.fill("- an unsaved timeline detail");
+  const saveButton = page.getByRole("button", { name: "Save timeline" });
+  const repairButton = page.getByRole("button", { name: "Repair timeline" });
+  const saveBox = await saveButton.boundingBox();
+  const repairBox = await repairButton.boundingBox();
+  expect(repairBox?.x).toBeGreaterThan(saveBox?.x || 0);
+  expect(Math.abs((repairBox?.width || 0) - (saveBox?.width || 0))).toBeLessThan(1);
+
+  await repairButton.click();
+  let dialog = page.getByRole("dialog", { name: "Repair timeline?" });
+  await expect(dialog).toContainText("every chapter not hidden from context");
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toBeHidden();
+
+  await repairButton.click();
+  dialog = page.getByRole("dialog", { name: "Repair timeline?" });
+  await dialog.getByRole("button", { name: "Repair timeline" }).click();
+  await api.waitForTimelineRepairStream();
+  expect(await api.timelineRepairRequest()).toEqual({
+    current_timeline: "- an unsaved timeline detail",
+  });
+
+  const runningDialog = page.getByRole("dialog", { name: "Thinking" });
+  const repairTitle = runningDialog.locator(".lorebook-repair-title-text");
+  await expect(repairTitle).toHaveText("Thinking");
+  await expect(repairTitle).toHaveClass(/t-shimmer/);
+  await expect(repairTitle).toHaveAttribute("data-text", "Thinking");
+  await expect(runningDialog.locator(".lorebook-repair-label")).toHaveCount(0);
+  await expect(runningDialog.locator(".lorebook-repair-spinner")).toHaveCount(0);
+  await expect(runningDialog.getByRole("button")).toHaveCount(0);
+  await expect(runningDialog).not.toContainText("Repairing...");
+  await expect(runningDialog).not.toContainText("Keep this window open");
+  await page.keyboard.press("Escape");
+  await expect(runningDialog).toBeVisible();
+  await page.waitForTimeout(400); //let the confirm to running size tween finish before measuring
+  const runningBoxBeforeThinking = await runningDialog.boundingBox();
+
+  await api.pushTimelineRepairEvent({
+    type: "reasoning",
+    value: "## Ordering\n\n**First**, put the gate before the crossing.\n\n- Open the gate\n",
+  });
+  await api.pushTimelineRepairEvent({
+    type: "reasoning",
+    value: "- Cross the threshold",
+  });
+  const reasoningPanel = page.getByTestId("timeline-repair-reasoning");
+  await expect(reasoningPanel.getByRole("heading", { name: "Ordering" })).toBeVisible();
+  await expect(reasoningPanel.locator("strong")).toHaveText("First");
+  await expect(reasoningPanel.getByRole("listitem")).toHaveCount(2);
+  const runningBoxAfterThinking = await runningDialog.boundingBox();
+  expect(
+    Math.abs((runningBoxAfterThinking?.height || 0) - (runningBoxBeforeThinking?.height || 0)),
+  ).toBeLessThan(1);
+
+  const repairScrollMetrics = () => reasoningPanel.evaluate((node) => ({
+    scrollTop: Math.round(node.scrollTop),
+    maxScroll: Math.round(node.scrollHeight - node.clientHeight),
+  }));
+
+  await api.pushTimelineRepairEvent({
+    type: "reasoning",
+    value: `\n${Array.from({ length: 30 }, (_, index) => `- thought ${index + 1} about the crossing`).join("\n")}\n`,
+  });
+  await expect.poll(async () => {
+    const metrics = await repairScrollMetrics();
+    return metrics.maxScroll - metrics.scrollTop;
+  }).toBeLessThan(2);
+
+  await reasoningPanel.evaluate((node) => {
+    node.dispatchEvent(new WheelEvent("wheel", { deltaY: -400, bubbles: true }));
+    node.scrollTop = Math.max(node.scrollTop - 140, 0);
+    node.dispatchEvent(new Event("scroll", { bubbles: true }));
+  });
+  const pausedRepairScroll = await repairScrollMetrics();
+  await api.pushTimelineRepairEvent({
+    type: "reasoning",
+    value: "- a late thought that should not steal the readers place\n",
+  });
+  await page.waitForTimeout(100);
+  const afterPausedRepairScroll = await repairScrollMetrics();
+  expect(afterPausedRepairScroll.scrollTop).toBe(pausedRepairScroll.scrollTop);
+  expect(afterPausedRepairScroll.maxScroll - afterPausedRepairScroll.scrollTop).toBeGreaterThan(32);
+
+  await reasoningPanel.evaluate((node) => {
+    node.scrollTop = node.scrollHeight;
+    node.dispatchEvent(new Event("scroll", { bubbles: true }));
+  });
+  await api.pushTimelineRepairEvent({
+    type: "reasoning",
+    value: "- following resumes once the reader returns to the bottom\n",
+  });
+  await expect.poll(async () => {
+    const metrics = await repairScrollMetrics();
+    return metrics.maxScroll - metrics.scrollTop;
+  }).toBeLessThan(2);
+
+  //once the thinking is done the header flips to Writing and keeps shimmering
+  await api.pushTimelineRepairEvent({ type: "status", value: "writing" });
+  const writingDialog = page.getByRole("dialog", { name: "Writing" });
+  const writingTitle = writingDialog.locator(".lorebook-repair-title-text");
+  await expect(writingTitle).toHaveText("Writing");
+  await expect(writingTitle).toHaveClass(/t-shimmer/);
+  await expect(writingTitle).toHaveAttribute("data-text", "Writing");
+  await expect(writingDialog.getByTestId("timeline-repair-reasoning")).toBeVisible();
+  await expect(writingDialog.getByRole("button")).toHaveCount(0);
+
+  await api.pushTimelineRepairEvent({
+    type: "complete",
+    value: {
+      duration_ms: 2400,
+      entry: {
+        id: "timeline-1",
+        story_id: "story-1",
+        name: "Timeline",
+        category: "timeline",
+        description: "- Mara opens the gate\n- Mara crosses the threshold",
+        aliases: ["Timeline"],
+        tags: [],
+        metadata: {},
+        disabled: false,
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:03Z",
+      },
+    },
+  });
+  await api.closeTimelineRepairStream();
+
+  const completedDialog = page.getByRole("dialog", { name: "Timeline rebuilt" });
+  await expect(completedDialog).toContainText("Finished rebuilding timeline in 2 seconds.");
+  //only the count is bold, the unit and the period stay in the body weight
+  await expect(completedDialog.locator(".lorebook-repair-duration")).toHaveText("2");
+  //the Done button is the only way out of the finished stage, the corner x is gone
+  await expect(completedDialog.getByRole("button", { name: "Close timeline repair" })).toHaveCount(0);
+  await completedDialog.getByRole("button", { name: "Done", exact: true }).click();
+  await expect(completedDialog).toBeHidden();
+  await expect(timeline).toHaveValue("- Mara opens the gate\n- Mara crosses the threshold");
+});
+
 test("edits and reloads migrated Markdown with working undo and redo", async ({ page }) => {
   const legacyContent = "# Existing title\n\nA paragraph with **old formatting**.";
   const api = await installWriteApi(page, { legacyContent });
@@ -983,14 +1130,14 @@ test("thinking dropdown follows new reasoning until the reader scrolls away", as
   ).join("\n\n");
   await api.pushReasoning(`${openingReasoning}\n\n\`\`\`text\nquiet code block\n\`\`\``);
 
-  const toggle = page.getByRole("button", { name: "Expand thinking details" });
+  const toggle = page.getByRole("button", { name: "Expand writing details" });
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
   expect((await toggle.boundingBox())?.height).toBeGreaterThanOrEqual(40);
 
   await toggle.focus();
   await toggle.press("Enter");
-  await expect(page.getByRole("region", { name: "Thinking details" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Collapse thinking details" })).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByRole("region", { name: "Writing details" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Collapse writing details" })).toHaveAttribute("aria-expanded", "true");
   await expect.poll(async () => {
     const metrics = await thinkingMetrics(page);
     return metrics.maxScroll - metrics.scrollTop;
@@ -1026,7 +1173,7 @@ test("thinking dropdown follows new reasoning until the reader scrolls away", as
   }).toBeLessThan(2);
 
   await page.setViewportSize({ width: 390, height: 700 });
-  const popoverBox = await page.getByRole("region", { name: "Thinking details" }).boundingBox();
+  const popoverBox = await page.getByRole("region", { name: "Writing details" }).boundingBox();
   expect(popoverBox?.x).toBeGreaterThanOrEqual(15);
   expect((popoverBox?.x || 0) + (popoverBox?.width || 0)).toBeLessThanOrEqual(375);
 

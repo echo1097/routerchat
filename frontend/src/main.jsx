@@ -44,6 +44,8 @@ import StoryBrainstorm from "./brainstorm/StoryBrainstorm.jsx";
 import StoryLorebook from "./lorebook/StoryLorebook.jsx";
 import NotificationStack from "./notifications/NotificationStack.jsx";
 import { useNotifications } from "./notifications/useNotifications.js";
+import { useRafScroller } from "./streamScroll.js";
+import { useTextSwap } from "./textSwap.js";
 import { createSaveCoordinator } from "./writing/saveCoordinator.js";
 import { createNavigationCoordinator } from "./writing/navigationCoordinator.js";
 import {
@@ -316,6 +318,57 @@ const storyApi = {
       method: "POST",
       body: JSON.stringify({ chapter_id: chapterId }),
     });
+  },
+
+  async repairTimeline({ storyId, currentTimeline, onEvent }) {
+    const response = await fetch(
+      `/api/stories/${encodeURIComponent(storyId)}/lorebook/timeline/repair/stream`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ current_timeline: currentTimeline }),
+      },
+    );
+    if (!response.ok || !response.body) {
+      throw await responseError(response);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffered = "";
+    let completedRepair = null;
+    let repairError = null;
+
+    function handleLine(line) {
+      if (!line.trim()) return;
+
+      const event = JSON.parse(line);
+      onEvent(event);
+      if (event.type === "complete") completedRepair = event.value;
+      if (event.type === "error") {
+        const value = event.value;
+        repairError = new Error(
+          typeof value === "string" ? value : value?.message || "Could not rebuild timeline.",
+        );
+        repairError.code = typeof value === "object" ? value?.code || null : null;
+      }
+    }
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffered += decoder.decode(value, { stream: true });
+      const lines = buffered.split("\n");
+      buffered = lines.pop() || "";
+      lines.forEach(handleLine);
+    }
+    if (buffered.trim()) handleLine(buffered);
+
+    if (repairError) throw repairError;
+    if (!completedRepair?.entry) {
+      throw new Error("Timeline repair ended before it returned a rebuilt timeline.");
+    }
+    return completedRepair;
   },
 
   async getBrainstorm(storyId) {
@@ -620,105 +673,6 @@ function readLocalAppSettings() {
 function writeLocalAppSettings(next) {
   const merged = { ...readLocalAppSettings(), ...next };
   window.localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify(merged));
-}
-
-function useRafScroller(streamRef, followThreshold = 120) {
-  const followRef = useRef(true);
-  const rafRef = useRef(null);
-  const touchYRef = useRef(null);
-  const lastScrollTopRef = useRef(null);
-
-  const isNearBottom = useCallback(() => {
-    const node = streamRef.current;
-    if (!node) return true;
-    return node.scrollHeight - node.scrollTop - node.clientHeight < followThreshold;
-  }, [followThreshold, streamRef]);
-
-  const cancelScrollFrame = useCallback(() => {
-    if (!rafRef.current) return;
-    cancelAnimationFrame(rafRef.current);
-    rafRef.current = null;
-  }, []);
-
-  const pauseAutoFollow = useCallback(() => {
-    followRef.current = false;
-    cancelScrollFrame();
-  }, [cancelScrollFrame]);
-
-  const markUserScroll = useCallback(() => {
-    const node = streamRef.current;
-    if (!node) return;
-
-    const lastScrollTop = lastScrollTopRef.current;
-    const movedUp = typeof lastScrollTop === "number" && node.scrollTop < lastScrollTop - 1;
-    if (movedUp) {
-      followRef.current = false;
-    } else if (isNearBottom()) {
-      followRef.current = true;
-    }
-    lastScrollTopRef.current = node.scrollTop;
-  }, [isNearBottom, streamRef]);
-
-  const markWheelIntent = useCallback(
-    (event) => {
-      if (event.deltaY < 0) pauseAutoFollow();
-    },
-    [pauseAutoFollow],
-  );
-
-  const markTouchStart = useCallback((event) => {
-    touchYRef.current = event.touches?.[0]?.clientY ?? null;
-  }, []);
-
-  const markTouchMove = useCallback(
-    (event) => {
-      const nextY = event.touches?.[0]?.clientY;
-      if (typeof nextY !== "number" || typeof touchYRef.current !== "number") return;
-      if (nextY > touchYRef.current) pauseAutoFollow();
-      touchYRef.current = nextY;
-    },
-    [pauseAutoFollow],
-  );
-
-  const scrollToBottom = useCallback(
-    (force = false) => {
-      if (!force && !followRef.current) return;
-      if (rafRef.current) return;
-      rafRef.current = requestAnimationFrame(() => {
-        rafRef.current = null;
-        if (!force && !followRef.current) return;
-        const node = streamRef.current;
-        if (node) {
-          node.scrollTop = node.scrollHeight;
-          lastScrollTopRef.current = node.scrollTop;
-        }
-      });
-    },
-    [streamRef],
-  );
-
-  const startFollowing = useCallback(() => {
-    followRef.current = true;
-    scrollToBottom(true);
-  }, [scrollToBottom]);
-
-  useEffect(
-    () => () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    },
-    [],
-  );
-
-  return {
-    isNearBottom,
-    markUserScroll,
-    markWheelIntent,
-    markTouchStart,
-    markTouchMove,
-    scrollToBottom,
-    startFollowing,
-    followRef,
-  };
 }
 
 function IconButton({ label, children, className, ...props }) {
@@ -2564,10 +2518,9 @@ function WriteOperationStatus({
   reasoningDurationMs = null,
   editPreview = null,
 }) {
-  const [shownStatus, setShownStatus] = useState(status);
+  const { shownText: shownStatus, textRef: statusRef } = useTextSwap(status);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const dismissedRef = useRef(false); //once you close it yourself we stop reopening it on you
-  const statusRef = useRef(null);
   const reasoningScrollRef = useRef(null);
   const editScrollRef = useRef(null);
   const popoverId = useId();
@@ -2587,26 +2540,6 @@ function WriteOperationStatus({
     scrollToBottom: scrollEditToBottom,
     startFollowing: startEditFollowing,
   } = useRafScroller(editScrollRef, 32);
-
-  useEffect(() => {
-    const statusEl = statusRef.current;
-    if (!statusEl || status === shownStatus) return undefined;
-
-    const runTime = parseFloat(
-      getComputedStyle(document.documentElement).getPropertyValue("--text-swap-dur"),
-    ) || 150;
-
-    statusEl.classList.add("is-exit");
-    const timeoutId = window.setTimeout(() => {
-      setShownStatus(status);
-      statusEl.classList.remove("is-exit");
-      statusEl.classList.add("is-enter-start");
-      void statusEl.offsetHeight; // reflow tax, thrilling stuff
-      statusEl.classList.remove("is-enter-start");
-    }, runTime);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [shownStatus, status]);
 
   const hasReasoning = Boolean(reasoning);
   const reasoningLabel =
@@ -2779,6 +2712,7 @@ function StoryWorkspace({
   onUpdateLorebookEntry,
   onDeleteLorebookEntry,
   onConfirmDeleteLorebookEntry,
+  onRepairTimeline,
 }) {
   const canvasScrollRef = useRef(null);
   const generationActiveRef = useRef(false);
@@ -2864,6 +2798,7 @@ function StoryWorkspace({
         onUpdateEntry={onUpdateLorebookEntry}
         onDeleteEntry={onDeleteLorebookEntry}
         onConfirmDeleteEntry={onConfirmDeleteLorebookEntry}
+        onRepairTimeline={onRepairTimeline}
         locked={writingLocked}
       />
     );
@@ -7848,6 +7783,34 @@ function App() {
     }
   }
 
+  async function repairTimeline(currentTimeline, onEvent) {
+    if (!activeStoryId || isStreaming || lorebookUpdating) {
+      throw new Error("Finish the current writing task first.");
+    }
+
+    try {
+      setLorebookUpdating(true);
+      setStatus("");
+      const result = await storyApi.repairTimeline({
+        storyId: activeStoryId,
+        currentTimeline,
+        onEvent,
+      });
+      const repairedEntry = result.entry;
+
+      setLorebookEntries((currentEntries) => {
+        const entryExists = currentEntries.some((entry) => entry.id === repairedEntry.id);
+        if (!entryExists) return [repairedEntry, ...currentEntries];
+        return currentEntries.map((entry) => (
+          entry.id === repairedEntry.id ? repairedEntry : entry
+        ));
+      });
+      return result;
+    } finally {
+      setLorebookUpdating(false);
+    }
+  }
+
   function updateChapterCanvasContent(content) {
     setChapterContent(content);
     chapterContentRef.current = content;
@@ -8527,6 +8490,7 @@ function App() {
             onUpdateLorebookEntry={updateLorebookEntry}
             onDeleteLorebookEntry={deleteLorebookEntry}
             onConfirmDeleteLorebookEntry={confirmDeleteLorebookEntry}
+            onRepairTimeline={repairTimeline}
           />
         ) : !isWritingMode ? (
           <>

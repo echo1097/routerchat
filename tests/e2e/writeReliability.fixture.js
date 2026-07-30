@@ -54,6 +54,34 @@ export function createDeferred() {
 }
 
 export async function installWriteApi(page, options = {}) {
+  if (options.controlledTimelineRepairStream) {
+    await page.addInitScript(() => {
+      const nativeFetch = window.fetch.bind(window);
+
+      window.__timelineRepairStream = null;
+      window.fetch = async (input, init = {}) => {
+        const requestUrl = typeof input === "string" ? input : input?.url || "";
+        const isTimelineRepair = /\/api\/stories\/[^/]+\/lorebook\/timeline\/repair\/stream(?:\?|$)/.test(requestUrl);
+        if (!isTimelineRepair) return nativeFetch(input, init);
+
+        const requestBody = JSON.parse(String(init.body || "{}"));
+        const stream = new ReadableStream({
+          start(controller) {
+            window.__timelineRepairStream = {
+              controller,
+              requestBody,
+            };
+          },
+        });
+
+        return new Response(stream, {
+          status: 200,
+          headers: { "Content-Type": "application/x-ndjson" },
+        });
+      };
+    });
+  }
+
   if (options.controlledReasoningStream) {
     await page.addInitScript(() => {
       const nativeFetch = window.fetch.bind(window);
@@ -404,6 +432,28 @@ export async function installWriteApi(page, options = {}) {
     },
     async waitForBrainstormStream() {
       await expect.poll(() => page.evaluate(() => Boolean(window.__brainstormStream))).toBe(true);
+    },
+    async waitForTimelineRepairStream() {
+      await expect.poll(() => page.evaluate(() => Boolean(window.__timelineRepairStream))).toBe(true);
+    },
+    async timelineRepairRequest() {
+      return page.evaluate(() => window.__timelineRepairStream?.requestBody || null);
+    },
+    async pushTimelineRepairEvent(event) {
+      await page.evaluate((nextEvent) => {
+        const timelineStream = window.__timelineRepairStream;
+        if (!timelineStream) throw new Error("timeline repair stream is not ready");
+
+        timelineStream.controller.enqueue(
+          new TextEncoder().encode(`${JSON.stringify(nextEvent)}\n`),
+        );
+      }, event);
+    },
+    async closeTimelineRepairStream() {
+      await page.evaluate(() => {
+        window.__timelineRepairStream?.controller.close();
+        window.__timelineRepairStream = null;
+      });
     },
     async pushBrainstormEvent(event) {
       await page.evaluate((nextEvent) => {

@@ -18,6 +18,7 @@ from backend.writing import (
     effective_generation_mode,
     lorebook_history_label,
     next_brainstorm_root_position,
+    normalize_timeline_description,
     parse_brainstorm_ideas,
 )
 
@@ -271,6 +272,68 @@ class StoryApiTest(unittest.TestCase):
             )
         return response, calls
 
+    def callTimelineRepair(
+        self,
+        story,
+        currentTimeline,
+        rawOutput,
+        reasoning="",
+        complete=True,
+        beforeDone=None,
+    ):
+        requestBody = {}
+
+        class FakeResponse:
+            status_code = 200
+            headers = {}
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_):
+                return False
+
+            async def aiter_lines(self):
+                if reasoning:
+                    chunk = {"choices": [{"delta": {"reasoning": reasoning}}]}
+                    yield f"data: {json.dumps(chunk)}"
+                contentChunk = {
+                    "choices": [
+                        {
+                            "delta": {"content": rawOutput},
+                            "finish_reason": "stop",
+                        }
+                    ]
+                }
+                yield f"data: {json.dumps(contentChunk)}"
+                if beforeDone:
+                    beforeDone()
+                if complete:
+                    yield "data: [DONE]"
+
+        class FakeClient:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_):
+                return False
+
+            def stream(self, *_args, **kwargs):
+                requestBody.update(kwargs.get("json") or {})
+                return FakeResponse()
+
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
+            "backend.writing.httpx.AsyncClient", FakeClient
+        ):
+            response = self.client.post(
+                f"/api/stories/{story['id']}/lorebook/timeline/repair/stream",
+                json={"current_timeline": currentTimeline},
+            )
+        return response, requestBody
+
     def storyWithChapter(self, title, content):
         story = self.client.post("/api/stories", json={"title": title}).json()["story"]
         chapter = self.client.post(
@@ -324,6 +387,232 @@ class StoryApiTest(unittest.TestCase):
         self.assertIsNotNone(run)
         self.assertIsNone(run["generation_id"])
         self.assertEqual(historyCount, len(payload["history"]))
+
+    def test_timeline_repair_streams_reasoning_and_rebuilds_from_visible_story(self):
+        modelId = "test/timeline-repair"
+        main.cache_models([
+            main.normalize_model({
+                "id": modelId,
+                "name": "Timeline repair model",
+                "supported_parameters": ["reasoning", "structured_outputs"],
+                "reasoning": {"mandatory": False},
+            })
+        ])
+        story = self.client.post(
+            "/api/stories",
+            json={
+                "title": "Repair Story",
+                "model": modelId,
+                "thinking_enabled": False,
+                "reasoning_effort": "high",
+            },
+        ).json()["story"]
+        firstChapter = self.client.post(
+            f"/api/stories/{story['id']}/chapters",
+            json={"title": "Opening", "content": "Mara opens the red gate."},
+        ).json()["chapter"]
+        hiddenChapter = self.client.post(
+            f"/api/stories/{story['id']}/chapters",
+            json={"title": "Hidden", "content": "never include this chapter"},
+        ).json()["chapter"]
+        self.client.patch(
+            f"/api/stories/{story['id']}/chapters/{hiddenChapter['id']}",
+            json={"disabled": True},
+        )
+        timeline = self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={
+                "name": "Timeline",
+                "category": "timeline",
+                "description": "- The old gate stayed closed",
+            },
+        ).json()["entry"]
+
+        rawOutput = json.dumps({
+            "timeline": "Mara opens the red gate\n- Mara crosses the threshold",
+        })
+        response, requestBody = self.callTimelineRepair(
+            story,
+            "- unsaved timeline context",
+            rawOutput,
+            reasoning="Check the chapters in order.",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        events = [json.loads(line) for line in response.text.splitlines() if line]
+        self.assertEqual(
+            [event["type"] for event in events],
+            ["status", "reasoning", "status", "complete"],
+        )
+        self.assertEqual(events[0]["value"], "rebuilding")
+        self.assertEqual(events[1]["value"], "Check the chapters in order.")
+        #the writing status is what flips the modal header from Thinking to Writing
+        self.assertEqual(events[2]["value"], "writing")
+        self.assertGreater(events[-1]["value"]["duration_ms"], 0)
+        self.assertEqual(events[-1]["value"]["entry"]["id"], timeline["id"])
+        self.assertEqual(
+            events[-1]["value"]["entry"]["description"],
+            "- Mara opens the red gate\n- Mara crosses the threshold",
+        )
+
+        prompt = json.loads(requestBody["messages"][-1]["content"])
+        self.assertEqual(prompt["current_timeline"], "- unsaved timeline context")
+        self.assertEqual(
+            prompt["visible_chapters"],
+            [{"title": firstChapter["title"], "content": firstChapter["content"]}],
+        )
+        self.assertNotIn("never include this chapter", requestBody["messages"][-1]["content"])
+        self.assertEqual(
+            requestBody["reasoning"],
+            {"enabled": True, "exclude": False, "effort": "high"},
+        )
+        self.assertEqual(
+            requestBody["response_format"]["json_schema"]["name"],
+            "timeline_repair",
+        )
+
+        savedTimeline = self.lorebookRow(story, "Timeline")
+        self.assertEqual(
+            savedTimeline["description"],
+            "- Mara opens the red gate\n- Mara crosses the threshold",
+        )
+
+    def test_timeline_repair_failure_and_conflict_preserve_the_saved_timeline(self):
+        story, _ = self.storyWithChapter("Safe Repair", "Mara waits at the gate.")
+        timeline = self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={
+                "name": "Timeline",
+                "category": "timeline",
+                "description": "- original timeline",
+            },
+        ).json()["entry"]
+
+        invalidResponse, _ = self.callTimelineRepair(
+            story,
+            timeline["description"],
+            json.dumps({"timeline": ""}),
+        )
+        invalidEvents = [
+            json.loads(line) for line in invalidResponse.text.splitlines() if line
+        ]
+        self.assertEqual(invalidEvents[-1]["type"], "error")
+        self.assertEqual(invalidEvents[-1]["value"]["code"], "timeline_repair_invalid")
+        self.assertEqual(self.lorebookRow(story, "Timeline")["description"], "- original timeline")
+
+        incompleteResponse, _ = self.callTimelineRepair(
+            story,
+            timeline["description"],
+            json.dumps({"timeline": "- incomplete replacement"}),
+            complete=False,
+        )
+        incompleteEvents = [
+            json.loads(line) for line in incompleteResponse.text.splitlines() if line
+        ]
+        self.assertEqual(incompleteEvents[-1]["type"], "error")
+        self.assertEqual(incompleteEvents[-1]["value"]["code"], "timeline_repair_incomplete")
+        self.assertEqual(self.lorebookRow(story, "Timeline")["description"], "- original timeline")
+
+        def changeTimeline():
+            with main.get_db() as conn:
+                conn.execute(
+                    "UPDATE lorebook_entries SET description = ?, updated_at = ? WHERE id = ?",
+                    ("- newer manual edit", main.utc_now(), timeline["id"]),
+                )
+
+        conflictResponse, _ = self.callTimelineRepair(
+            story,
+            timeline["description"],
+            json.dumps({"timeline": "- generated replacement"}),
+            beforeDone=changeTimeline,
+        )
+        conflictEvents = [
+            json.loads(line) for line in conflictResponse.text.splitlines() if line
+        ]
+        self.assertEqual(conflictEvents[-1]["type"], "error")
+        self.assertEqual(conflictEvents[-1]["value"]["code"], "timeline_repair_conflict")
+        self.assertEqual(self.lorebookRow(story, "Timeline")["description"], "- newer manual edit")
+
+    def test_timeline_repair_creates_an_enabled_timeline_without_changing_a_hidden_one(self):
+        story, _ = self.storyWithChapter("Hidden Timeline", "The bells ring at dawn.")
+        hiddenTimeline = self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={
+                "name": "Timeline",
+                "category": "timeline",
+                "description": "- private old timeline",
+                "disabled": True,
+            },
+        ).json()["entry"]
+
+        response, _ = self.callTimelineRepair(
+            story,
+            hiddenTimeline["description"],
+            json.dumps({"timeline": "- The bells ring at dawn"}),
+        )
+        events = [json.loads(line) for line in response.text.splitlines() if line]
+        self.assertEqual(events[-1]["type"], "complete")
+        self.assertNotEqual(events[-1]["value"]["entry"]["id"], hiddenTimeline["id"])
+
+        entries = self.client.get(f"/api/stories/{story['id']}/lorebook").json()["entries"]
+        self.assertEqual(len(entries), 2)
+        hiddenSaved = next(entry for entry in entries if entry["id"] == hiddenTimeline["id"])
+        enabledSaved = next(entry for entry in entries if entry["id"] != hiddenTimeline["id"])
+        self.assertTrue(hiddenSaved["disabled"])
+        self.assertEqual(hiddenSaved["description"], "- private old timeline")
+        self.assertFalse(enabledSaved["disabled"])
+        self.assertEqual(enabledSaved["description"], "- The bells ring at dawn")
+
+    def test_timeline_repair_splits_bullets_a_model_crammed_onto_one_line(self):
+        story, _ = self.storyWithChapter(
+            "Crammed Timeline",
+            "Mossy slipped through the gate. Mossy found the stream.",
+        )
+        crammed = "- Mossy slips through the garden gate.  - Mossy finds the babbling stream."
+
+        response, _ = self.callTimelineRepair(
+            story,
+            "- old timeline",
+            json.dumps({"timeline": crammed}),
+        )
+        events = [json.loads(line) for line in response.text.splitlines() if line]
+        self.assertEqual(events[-1]["type"], "complete")
+        self.assertEqual(
+            events[-1]["value"]["entry"]["description"],
+            "- Mossy slips through the garden gate.\n- Mossy finds the babbling stream.",
+        )
+        self.assertEqual(
+            self.lorebookRow(story, "Timeline")["description"],
+            "- Mossy slips through the garden gate.\n- Mossy finds the babbling stream.",
+        )
+
+    def test_timeline_normalizer_leaves_good_bullets_and_spaced_hyphens_alone(self):
+        multiline = "- 2341, 03:17: ISB arrests Lilac Thorne\n- 2341, 04:00: Lilac steals a code cylinder"
+        self.assertEqual(normalize_timeline_description(multiline), multiline)
+
+        #one real event that happens to hold a date range must not get chopped at the hyphen
+        dateRange = "- 2341 - 2350: the long war grinds on across the outer colonies"
+        self.assertEqual(normalize_timeline_description(dateRange), dateRange)
+
+        prose = "- The war lasted from 2341 - 2350 and ended very badly indeed"
+        self.assertEqual(normalize_timeline_description(prose), prose)
+
+        #no sentence endings to go on, but three markers on one line is past being prose
+        self.assertEqual(
+            normalize_timeline_description("* alpha event happens * beta event happens * gamma event happens"),
+            "- alpha event happens\n- beta event happens\n- gamma event happens",
+        )
+
+    def test_timeline_repair_rejects_empty_visible_story_content(self):
+        story, chapter = self.storyWithChapter("Empty Repair", "")
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}):
+            response = self.client.post(
+                f"/api/stories/{story['id']}/lorebook/timeline/repair/stream",
+                json={"current_timeline": "- old"},
+            )
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("visible in context", response.json()["detail"])
+        self.assertEqual(chapter["content"], "")
 
     def test_manual_lorebook_update_records_line_counts_and_puts_cost_on_the_summary(self):
         story, chapter = self.storyWithChapter("Lore Stats", "Chloe walked the long hall.")

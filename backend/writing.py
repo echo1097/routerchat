@@ -92,6 +92,10 @@ class LorebookUpdateRequest(BaseModel):
     chapter_id: str = Field(min_length=1)
 
 
+class TimelineRepairRequest(BaseModel):
+    current_timeline: str = ""
+
+
 class BrainstormNodePatchRequest(BaseModel):
     title: str | None = None
     content: str | None = None
@@ -288,12 +292,52 @@ def normalize_lorebook_category(category: str | None) -> str:
     return value if value in LOREBOOK_CATEGORIES else "note"
 
 
+TIMELINE_BULLET_MARKERS = ("-", "*", "•")
+INLINE_TIMELINE_BULLET = re.compile(r"\s+[-*•]\s+")
+SENTENCE_ENDINGS = ".!?\"')"
+
+
+def split_crammed_timeline_bullets(line: str) -> list[str]:
+    body = line
+    for marker in TIMELINE_BULLET_MARKERS:
+        body = body.removeprefix(marker)
+    body = body.strip()
+
+    separators = list(INLINE_TIMELINE_BULLET.finditer(body))
+    if not separators:
+        return []
+
+    #a bullet boundary reads like the end of a sentence, a hyphen sitting inside one does not, so a
+    #lone separator has to earn it, two or more is already too repetitive to be ordinary prose
+    endsSentence = all(body[separator.start() - 1] in SENTENCE_ENDINGS for separator in separators)
+    if not endsSentence and len(separators) < 2:
+        return []
+
+    parts = [part.strip() for part in INLINE_TIMELINE_BULLET.split(body)]
+    parts = [part for part in parts if part]
+    if len(parts) < 2:
+        return []
+
+    #a real event is a sentence, so any one or two word fragment means we chopped something like a
+    #date range in half rather than finding actual bullets, and we leave the line alone
+    if any(len(part.split()) < 3 for part in parts):
+        return []
+    return parts
+
+
 def normalize_timeline_description(description: str) -> str:
+    rawLines = [line.strip() for line in str(description or "").splitlines()]
+    rawLines = [line for line in rawLines if line]
+
+    #some models ignore the newline instruction and cram every bullet onto one line, only worth
+    #unpicking when nothing split on its own, otherwise we would go hunting inside good output
+    if len(rawLines) == 1:
+        crammedBullets = split_crammed_timeline_bullets(rawLines[0])
+        if crammedBullets:
+            rawLines = crammedBullets
+
     lines = []
-    for line in str(description or "").splitlines():
-        value = line.strip()
-        if not value:
-            continue
+    for value in rawLines:
         if value.startswith("- "):
             lines.append(value)
             continue
@@ -594,6 +638,24 @@ def chapter_edit_response_format() -> dict[str, Any]:
             "name": "chapter_edit_batch",
             "strict": True,
             "schema": chapter_edit_batch_schema(),
+        },
+    }
+
+
+def timeline_repair_response_format() -> dict[str, Any]:
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "timeline_repair",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "timeline": {"type": "string", "minLength": 1},
+                },
+                "required": ["timeline"],
+            },
         },
     }
 
@@ -1279,6 +1341,18 @@ def parse_lorebook_json(raw_output: str) -> dict[str, Any]:
         parse_errors.append("Lorebook output JSON was not an object.")
 
     raise ValueError("; ".join(parse_errors) or "Could not parse lorebook JSON.")
+
+
+def parse_timeline_repair(raw_output: str) -> str:
+    parsed = parse_lorebook_json(raw_output)
+    timeline = parsed.get("timeline")
+    if not isinstance(timeline, str) or not timeline.strip():
+        raise ValueError("The model returned an empty timeline.")
+
+    normalized = normalize_timeline_description(timeline)
+    if not normalized:
+        raise ValueError("The model returned an empty timeline.")
+    return normalized
 
 
 def parse_brainstorm_ideas(raw_output: str) -> list[dict[str, str]]:
@@ -2136,6 +2210,268 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
             )
         return {"applied": applied, "error": error_text, "cost": (usage or {}).get("cost")}
 
+    async def stream_timeline_repair(
+        story_id: str,
+        story: sqlite3.Row,
+        visible_chapters: list[sqlite3.Row],
+        timeline_row: sqlite3.Row | None,
+        current_timeline: str,
+    ) -> AsyncIterator[bytes]:
+        startedAt = time.perf_counter()
+        apiKey = deps.read_openrouter_key()
+        if not apiKey:
+            raise HTTPException(status_code=401, detail="Add an OpenRouter API key first.")
+
+        timelineSnapshot = (
+            {
+                "id": timeline_row["id"],
+                "updated_at": timeline_row["updated_at"],
+                "description": timeline_row["description"],
+            }
+            if timeline_row
+            else None
+        )
+        chapterContext = [
+            {
+                "title": chapter["title"],
+                "content": chapter["content"] or "",
+            }
+            for chapter in visible_chapters
+        ]
+        prompt = {
+            "story": {
+                "title": story["title"],
+                "author": story["author"],
+                "language": story["language"],
+                "synopsis": story["synopsis"],
+            },
+            "current_timeline": current_timeline,
+            "visible_chapters": chapterContext,
+        }
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "Rebuild the complete story timeline from every visible chapter supplied. "
+                    "The current timeline is context only: keep useful chronology and wording when "
+                    "it is supported by the chapters, but correct it whenever the story disagrees. "
+                    "Include every durable event needed to understand story chronology, ordered "
+                    "from earliest to latest. Use one concise factual event per Markdown bullet. "
+                    "Do not invent events, repeat bullets, copy the prose style, or include facts "
+                    "that are not chronological events. Return strict JSON only in this shape: "
+                    "{\"timeline\":\"- event one\\n- event two\"}."
+                ),
+            },
+            {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
+        ]
+        body: dict[str, Any] = {
+            "model": deps.openrouter_request_model(story["model"], False),
+            "messages": messages,
+            "temperature": 0.1,
+            "max_tokens": story["max_tokens"],
+            "stream": True,
+        }
+        effectiveThinkingEnabled = deps.effective_thinking_enabled(story["model"], True)
+        reasoningConfig = deps.enabled_reasoning_config(
+            story["model"], True, story["reasoning_effort"]
+        )
+        if reasoningConfig:
+            body["reasoning"] = reasoningConfig
+        if deps.model_supports_structured_output(story["model"]):
+            body["response_format"] = timeline_repair_response_format()
+
+        generatedText: list[str] = []
+        finishReason: str | None = None
+        generationId: str | None = None
+        usage: dict[str, Any] | None = None
+        receivedDone = False
+        announcedWriting = False
+
+        yield deps.stream_event("status", "rebuilding")
+
+        try:
+            async with httpx.AsyncClient(timeout=OPENROUTER_TIMEOUT) as client:
+                async with client.stream(
+                    "POST",
+                    f"{deps.openrouter_base_url}/chat/completions",
+                    headers={**deps.headers_for_key(apiKey), "Content-Type": "application/json"},
+                    json=body,
+                ) as response:
+                    if response.status_code >= 400:
+                        rawError = (await response.aread()).decode("utf-8", errors="replace")
+                        message = deps.openrouter_error_message(response.status_code, rawError)
+                        yield deps.stream_event(
+                            "error",
+                            {"code": "timeline_repair_provider_error", "message": message},
+                        )
+                        return
+
+                    generationId = response.headers.get("X-Generation-Id") or generationId
+                    async for line in response.aiter_lines():
+                        if not line.startswith("data:"):
+                            continue
+                        data = line.removeprefix("data:").strip()
+                        if data == "[DONE]":
+                            receivedDone = True
+                            break
+                        try:
+                            chunk = json.loads(data)
+                        except json.JSONDecodeError:
+                            continue
+
+                        generationId = generationId or chunk.get("id")
+                        nextUsage = deps.normalize_usage(chunk.get("usage"))
+                        if nextUsage:
+                            usage = nextUsage
+                            continue
+
+                        choices = chunk.get("choices") or []
+                        if not choices:
+                            continue
+                        choice = choices[0]
+                        finishReason = choice.get("finish_reason") or finishReason
+                        delta = choice.get("delta") or {}
+                        reasoning = delta.get("reasoning") or delta.get("reasoning_content")
+                        if reasoning and effectiveThinkingEnabled:
+                            yield deps.stream_event("reasoning", str(reasoning))
+                        content = delta.get("content")
+                        if content:
+                            #first real content means the thinking is done and the timeline is being written
+                            if not announcedWriting:
+                                announcedWriting = True
+                                yield deps.stream_event("status", "writing")
+                            generatedText.append(str(content))
+
+            if generationId:
+                try:
+                    generationUsage = await deps.fetch_generation_usage(apiKey, generationId)
+                    if generationUsage:
+                        usage = {**(usage or {}), **generationUsage}
+                except Exception:  # noqa: BLE001
+                    pass
+            if usage:
+                yield deps.stream_event(
+                    "usage",
+                    {"generation_id": generationId, "model": story["model"], **usage},
+                )
+
+            if not receivedDone:
+                yield deps.stream_event(
+                    "error",
+                    {
+                        "code": "timeline_repair_incomplete",
+                        "message": "Timeline repair ended before the provider completed the stream.",
+                    },
+                )
+                return
+            if finishReason == "length":
+                yield deps.stream_event(
+                    "error",
+                    {
+                        "code": "timeline_repair_truncated",
+                        "message": "The rebuilt timeline hit the model token limit before it finished.",
+                    },
+                )
+                return
+
+            try:
+                nextTimeline = parse_timeline_repair("".join(generatedText))
+            except ValueError as exc:
+                yield deps.stream_event(
+                    "error",
+                    {"code": "timeline_repair_invalid", "message": str(exc)},
+                )
+                return
+
+            now = deps.utc_now()
+            with deps.get_db() as conn:
+                conn.execute("BEGIN IMMEDIATE")
+                currentRow = conn.execute(
+                    """
+                    SELECT * FROM lorebook_entries
+                    WHERE story_id = ?
+                      AND disabled = 0
+                      AND (category = 'timeline' OR lower(name) = lower('Timeline'))
+                    ORDER BY updated_at DESC, created_at DESC
+                    LIMIT 1
+                    """,
+                    (story_id,),
+                ).fetchone()
+
+                if timelineSnapshot is None:
+                    timelineChanged = currentRow is not None
+                else:
+                    timelineChanged = (
+                        currentRow is None
+                        or currentRow["id"] != timelineSnapshot["id"]
+                        or currentRow["updated_at"] != timelineSnapshot["updated_at"]
+                        or currentRow["description"] != timelineSnapshot["description"]
+                    )
+                if timelineChanged:
+                    conn.rollback()
+                    yield deps.stream_event(
+                        "error",
+                        {
+                            "code": "timeline_repair_conflict",
+                            "message": "The timeline changed while it was being rebuilt. Nothing was replaced.",
+                        },
+                    )
+                    return
+
+                if currentRow:
+                    conn.execute(
+                        """
+                        UPDATE lorebook_entries
+                        SET name = 'Timeline', category = 'timeline', description = ?, updated_at = ?
+                        WHERE id = ? AND story_id = ?
+                        """,
+                        (nextTimeline, now, currentRow["id"], story_id),
+                    )
+                    entryId = currentRow["id"]
+                else:
+                    entryId = str(uuid.uuid4())
+                    conn.execute(
+                        """
+                        INSERT INTO lorebook_entries (
+                          id, story_id, name, category, description, aliases_json,
+                          tags_json, metadata_json, disabled, created_at, updated_at
+                        )
+                        VALUES (?, ?, 'Timeline', 'timeline', ?, ?, '[]', '{}', 0, ?, ?)
+                        """,
+                        (
+                            entryId,
+                            story_id,
+                            nextTimeline,
+                            json.dumps(["Timeline"]),
+                            now,
+                            now,
+                        ),
+                    )
+                conn.execute("UPDATE stories SET updated_at = ? WHERE id = ?", (now, story_id))
+                savedRow = conn.execute(
+                    "SELECT * FROM lorebook_entries WHERE id = ?",
+                    (entryId,),
+                ).fetchone()
+
+            durationMs = (time.perf_counter() - startedAt) * 1000
+            yield deps.stream_event(
+                "complete",
+                {
+                    "entry": row_to_lorebook_entry(savedRow),
+                    "duration_ms": durationMs,
+                },
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            yield deps.stream_event(
+                "error",
+                {
+                    "code": "timeline_repair_failed",
+                    "message": f"RouterChat error: {exc}",
+                },
+            )
+
     async def stream_story_generation(
         story_id: str,
         chapter_id: str,
@@ -2940,6 +3276,55 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                 (story_id,),
             ).fetchall()
         return {"entries": [row_to_lorebook_entry(row) for row in rows]}
+
+    @router.post("/api/stories/{story_id}/lorebook/timeline/repair/stream")
+    async def repair_story_timeline(
+        story_id: str, payload: TimelineRepairRequest
+    ) -> StreamingResponse:
+        if not deps.read_openrouter_key():
+            raise HTTPException(status_code=401, detail="Add an OpenRouter API key first.")
+
+        with deps.get_db() as conn:
+            story = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
+            if not story:
+                raise HTTPException(status_code=404, detail="Story not found.")
+            visibleChapters = conn.execute(
+                """
+                SELECT * FROM chapters
+                WHERE story_id = ? AND disabled = 0
+                ORDER BY order_index ASC, created_at ASC
+                """,
+                (story_id,),
+            ).fetchall()
+            timelineRow = conn.execute(
+                """
+                SELECT * FROM lorebook_entries
+                WHERE story_id = ?
+                  AND disabled = 0
+                  AND (category = 'timeline' OR lower(name) = lower('Timeline'))
+                ORDER BY updated_at DESC, created_at DESC
+                LIMIT 1
+                """,
+                (story_id,),
+            ).fetchone()
+
+        if not any(str(chapter["content"] or "").strip() for chapter in visibleChapters):
+            raise HTTPException(
+                status_code=422,
+                detail="Add story content to a chapter that is visible in context first.",
+            )
+
+        return StreamingResponse(
+            stream_timeline_repair(
+                story_id,
+                story,
+                visibleChapters,
+                timelineRow,
+                payload.current_timeline,
+            ),
+            media_type="application/x-ndjson; charset=utf-8",
+            headers={"Cache-Control": "no-store"},
+        )
 
     @router.post("/api/stories/{story_id}/lorebook/update")
     async def update_lorebook_from_chapter(

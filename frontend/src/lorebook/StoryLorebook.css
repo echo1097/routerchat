@@ -428,6 +428,18 @@
   font-weight: 650;
 }
 
+.lorebook-timeline-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(140px, 1fr));
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.lorebook-timeline-actions .lorebook-primary-button {
+  width: 100%;
+}
+
 .lorebook-empty {
   min-height: 260px;
   display: grid;
@@ -695,6 +707,136 @@
   box-shadow: var(--shadow-border-hover);
 }
 
+.lorebook-repair-modal {
+  width: min(520px, 100%);
+}
+
+/* the close button hides itself mid repair, the floor keeps the header from collapsing 16px and
+undoing the smooth resize happening right below it */
+.lorebook-repair-modal header {
+  padding: 16px 20px 10px;
+  min-height: 66px; /* 40px icon button plus the 26px of padding */
+  border-bottom: 0;
+}
+
+.lorebook-repair-modal footer {
+  padding: 0;
+  border-top: 0;
+}
+
+.lorebook-repair-modal .lorebook-footer-actions {
+  margin-left: auto;
+}
+
+/* the height here is pinned from JS so stage swaps tween instead of snapping, padding sits on the inner wrapper so what we measure is the whole thing */
+.lorebook-repair-modal-body {
+  --resize-dur: 220ms; /* a hair quicker than the modal open so the stage swap doesnt feel draggy */
+  min-height: 0;
+  display: block;
+  overflow: hidden;
+  padding: 0;
+}
+
+.lorebook-repair-modal-body-inner {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  padding: 10px 20px 16px;
+}
+
+.lorebook-repair-description,
+.lorebook-repair-result,
+.lorebook-repair-error p {
+  margin: 0;
+  color: #d4d4d8;
+  font-size: 14px;
+  line-height: 1.75;
+  text-wrap: pretty;
+}
+
+/* the title itself does the shimmering while the model works, so it needs the base color the shimmer
+paints over instead of the plain heading white */
+.lorebook-repair-title-text.t-shimmer {
+  --shimmer-base: #a1a1aa;
+  --shimmer-highlight: #ffffff;
+  color: var(--shimmer-base); /* the h2 color inherits down, so restate the dimmed base here */
+}
+
+.lorebook-repair-reasoning {
+  width: 100%;
+  height: min(220px, 34dvh);
+  min-height: 140px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.24);
+  padding: 14px;
+  color: #c4c4cc;
+  font-size: 0.875rem;
+  line-height: 1.625rem;
+  text-align: left;
+  box-shadow: var(--shadow-border);
+  scrollbar-gutter: stable;
+}
+
+.lorebook-repair-reasoning > * {
+  overflow-wrap: anywhere;
+}
+
+/* the markdown itself is styled in ThinkingContent, this just stops the block margins from
+punching a gap at the top and bottom of the scroll pane */
+.lorebook-repair-reasoning > :first-child {
+  margin-top: 0;
+}
+
+.lorebook-repair-reasoning > :last-child {
+  margin-bottom: 0;
+}
+
+.lorebook-repair-reasoning.is-empty {
+  display: grid;
+  place-items: center;
+  color: #71717a;
+  font-size: 12px;
+  text-align: center;
+}
+
+.lorebook-repair-result {
+  color: #e4e4e7;
+  font-size: 15px;
+  text-align: center;
+}
+
+.lorebook-repair-duration {
+  color: #ffffff;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
+.lorebook-repair-error {
+  display: grid;
+  gap: 10px;
+  border-radius: 14px;
+  background: rgba(127, 29, 29, 0.16);
+  padding: 14px;
+  box-shadow:
+    var(--shadow-border),
+    inset 0 0 0 1px rgba(248, 113, 113, 0.12);
+}
+
+.lorebook-repair-error span {
+  color: #fca5a5;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.lorebook-repair-modal button:focus-visible {
+  outline: 0;
+  box-shadow:
+    var(--shadow-border-hover),
+    0 0 0 3px rgba(255, 255, 255, 0.1);
+}
+
 .lorebook-details {
   border-radius: 12px;
   background: rgba(0, 0, 0, 0.28);
@@ -847,6 +989,10 @@
     align-items: stretch;
     flex-direction: column;
   }
+
+  .lorebook-timeline-actions {
+    width: 100%;
+  }
 }
 
 @media (max-width: 460px) {
@@ -874,6 +1020,14 @@
   }
 
   .lorebook-delete-button {
+    width: 100%;
+  }
+
+  .lorebook-timeline-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lorebook-timeline-actions .lorebook-primary-button {
     width: 100%;
   }
 }

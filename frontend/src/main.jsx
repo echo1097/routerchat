@@ -1224,6 +1224,7 @@ function ConversationRail({
                 autoFocus
                 value={renameDraft}
                 onChange={(event) => setRenameDraft(event.target.value)}
+                data-1p-ignore="true"
                 onBlur={() => commitRename(chat)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") event.currentTarget.blur();
@@ -1935,6 +1936,7 @@ const MessageItem = memo(function MessageItem({
                   value={draft}
                   rows={Math.min(8, Math.max(3, draft.split("\n").length))}
                   onChange={(event) => setDraft(event.target.value)}
+                  data-1p-ignore="true"
                   onKeyDown={(event) => {
                     if (event.key === "Enter" && event.metaKey) {
                       event.preventDefault();
@@ -2966,6 +2968,7 @@ function StoryLorebookMockup({ story, entries, onBack }) {
             <textarea
               defaultValue={visibleEntries[0]?.content || ""}
               placeholder="Write the rules, references, and continuity notes that apply to the whole story."
+              data-1p-ignore="true"
               className="min-h-[300px] w-full resize-none bg-transparent text-[15px] leading-7 text-zinc-200 outline-none placeholder:text-zinc-600"
             />
           </div>
@@ -3164,6 +3167,7 @@ function CharacterEditorModal({
               autoFocus
               value={draft.name}
               onChange={(event) => onChange("name", event.target.value)}
+              data-1p-ignore="true"
               className="h-10 rounded-xl bg-black/20 px-3 text-sm text-zinc-100 shadow-[var(--shadow-border)] outline-none placeholder:text-zinc-700 focus:ring-2 focus:ring-accent/35"
               placeholder="Name"
             />
@@ -3173,6 +3177,7 @@ function CharacterEditorModal({
             <input
               value={draft.age}
               onChange={(event) => onChange("age", event.target.value)}
+              data-1p-ignore="true"
               className="h-10 rounded-xl bg-black/20 px-3 text-sm text-zinc-100 shadow-[var(--shadow-border)] outline-none placeholder:text-zinc-700 focus:ring-2 focus:ring-accent/35"
               placeholder="Age"
             />
@@ -3182,6 +3187,7 @@ function CharacterEditorModal({
             <textarea
               value={draft.physicalDescription}
               onChange={(event) => onChange("physicalDescription", event.target.value)}
+              data-1p-ignore="true"
               className="min-h-[86px] resize-none rounded-xl bg-black/20 px-3 py-2 text-sm leading-6 text-zinc-100 shadow-[var(--shadow-border)] outline-none placeholder:text-zinc-700 focus:ring-2 focus:ring-accent/35"
               placeholder="Build, face, clothing, voice, marks, vibe"
             />
@@ -3191,6 +3197,7 @@ function CharacterEditorModal({
             <textarea
               value={draft.personality}
               onChange={(event) => onChange("personality", event.target.value)}
+              data-1p-ignore="true"
               className="min-h-[86px] resize-none rounded-xl bg-black/20 px-3 py-2 text-sm leading-6 text-zinc-100 shadow-[var(--shadow-border)] outline-none placeholder:text-zinc-700 focus:ring-2 focus:ring-accent/35"
               placeholder="Temper, habits, values, flaws, humor"
             />
@@ -3200,6 +3207,7 @@ function CharacterEditorModal({
             <textarea
               value={draft.background}
               onChange={(event) => onChange("background", event.target.value)}
+              data-1p-ignore="true"
               className="min-h-[104px] resize-none rounded-xl bg-black/20 px-3 py-2 text-sm leading-6 text-zinc-100 shadow-[var(--shadow-border)] outline-none placeholder:text-zinc-700 focus:ring-2 focus:ring-accent/35"
               placeholder="History, relationships, secrets, why they matter"
             />
@@ -3386,6 +3394,7 @@ function Composer({
               ref={textareaRef}
               value={value}
               rows={1}
+              data-1p-ignore="true"
               onChange={(event) => setValue(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
@@ -3774,6 +3783,7 @@ function SystemPromptModal({ open, value, onSave, onClose }) {
               value={draft}
               onChange={(event) => updateDraft(event.target.value)}
               placeholder="No story system prompt"
+              data-1p-ignore="true"
               className="block h-full w-full resize-none overflow-y-auto bg-transparent text-sm leading-6 text-zinc-100 outline-none placeholder:text-zinc-500"
             />
           </div>
@@ -4633,6 +4643,7 @@ function SettingsDrawer({
             onChange={(event) => updateSetting({ system_prompt: event.target.value })}
             onBlur={() => onPersist(settings)}
             placeholder={`No ${promptModeName.toLowerCase()} system prompt`}
+            data-1p-ignore="true"
             className="block h-full w-full resize-none overflow-y-auto bg-transparent text-sm leading-6 text-zinc-100 outline-none placeholder:text-zinc-500"
           />
         </div>
@@ -4828,6 +4839,7 @@ function SettingsDrawer({
             value={query}
             onChange={handleModelSearchChange}
             placeholder="Search models"
+            data-1p-ignore="true"
             className="min-w-0 flex-1 bg-transparent text-sm text-zinc-100 outline-none placeholder:text-zinc-600"
           />
           <span className="rounded-full bg-white/[0.05] px-2 py-0.5 text-[11px] tabular-nums text-zinc-500">
@@ -4990,6 +5002,7 @@ function SettingsDrawer({
                   inputMode="numeric"
                   pattern="[0-9]*"
                   value={maxTokensDraft}
+                  data-1p-ignore="true"
                   onChange={(event) => {
                     const digitsOnly = event.target.value.replace(/[^0-9]/g, "");
                     setMaxTokensDraft(digitsOnly);
@@ -5489,6 +5502,7 @@ function SearchClearField({ value, onChange, placeholder }) {
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
+        data-1p-ignore="true"
         className="relative z-[4] min-w-0 flex-1 bg-transparent text-sm text-zinc-100 outline-none placeholder:text-transparent"
       />
       <div ref={mirrorRef} className="t-clear-mirror" aria-hidden="true">
@@ -5783,6 +5797,7 @@ function NewStoryModal({ open, onClose, onCreate }) {
           value={title}
           disabled={busy}
           maxLength={120}
+          data-1p-ignore="true"
           onChange={(event) => setTitle(event.target.value)}
           placeholder="Story name"
           aria-label="Story name"

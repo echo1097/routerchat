@@ -490,6 +490,7 @@ export default function StoryLorebook({
                     onChange={(event) => setSearchTerm(event.target.value)}
                     placeholder="Search entries..."
                     aria-label="Search lorebook entries"
+                    data-1p-ignore="true"
                   />
                 </label>
               </div>
@@ -634,6 +635,7 @@ function TimelineCanvas({ entry, locked, saving, onSave, onRepair }) {
           disabled={locked || saving || repairStage === "running"}
           placeholder="- Add the first durable timeline event"
           spellCheck="true"
+          data-1p-ignore="true"
         />
         <div className="lorebook-timeline-footer">
           <div className="lorebook-timeline-actions">
@@ -1123,6 +1125,7 @@ function LorebookEditorModal({
               onChange={(event) => onChange("name", event.target.value)}
               placeholder="Entry name"
               disabled={locked}
+              data-1p-ignore="true"
             />
           </label>
 
@@ -1186,6 +1189,7 @@ function LorebookEditorModal({
               onChange={(event) => onChange("description", event.target.value)}
               placeholder="Core lorebook text the writer should remember"
               disabled={locked}
+              data-1p-ignore="true"
             />
           </label>
 
@@ -1212,6 +1216,7 @@ function LorebookEditorModal({
                         onChange={(event) => onChange("aliasesText", event.target.value)}
                         placeholder="Seren, Doctor Mishra"
                         disabled={locked}
+                        data-1p-ignore="true"
                       />
                     </label>}
 
@@ -1222,6 +1227,7 @@ function LorebookEditorModal({
                         onChange={(event) => onChange("notes", event.target.value)}
                         placeholder="Extra structured details for this entry"
                         disabled={locked}
+                        data-1p-ignore="true"
                       />
                     </label>}
                   </div>

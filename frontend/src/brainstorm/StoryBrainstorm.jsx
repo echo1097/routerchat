@@ -178,12 +178,18 @@ function IdeaNode({ data, selected }) {
       <Handle type="target" position={Position.Left} className="brainstorm-handle" />
       {editing ? (
         <div className="brainstorm-edit-form nodrag">
-          <input value={title} onChange={(event) => setTitle(event.target.value)} aria-label="Idea title" />
+          <input
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            aria-label="Idea title"
+            data-1p-ignore="true"
+          />
           <textarea
             className="nowheel"
             value={content}
             onChange={(event) => setContent(event.target.value)}
             aria-label="Idea details"
+            data-1p-ignore="true"
             rows={5}
           />
           <div className="brainstorm-edit-actions">
@@ -553,6 +559,7 @@ export default function StoryBrainstorm({
             ref={textareaRef}
             value={prompt}
             rows={1}
+            data-1p-ignore="true"
             onChange={(event) => setPrompt(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey) submitPrompt(event);

@@ -12,9 +12,9 @@ You do not need to know how to code. You will copy commands into a black text wi
 
 Three things:
 
-1. **Python** — free, runs the part of RouterChat that talks to the AI models.
-2. **Node.js** — free, builds the part you look at in your browser. It comes with a helper called **npm**.
-3. **An OpenRouter API key** — this is what actually costs money. Get one at [openrouter.ai/keys](https://openrouter.ai/keys). RouterChat is free; the AI models are not.
+1. **Python**: free, runs the part of RouterChat that talks to the AI models.
+2. **Node.js**: free, builds the part you look at in your browser. It comes with a helper called **npm**.
+3. **An OpenRouter API key**: this is the part that actually costs money. Get one at [openrouter.ai/keys](https://openrouter.ai/keys). RouterChat is free; the AI models are not.
 
 ### The terminal
 
@@ -31,7 +31,7 @@ Rules for the whole guide:
 
 ---
 
-## Step 1 — Install Python
+## Step 1: Install Python
 
 First check if you already have it.
 
@@ -61,7 +61,7 @@ If it says "command not found" or shows an older version:
 
 ---
 
-## Step 2 — Install Node.js
+## Step 2: Install Node.js
 
 Check if you already have it:
 
@@ -84,7 +84,7 @@ Otherwise:
 
 ---
 
-## Step 3 — Download RouterChat
+## Step 3: Download RouterChat
 
 **Best option (makes updating easy):** paste this into your terminal.
 
@@ -93,7 +93,7 @@ git clone https://github.com/echo1097/routerchat.git
 cd routerchat
 ```
 
-If `git` is not installed, macOS will offer to install it — say yes and run the command again. Windows users can get it from [git-scm.com](https://git-scm.com/downloads).
+If `git` is not installed, macOS will offer to install it, so say yes and run the command again. Windows users can get it from [git-scm.com](https://git-scm.com/downloads).
 
 Later, updating is one command: `git pull`.
 
@@ -101,7 +101,7 @@ Later, updating is one command: `git pull`.
 
 ### Point your terminal at the folder
 
-Your terminal needs to be "inside" the routerchat folder before the next step. If you used `git clone` above, you already are — skip ahead.
+Your terminal needs to be "inside" the routerchat folder before the next step. If you used `git clone` above, you already are, so skip ahead.
 
 **macOS:** right-click the `routerchat` folder in Finder and choose **New Terminal at Folder**. If you don't see that option, open Terminal, type `cd ` (with a space), then drag the folder into the window and press Enter.
 
@@ -111,7 +111,7 @@ To confirm it worked, run `ls` (macOS) or `dir` (Windows). You should see files 
 
 ---
 
-## Step 4 — Set it up and start it
+## Step 4: Set it up and start it
 
 Copy these one line at a time. The first two commands make a private sandbox for RouterChat's Python parts so it doesn't mess with the rest of your computer.
 
@@ -157,7 +157,7 @@ http://127.0.0.1:8000
 
 ---
 
-## Step 5 — Add your OpenRouter key
+## Step 5: Add your OpenRouter key
 
 1. In RouterChat, click the **model name** next to the send button. That opens settings.
 2. Go to the **API** page.
@@ -193,7 +193,7 @@ If you updated the project with `git pull`, also run `npm install` and `npm run 
 
 ## Stopping it
 
-Click the terminal window and press `Ctrl + C`. The page will stop loading — that's expected.
+Click the terminal window and press `Ctrl + C`. The page will stop loading, which is expected.
 
 ---
 
@@ -207,11 +207,11 @@ RouterChat has two modes. The toggle sits at the top of the left sidebar.
 | You get | A conversation | A story split into chapters |
 | The AI | Replies to your message | Writes or edits the chapter you're on |
 
-**Chat** is what you'd expect — you type, it answers, the whole conversation stays on screen.
+**Chat** is what you'd expect. You type, it answers, the whole conversation stays on screen.
 
 **Write** is a book editor. You make a story, and inside it, chapters. Instead of chatting, you tell the AI what should happen and it writes the chapter directly onto the page, or edits the chapter you already have. Two buttons control which: **New Chapter** writes fresh, **Edit Chapter** rewrites what's there.
 
-Write mode also keeps a **Lorebook** — a running file of your characters, places, and events. It fills itself in as you write so the AI remembers who everyone is fifty chapters later. There's also **Brainstorm** for spinning off ideas without touching the story. Both are in the menu next to the prompt box.
+Write mode also keeps a **Lorebook**, a running file of your characters, places, and events. It fills itself in as you write so the AI remembers who everyone is fifty chapters later. There's also **Brainstorm** for spinning off ideas without touching the story. Both are in the menu next to the prompt box.
 
 ### Chat basics
 
@@ -238,19 +238,19 @@ Clicking the model name opens settings, which has six pages:
 
 ## If something goes wrong
 
-**"Directory 'dist' does not exist"** — you skipped the build step. Run `npm run build`, then start the server again.
+**"Directory 'dist' does not exist"**: you skipped the build step. Run `npm run build`, then start the server again.
 
-**npm complains about "engines" or your Node version** — your Node is too old. Redo Step 2 with a newer installer, then close and reopen your terminal.
+**npm complains about "engines" or your Node version**: your Node is too old. Redo Step 2 with a newer installer, then close and reopen your terminal.
 
-**"python is not recognized" / "command not found: python"** — Python either isn't installed or wasn't added to PATH. On Windows, reinstall it and check the **Add python.exe to PATH** box. On macOS, use `python3` instead of `python`.
+**"python is not recognized" / "command not found: python"**: Python either isn't installed or wasn't added to PATH. On Windows, reinstall it and check the **Add python.exe to PATH** box. On macOS, use `python3` instead of `python`.
 
-**"Port 8000 is already in use"** — something else is using that door. Either restart your computer, or start RouterChat on a different port by changing `--port 8000` to `--port 8001` and opening `http://127.0.0.1:8001` instead.
+**"Port 8000 is already in use"**: something else is using that door. Either restart your computer, or start RouterChat on a different port by changing `--port 8000` to `--port 8001` and opening `http://127.0.0.1:8001` instead.
 
-**Models won't load** — your key is missing or invalid. Re-save it on the API settings page.
+**Models won't load**: your key is missing or invalid. Re-save it on the API settings page.
 
-**Your chats vanished** — they live in `data/routerchat.sqlite3`. If that file is gone, they're gone. Copy it somewhere safe if your history matters to you.
+**Your chats vanished**: they live in `data/routerchat.sqlite3`. If that file is gone, they're gone. Copy it somewhere safe if your history matters to you.
 
-**Everything is broken and you don't know why** — download [assistant.md](assistant.md), upload it to an AI, and paste in the exact error text.
+**Everything is broken and you don't know why**: download [assistant.md](assistant.md), upload it to an AI, and paste in the exact error text.
 
 ---
 
@@ -258,15 +258,15 @@ Clicking the model name opens settings, which has six pages:
 
 Inside the `routerchat` folder:
 
-- `.env` — your API key. Private.
-- `data/routerchat.sqlite3` — every chat, message, and setting. **This is the one worth backing up.**
-- `dist/`, `.venv/`, `node_modules/` — generated files. Safe to ignore; they rebuild themselves.
+- `.env`: your API key. Private.
+- `data/routerchat.sqlite3`: every chat, message, and setting. **This is the one worth backing up.**
+- `dist/`, `.venv/`, `node_modules/`: generated files. Safe to ignore; they rebuild themselves.
 
 None of this is uploaded anywhere or committed to GitHub.
 
 ---
 
-## Optional — Development mode
+## Optional: Development mode
 
 Only useful if you're editing the code and want changes to appear instantly.
 
@@ -285,6 +285,6 @@ python3 -m uvicorn backend.main:app --host 127.0.0.1 --port 8000       # Windows
 npm run dev
 ```
 
-Then open `http://127.0.0.1:5173` — note the different number.
+Then open `http://127.0.0.1:5173`, and note the different number.
 
 Run `npm run build` at least once before this, and keep the backend on port 8000 unless you also edit `vite.config.js`. To stop, press `Ctrl + C` in both windows.

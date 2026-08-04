@@ -2,7 +2,7 @@
 A 100% free local OpenRouter chat interface. Strictly BYOK. 
 
 > [!IMPORTANT]
-> As of August 3, 2026 RouterChat is now distributed under the [Apache License 2.0](LICENSE). Releases up to and including 0.3.5 remain available under the MIT License.
+> As of August 3, 2026, RouterChat is distributed under the [Apache License 2.0](LICENSE). Releases up to and including 0.3.5 remain available under the MIT License.
 
 ## Disclaimer
 
@@ -12,7 +12,7 @@ RouterChat is licensed under the [Apache License 2.0](LICENSE).
 
 ## AI usage disclaimer
 
-AI was used to support development and documentation for this project. All code and documentation were reviewed by myself before being published. The primary use of AI durring development was debugging and refining the UI. 
+AI was used sparingly to support development and documentation for this project. All code and documentation were reviewed by myself before being published.
 
 ## How to set up
 

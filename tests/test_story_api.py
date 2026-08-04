@@ -23,6 +23,14 @@ from backend.writing import (
 )
 
 
+def acceptCurrentTos():
+    #every /api route is behind the tos gate now, so a fresh test db needs an acceptance row or everything 403s
+    tos = main.load_tos()
+    if not tos:
+        raise RuntimeError("TOS.md is missing, restore it before running the tests")
+    main.record_tos_acceptance(tos["hash"], tos["date"])
+
+
 class StoryApiTest(unittest.TestCase):
     def setUp(self):
         self.tempDir = tempfile.TemporaryDirectory()
@@ -31,6 +39,7 @@ class StoryApiTest(unittest.TestCase):
         main.DATA_DIR = Path(self.tempDir.name)
         main.DB_PATH = main.DATA_DIR / "routerchat-test.sqlite3"
         main.init_db()
+        acceptCurrentTos()
         self.client = TestClient(main.app)
 
     def tearDown(self):

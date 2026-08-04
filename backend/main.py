@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
+import re
 import sqlite3
 import tempfile
 import uuid
@@ -12,8 +14,8 @@ from typing import Any, AsyncIterator, Literal
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Response
-from fastapi.responses import PlainTextResponse, StreamingResponse
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -26,6 +28,17 @@ STATIC_DIR = ROOT_DIR / "dist"
 DATA_DIR = ROOT_DIR / "data"
 DB_PATH = DATA_DIR / "routerchat.sqlite3"
 ENV_PATH = ROOT_DIR / ".env"
+TOS_PATH = ROOT_DIR / "TOS.md"
+TOS_DATE_PATTERN = re.compile(r"^\*\*Last updated:\s*(.+?)\s*\*\*$", re.MULTILINE)
+TOS_EXEMPT_PATHS = {"/api/health", "/api/tos", "/api/tos/accept"}
+TOS_MISSING_DETAIL = {
+    "code": "tos_missing",
+    "message": "TOS.md could not be read. Restore it from the repository to use RouterChat.",
+}
+TOS_REQUIRED_DETAIL = {
+    "code": "tos_required",
+    "message": "The current Terms of Service have not been accepted.",
+}
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_MAX_TOKENS = 30000
 OPENROUTER_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=10.0)
@@ -35,6 +48,23 @@ ReasoningEffort = Literal["low", "medium", "high", "xhigh"]
 load_dotenv(ENV_PATH)
 
 app = FastAPI(title="RouterChat", version="0.1.0")
+
+
+@app.middleware("http")
+async def require_tos_acceptance(request: Request, call_next: Any) -> Response:
+    #guard every api route rather than the handful that talk to openrouter, so a new endpoint cant quietly skip the gate
+    path = request.url.path
+    if not path.startswith("/api/") or path in TOS_EXEMPT_PATHS:
+        return await call_next(request)
+
+    tos = load_tos()
+    if not tos:
+        return JSONResponse(status_code=503, content={"detail": TOS_MISSING_DETAIL})
+
+    if not latest_tos_acceptance(tos["hash"]):
+        return JSONResponse(status_code=403, content={"detail": TOS_REQUIRED_DETAIL})
+
+    return await call_next(request)
 
 
 class FrontendStaticFiles(StaticFiles):
@@ -107,6 +137,10 @@ class AppSettingsPatchRequest(BaseModel):
     smooth_streaming: bool | None = None
 
 
+class TosAcceptRequest(BaseModel):
+    hash: str = Field(min_length=1)
+
+
 class ChapterRepairContext(BaseModel):
     #what the model produced last time and why it did not stick, so the retry is not a blind reroll
     previous_output: str = ""
@@ -177,6 +211,48 @@ def patch_updates(payload: BaseModel) -> dict[str, Any]:
             detail=f"Fields cannot be null: {', '.join(null_fields)}.",
         )
     return updates
+
+
+#cache the parsed TOS keyed on mtime+size so the guard middleware isnt re-hashing a file on every single request
+_tos_cache: dict[str, Any] = {"stamp": None, "value": None}
+
+
+def load_tos() -> dict[str, Any] | None:
+    try:
+        stat = TOS_PATH.stat()
+    except OSError:
+        _tos_cache["stamp"] = None
+        _tos_cache["value"] = None
+        return None
+
+    stamp = (stat.st_mtime_ns, stat.st_size)
+    if _tos_cache["stamp"] == stamp:
+        return _tos_cache["value"]
+
+    try:
+        raw = TOS_PATH.read_bytes()
+    except OSError:
+        _tos_cache["stamp"] = None
+        _tos_cache["value"] = None
+        return None
+
+    markdown = raw.decode("utf-8", errors="replace")
+    if not markdown.strip():
+        #an empty terms file is the same as no terms file, dont let it through
+        _tos_cache["stamp"] = stamp
+        _tos_cache["value"] = None
+        return None
+
+    match = TOS_DATE_PATTERN.search(markdown)
+    value = {
+        "markdown": markdown,
+        "hash": hashlib.sha256(raw).hexdigest(),
+        "date": match.group(1) if match else None,
+    }
+
+    _tos_cache["stamp"] = stamp
+    _tos_cache["value"] = value
+    return value
 
 
 def get_db() -> sqlite3.Connection:
@@ -258,6 +334,13 @@ def init_db() -> None:
               key TEXT PRIMARY KEY,
               value_json TEXT NOT NULL,
               updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS tos_acceptances (
+              id TEXT PRIMARY KEY,
+              tos_hash TEXT NOT NULL,
+              tos_date TEXT,
+              accepted_at TEXT NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS stories (
@@ -426,6 +509,9 @@ def init_db() -> None:
 
             CREATE INDEX IF NOT EXISTS idx_brainstorm_edges_story
             ON brainstorm_edges(story_id, created_at);
+
+            CREATE INDEX IF NOT EXISTS idx_tos_acceptances_hash
+            ON tos_acceptances(tos_hash);
             """
         )
         ensure_message_order_column(conn)
@@ -911,6 +997,67 @@ def write_app_setting(key: str, value: Any) -> None:
         )
 
 
+def latest_tos_acceptance(tos_hash: str | None = None) -> dict[str, Any] | None:
+    query = "SELECT id, tos_hash, tos_date, accepted_at FROM tos_acceptances"
+    params: tuple[Any, ...] = ()
+
+    if tos_hash is not None:
+        query += " WHERE tos_hash = ?"
+        params = (tos_hash,)
+
+    query += " ORDER BY accepted_at DESC, rowid DESC LIMIT 1"
+
+    with get_db() as conn:
+        row = conn.execute(query, params).fetchone()
+
+    return dict(row) if row else None
+
+
+def previous_tos_acceptance(current_hash: str) -> dict[str, Any] | None:
+    #the newest acceptance of some *other* version, which is what the "terms changed" banner shows
+    with get_db() as conn:
+        row = conn.execute(
+            """
+            SELECT tos_hash, tos_date, accepted_at
+            FROM tos_acceptances
+            WHERE tos_hash != ?
+            ORDER BY accepted_at DESC, rowid DESC
+            LIMIT 1
+            """,
+            (current_hash,),
+        ).fetchone()
+
+    if not row:
+        return None
+
+    #same key names as the current-version payload so the frontend can render either one the same way
+    return {
+        "hash": row["tos_hash"],
+        "date": row["tos_date"],
+        "accepted_at": row["accepted_at"],
+    }
+
+
+def record_tos_acceptance(tos_hash: str, tos_date: str | None) -> None:
+    with get_db() as conn:
+        conn.execute(
+            "INSERT INTO tos_acceptances (id, tos_hash, tos_date, accepted_at) VALUES (?, ?, ?, ?)",
+            (str(uuid.uuid4()), tos_hash, tos_date, utc_now()),
+        )
+
+
+def tos_payload(tos: dict[str, Any]) -> dict[str, Any]:
+    accepted = latest_tos_acceptance(tos["hash"])
+    return {
+        "hash": tos["hash"],
+        "date": tos["date"],
+        "markdown": tos["markdown"],
+        "accepted": bool(accepted),
+        "accepted_at": accepted["accepted_at"] if accepted else None,
+        "previous": previous_tos_acceptance(tos["hash"]) if not accepted else None,
+    }
+
+
 def app_settings_payload() -> dict[str, Any]:
     return {
         "default_model": default_model_id(),
@@ -1083,6 +1230,36 @@ def chat_title_from_message(message: str) -> str:
 @app.get("/api/health")
 def health() -> dict[str, Any]:
     return {"ok": True, "has_key": bool(read_openrouter_key())}
+
+
+@app.get("/api/tos")
+def get_tos() -> dict[str, Any]:
+    tos = load_tos()
+    if not tos:
+        raise HTTPException(status_code=503, detail=TOS_MISSING_DETAIL)
+    return tos_payload(tos)
+
+
+@app.post("/api/tos/accept")
+def accept_tos(payload: TosAcceptRequest) -> dict[str, Any]:
+    tos = load_tos()
+    if not tos:
+        raise HTTPException(status_code=503, detail=TOS_MISSING_DETAIL)
+
+    if payload.hash.strip().lower() != tos["hash"]:
+        #client was holding a stale copy, make it re-read whatever is on disk now
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "tos_stale",
+                "message": "The terms changed while you were reading them. Please read and accept the current version.",
+            },
+        )
+
+    if not latest_tos_acceptance(tos["hash"]):
+        record_tos_acceptance(tos["hash"], tos["date"])
+
+    return tos_payload(tos)
 
 
 @app.get("/api/settings/key-status")

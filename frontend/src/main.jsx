@@ -40,6 +40,7 @@ import openingMessages from "./openingMessages.json";
 import { cx, CONTROL_MOTION, PROMPT_BAR_CONTROL_MOTION, SOFT_SURFACE, FADE_MOTION } from "./uiShared.js";
 import HelpTourButton from "./HelpTourButton.jsx";
 import ThinkingContent from "./ThinkingContent.jsx";
+import { TosGateModal, TosLoadingScreen, TosUnavailableScreen } from "./TosGate.jsx";
 import StoryBrainstorm from "./brainstorm/StoryBrainstorm.jsx";
 import StoryLorebook from "./lorebook/StoryLorebook.jsx";
 import NotificationStack from "./notifications/NotificationStack.jsx";
@@ -8667,4 +8668,72 @@ function App() {
   );
 }
 
-createRoot(document.getElementById("root")).render(<App />);
+//the whole app hides behind this, App never mounts until the current terms have been accepted
+function Root() {
+  const [gate, setGate] = useState({ status: "loading", tos: null, message: "" });
+  const [acceptError, setAcceptError] = useState("");
+
+  const loadTos = useCallback(async () => {
+    setGate((current) => ({ ...current, status: "loading" }));
+
+    try {
+      const tos = await api("/api/tos");
+      setGate({
+        status: tos.accepted ? "accepted" : "blocked",
+        tos,
+        message: "",
+      });
+    } catch (error) {
+      //anything that isnt a clean "accepted" answer keeps the app shut, including the backend being down
+      setGate({
+        status: "unavailable",
+        tos: null,
+        message:
+          error?.code === "tos_missing"
+            ? error.message
+            : "Could not reach the RouterChat backend to load the Terms of Service.",
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    loadTos();
+  }, [loadTos]);
+
+  const acceptTos = useCallback(async () => {
+    setAcceptError("");
+
+    try {
+      const accepted = await api("/api/tos/accept", {
+        method: "POST",
+        body: JSON.stringify({ hash: gate.tos.hash }),
+      });
+      setGate({ status: "accepted", tos: accepted, message: "" });
+    } catch (error) {
+      if (error?.code === "tos_stale") {
+        //TOS.md changed underneath us, pull the new text instead of letting them through
+        setAcceptError(error.message);
+        await loadTos();
+        return;
+      }
+
+      setAcceptError(error?.message || "Could not record your acceptance. Try again.");
+    }
+  }, [gate.tos, loadTos]);
+
+  if (gate.status === "loading") {
+    return <TosLoadingScreen />;
+  }
+
+  if (gate.status === "unavailable") {
+    return <TosUnavailableScreen message={gate.message} onRetry={loadTos} />;
+  }
+
+  if (gate.status === "blocked") {
+    return <TosGateModal tos={gate.tos} onAccept={acceptTos} error={acceptError} />;
+  }
+
+  return <App />;
+}
+
+createRoot(document.getElementById("root")).render(<Root />);

@@ -2658,7 +2658,7 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                             "usage",
                             {"generation_id": generation_id, "model": payload.model, **usage},
                         )
-                    stream_completed = received_done
+                    stream_completed = received_done or bool(finish_reason)
         except asyncio.CancelledError:
             cancelled = True
             error_text = "generation_cancelled"
@@ -2679,6 +2679,9 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                     "code": "generation_incomplete_stream",
                     "message": "Generation ended before the provider completed the stream.",
                 }
+            #a dropped connection in append mode still has good prose sitting in it, worth keeping instead of throwing away
+            incomplete_stream = error_text == "generation_incomplete_stream"
+            append_truncated = incomplete_stream and generation_mode != "edit" and bool(content)
             if cancelled:
                 error_event = {
                     "code": "generation_cancelled",
@@ -2703,7 +2706,7 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                     edit_batch = None
 
             with deps.get_db() as conn:
-                if stream_completed and content:
+                if (stream_completed or append_truncated) and content:
                     conn.execute("BEGIN IMMEDIATE")
                 current = conn.execute(
                     "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
@@ -2772,7 +2775,7 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                     except ChapterEditError as exc:
                         error_event = repairable_error_event(exc.code, exc.message, is_repair)
                         error_text = f"{exc.code}: {exc.message}"
-                elif stream_completed and content and generation_mode != "edit":
+                elif content and generation_mode != "edit" and (stream_completed or append_truncated):
                     operation_result = append_chapter_text(current_content, content)
                     nextContent = operation_result["content"]
                     result = conn.execute(
@@ -2805,7 +2808,12 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                                     "appliedText": operation_result["appliedText"],
                                 }
                             ],
+                            "truncated": append_truncated,
+                            #repair_context continuation only exists for edit mode, offering a retry here would go nowhere
+                            "repairable": False,
                         }
+                        #it saved, so the earlier incomplete-stream flag is no longer a user-facing failure
+                        error_event = None
                     else:
                         error_event = revision_conflict_event(conn)
                         error_text = CHAPTER_REVISION_CONFLICT
@@ -2847,11 +2855,17 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                 )
             if error_event is not None:
                 yield emit("error", error_event)
+                #new mode never touches an edit at all, so the label needs to say what actually failed
+                fail_label = (
+                    f"{model_label} could not apply the edit"
+                    if generation_mode == "edit"
+                    else f"{model_label} could not finish writing"
+                )
                 #a run that failed still burned tokens, so it gets a line and carries the cost the wrote for line never got to report
                 yield emit(
                     "history",
                     save_history(
-                        f"{model_label} could not apply the edit",
+                        fail_label,
                         detail=str(error_event.get("message") or ""),
                         kind="write_failed",
                         cost=usage.get("cost") if usage else None,
@@ -2872,12 +2886,15 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                         detail = "\n".join(
                             f"skipped edit {item['index'] + 1}: {item['message']}" for item in skipped
                         )
-                    elif chapter_update_event.get("truncated"):
+                    elif chapter_update_event.get("truncated") and generation_mode == "edit":
                         label = (
                             f"{model_label} applied {format_edit_count(applied_count)} "
                             "before the token limit"
                         )
                         detail = "the response was cut off, so any edits it had not written yet are missing"
+                    elif chapter_update_event.get("truncated"):
+                        label = f"{model_label} wrote for {format_duration(duration_ms)} before the connection dropped"
+                        detail = "the response was cut off, so anything written after that point is missing"
                     else:
                         label = f"{model_label} wrote for {format_duration(duration_ms)}"
                         detail = ""

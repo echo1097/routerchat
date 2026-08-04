@@ -8225,7 +8225,9 @@ function App() {
               //a truncated run has no rejected list to count, the edits it never got to write simply are not here
               setStatus(skipped.length
                 ? `Applied ${appliedCount} of ${appliedCount + skipped.length} edits — ${skipped.length} skipped.`
-                : `Applied ${appliedCount} edits before the response hit the token limit.`);
+                : run.generationMode === "new"
+                  ? "The connection dropped before the response finished, but what was written so far was saved."
+                  : `Applied ${appliedCount} edits before the response hit the token limit.`);
               if (result.repairable) {
                 pendingRepairRef.current = {
                   prompt: text,

@@ -182,7 +182,7 @@ class StoryApiTest(unittest.TestCase):
         reusedPosition = next_brainstorm_root_position(secondNodes, secondEdges, 3)
         self.assertEqual(reusedPosition, (0.0, 180.0))
 
-    def streamChapterGeneration(self, story, chapter, output, revision=None, mode="edit", runId="run-test", complete=True, lorebookUpdates=None, repairContext=None):
+    def streamChapterGeneration(self, story, chapter, output, revision=None, mode="edit", runId="run-test", complete=True, lorebookUpdates=None, repairContext=None, finishReason=None):
         chunks = output if isinstance(output, list) else [output]
         requestBody = {}
         lorebookCalls = []
@@ -201,6 +201,9 @@ class StoryApiTest(unittest.TestCase):
             async def aiter_lines(self):
                 for chunk in chunks:
                     yield f"data: {json.dumps({'choices': [{'delta': {'content': chunk}}]})}"
+                if finishReason:
+                    #a provider that ends the connection right after its last real chunk, no trailing [DONE] line
+                    yield f"data: {json.dumps({'choices': [{'delta': {}, 'finish_reason': finishReason}]})}"
                 if complete:
                     yield "data: [DONE]"
 
@@ -1705,7 +1708,8 @@ class StoryApiTest(unittest.TestCase):
         self.assertEqual(generation["generated_text"], rawOutput)
         self.assertTrue(generation["error"].startswith("chapter_edit_invalid_operation"))
 
-    def test_incomplete_stream_never_applies_partial_chapter_text(self):
+    def test_incomplete_stream_saves_partial_chapter_text_in_new_mode(self):
+        #a dropped connection still has good prose in it in append mode, so it gets kept instead of thrown away
         story = self.client.post("/api/stories", json={"title": "Incomplete Stream"}).json()["story"]
         chapter = self.client.post(
             f"/api/stories/{story['id']}/chapters",
@@ -1721,14 +1725,86 @@ class StoryApiTest(unittest.TestCase):
         )
 
         events = [json.loads(line) for line in response.text.splitlines() if line]
-        self.assertNotIn("chapter_updated", [event["type"] for event in events])
-        self.assertEqual(self.client.get(f"/api/stories/{story['id']}").json()["chapters"][0]["content"], "saved text")
+        self.assertNotIn("error", [event["type"] for event in events])
+        updateEvent = next(event for event in events if event["type"] == "chapter_updated")
+        self.assertEqual(
+            updateEvent["value"]["chapter"]["content"],
+            "saved text\n\npartial provider output",
+        )
+        self.assertTrue(updateEvent["value"]["truncated"])
+        self.assertFalse(updateEvent["value"]["repairable"])
+
+        historyEvents = [event for event in events if event["type"] == "history"]
+        historyLabels = [event["value"]["label"] for event in historyEvents]
+        self.assertTrue(any(label.endswith("before the connection dropped") for label in historyLabels))
+        self.assertFalse(any("could not" in label for label in historyLabels))
+
+        persisted = self.client.get(f"/api/stories/{story['id']}").json()["chapters"][0]
+        self.assertEqual(persisted["content"], "saved text\n\npartial provider output")
         with main.get_db() as conn:
             generation = conn.execute(
                 "SELECT generated_text, error FROM story_generations WHERE chapter_id = ?",
                 (chapter["id"],),
             ).fetchone()
         self.assertEqual(generation["generated_text"], "partial provider output")
+        self.assertEqual(generation["error"], "generation_incomplete_stream")
+
+    def test_a_finish_reason_without_a_done_line_still_completes_the_stream(self):
+        #some providers drop the connection right after their last real chunk and never send the trailing [DONE] line
+        story = self.client.post("/api/stories", json={"title": "No Done Line"}).json()["story"]
+        chapter = self.client.post(
+            f"/api/stories/{story['id']}/chapters",
+            json={"title": "Opening", "content": ""},
+        ).json()["chapter"]
+
+        response, _ = self.streamChapterGeneration(
+            story,
+            chapter,
+            "a full chapter's worth of prose",
+            mode="new",
+            complete=False,
+            finishReason="stop",
+        )
+
+        events = [json.loads(line) for line in response.text.splitlines() if line]
+        self.assertNotIn("error", [event["type"] for event in events])
+        updateEvent = next(event for event in events if event["type"] == "chapter_updated")
+        self.assertEqual(updateEvent["value"]["chapter"]["content"], "a full chapter's worth of prose")
+        self.assertFalse(updateEvent["value"]["truncated"])
+        with main.get_db() as conn:
+            generation = conn.execute(
+                "SELECT finish_reason, error FROM story_generations WHERE chapter_id = ?",
+                (chapter["id"],),
+            ).fetchone()
+        self.assertEqual(generation["finish_reason"], "stop")
+        self.assertIsNone(generation["error"])
+
+    def test_incomplete_stream_still_discards_partial_edit_json(self):
+        #edit mode cant safely keep a half-streamed JSON batch, so a dropped connection there should still fail closed
+        story = self.client.post("/api/stories", json={"title": "Incomplete Edit Stream"}).json()["story"]
+        chapter = self.client.post(
+            f"/api/stories/{story['id']}/chapters",
+            json={"title": "Opening", "content": "unchanged"},
+        ).json()["chapter"]
+
+        response, _ = self.streamChapterGeneration(
+            story,
+            chapter,
+            "{\"chapterRevision\": 0, \"edits\": [{\"operation\": \"appendToChapter\"",
+            mode="edit",
+            complete=False,
+        )
+
+        events = [json.loads(line) for line in response.text.splitlines() if line]
+        self.assertNotIn("chapter_updated", [event["type"] for event in events])
+        errorEvents = [event for event in events if event["type"] == "error"]
+        self.assertEqual(errorEvents[0]["value"]["code"], "generation_incomplete_stream")
+        self.assertEqual(self.client.get(f"/api/stories/{story['id']}").json()["chapters"][0]["content"], "unchanged")
+        with main.get_db() as conn:
+            generation = conn.execute(
+                "SELECT error FROM story_generations WHERE chapter_id = ?",
+                (chapter["id"],),
+            ).fetchone()
         self.assertEqual(generation["error"], "generation_incomplete_stream")
 
     def test_edit_revision_and_target_conflicts_fail_closed(self):

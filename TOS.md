@@ -4,7 +4,7 @@
 
 RouterChat is self-hosted software distributed under the Apache License 2.0. The author does not operate a hosted RouterChat service, process user accounts, or control deployments operated by third parties. Each person or organization deploying RouterChat is solely responsible for operating that deployment and establishing any terms, privacy notices, or policies applicable to its users.
 
-By downloading, installing, running, modifying, or distributing RouterChat, you acknowledge that you have read and understood the following.
+By downloading, installing, running, modifying, or distributing RouterChat, you acknowledge that you have read and understand the following.
 
 ---
 

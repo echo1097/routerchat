@@ -35,17 +35,12 @@ For extra support, upload [assistant.md](assistant.md) to your favorite AI to tu
     - Generate chat names instead of just being first message 
     - Pin chats (DONE)
 - Writing Mode improvements
-    - Brainstorming
+    - Brainstorming (DONE)
     - Import/export 
-    - Better chapter history
-- Support for more providers (will take time and might not happen because of how deeply integrated OpenRouter is)
-    - Gemini API
-    - OpenAI API
-    - Claude API
+    - Better chapter history (DONE)
 - Memory
     - Chat mode
     - Write mode (DONE)
-- RAG 
 
 ## Bug reporting and contributing
 - To report a bug open an issue and provide as much context and information as you can so I can reproduce and fix it. 

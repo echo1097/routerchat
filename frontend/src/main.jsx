@@ -43,6 +43,8 @@ import ThinkingContent from "./ThinkingContent.jsx";
 import { TosGateModal, TosLoadingScreen, TosUnavailableScreen } from "./TosGate.jsx";
 import StoryBrainstorm from "./brainstorm/StoryBrainstorm.jsx";
 import StoryLorebook from "./lorebook/StoryLorebook.jsx";
+import { repairLorebook as repairLorebookStream } from "./lorebook/repairLorebookApi.js";
+import { updateLorebookStream } from "./lorebook/lorebookUpdateApi.js";
 import NotificationStack from "./notifications/NotificationStack.jsx";
 import { useNotifications } from "./notifications/useNotifications.js";
 import { useRafScroller } from "./streamScroll.js";
@@ -2703,6 +2705,8 @@ function StoryWorkspace({
   generationStatus,
   lorebookStatus,
   writeReasoning,
+  lorebookReasoning,
+  lorebookThinking,
   writeEditPreview,
   canvasScrollPosition,
   onOpenRail,
@@ -2716,6 +2720,7 @@ function StoryWorkspace({
   onDeleteLorebookEntry,
   onConfirmDeleteLorebookEntry,
   onRepairTimeline,
+  onRepairLorebook,
 }) {
   const canvasScrollRef = useRef(null);
   const generationActiveRef = useRef(false);
@@ -2723,10 +2728,14 @@ function StoryWorkspace({
   const activeChapter = chapters.find((chapter) => chapter.id === activeChapterId);
   const writingLocked = Boolean(generationStatus || lorebookStatus);
 
-  //lorebook runs borrow the shimmer but not the thinking text, which is still sitting there from the last generation
   const writeStatus = generationStatus || lorebookStatus;
-  const statusReasoning = generationStatus ? writeReasoning : null;
-  const statusEditPreview = generationStatus ? writeEditPreview : null;
+  //the lorebook thinks in its own pass, so while it runs the dropdown shows its reasoning instead of the chapter's
+  const statusReasoning = lorebookThinking
+    ? lorebookReasoning
+    : generationStatus
+      ? writeReasoning
+      : null;
+  const statusEditPreview = lorebookThinking || !generationStatus ? null : writeEditPreview;
   const {
     markUserScroll: markCanvasScroll,
     markWheelIntent: markCanvasWheelIntent,
@@ -2802,6 +2811,7 @@ function StoryWorkspace({
         onDeleteEntry={onDeleteLorebookEntry}
         onConfirmDeleteEntry={onConfirmDeleteLorebookEntry}
         onRepairTimeline={onRepairTimeline}
+        onRepairLorebook={onRepairLorebook}
         locked={writingLocked}
       />
     );
@@ -5852,6 +5862,9 @@ function App() {
   const [chapterSaveState, setChapterSaveState] = useState("");
   const [storyGenerationStatus, setStoryGenerationStatus] = useState("");
   const [writeReasoning, setWriteReasoning] = useState({ text: "", streaming: false, durationMs: null });
+  //the lorebook thinks in its own pass, so it gets its own reasoning rather than sharing the chapter's
+  const [lorebookReasoning, setLorebookReasoning] = useState({ text: "", streaming: false, durationMs: null });
+  const [lorebookThinking, setLorebookThinking] = useState(false);
   const [writeEditPreview, setWriteEditPreview] = useState(null);
   const [latestStoryGeneration, setLatestStoryGeneration] = useState(null);
   const [writeGenerationMode, setWriteGenerationMode] = useState("edit");
@@ -5910,6 +5923,7 @@ function App() {
   const reasoningStartedAtRef = useRef({});
   const writeReasoningStartedAtRef = useRef(null);
   const writeReasoningStreamingRef = useRef(false);
+  const lorebookReasoningStartedAtRef = useRef(null);
   const streamRef = useRef(null);
   const previousRailStateRef = useRef(null);
   const brainstormViewportTimeoutRef = useRef(null);
@@ -7774,14 +7788,50 @@ function App() {
     });
   }
 
+  function startLorebookThinking() {
+    lorebookReasoningStartedAtRef.current = null;
+    setLorebookReasoning({ text: "", streaming: false, durationMs: null });
+    setLorebookThinking(true);
+  }
+
+  function appendLorebookReasoning(chunk) {
+    if (!lorebookReasoningStartedAtRef.current) {
+      lorebookReasoningStartedAtRef.current = performance.now();
+    }
+    setLorebookReasoning((current) => ({
+      text: `${current.text || ""}${String(chunk || "")}`,
+      streaming: true,
+      durationMs: null,
+    }));
+  }
+
+  //the thinking is over the moment the run ends, there is no content phase here to close it out like the chapter has
+  function finishLorebookThinking() {
+    const startedAt = lorebookReasoningStartedAtRef.current;
+    lorebookReasoningStartedAtRef.current = null;
+    setLorebookThinking(false);
+    setLorebookReasoning((current) => ({
+      ...current,
+      streaming: false,
+      durationMs: startedAt ? performance.now() - startedAt : current.durationMs,
+    }));
+  }
+
   async function updateLorebookNow() {
     if (!activeStoryId || !activeChapterId || isStreaming || lorebookUpdating) return;
 
     try {
       setLorebookUpdating(true);
+      startLorebookThinking();
       //the editor autosaves, so push any pending draft before the server reads the chapter
       await flushChapterSave(activeStoryId, activeChapterId);
-      const result = await storyApi.updateLorebookFromChapter(activeStoryId, activeChapterId);
+      const result = await updateLorebookStream({
+        storyId: activeStoryId,
+        chapterId: activeChapterId,
+        onEvent: (event) => {
+          if (event.type === "reasoning") appendLorebookReasoning(event.value);
+        },
+      });
 
       setLorebookEntries(result.entries || []);
       (result.history || []).forEach(appendWriteHistoryEntry);
@@ -7795,6 +7845,7 @@ function App() {
     } catch (error) {
       setStatus(error.message);
     } finally {
+      finishLorebookThinking();
       setLorebookUpdating(false);
     }
   }
@@ -7821,6 +7872,24 @@ function App() {
           entry.id === repairedEntry.id ? repairedEntry : entry
         ));
       });
+      return result;
+    } finally {
+      setLorebookUpdating(false);
+    }
+  }
+
+  async function repairLorebook(onEvent) {
+    if (!activeStoryId || isStreaming || lorebookUpdating) {
+      throw new Error("Finish the current writing task first.");
+    }
+
+    try {
+      setLorebookUpdating(true);
+      setStatus("");
+      const result = await repairLorebookStream({ storyId: activeStoryId, onEvent });
+
+      //the rebuild replaces every visible entry with brand new rows, so swap the whole list rather than merging
+      setLorebookEntries(result.entries);
       return result;
     } finally {
       setLorebookUpdating(false);
@@ -8091,9 +8160,12 @@ function App() {
     setIsStreaming(true);
     setStoryGenerationStatus("Preparing");
     setWriteReasoning({ text: "", streaming: false, durationMs: null });
+    setLorebookReasoning({ text: "", streaming: false, durationMs: null });
+    setLorebookThinking(false);
     setWriteEditPreview(null);
     writeReasoningStartedAtRef.current = null;
     writeReasoningStreamingRef.current = false;
+    lorebookReasoningStartedAtRef.current = null;
     setStatus("");
     let generatedText = "";
     let streamFailed = false;
@@ -8242,9 +8314,15 @@ function App() {
           }
           if (event.type === "lorebook_start") {
             setStoryGenerationStatus("Editing Lorebook");
+            startLorebookThinking();
+            return;
+          }
+          if (event.type === "lorebook_reasoning") {
+            appendLorebookReasoning(event.value);
             return;
           }
           if (event.type === "lorebook") {
+            finishLorebookThinking();
             //a run that changed nothing stays quiet, the history line already covers it
             void storyApi.listLorebook(run.storyId).then(setLorebookEntries).catch((error) => {
               setStatus(error.message);
@@ -8311,6 +8389,8 @@ function App() {
       }));
       writeReasoningStartedAtRef.current = null;
       writeReasoningStreamingRef.current = false;
+      //a run that dies mid lorebook would otherwise leave the label shimmering forever
+      finishLorebookThinking();
       if (abortRef.current === abortController) abortRef.current = null;
       if (writeGenerationRunRef.current === run) writeGenerationRunRef.current = null;
       setStoryGenerationStatus("");
@@ -8485,6 +8565,8 @@ function App() {
             generationStatus={storyGenerationStatus}
             lorebookStatus={lorebookUpdating ? "Updating Lorebook" : ""}
             writeReasoning={writeReasoning}
+            lorebookReasoning={lorebookReasoning}
+            lorebookThinking={lorebookThinking}
             writeEditPreview={writeEditPreview}
             canvasScrollPosition={chapterCanvasScrollPosition(activeStoryId, activeChapterId)}
             onOpenRail={() => setRailOpen(true)}
@@ -8509,6 +8591,7 @@ function App() {
             onDeleteLorebookEntry={deleteLorebookEntry}
             onConfirmDeleteLorebookEntry={confirmDeleteLorebookEntry}
             onRepairTimeline={repairTimeline}
+            onRepairLorebook={repairLorebook}
           />
         ) : !isWritingMode ? (
           <>

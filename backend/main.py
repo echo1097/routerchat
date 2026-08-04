@@ -20,6 +20,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from backend.lorebook_repair import create_lorebook_repair_router
+from backend.lorebook_update_stream import create_lorebook_update_stream_router
 from backend.writing import WritingDeps, create_writing_router
 
 
@@ -2602,28 +2604,28 @@ async def stream_writing_message(
     )
 
 
-app.include_router(
-    create_writing_router(
-        WritingDeps(
-            get_db=get_db,
-            utc_now=utc_now,
-            default_model_id=default_model_id,
-            read_openrouter_key=read_openrouter_key,
-            headers_for_key=headers_for_key,
-            write_system_prompt=writeSystemPrompt,
-            openrouter_request_model=openrouter_request_model,
-            model_supports_reasoning=model_supports_reasoning,
-            effective_thinking_enabled=effective_thinking_enabled,
-            enabled_reasoning_config=enabled_reasoning_config,
-            model_supports_structured_output=model_supports_structured_output,
-            openrouter_error_message=openrouter_error_message,
-            normalize_usage=normalize_usage,
-            fetch_generation_usage=fetch_generation_usage,
-            stream_event=stream_event,
-            stream_message_request=StreamMessageRequest,
-            openrouter_base_url=OPENROUTER_BASE_URL,
-        )
-    )
+writingDeps = WritingDeps(
+    get_db=get_db,
+    utc_now=utc_now,
+    default_model_id=default_model_id,
+    read_openrouter_key=read_openrouter_key,
+    headers_for_key=headers_for_key,
+    write_system_prompt=writeSystemPrompt,
+    openrouter_request_model=openrouter_request_model,
+    model_supports_reasoning=model_supports_reasoning,
+    effective_thinking_enabled=effective_thinking_enabled,
+    enabled_reasoning_config=enabled_reasoning_config,
+    model_supports_structured_output=model_supports_structured_output,
+    openrouter_error_message=openrouter_error_message,
+    normalize_usage=normalize_usage,
+    fetch_generation_usage=fetch_generation_usage,
+    stream_event=stream_event,
+    stream_message_request=StreamMessageRequest,
+    openrouter_base_url=OPENROUTER_BASE_URL,
 )
+
+app.include_router(create_writing_router(writingDeps))
+app.include_router(create_lorebook_repair_router(writingDeps))
+app.include_router(create_lorebook_update_stream_router(writingDeps))
 
 configure_static_files(app, STATIC_DIR)

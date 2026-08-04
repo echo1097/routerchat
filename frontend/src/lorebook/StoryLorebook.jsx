@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ArrowLeft,
@@ -9,10 +9,9 @@ import {
   Search,
   X,
 } from "lucide-react";
-import ThinkingContent from "../ThinkingContent.jsx";
-import { useRafScroller } from "../streamScroll.js";
-import { useTextSwap } from "../textSwap.js";
 import { cx, CONTROL_MOTION } from "../uiShared.js";
+import RepairModal, { repairDurationParts } from "./RepairModal.jsx";
+import RepairLorebookButton from "./RepairLorebookButton.jsx";
 import "./StoryLorebook.css";
 
 const CATEGORY_OPTIONS = [
@@ -159,6 +158,7 @@ export default function StoryLorebook({
   onDeleteEntry,
   onConfirmDeleteEntry,
   onRepairTimeline,
+  onRepairLorebook,
   locked = false,
 }) {
   const [localEntries, setLocalEntries] = useState(() => {
@@ -515,6 +515,7 @@ export default function StoryLorebook({
               saving={savingTimeline}
               onSave={saveTimeline}
               onRepair={onRepairTimeline}
+              onRepairLorebook={onRepairLorebook}
             />
           ) : visibleEntries.length === 0 ? (
             <div className="lorebook-empty">
@@ -556,7 +557,7 @@ export default function StoryLorebook({
   );
 }
 
-function TimelineCanvas({ entry, locked, saving, onSave, onRepair }) {
+function TimelineCanvas({ entry, locked, saving, onSave, onRepair, onRepairLorebook }) {
   const [timelineText, setTimelineText] = useState(entry?.description || "");
   const [repairOpen, setRepairOpen] = useState(false);
   const [repairStage, setRepairStage] = useState("confirm");
@@ -626,6 +627,8 @@ function TimelineCanvas({ entry, locked, saving, onSave, onRepair }) {
     }
   }
 
+  const { seconds: durationSeconds, unit: durationUnit } = repairDurationParts(repairDurationMs);
+
   return (
     <>
       <section className="lorebook-timeline-canvas">
@@ -655,6 +658,11 @@ function TimelineCanvas({ entry, locked, saving, onSave, onRepair }) {
             >
               Repair timeline
             </button>
+            <RepairLorebookButton
+              locked={locked || repairStage === "running"}
+              saving={saving}
+              onRepair={onRepairLorebook}
+            />
           </div>
           {(locked || saving) && (
             <span>{locked ? "timeline locked while the model is writing" : "saving timeline"}</span>
@@ -662,272 +670,44 @@ function TimelineCanvas({ entry, locked, saving, onSave, onRepair }) {
         </div>
       </section>
 
-      <RepairTimelineModal
+      <RepairModal
         open={repairOpen}
         stage={repairStage}
         phase={repairPhase}
         reasoning={repairReasoning}
-        durationMs={repairDurationMs}
         error={repairError}
+        idPrefix="timeline-repair"
+        closeLabel="Close timeline repair"
+        titles={{
+          confirm: "Repair timeline?",
+          complete: "Timeline rebuilt",
+          error: "Timeline repair failed",
+        }}
+        confirmLabel="Repair timeline"
+        description={
+          <>
+            Repair timeline regenerates the entire timeline, discarding the current one and
+            rebuilding it from the entire story (every chapter not hidden from context). Do you
+            want to continue?
+          </>
+        }
+        runningLabel={{
+          thinking: "Repairing timeline, thinking",
+          writing: "Repairing timeline, writing the rebuilt timeline",
+        }}
+        completeMessage={
+          <>
+            Finished rebuilding timeline in{" "}
+            <span className="lorebook-repair-duration">{durationSeconds}</span>{" "}
+            {durationUnit}.
+          </>
+        }
+        errorLead="Could not rebuild timeline. The current timeline was not changed."
+        reasoningTestId="timeline-repair-reasoning"
         onConfirm={confirmRepair}
         onClose={closeRepair}
       />
     </>
-  );
-}
-
-//split so the count can be bolded on its own, the unit word stays in the body weight
-function repairDurationParts(durationMs) {
-  const seconds = Math.max(1, Math.round(Number(durationMs || 0) / 1000));
-  return { seconds, unit: seconds === 1 ? "second" : "seconds" };
-}
-
-function RepairTimelineModal({
-  open,
-  stage,
-  phase,
-  reasoning,
-  durationMs,
-  error,
-  onConfirm,
-  onClose,
-}) {
-  const [rendered, setRendered] = useState(open);
-  const [modalState, setModalState] = useState(open ? "open" : "closed");
-  const [bodyHeight, setBodyHeight] = useState(null);
-  const reasoningRef = useRef(null);
-  const bodyInnerRef = useRef(null);
-  const {
-    markUserScroll: markReasoningScroll,
-    markWheelIntent: markReasoningWheelIntent,
-    markTouchStart: markReasoningTouchStart,
-    markTouchMove: markReasoningTouchMove,
-    scrollToBottom: scrollReasoningToBottom,
-    startFollowing: startFollowingReasoning,
-  } = useRafScroller(reasoningRef, 32);
-
-  useEffect(() => {
-    if (open) {
-      setRendered(true);
-      requestAnimationFrame(() => setModalState("open"));
-      return undefined;
-    }
-    if (!rendered) return undefined;
-
-    setModalState("closing");
-    const closeMs = parseFloat(
-      getComputedStyle(document.documentElement).getPropertyValue("--modal-close-dur"),
-    ) || 150;
-    const timeoutId = window.setTimeout(() => {
-      setRendered(false);
-      setModalState("closed");
-      setBodyHeight(null); //next open should measure fresh instead of tweening from the old stage
-    }, closeMs);
-    return () => window.clearTimeout(timeoutId);
-  }, [open, rendered]);
-
-  //the body owns the size change between stages, so pin it to whatever the current stage measures
-  useLayoutEffect(() => {
-    const inner = bodyInnerRef.current;
-    if (!inner) return undefined;
-
-    function syncBodyHeight() {
-      setBodyHeight(inner.offsetHeight); //offsetHeight, not a rect, the modal is mid scale transform while it opens
-    }
-
-    syncBodyHeight();
-
-    const observer = new ResizeObserver(syncBodyHeight);
-    observer.observe(inner);
-    return () => observer.disconnect();
-  }, [rendered]);
-
-  //start pinned to the newest thinking, then follow along unless the reader scrolls up to re-read
-  useEffect(() => {
-    if (stage !== "running") return;
-    startFollowingReasoning();
-  }, [stage, startFollowingReasoning]);
-
-  useEffect(() => {
-    if (stage !== "running") return;
-    scrollReasoningToBottom();
-  }, [reasoning, scrollReasoningToBottom, stage]);
-
-  useEffect(() => {
-    if (!open || stage === "running") return undefined;
-
-    function handleKeyDown(event) {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      onClose();
-    }
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose, open, stage]);
-
-  const isRunning = stage === "running";
-  const title = stage === "confirm"
-    ? "Repair timeline?"
-    : stage === "complete"
-      ? "Timeline rebuilt"
-      : stage === "error"
-        ? "Timeline repair failed"
-        : phase === "writing"
-          ? "Writing"
-          : "Thinking";
-  const { shownText: shownTitle, textRef: titleRef } = useTextSwap(title);
-  //the finished stage already has a Done button so the corner x is just a second way to do the same thing
-  const showCloseIcon = stage === "confirm" || stage === "error";
-  const { seconds: durationSeconds, unit: durationUnit } = repairDurationParts(durationMs);
-
-  if (!rendered) return null;
-
-  return createPortal(
-    <div className="lorebook-modal-guard fixed inset-0 z-[80] grid place-items-center bg-black/60 px-3 py-4 backdrop-blur-sm sm:px-6">
-      <button
-        type="button"
-        className="absolute inset-0 cursor-default"
-        aria-label="Close timeline repair"
-        onClick={onClose}
-        disabled={isRunning}
-      />
-      <section
-        className={cx(
-          "lorebook-modal",
-          "lorebook-repair-modal",
-          "t-modal",
-          modalState === "open" && "is-open",
-          modalState === "closing" && "is-closing",
-        )}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="timeline-repair-title"
-        aria-describedby="timeline-repair-description"
-      >
-        <header>
-          <h2 id="timeline-repair-title" className="lorebook-repair-title">
-            <span
-              ref={titleRef}
-              className={cx("lorebook-repair-title-text", "t-text-swap", isRunning && "t-shimmer")}
-              data-text={shownTitle}
-            >
-              {shownTitle}
-            </span>
-          </h2>
-          {showCloseIcon && (
-            <button
-              type="button"
-              className={cx("lorebook-icon-button", CONTROL_MOTION)}
-              onClick={onClose}
-              aria-label="Close timeline repair"
-            >
-              <X size={18} />
-            </button>
-          )}
-        </header>
-
-        <div
-          className={cx("lorebook-modal-body", "lorebook-repair-modal-body", "t-resize")}
-          style={bodyHeight === null ? undefined : { height: `${bodyHeight}px` }}
-        >
-          <div ref={bodyInnerRef} className="lorebook-repair-modal-body-inner">
-            {stage === "confirm" && (
-              <p id="timeline-repair-description" className="lorebook-repair-description">
-                Repair timeline regenerates the entire timeline, discarding the current one and
-                rebuilding it from the entire story (every chapter not hidden from context). Do you
-                want to continue?
-              </p>
-            )}
-
-            {stage === "running" && (
-              <>
-                {/* the shimmering header carries the state visually, this is just for screen readers */}
-                <span className="sr-only" role="status" aria-live="polite">
-                  {phase === "writing"
-                    ? "Repairing timeline, writing the rebuilt timeline"
-                    : "Repairing timeline, thinking"}
-                </span>
-                <div
-                  id="timeline-repair-description"
-                  ref={reasoningRef}
-                  onScroll={markReasoningScroll}
-                  onWheel={markReasoningWheelIntent}
-                  onTouchStart={markReasoningTouchStart}
-                  onTouchMove={markReasoningTouchMove}
-                  className={cx("lorebook-repair-reasoning", !reasoning && "is-empty")}
-                  data-testid="timeline-repair-reasoning"
-                >
-                  {reasoning ? (
-                    <ThinkingContent>{reasoning}</ThinkingContent>
-                  ) : (
-                    <span>Waiting for the model to share its thinking.</span>
-                  )}
-                </div>
-              </>
-            )}
-
-            {stage === "complete" && (
-              <p
-                id="timeline-repair-description"
-                className="lorebook-repair-result"
-                role="status"
-                aria-live="polite"
-              >
-                Finished rebuilding timeline in{" "}
-                <span className="lorebook-repair-duration">{durationSeconds}</span>{" "}
-                {durationUnit}.
-              </p>
-            )}
-
-            {stage === "error" && (
-              <div id="timeline-repair-description" className="lorebook-repair-error" role="alert">
-                <p>Could not rebuild timeline. The current timeline was not changed.</p>
-                <span>{error}</span>
-              </div>
-            )}
-
-            {/* the footer rides inside the measured wrapper so losing the buttons mid repair tweens
-            with everything else instead of snapping the dialog shorter */}
-            {!isRunning && (
-              <footer>
-                <div className="lorebook-footer-actions">
-                  {stage === "confirm" ? (
-                    <>
-                      <button
-                        type="button"
-                        className={cx("lorebook-secondary-button", CONTROL_MOTION)}
-                        onClick={onClose}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        className={cx("lorebook-primary-button", CONTROL_MOTION)}
-                        onClick={onConfirm}
-                        autoFocus
-                      >
-                        Repair timeline
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      type="button"
-                      className={cx("lorebook-primary-button", CONTROL_MOTION)}
-                      onClick={onClose}
-                      autoFocus
-                    >
-                      {stage === "complete" ? "Done" : "Close"}
-                    </button>
-                  )}
-                </div>
-              </footer>
-            )}
-          </div>
-        </div>
-      </section>
-    </div>,
-    document.body,
   );
 }
 

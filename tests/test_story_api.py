@@ -23,6 +23,27 @@ from backend.writing import (
 )
 
 
+#the lorebook update streams now, so the fakes hand back an sse style response instead of one json blob
+def fakeLorebookStream(content, reasoning=""):
+    class FakeLorebookStreamResponse:
+        status_code = 200
+        headers = {}
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return False
+
+        async def aiter_lines(self):
+            if reasoning:
+                yield f"data: {json.dumps({'choices': [{'delta': {'reasoning': reasoning}}]})}"
+            yield f"data: {json.dumps({'choices': [{'delta': {'content': content}}]})}"
+            yield "data: [DONE]"
+
+    return FakeLorebookStreamResponse()
+
+
 def acceptCurrentTos():
     #every /api route is behind the tos gate now, so a fresh test db needs an acceptance row or everything 403s
     tos = main.load_tos()
@@ -182,7 +203,7 @@ class StoryApiTest(unittest.TestCase):
         reusedPosition = next_brainstorm_root_position(secondNodes, secondEdges, 3)
         self.assertEqual(reusedPosition, (0.0, 180.0))
 
-    def streamChapterGeneration(self, story, chapter, output, revision=None, mode="edit", runId="run-test", complete=True, lorebookUpdates=None, repairContext=None, finishReason=None):
+    def streamChapterGeneration(self, story, chapter, output, revision=None, mode="edit", runId="run-test", complete=True, lorebookUpdates=None, repairContext=None, finishReason=None, lorebookReasoning=""):
         chunks = output if isinstance(output, list) else [output]
         requestBody = {}
         lorebookCalls = []
@@ -207,13 +228,6 @@ class StoryApiTest(unittest.TestCase):
                 if complete:
                     yield "data: [DONE]"
 
-        class FakeLorebookResponse:
-            status_code = 200
-            headers = {}
-
-            def json(self):
-                return {"choices": [{"message": {"content": lorebookContent}}]}
-
         class FakeClient:
             def __init__(self, *_args, **_kwargs):
                 pass
@@ -225,12 +239,13 @@ class StoryApiTest(unittest.TestCase):
                 return False
 
             def stream(self, *_args, **kwargs):
-                requestBody.update(kwargs.get("json") or {})
+                body = kwargs.get("json") or {}
+                #the lorebook pass streams too now, and it only ever runs after the chapter one, so order tells them apart
+                if requestBody:
+                    lorebookCalls.append(body)
+                    return fakeLorebookStream(lorebookContent, lorebookReasoning)
+                requestBody.update(body)
                 return FakeResponse()
-
-            async def post(self, *_args, **kwargs):
-                lorebookCalls.append(kwargs.get("json") or {})
-                return FakeLorebookResponse()
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
             "backend.writing.httpx.AsyncClient", FakeClient
@@ -254,13 +269,6 @@ class StoryApiTest(unittest.TestCase):
         calls = []
         content = rawOutput if rawOutput is not None else json.dumps({"updates": updates or []})
 
-        class FakeLorebookResponse:
-            status_code = 200
-            headers = {}
-
-            def json(self):
-                return {"choices": [{"message": {"content": content}}]}
-
         class FakeClient:
             def __init__(self, *_args, **_kwargs):
                 pass
@@ -271,9 +279,9 @@ class StoryApiTest(unittest.TestCase):
             async def __aexit__(self, *_):
                 return False
 
-            async def post(self, *_args, **kwargs):
+            def stream(self, *_args, **kwargs):
                 calls.append(kwargs.get("json") or {})
-                return FakeLorebookResponse()
+                return fakeLorebookStream(content)
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
             "backend.writing.httpx.AsyncClient", FakeClient
@@ -868,6 +876,86 @@ class StoryApiTest(unittest.TestCase):
         self.assertEqual(payload["applied"], [])
         self.assertEqual(payload["history"], []) #no model call ran so there is nothing to log
         self.assertEqual(calls, [])
+
+    def test_manual_lorebook_update_stream_reports_thinking_before_the_entries(self):
+        story, chapter = self.storyWithChapter("Streamed Lore", "Rafe carried a bone lantern.")
+        content = json.dumps({
+            "updates": [
+                {
+                    "action": "create",
+                    "name": "Bone lantern",
+                    "category": "item",
+                    "description": "carried by Rafe",
+                }
+            ]
+        })
+
+        class FakeClient:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_):
+                return False
+
+            def stream(self, *_args, **_kwargs):
+                return fakeLorebookStream(content, "weighing whether the lantern matters")
+
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
+            "backend.writing.httpx.AsyncClient", FakeClient
+        ):
+            response = self.client.post(
+                f"/api/stories/{story['id']}/lorebook/update/stream",
+                json={"chapter_id": chapter["id"]},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        events = [json.loads(line) for line in response.text.splitlines() if line]
+        eventTypes = [event["type"] for event in events]
+        self.assertIn("reasoning", eventTypes)
+        self.assertLess(eventTypes.index("reasoning"), eventTypes.index("complete"))
+
+        reasoning = "".join(event["value"] for event in events if event["type"] == "reasoning")
+        self.assertEqual(reasoning, "weighing whether the lantern matters")
+
+        completed = next(event["value"] for event in events if event["type"] == "complete")
+        self.assertIsNone(completed["error"])
+        self.assertEqual([entry["name"] for entry in completed["applied"]], ["Bone lantern"])
+        self.assertIn("Bone lantern", [entry["name"] for entry in completed["entries"]])
+
+    def test_auto_lorebook_update_streams_its_thinking_through_the_chapter_run(self):
+        story, chapter = self.storyWithChapter("Auto Lore", "")
+        self.client.patch(f"/api/stories/{story['id']}", json={"lorebook_auto": True})
+
+        response, _ = self.streamChapterGeneration(
+            story,
+            chapter,
+            "Rafe lit the bone lantern.",
+            mode="new",
+            lorebookUpdates=[
+                {
+                    "action": "create",
+                    "name": "Bone lantern",
+                    "category": "item",
+                    "description": "lit by Rafe",
+                }
+            ],
+            lorebookReasoning="deciding what is durable here",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        events = [json.loads(line) for line in response.text.splitlines() if line]
+        lorebookThinking = "".join(
+            event["value"] for event in events if event["type"] == "lorebook_reasoning"
+        )
+        self.assertEqual(lorebookThinking, "deciding what is durable here")
+
+        #the chapter's own reasoning stays a separate event so the ui can swap between them
+        eventTypes = [event["type"] for event in events]
+        self.assertLess(eventTypes.index("lorebook_start"), eventTypes.index("lorebook_reasoning"))
+        self.assertLess(eventTypes.index("lorebook_reasoning"), eventTypes.index("lorebook"))
 
     def test_manual_lorebook_update_corrects_an_entry_the_model_calls_new(self):
         story, chapter = self.storyWithChapter("Contradiction", "Chloe's hair was black as pitch.")
@@ -2013,8 +2101,16 @@ class StoryApiTest(unittest.TestCase):
         ]
         routeModules = {route.endpoint.__module__ for route in storyRoutes}
 
+        #the lorebook split its own modules off, the point of this test is still that nothing leaks back into main
         self.assertTrue(storyRoutes)
-        self.assertEqual(routeModules, {"backend.writing"})
+        self.assertEqual(
+            routeModules,
+            {
+                "backend.writing",
+                "backend.lorebook_repair",
+                "backend.lorebook_update_stream",
+            },
+        )
 
     def test_openrouter_transport_failures_do_not_break_status_or_models_routes(self):
         transportError = main.HTTPException(

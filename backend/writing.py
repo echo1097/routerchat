@@ -2006,6 +2006,246 @@ def apply_lorebook_updates(
     return applied
 
 
+LOREBOOK_UPDATE_SYSTEM_PROMPT = (
+    "Extract important durable lore from new prose. Return strict JSON only: "
+    "{\"updates\":[{\"action\":\"create|update|delete\",\"name\":\"\","
+    "\"category\":\"character|location|item|event|note|synopsis|timeline\","
+    "\"description\":\"\",\"aliases\":[],\"tags\":[],\"metadata\":{}}]}. "
+    "Use action \"update\" for any name already present in existing_lorebook, and "
+    "when the prose contradicts a stored detail, correct that entry so it matches "
+    "the prose. "
+    "If a previously-stored fact is no longer supported by the prose, note it for "
+    "removal with action \"delete\". Only remove an entry when the prose actively "
+    "contradicts it or explicitly retires it. Never remove an entry merely because "
+    "this prose does not mention it. Most entries in existing_lorebook describe "
+    "earlier parts of the story and must be left alone. "
+    "The aliases array is only for nicknames, shortened names, titles used as "
+    "names, or alternate names explicitly used in the story to refer to this "
+    "entry. Do not put jobs, roles, species, traits, descriptions, "
+    "relationships, or categories in aliases. For note and synopsis entries, "
+    "aliases must be empty. Put character details like age, detailed physical "
+    "appearance, personality, and background into description instead of "
+    "metadata fields. "
+    "For story chronology, create or update exactly one timeline entry named "
+    "\"Timeline\" with category \"timeline\". Its description must be a "
+    "chronological Markdown bullet list. Merge new events into the existing "
+    "timeline instead of duplicating bullets. Keep each entry concise and "
+    "information-dense. Do not copy prose style from the story. Prefer short "
+    "factual summaries over long paragraphs. Preserve important concrete "
+    "details, but omit transient action, mood, and wording that does not "
+    "matter for continuity. Timeline bullets should be brief, one event per "
+    "bullet. Add only new durable events or necessary corrections."
+)
+
+
+#used to be one blocking post, now it streams so write mode can show the thinking while it works.
+#yields {"type": "reasoning"} chunks as they land and then exactly one {"type": "result"} at the end
+async def run_lorebook_update(
+    deps: WritingDeps,
+    story_id: str,
+    chapter_id: str,
+    source_text: str,
+    model: str,
+    max_tokens: int,
+    generation_row_id: str | None = None,
+) -> AsyncIterator[dict[str, Any]]:
+    api_key = deps.read_openrouter_key()
+    if not api_key or not source_text.strip():
+        yield {"type": "result", "value": {"applied": [], "skipped": True}}
+        return
+
+    with deps.get_db() as conn:
+        story = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
+        chapter = conn.execute(
+            "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
+            (chapter_id, story_id),
+        ).fetchone()
+        lorebook = conn.execute(
+            "SELECT * FROM lorebook_entries WHERE story_id = ? ORDER BY updated_at DESC",
+            (story_id,),
+        ).fetchall()
+
+    current_lore = "\n".join(
+        lorebook_context_line(row)
+        for row in lorebook
+        if not bool(row["disabled"])
+    )
+    prompt = {
+        "story": row_to_story(story),
+        "chapter": {"title": chapter["title"]},
+        "existing_lorebook": current_lore,
+        "new_prose": source_text,
+    }
+    messages = [
+        {"role": "system", "content": LOREBOOK_UPDATE_SYSTEM_PROMPT},
+        {"role": "user", "content": json.dumps(prompt)},
+    ]
+    body: dict[str, Any] = {
+        "model": deps.openrouter_request_model(model, False),
+        "messages": messages,
+        "temperature": 0.1,
+        "max_tokens": max_tokens,
+        "stream": True,
+    }
+    thinking_enabled = deps.effective_thinking_enabled(model, True)
+    reasoning_config = deps.enabled_reasoning_config(model, True, story["reasoning_effort"])
+    if reasoning_config:
+        body["reasoning"] = reasoning_config
+
+    raw_output = ""
+    error_text: str | None = None
+    applied: list[dict[str, Any]] = []
+    usage: dict[str, Any] | None = None
+    lorebook_generation_id: str | None = None
+    generated_text: list[str] = []
+    finish_reason: str | None = None
+    try:
+        async with httpx.AsyncClient(timeout=OPENROUTER_TIMEOUT) as client:
+            async with client.stream(
+                "POST",
+                f"{deps.openrouter_base_url}/chat/completions",
+                headers={**deps.headers_for_key(api_key), "Content-Type": "application/json"},
+                json=body,
+            ) as response:
+                if response.status_code >= 400:
+                    raw_error = (await response.aread()).decode("utf-8", errors="replace")
+                    error_text = deps.openrouter_error_message(response.status_code, raw_error)
+                else:
+                    lorebook_generation_id = response.headers.get("X-Generation-Id")
+                    async for line in response.aiter_lines():
+                        if not line.startswith("data:"):
+                            continue
+                        data = line.removeprefix("data:").strip()
+                        if data == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(data)
+                        except json.JSONDecodeError:
+                            continue
+
+                        lorebook_generation_id = lorebook_generation_id or chunk.get("id")
+                        next_usage = deps.normalize_usage(chunk.get("usage"))
+                        if next_usage:
+                            usage = next_usage
+                            continue
+
+                        choices = chunk.get("choices") or []
+                        if not choices:
+                            continue
+                        choice = choices[0]
+                        finish_reason = choice.get("finish_reason") or finish_reason
+                        delta = choice.get("delta") or {}
+                        reasoning = delta.get("reasoning") or delta.get("reasoning_content")
+                        if reasoning and thinking_enabled:
+                            yield {"type": "reasoning", "value": str(reasoning)}
+                        content = delta.get("content")
+                        if content:
+                            generated_text.append(str(content))
+
+        raw_output = "".join(generated_text)
+        #a cut off response is never valid json anyway, so say why instead of letting the parser guess
+        if finish_reason == "length":
+            error_text = "The lorebook update hit the model token limit before it finished."
+        elif not error_text:
+            parsed = parse_lorebook_json(raw_output)
+            updates = parsed.get("updates") if isinstance(parsed, dict) else []
+            if not isinstance(updates, list):
+                updates = []
+            with deps.get_db() as conn:
+                applied = apply_lorebook_updates(conn, story_id, updates, deps.utc_now())
+    except Exception as exc:  # noqa: BLE001
+        error_text = str(exc)
+
+    #/generation is the only place cost reliably turns up, and this sits outside the try so a usage hiccup cant throw away updates we already committed
+    if lorebook_generation_id and not (usage or {}).get("cost"):
+        try:
+            fetched = await deps.fetch_generation_usage(api_key, lorebook_generation_id)
+            if fetched:
+                usage = {**(usage or {}), **fetched}
+        except Exception:  # noqa: BLE001
+            pass
+
+    with deps.get_db() as conn:
+        conn.execute(
+            """
+            INSERT INTO lorebook_update_runs (
+              id, story_id, chapter_id, generation_id, openrouter_generation_id,
+              raw_output, applied_updates_json, cost, error, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(uuid.uuid4()),
+                story_id,
+                chapter_id,
+                generation_row_id,
+                lorebook_generation_id,
+                raw_output or "",
+                json.dumps(applied),
+                (usage or {}).get("cost"),
+                error_text,
+                deps.utc_now(),
+            ),
+        )
+
+    yield {
+        "type": "result",
+        "value": {"applied": applied, "error": error_text, "cost": (usage or {}).get("cost")},
+    }
+
+
+#the manual and streaming lorebook endpoints both need the same history rows and the same fresh entry list
+def finalize_lorebook_update(
+    deps: WritingDeps,
+    story_id: str,
+    chapter_id: str,
+    story: sqlite3.Row,
+    result: dict[str, Any],
+    duration_ms: float,
+) -> dict[str, Any]:
+    applied = result.get("applied") or []
+    actions = lorebook_run_history_actions(
+        display_model_name(story["model"]), applied, duration_ms, result.get("cost")
+    )
+    history_run_id = str(uuid.uuid4())
+    history_entries: list[dict[str, Any]] = []
+
+    with deps.get_db() as conn:
+        for action in actions:
+            history_entries.append(
+                insert_chapter_history_entry(
+                    conn,
+                    story_id=story_id,
+                    chapter_id=chapter_id,
+                    run_id=history_run_id,
+                    label=action["label"],
+                    detail="",
+                    now=deps.utc_now(),
+                    kind=action["kind"],
+                    words_added=action["words_added"],
+                    words_removed=action["words_removed"],
+                    cost=action["cost"],
+                )
+            )
+
+        rows = conn.execute(
+            """
+            SELECT * FROM lorebook_entries
+            WHERE story_id = ?
+            ORDER BY updated_at DESC, created_at DESC
+            """,
+            (story_id,),
+        ).fetchall()
+
+    return {
+        "applied": applied,
+        "error": result.get("error"),
+        "skipped": bool(result.get("skipped")),
+        "entries": [row_to_lorebook_entry(row) for row in rows],
+        "history": history_entries,
+    }
+
+
 def create_writing_router(deps: WritingDeps) -> APIRouter:
     router = APIRouter()
     StreamMessageRequest = deps.stream_message_request
@@ -2068,148 +2308,6 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
             ),
         }
 
-    async def run_lorebook_update(
-        story_id: str,
-        chapter_id: str,
-        source_text: str,
-        model: str,
-        max_tokens: int,
-        generation_row_id: str | None = None,
-    ) -> dict[str, Any]:
-        api_key = deps.read_openrouter_key()
-        if not api_key or not source_text.strip():
-            return {"applied": [], "skipped": True}
-
-        with deps.get_db() as conn:
-            story = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
-            chapter = conn.execute(
-                "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
-                (chapter_id, story_id),
-            ).fetchone()
-            lorebook = conn.execute(
-                "SELECT * FROM lorebook_entries WHERE story_id = ? ORDER BY updated_at DESC",
-                (story_id,),
-            ).fetchall()
-
-        current_lore = "\n".join(
-            lorebook_context_line(row)
-            for row in lorebook
-            if not bool(row["disabled"])
-        )
-        prompt = {
-            "story": row_to_story(story),
-            "chapter": {"title": chapter["title"]},
-            "existing_lorebook": current_lore,
-            "new_prose": source_text,
-        }
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "Extract important durable lore from new prose. Return strict JSON only: "
-                    "{\"updates\":[{\"action\":\"create|update|delete\",\"name\":\"\","
-                    "\"category\":\"character|location|item|event|note|synopsis|timeline\","
-                    "\"description\":\"\",\"aliases\":[],\"tags\":[],\"metadata\":{}}]}. "
-                    "Use action \"update\" for any name already present in existing_lorebook, and "
-                    "when the prose contradicts a stored detail, correct that entry so it matches "
-                    "the prose. "
-                    "If a previously-stored fact is no longer supported by the prose, note it for "
-                    "removal with action \"delete\". Only remove an entry when the prose actively "
-                    "contradicts it or explicitly retires it. Never remove an entry merely because "
-                    "this prose does not mention it. Most entries in existing_lorebook describe "
-                    "earlier parts of the story and must be left alone. "
-                    "The aliases array is only for nicknames, shortened names, titles used as "
-                    "names, or alternate names explicitly used in the story to refer to this "
-                    "entry. Do not put jobs, roles, species, traits, descriptions, "
-                    "relationships, or categories in aliases. For note and synopsis entries, "
-                    "aliases must be empty. Put character details like age, detailed physical "
-                    "appearance, personality, and background into description instead of "
-                    "metadata fields. "
-                    "For story chronology, create or update exactly one timeline entry named "
-                    "\"Timeline\" with category \"timeline\". Its description must be a "
-                    "chronological Markdown bullet list. Merge new events into the existing "
-                    "timeline instead of duplicating bullets. Keep each entry concise and "
-                    "information-dense. Do not copy prose style from the story. Prefer short "
-                    "factual summaries over long paragraphs. Preserve important concrete "
-                    "details, but omit transient action, mood, and wording that does not "
-                    "matter for continuity. Timeline bullets should be brief, one event per "
-                    "bullet. Add only new durable events or necessary corrections."
-                ),
-            },
-            {"role": "user", "content": json.dumps(prompt)},
-        ]
-        raw_output = ""
-        error_text: str | None = None
-        applied: list[dict[str, Any]] = []
-        usage: dict[str, Any] | None = None
-        lorebook_generation_id: str | None = None
-        try:
-            async with httpx.AsyncClient(timeout=45.0) as client:
-                response = await client.post(
-                    f"{deps.openrouter_base_url}/chat/completions",
-                    headers={**deps.headers_for_key(api_key), "Content-Type": "application/json"},
-                    json={
-                        "model": deps.openrouter_request_model(model, False),
-                        "messages": messages,
-                        "temperature": 0.1,
-                        "max_tokens": max_tokens,
-                    },
-                )
-            if response.status_code >= 400:
-                error_text = deps.openrouter_error_message(response.status_code, response.text)
-            else:
-                data = response.json()
-                lorebook_generation_id = response.headers.get("X-Generation-Id") or data.get("id")
-                usage = deps.normalize_usage(data.get("usage"))
-                raw_output = (
-                    data
-                    .get("choices", [{}])[0]
-                    .get("message", {})
-                    .get("content")
-                    or ""
-                )
-                parsed = parse_lorebook_json(raw_output)
-                updates = parsed.get("updates") if isinstance(parsed, dict) else []
-                if not isinstance(updates, list):
-                    updates = []
-                with deps.get_db() as conn:
-                    applied = apply_lorebook_updates(conn, story_id, updates, deps.utc_now())
-        except Exception as exc:  # noqa: BLE001
-            error_text = str(exc)
-
-        #/generation is the only place cost reliably turns up, and this sits outside the try so a usage hiccup cant throw away updates we already committed
-        if lorebook_generation_id and not (usage or {}).get("cost"):
-            try:
-                fetched = await deps.fetch_generation_usage(api_key, lorebook_generation_id)
-                if fetched:
-                    usage = {**(usage or {}), **fetched}
-            except Exception:  # noqa: BLE001
-                pass
-
-        with deps.get_db() as conn:
-            conn.execute(
-                """
-                INSERT INTO lorebook_update_runs (
-                  id, story_id, chapter_id, generation_id, openrouter_generation_id,
-                  raw_output, applied_updates_json, cost, error, created_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    str(uuid.uuid4()),
-                    story_id,
-                    chapter_id,
-                    generation_row_id,
-                    lorebook_generation_id,
-                    raw_output or "",
-                    json.dumps(applied),
-                    (usage or {}).get("cost"),
-                    error_text,
-                    deps.utc_now(),
-                ),
-            )
-        return {"applied": applied, "error": error_text, "cost": (usage or {}).get("cost")}
-
     async def stream_timeline_repair(
         story_id: str,
         story: sqlite3.Row,
@@ -2248,6 +2346,12 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
             "current_timeline": current_timeline,
             "visible_chapters": chapterContext,
         }
+
+        #same deal as the lorebook repair, the author's story instructions ride along so bullet style rules land
+        authorInstructions = str(story["system_prompt"] or "").strip()
+        if authorInstructions:
+            prompt["author_instructions"] = authorInstructions
+
         messages = [
             {
                 "role": "system",
@@ -2258,7 +2362,11 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                     "Include every durable event needed to understand story chronology, ordered "
                     "from earliest to latest. Use one concise factual event per Markdown bullet. "
                     "Do not invent events, repeat bullets, copy the prose style, or include facts "
-                    "that are not chronological events. Return strict JSON only in this shape: "
+                    "that are not chronological events. When author_instructions is present it "
+                    "holds the story author's own instructions for this story: follow the parts "
+                    "that apply to the timeline, such as bullet length, detail, and language, "
+                    "ignore the parts about writing prose, and never let it override these rules "
+                    "or the JSON shape. Return strict JSON only in this shape: "
                     "{\"timeline\":\"- event one\\n- event two\"}."
                 ),
             },
@@ -2922,14 +3030,22 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                     lorebook_started_at = time.perf_counter()
                     yield emit("lorebook_start", {"generation_id": story_generation_id})
 
-                    lorebook_result = await run_lorebook_update(
+                    lorebook_result: dict[str, Any] = {}
+                    #the reasoning rides the same stream so the write mode dropdown can show it live
+                    async for lorebook_event in run_lorebook_update(
+                        deps,
                         story_id,
                         chapter_id,
                         chapter_update_event["chapter"]["content"],
                         payload.model,
                         payload.max_tokens,
                         generation_row_id=story_generation_id,
-                    )
+                    ):
+                        if lorebook_event["type"] == "reasoning":
+                            yield emit("lorebook_reasoning", lorebook_event["value"])
+                            continue
+                        lorebook_result = lorebook_event["value"]
+
                     lorebook_duration_ms = (time.perf_counter() - lorebook_started_at) * 1000
                     #a skipped run never reached the model, so there is no activity to record
                     if not lorebook_result.get("skipped"):
@@ -3363,58 +3479,23 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
             return {"applied": [], "skipped": True, "entries": [], "history": []}
 
         started_at = time.perf_counter()
-        result = await run_lorebook_update(
+        result: dict[str, Any] = {}
+        #this one has nowhere to put reasoning, the streaming sibling endpoint is the one write mode calls
+        async for event in run_lorebook_update(
+            deps,
             story_id,
             payload.chapter_id,
             source_text,
             story["model"],
             story["max_tokens"],
+        ):
+            if event["type"] == "result":
+                result = event["value"]
+
+        durationMs = (time.perf_counter() - started_at) * 1000
+        return finalize_lorebook_update(
+            deps, story_id, payload.chapter_id, story, result, durationMs
         )
-        applied = result.get("applied") or []
-
-        model_label = display_model_name(story["model"])
-        history_run_id = str(uuid.uuid4())
-        history_entries: list[dict[str, Any]] = []
-        duration_ms = (time.perf_counter() - started_at) * 1000
-        actions = lorebook_run_history_actions(
-            model_label, applied, duration_ms, result.get("cost")
-        )
-
-        with deps.get_db() as conn:
-            for action in actions:
-                history_entries.append(
-                    insert_chapter_history_entry(
-                        conn,
-                        story_id=story_id,
-                        chapter_id=payload.chapter_id,
-                        run_id=history_run_id,
-                        label=action["label"],
-                        detail="",
-                        now=deps.utc_now(),
-                        kind=action["kind"],
-                        words_added=action["words_added"],
-                        words_removed=action["words_removed"],
-                        cost=action["cost"],
-                    )
-                )
-
-        with deps.get_db() as conn:
-            rows = conn.execute(
-                """
-                SELECT * FROM lorebook_entries
-                WHERE story_id = ?
-                ORDER BY updated_at DESC, created_at DESC
-                """,
-                (story_id,),
-            ).fetchall()
-
-        return {
-            "applied": applied,
-            "error": result.get("error"),
-            "skipped": bool(result.get("skipped")),
-            "entries": [row_to_lorebook_entry(row) for row in rows],
-            "history": history_entries,
-        }
 
     @router.post("/api/stories/{story_id}/lorebook")
     def create_lorebook_entry(story_id: str, payload: LorebookEntryRequest) -> dict[str, Any]:

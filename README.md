@@ -12,7 +12,7 @@ RouterChat is licensed under the [Apache License 2.0](LICENSE).
 
 ## AI usage disclaimer
 
-AI was used sparingly to support development and documentation for this project. All code and documentation were reviewed by myself before being published.
+AI was used to support development and documentation for this project. All code and documentation were reviewed by myself before being published.
 
 ## How to set up
 

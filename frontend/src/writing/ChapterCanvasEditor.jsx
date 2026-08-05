@@ -18,6 +18,8 @@ import {
   chapterMarkdownTransformers,
   exportChapterMarkdown,
   importChapterMarkdown,
+  registerSceneBreakTransforms,
+  SceneBreakNode,
 } from "./chapterMarkdown.js";
 
 const EXTERNAL_MARKDOWN_TAG = "chapter-markdown-external";
@@ -43,12 +45,21 @@ const editorTheme = {
   },
   paragraph: "chapter-editor-paragraph",
   quote: "chapter-editor-quote",
+  sceneBreak: "chapter-editor-scene-break",
   text: {
     bold: "chapter-editor-bold",
     code: "chapter-editor-inline-code",
     italic: "chapter-editor-italic",
   },
 };
+
+function SceneBreakPlugin() {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => registerSceneBreakTransforms(editor), [editor]);
+
+  return null;
+}
 
 function MarkdownSyncPlugin({ markdown, readOnly, onImportFallback, sourceMarkdownRef }) {
   const [editor] = useLexicalComposerContext();
@@ -105,7 +116,15 @@ export default function ChapterCanvasEditor({
         initialImportErrorRef.current = importChapterMarkdown(markdown);
       },
       namespace: `ChapterCanvas-${chapterId}`,
-      nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, LinkNode, CodeNode],
+      nodes: [
+        HeadingNode,
+        QuoteNode,
+        ListNode,
+        ListItemNode,
+        LinkNode,
+        CodeNode,
+        SceneBreakNode,
+      ],
       onError(error) {
         onImportFallback?.(error);
       },
@@ -173,6 +192,7 @@ export default function ChapterCanvasEditor({
         <ListPlugin />
         <LinkPlugin attributes={{ rel: "noreferrer", target: "_blank" }} />
         <MarkdownShortcutPlugin transformers={chapterMarkdownTransformers} />
+        <SceneBreakPlugin />
         <OnChangePlugin
           ignoreHistoryMergeTagChange={false}
           ignoreSelectionChange

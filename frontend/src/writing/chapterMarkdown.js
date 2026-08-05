@@ -4,6 +4,8 @@ import {
   $createTextNode,
   $getRoot,
   $isParagraphNode,
+  ParagraphNode,
+  TextNode,
 } from "lexical";
 import {
   $convertFromMarkdownString,
@@ -30,10 +32,77 @@ export function isSceneBreakLine(value) {
   return SCENE_BREAK_PATTERN.test(String(value || "").trim());
 }
 
+export class SceneBreakNode extends ParagraphNode {
+  static getType() {
+    return "scene-break";
+  }
+
+  static clone(node) {
+    return new SceneBreakNode(node.__key);
+  }
+
+  static importJSON(serializedNode) {
+    return $createSceneBreakNode().updateFromJSON(serializedNode);
+  }
+
+  createDOM(config) {
+    const dom = super.createDOM(config);
+    const sceneBreakClass = config.theme && config.theme.sceneBreak;
+
+    if (sceneBreakClass) {
+      dom.classList.add(...String(sceneBreakClass).split(/\s+/).filter(Boolean));
+    }
+
+    return dom;
+  }
+}
+
+export function $createSceneBreakNode() {
+  return new SceneBreakNode();
+}
+
+export function $isSceneBreakNode(node) {
+  return node instanceof SceneBreakNode;
+}
+
+function syncSceneBreakBlock(node) {
+  if (!node.isAttached()) return;
+
+  const looksLikeSceneBreak = isSceneBreakLine(node.getTextContent());
+
+  if (looksLikeSceneBreak && !$isSceneBreakNode(node)) {
+    node.replace($createSceneBreakNode(), true);
+    return;
+  }
+
+  if (!looksLikeSceneBreak && $isSceneBreakNode(node)) {
+    node.replace($createParagraphNode(), true);
+  }
+}
+
+export function registerSceneBreakTransforms(editor) {
+  const unregisterParagraph = editor.registerNodeTransform(ParagraphNode, syncSceneBreakBlock);
+  const unregisterSceneBreak = editor.registerNodeTransform(SceneBreakNode, syncSceneBreakBlock);
+
+  const unregisterText = editor.registerNodeTransform(TextNode, (node) => {
+    const parent = node.getParent();
+
+    if (parent instanceof ParagraphNode) {
+      syncSceneBreakBlock(parent);
+    }
+  });
+
+  return () => {
+    unregisterParagraph();
+    unregisterSceneBreak();
+    unregisterText();
+  };
+}
+
 //without this the exporter escapes a *** line into \*\*\*, which saves back to the server and stops the backend recognising the scene break at all
 const SCENE_BREAK = {
   type: "element",
-  dependencies: [],
+  dependencies: [SceneBreakNode],
   regExp: /^[*_-]{3,}\s*$/,
   export: (node) => {
     if (!$isParagraphNode(node)) return null;
@@ -41,9 +110,9 @@ const SCENE_BREAK = {
     return isSceneBreakLine(text) ? text : null;
   },
   replace: (parentNode, children, match) => {
-    const paragraph = $createParagraphNode();
-    paragraph.append($createTextNode(match[0].trim()));
-    parentNode.replace(paragraph);
+    const sceneBreak = $createSceneBreakNode();
+    sceneBreak.append($createTextNode(match[0].trim()));
+    parentNode.replace(sceneBreak);
   },
 };
 

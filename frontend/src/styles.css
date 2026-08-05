@@ -1463,6 +1463,29 @@ textarea {
   margin-bottom: 0;
 }
 
+.chapter-editor-scene-break {
+  position: relative;
+  margin: 1.75rem 0 2.5rem;
+  color: transparent;
+  text-align: center;
+}
+
+.chapter-editor-scene-break::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  transform: translateY(-50%);
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  pointer-events: none;
+}
+
+.chapter-editor-scene-break::selection,
+.chapter-editor-scene-break ::selection {
+  background: rgba(255, 255, 255, 0.16);
+}
+
 .chapter-editor-heading {
   color: #fafafa;
   font-weight: 600;

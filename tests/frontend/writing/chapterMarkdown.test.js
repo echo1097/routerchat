@@ -2,17 +2,36 @@ import { CodeNode } from "@lexical/code";
 import { LinkNode } from "@lexical/link";
 import { ListItemNode, ListNode } from "@lexical/list";
 import { HeadingNode, QuoteNode } from "@lexical/rich-text";
-import { createEditor } from "lexical";
+import { $getRoot, createEditor } from "lexical";
 import { describe, expect, it } from "vitest";
 import {
+  $isSceneBreakNode,
   exportChapterMarkdown,
   importChapterMarkdown,
+  registerSceneBreakTransforms,
+  SceneBreakNode,
 } from "../../../frontend/src/writing/chapterMarkdown.js";
 
-function migrateMarkdown(markdown) {
+function createChapterEditor() {
   const editor = createEditor({
-    nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, LinkNode, CodeNode],
+    nodes: [
+      HeadingNode,
+      QuoteNode,
+      ListNode,
+      ListItemNode,
+      LinkNode,
+      CodeNode,
+      SceneBreakNode,
+    ],
   });
+
+  registerSceneBreakTransforms(editor);
+
+  return editor;
+}
+
+function migrateMarkdown(markdown) {
+  const editor = createChapterEditor();
   let importError = null;
 
   editor.update(() => {
@@ -91,6 +110,53 @@ describe("chapter Markdown compatibility", () => {
       const source = `before\n\n${separator}\n\nafter`;
       expect(migrateMarkdown(source).exportedMarkdown).toBe(source);
     }
+  });
+
+  it("gives every separator shape its own scene break node so the divider can be drawn", () => {
+    for (const separator of ["***", "---", "___", "****"]) {
+      const editor = createChapterEditor();
+
+      editor.update(() => {
+        importChapterMarkdown(`before\n\n${separator}\n\nafter`);
+      }, { discrete: true });
+
+      editor.getEditorState().read(() => {
+        const children = $getRoot().getChildren();
+        expect(children.map($isSceneBreakNode)).toEqual([false, true, false]);
+        expect(children[1].getTextContent()).toBe(separator);
+      });
+    }
+  });
+
+  it("turns a line into a scene break and back as its text changes", () => {
+    const editor = createChapterEditor();
+
+    editor.update(() => {
+      importChapterMarkdown("before\n\n---\n\nafter");
+    }, { discrete: true });
+
+    editor.update(() => {
+      $getRoot().getChildren()[1].getFirstChild().setTextContent("--- a note");
+    }, { discrete: true });
+
+    editor.getEditorState().read(() => {
+      expect($isSceneBreakNode($getRoot().getChildren()[1])).toBe(false);
+    });
+
+    editor.update(() => {
+      $getRoot().getChildren()[1].getFirstChild().setTextContent("---");
+    }, { discrete: true });
+
+    editor.getEditorState().read(() => {
+      expect($isSceneBreakNode($getRoot().getChildren()[1])).toBe(true);
+    });
+
+    let exportedMarkdown = "";
+    editor.getEditorState().read(() => {
+      exportedMarkdown = exportChapterMarkdown();
+    });
+
+    expect(exportedMarkdown).toBe("before\n\n---\n\nafter");
   });
 
   it("still escapes literal asterisks inside real prose", () => {

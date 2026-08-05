@@ -764,10 +764,11 @@ test("uses native click placement and keeps the canvas stable while editing", as
 });
 
 test("remembers each chapter canvas position during the current app session", async ({ page }) => {
-  const openingContent = Array.from(
-    { length: 56 },
-    (_, index) => `opening paragraph ${index + 1} keeps the first chapter tall enough to scroll.`,
-  ).join("\n\n");
+  const openingContent = Array.from({ length: 56 }, (_, index) => (
+    index % 9 === 8
+      ? "---"
+      : `opening paragraph ${index + 1} keeps the first chapter tall enough to scroll.`
+  )).join("\n\n");
   const secondContent = Array.from(
     { length: 64 },
     (_, index) => `second paragraph ${index + 1} keeps the other chapter independently scrollable.`,

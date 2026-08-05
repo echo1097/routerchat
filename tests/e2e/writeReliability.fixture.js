@@ -204,6 +204,16 @@ export async function installWriteApi(page, options = {}) {
     const segments = path.split("/").filter(Boolean);
     const body = request.postData() ? request.postDataJSON() : {};
 
+    if (method === "GET" && path === "/api/tos") {
+      return response(route, {
+        hash: "e2e-tos-hash",
+        date: "2026-01-01",
+        markdown: "# Terms\n\nAccepted for the end to end run.",
+        accepted: true,
+        accepted_at: "2026-01-01T00:00:00Z",
+        previous: null,
+      });
+    }
     if (method === "GET" && path === "/api/settings/key-status") return response(route, { has_key: true });
     if (method === "GET" && path === "/api/settings") return response(route, { default_model: "test/model" });
     if (method === "GET" && path === "/api/models") {

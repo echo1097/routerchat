@@ -2129,6 +2129,17 @@ class StoryApiTest(unittest.TestCase):
         self.assertTrue(statusResponse.json()["has_key"])
         self.assertEqual(modelsResponse.status_code, 502)
 
+    def test_openrouter_headers_use_the_public_routerchat_identity(self):
+        self.assertEqual(
+            main.headers_for_key("test-key"),
+            {
+                "Authorization": "Bearer test-key",
+                "HTTP-Referer": "https://echo1097.github.io/get-routerchat/",
+                "X-OpenRouter-Title": "RouterChat",
+                "X-Title": "RouterChat",
+            },
+        )
+
     def test_model_reasoning_metadata_round_trips_and_drives_capabilities(self):
         mandatoryModel = main.normalize_model({
             "id": "test/mandatory",

@@ -879,8 +879,9 @@ def write_openrouter_key(api_key: str) -> None:
 def headers_for_key(api_key: str) -> dict[str, str]:
     return {
         "Authorization": f"Bearer {api_key}",
-        "HTTP-Referer": "http://127.0.0.1:8000",
+        "HTTP-Referer": "https://echo1097.github.io/get-routerchat/",
         "X-OpenRouter-Title": "RouterChat",
+        "X-Title": "RouterChat",
     }
 
 

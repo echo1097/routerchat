@@ -631,7 +631,6 @@ export default function StoryBrainstorm({
                   <span className="brainstorm-model-name">{modelLabel}</span>
                   <span className="brainstorm-thinking-state">
                     <span>{thinkingEnabled ? "Thinking" : "Instant"}</span>
-                    {reasoningRequired && <span className="brainstorm-thinking-required">Required</span>}
                   </span>
                   <ChevronDown
                     size={14}
@@ -663,8 +662,7 @@ export default function StoryBrainstorm({
                     >
                       <span>Thinking</span>
                       <span>
-                        <span>{thinkingEnabled ? "On" : "Off"}</span>
-                        {reasoningRequired && <span className="brainstorm-thinking-required">Required</span>}
+                        <span>{reasoningRequired ? "Required" : thinkingEnabled ? "On" : "Off"}</span>
                       </span>
                     </button>
                   </div>

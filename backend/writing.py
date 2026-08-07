@@ -141,6 +141,7 @@ class WritingDeps:
     headers_for_key: Callable[[str], dict[str, str]]
     write_system_prompt: Callable[[Any], str]
     openrouter_request_model: Callable[[str, bool], str]
+    openrouter_provider_options: Callable[[], dict[str, Any] | None]
     model_supports_reasoning: Callable[[str], bool]
     effective_thinking_enabled: Callable[[str, bool], bool]
     enabled_reasoning_config: Callable[[str, bool, str], dict[str, Any] | None]
@@ -2087,6 +2088,10 @@ async def run_lorebook_update(
         "max_tokens": max_tokens,
         "stream": True,
     }
+    providerOptions = deps.openrouter_provider_options()
+    if providerOptions:
+        body["provider"] = providerOptions
+
     thinking_enabled = deps.effective_thinking_enabled(model, True)
     reasoning_config = deps.enabled_reasoning_config(model, True, story["reasoning_effort"])
     if reasoning_config:
@@ -2379,6 +2384,10 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
             "max_tokens": story["max_tokens"],
             "stream": True,
         }
+        providerOptions = deps.openrouter_provider_options()
+        if providerOptions:
+            body["provider"] = providerOptions
+
         effectiveThinkingEnabled = deps.effective_thinking_enabled(story["model"], True)
         reasoningConfig = deps.enabled_reasoning_config(
             story["model"], True, story["reasoning_effort"]
@@ -2631,6 +2640,10 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
             "max_tokens": payload.max_tokens,
             "stream": True,
         }
+        providerOptions = deps.openrouter_provider_options()
+        if providerOptions:
+            body["provider"] = providerOptions
+
         effectiveThinkingEnabled = deps.effective_thinking_enabled(
             payload.model, payload.thinking_enabled
         )
@@ -3811,6 +3824,10 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
             "max_tokens": payload.max_tokens,
             "stream": True,
         }
+        providerOptions = deps.openrouter_provider_options()
+        if providerOptions:
+            body["provider"] = providerOptions
+
         effectiveThinkingEnabled = deps.effective_thinking_enabled(
             payload.model, payload.thinking_enabled
         )

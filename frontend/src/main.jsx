@@ -20,7 +20,6 @@ import {
   Copy,
   Eye,
   EyeOff,
-  KeyRound,
   Menu,
   MessageSquarePlus,
   PanelLeftClose,
@@ -1406,7 +1405,7 @@ function ConversationRail({
           </nav>
 
           <div className="mt-4 shrink-0 px-3 pb-1 text-left text-[11px] font-medium leading-none text-zinc-700">
-            RouterChat v{APP_VERSION}
+            RouterChat {APP_VERSION}
           </div>
         </div>
       </aside>
@@ -2489,7 +2488,7 @@ function StoryRail({
           </nav>
 
           <div className="mt-4 shrink-0 px-3 pb-1 text-left text-[11px] font-medium leading-none text-zinc-700">
-            RouterChat v{APP_VERSION}
+            RouterChat {APP_VERSION}
           </div>
         </div>
       </aside>
@@ -3508,7 +3507,6 @@ function Composer({
                   {canThink && (
                     <span className="hidden text-zinc-500 sm:inline">
                       <span>{thinkingEnabled ? "Thinking" : "Instant"}</span>
-                      {reasoningRequired && <span className="ml-1.5 text-zinc-600">Required</span>}
                     </span>
                   )}
                   <ChevronDown size={14} className={cx("thinking-toggle-chevron shrink-0 transition-transform duration-200", modelMenuOpen && "rotate-180")} />
@@ -3530,8 +3528,7 @@ function Composer({
                         label="Thinking"
                         detail={(
                           <>
-                            <span>{thinkingEnabled ? "On" : "Off"}</span>
-                            {reasoningRequired && <span className="ml-1.5 text-zinc-600">Required</span>}
+                            <span>{reasoningRequired ? "Required" : thinkingEnabled ? "On" : "Off"}</span>
                           </>
                         )}
                         active={thinkingEnabled}
@@ -4154,6 +4151,45 @@ function WriteHistoryDetail({ entry, expanded, onToggle, promptCard = false }) {
   );
 }
 
+function SettingSwitch({ checked, onChange, label, disabled = false }) {
+  const [interacted, setInteracted] = useState(false);
+
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => {
+        setInteracted(true);
+        onChange(!checked);
+      }}
+      data-on={String(checked)}
+      className={cx(
+        "t-toggle relative h-7 w-12 shrink-0 rounded-full shadow-[var(--shadow-border)] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 disabled:cursor-not-allowed",
+        interacted && "is-init",
+        disabled && "opacity-45",
+        checked ? "bg-accent/80" : "bg-white/[0.08]",
+      )}
+    >
+      <span className="t-toggle-thumb absolute left-1 top-1 h-5 w-5 rounded-full bg-zinc-50" />
+    </button>
+  );
+}
+
+function SettingRow({ title, description, children }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="min-w-0">
+        <h2 className="text-balance text-sm font-semibold text-zinc-100">{title}</h2>
+        <p className="mt-0.5 text-pretty text-xs leading-5 text-zinc-500">{description}</p>
+      </div>
+      {children}
+    </div>
+  );
+}
+
 function SettingsDrawer({
   open,
   onClose,
@@ -4168,6 +4204,9 @@ function SettingsDrawer({
   defaultModel,
   hideFreeModels,
   nitroMode,
+  cheapestMode,
+  privacyMode,
+  zdrMode,
   smoothStreaming,
   showPromptNavigationRail,
   modelLocked,
@@ -4176,6 +4215,9 @@ function SettingsDrawer({
   onSetDefaultModel,
   onToggleHideFreeModels,
   onToggleNitroMode,
+  onToggleCheapestMode,
+  onTogglePrivacyMode,
+  onToggleZdrMode,
   onToggleSmoothStreaming,
   onTogglePromptNavigationRail,
   onExportChats,
@@ -4453,7 +4495,6 @@ function SettingsDrawer({
     <section className="border-b border-white/[0.08] pb-3">
       <div className="mb-2.5 flex items-center justify-between gap-3">
         <h2 className="flex items-center gap-2 text-balance text-sm font-semibold text-zinc-100">
-          <KeyRound size={16} />
           OpenRouter key
           {StatusDot}
         </h2>
@@ -4483,137 +4524,101 @@ function SettingsDrawer({
 
   const modelFilterSection = (
     <section className="border-b border-white/[0.08] py-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-balance text-sm font-semibold text-zinc-100">
-            Disable free models
-          </h2>
-          <p className="mt-0.5 text-pretty text-xs leading-5 text-zinc-500">
-            Don't show free OpenRouter models in the model picker
-          </p>
-        </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={hideFreeModels}
-          aria-label="Hide free models"
-          onClick={() => onToggleHideFreeModels(!hideFreeModels)}
-          className={cx(
-            "relative h-7 w-12 shrink-0 rounded-full shadow-[var(--shadow-border)] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
-            CONTROL_MOTION,
-            hideFreeModels ? "bg-accent/80" : "bg-white/[0.08]",
-          )}
-        >
-          <span
-            className={cx(
-              "absolute left-1 top-1 h-5 w-5 rounded-full bg-zinc-50 transition-transform duration-150 ease-out",
-              hideFreeModels ? "translate-x-5" : "translate-x-0",
-            )}
-          />
-        </button>
-      </div>
+      <SettingRow
+        title="Disable free models"
+        description="Don't show free OpenRouter models in the model picker"
+      >
+        <SettingSwitch
+          checked={hideFreeModels}
+          onChange={onToggleHideFreeModels}
+          label="Hide free models"
+        />
+      </SettingRow>
     </section>
   );
 
   const turboSection = (
+    <section className="border-b border-white/[0.08] py-3">
+      <SettingRow title="Turbo" description="Prioritize the fastest OpenRouter providers">
+        <SettingSwitch checked={nitroMode} onChange={onToggleNitroMode} label="Turbo" />
+      </SettingRow>
+    </section>
+  );
+
+  const cheapestSection = (
+    <section className="border-b border-white/[0.08] py-3">
+      <SettingRow
+        title="Cheapest first"
+        description="Prioritize the lowest priced OpenRouter providers"
+      >
+        <SettingSwitch
+          checked={cheapestMode}
+          onChange={onToggleCheapestMode}
+          label="Cheapest first"
+        />
+      </SettingRow>
+    </section>
+  );
+
+  const privacySection = (
+    <section className="border-b border-white/[0.08] py-3">
+      <SettingRow
+        title="Privacy mode"
+        description={
+          zdrMode
+            ? "Already covered by zero data retention"
+            : "Skip providers that may keep your prompts for training"
+        }
+      >
+        <SettingSwitch
+          checked={privacyMode || zdrMode}
+          onChange={onTogglePrivacyMode}
+          label="Privacy mode"
+          disabled={zdrMode}
+        />
+      </SettingRow>
+    </section>
+  );
+
+  const zdrSection = (
     <section className="py-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-balance text-sm font-semibold text-zinc-100">
-            Turbo
-          </h2>
-          <p className="mt-0.5 text-pretty text-xs leading-5 text-zinc-500">
-            Prioritize the fastest OpenRouter providers
-          </p>
-        </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={nitroMode}
-          aria-label="Turbo"
-          onClick={() => onToggleNitroMode(!nitroMode)}
-          className={cx(
-            "relative h-7 w-12 shrink-0 rounded-full shadow-[var(--shadow-border)] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
-            CONTROL_MOTION,
-            nitroMode ? "bg-accent/80" : "bg-white/[0.08]",
-          )}
-        >
-          <span
-            className={cx(
-              "absolute left-1 top-1 h-5 w-5 rounded-full bg-zinc-50 transition-transform duration-150 ease-out",
-              nitroMode ? "translate-x-5" : "translate-x-0",
-            )}
-          />
-        </button>
-      </div>
+      <SettingRow
+        title="Zero data retention"
+        description="Only use providers that store nothing at all. Fewer models available"
+      >
+        <SettingSwitch
+          checked={zdrMode}
+          onChange={onToggleZdrMode}
+          label="Zero data retention"
+        />
+      </SettingRow>
     </section>
   );
 
   const smoothTextSection = (
     <section className="py-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-balance text-sm font-semibold text-zinc-100">
-            Smooth text
-          </h2>
-          <p className="mt-0.5 text-pretty text-xs leading-5 text-zinc-500">
-            Render model responses more smoothly
-          </p>
-        </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={smoothStreaming}
-          aria-label="Smooth text"
-          onClick={() => onToggleSmoothStreaming(!smoothStreaming)}
-          className={cx(
-            "relative h-7 w-12 shrink-0 rounded-full shadow-[var(--shadow-border)] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
-            CONTROL_MOTION,
-            smoothStreaming ? "bg-accent/80" : "bg-white/[0.08]",
-          )}
-        >
-          <span
-            className={cx(
-              "absolute left-1 top-1 h-5 w-5 rounded-full bg-zinc-50 transition-transform duration-150 ease-out",
-              smoothStreaming ? "translate-x-5" : "translate-x-0",
-            )}
-          />
-        </button>
-      </div>
+      <SettingRow title="Smooth text" description="Render model responses more smoothly">
+        <SettingSwitch
+          checked={smoothStreaming}
+          onChange={onToggleSmoothStreaming}
+          label="Smooth text"
+        />
+      </SettingRow>
     </section>
   );
 
   const promptNavigationSection = (
     <section className="border-b border-white/[0.08] py-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-balance text-sm font-semibold text-zinc-100">
-            Navigation bar
-          </h2>
-          <p className="mt-0.5 text-pretty text-xs leading-5 text-zinc-500">
-            Show a navigation bar for easily navigating long chats
-          </p>
-        </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={showPromptNavigationRail}
-          aria-label="Navigation bar"
-          onClick={() => onTogglePromptNavigationRail(!showPromptNavigationRail)}
-          className={cx(
-            "relative h-7 w-12 shrink-0 rounded-full shadow-[var(--shadow-border)] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
-            CONTROL_MOTION,
-            showPromptNavigationRail ? "bg-accent/80" : "bg-white/[0.08]",
-          )}
-        >
-          <span
-            className={cx(
-              "absolute left-1 top-1 h-5 w-5 rounded-full bg-zinc-50 transition-transform duration-150 ease-out",
-              showPromptNavigationRail ? "translate-x-5" : "translate-x-0",
-            )}
-          />
-        </button>
-      </div>
+      <SettingRow
+        title="Navigation bar"
+        description="Show a navigation bar for easily navigating long chats"
+      >
+        <SettingSwitch
+          checked={showPromptNavigationRail}
+          onChange={onTogglePromptNavigationRail}
+          label="Navigation bar"
+        />
+      </SettingRow>
     </section>
   );
 
@@ -5178,6 +5183,9 @@ function SettingsDrawer({
               {keySection}
               {modelFilterSection}
               {turboSection}
+              {cheapestSection}
+              {privacySection}
+              {zdrSection}
             </section>
             <section
               className="t-page flex min-h-0 flex-col px-4 py-3 md:px-4 md:py-3"
@@ -5877,6 +5885,9 @@ function App() {
   const [defaultModel, setDefaultModel] = useState(DEFAULT_MODEL);
   const [hideFreeModels, setHideFreeModels] = useState(Boolean(localAppSettings.hide_free_models));
   const [nitroMode, setNitroMode] = useState(Boolean(localAppSettings.nitro_mode));
+  const [cheapestMode, setCheapestMode] = useState(Boolean(localAppSettings.cheapest_mode));
+  const [privacyMode, setPrivacyMode] = useState(Boolean(localAppSettings.privacy_mode));
+  const [zdrMode, setZdrMode] = useState(Boolean(localAppSettings.zdr_mode));
   const [smoothStreaming, setSmoothStreaming] = useState(Boolean(localAppSettings.smooth_streaming));
   const [showPromptNavigationRail, setShowPromptNavigationRail] = useState(
     localAppSettings.show_prompt_navigation_rail !== false,
@@ -6518,15 +6529,33 @@ function App() {
         typeof payload.smooth_streaming === "boolean"
           ? payload.smooth_streaming
           : Boolean(readLocalAppSettings().smooth_streaming);
+      const nextCheapestMode =
+        typeof payload.cheapest_mode === "boolean"
+          ? payload.cheapest_mode
+          : Boolean(readLocalAppSettings().cheapest_mode);
+      const nextPrivacyMode =
+        typeof payload.privacy_mode === "boolean"
+          ? payload.privacy_mode
+          : Boolean(readLocalAppSettings().privacy_mode);
+      const nextZdrMode =
+        typeof payload.zdr_mode === "boolean"
+          ? payload.zdr_mode
+          : Boolean(readLocalAppSettings().zdr_mode);
       setDefaultModel(nextDefaultModel);
       defaultModelRef.current = nextDefaultModel;
       setHideFreeModels(nextHideFreeModels);
       setNitroMode(nextNitroMode);
       setSmoothStreaming(nextSmoothStreaming);
+      setCheapestMode(nextCheapestMode);
+      setPrivacyMode(nextPrivacyMode);
+      setZdrMode(nextZdrMode);
       writeLocalAppSettings({
         hide_free_models: nextHideFreeModels,
         nitro_mode: nextNitroMode,
         smooth_streaming: nextSmoothStreaming,
+        cheapest_mode: nextCheapestMode,
+        privacy_mode: nextPrivacyMode,
+        zdr_mode: nextZdrMode,
       });
       setSettings((current) => (
         activeChatId || activeStoryId || appSettingsLoadedRef.current
@@ -6834,26 +6863,76 @@ function App() {
   }
 
   async function updateNitroMode(value) {
-    setNitroMode(value);
-    setSettings((current) => ({ ...current, nitro_mode: value }));
-    writeLocalAppSettings({ nitro_mode: value });
+    applyRoutingSettings(null, { nitro: value, cheapest: value ? false : cheapestMode });
     try {
       const payload = await api("/api/settings", {
         method: "PATCH",
         body: JSON.stringify({ nitro_mode: value }),
       });
-      const nextValue =
-        typeof payload.nitro_mode === "boolean"
-          ? payload.nitro_mode
-          : value;
-      setNitroMode(nextValue);
-      setSettings((current) => ({ ...current, nitro_mode: nextValue }));
-      writeLocalAppSettings({ nitro_mode: nextValue });
+      applyRoutingSettings(payload, { nitro: value, cheapest: value ? false : cheapestMode });
       showToast(value ? "Turbo enabled" : "Turbo disabled");
     } catch (error) {
-      setNitroMode(value);
-      setSettings((current) => ({ ...current, nitro_mode: value }));
-      writeLocalAppSettings({ nitro_mode: value });
+      setStatus(`Saved locally. Restart the server to sync this setting. ${error.message}`);
+    }
+  }
+
+  function applyRoutingSettings(payload, fallback) {
+    const nextNitro =
+      typeof payload?.nitro_mode === "boolean" ? payload.nitro_mode : fallback.nitro;
+    const nextCheapest =
+      typeof payload?.cheapest_mode === "boolean" ? payload.cheapest_mode : fallback.cheapest;
+    setNitroMode(nextNitro);
+    setCheapestMode(nextCheapest);
+    setSettings((current) => ({ ...current, nitro_mode: nextNitro }));
+    writeLocalAppSettings({ nitro_mode: nextNitro, cheapest_mode: nextCheapest });
+  }
+
+  async function updateCheapestMode(value) {
+    //turbo and cheapest are opposite sort orders, so one always wins over the other
+    applyRoutingSettings(null, { nitro: value ? false : nitroMode, cheapest: value });
+    try {
+      const payload = await api("/api/settings", {
+        method: "PATCH",
+        body: JSON.stringify({ cheapest_mode: value }),
+      });
+      applyRoutingSettings(payload, { nitro: value ? false : nitroMode, cheapest: value });
+      showToast(value ? "Cheapest first enabled" : "Cheapest first disabled");
+    } catch (error) {
+      setStatus(`Saved locally. Restart the server to sync this setting. ${error.message}`);
+    }
+  }
+
+  async function updatePrivacyMode(value) {
+    setPrivacyMode(value);
+    writeLocalAppSettings({ privacy_mode: value });
+    try {
+      const payload = await api("/api/settings", {
+        method: "PATCH",
+        body: JSON.stringify({ privacy_mode: value }),
+      });
+      const nextValue =
+        typeof payload.privacy_mode === "boolean" ? payload.privacy_mode : value;
+      setPrivacyMode(nextValue);
+      writeLocalAppSettings({ privacy_mode: nextValue });
+      showToast(value ? "Privacy mode enabled" : "Privacy mode disabled");
+    } catch (error) {
+      setStatus(`Saved locally. Restart the server to sync this setting. ${error.message}`);
+    }
+  }
+
+  async function updateZdrMode(value) {
+    setZdrMode(value);
+    writeLocalAppSettings({ zdr_mode: value });
+    try {
+      const payload = await api("/api/settings", {
+        method: "PATCH",
+        body: JSON.stringify({ zdr_mode: value }),
+      });
+      const nextValue = typeof payload.zdr_mode === "boolean" ? payload.zdr_mode : value;
+      setZdrMode(nextValue);
+      writeLocalAppSettings({ zdr_mode: nextValue });
+      showToast(value ? "Zero data retention enabled" : "Zero data retention disabled");
+    } catch (error) {
       setStatus(`Saved locally. Restart the server to sync this setting. ${error.message}`);
     }
   }
@@ -8701,6 +8780,9 @@ function App() {
         defaultModel={defaultModel}
         hideFreeModels={hideFreeModels}
         nitroMode={nitroMode}
+        cheapestMode={cheapestMode}
+        privacyMode={privacyMode}
+        zdrMode={zdrMode}
         smoothStreaming={smoothStreaming}
         showPromptNavigationRail={showPromptNavigationRail}
         modelLocked={activeModelLocked}
@@ -8709,6 +8791,9 @@ function App() {
         onSetDefaultModel={updateDefaultModel}
         onToggleHideFreeModels={updateHideFreeModels}
         onToggleNitroMode={updateNitroMode}
+        onToggleCheapestMode={updateCheapestMode}
+        onTogglePrivacyMode={updatePrivacyMode}
+        onToggleZdrMode={updateZdrMode}
         onToggleSmoothStreaming={updateSmoothStreaming}
         onTogglePromptNavigationRail={updatePromptNavigationRail}
         onExportChats={exportChats}

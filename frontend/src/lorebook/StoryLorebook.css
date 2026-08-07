@@ -583,110 +583,6 @@
   padding-right: 42px;
 }
 
-.lorebook-category-control {
-  position: relative;
-  display: block;
-}
-
-.lorebook-category-trigger {
-  min-height: 42px;
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  border: 0;
-  border-radius: 12px;
-  background: rgba(0, 0, 0, 0.28);
-  padding: 0 12px;
-  color: #d4d4d8;
-  font: inherit;
-  text-align: left;
-  box-shadow: var(--shadow-border);
-  cursor: pointer;
-  transition:
-    background-color 150ms ease-out,
-    box-shadow 150ms ease-out,
-    color 150ms ease-out;
-}
-
-.lorebook-category-chevron {
-  color: #d4d4d8;
-  transition:
-    color 150ms ease-out,
-    transform 150ms ease-out;
-}
-
-.lorebook-category-trigger:hover:not(:disabled),
-.lorebook-category-trigger[aria-expanded="true"] {
-  background: rgba(255, 255, 255, 0.055);
-  color: #f4f4f5;
-}
-
-.lorebook-category-trigger:hover:not(:disabled) .lorebook-category-chevron,
-.lorebook-category-trigger[aria-expanded="true"] .lorebook-category-chevron {
-  color: #f4f4f5;
-}
-
-.lorebook-category-trigger[aria-expanded="true"] .lorebook-category-chevron {
-  transform: rotate(180deg);
-}
-
-.lorebook-category-trigger:focus-visible {
-  outline: 0;
-  box-shadow:
-    var(--shadow-border-hover),
-    0 0 0 3px rgba(96, 165, 250, 0.12);
-}
-
-.lorebook-category-trigger:disabled {
-  cursor: not-allowed;
-  opacity: 0.65;
-}
-
-.lorebook-category-menu {
-  position: absolute;
-  z-index: 20;
-  top: calc(100% + 6px);
-  left: -8px;
-  width: calc(100% + 16px);
-  display: grid;
-  gap: 3px;
-  border-radius: 12px;
-  background: #1a1a1c;
-  padding: 5px;
-  box-shadow: var(--shadow-surface);
-}
-
-.lorebook-category-option {
-  min-height: 36px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  padding: 0 10px;
-  color: #d4d4d8;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  text-align: left;
-  cursor: pointer;
-  transition:
-    background-color 150ms ease-out,
-    color 150ms ease-out;
-}
-
-.lorebook-category-option:hover,
-.lorebook-category-option:focus-visible {
-  outline: 0;
-  background: rgba(255, 255, 255, 0.065);
-  color: #f4f4f5;
-}
-
-.lorebook-category-option.is-selected {
-  background: rgba(255, 255, 255, 0.11);
-  color: #ffffff;
-}
-
 .lorebook-modal textarea {
   min-height: 140px;
   resize: none;
@@ -703,9 +599,170 @@
     0 0 0 3px rgba(96, 165, 250, 0.12);
 }
 
-.lorebook-modal .lorebook-name-input:focus,
-.lorebook-modal .lorebook-category-select:focus {
-  box-shadow: var(--shadow-border-hover);
+/* the editor drops every input box and leans on hairline rules plus a label gutter instead, so the
+form reads like a page of notes rather than a stack of controls */
+.lorebook-editor-modal {
+  width: min(560px, 100%);
+  border-radius: 22px;
+  background: #141416;
+}
+
+.lorebook-editor-modal header {
+  align-items: flex-start;
+  padding: 20px 22px 14px;
+  border-bottom: 0;
+}
+
+.lorebook-editor-heading {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: grid;
+  gap: 7px;
+}
+
+.lorebook-editor-modal .lorebook-name-input {
+  min-height: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 3px 0 5px;
+  color: #f4f4f5;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.012em;
+  box-shadow: none;
+}
+
+.lorebook-editor-modal .lorebook-name-input::placeholder {
+  color: #3f3f46;
+  font-weight: 650;
+}
+
+.lorebook-editor-modal .lorebook-name-input:focus {
+  background: transparent;
+  box-shadow: none;
+}
+
+/* the height is pinned from JS so swapping category tweens the modal instead of snapping it, and the
+padding lives on the inner wrapper so what gets measured is the whole stack */
+.lorebook-editor-modal .lorebook-modal-body {
+  --resize-dur: 220ms; /* a hair quicker than the modal open so the field swap doesnt feel draggy */
+  display: block;
+  max-height: 100%;
+  gap: 0;
+  scrollbar-gutter: stable;
+  padding: 0;
+}
+
+/* the pinned height lags the content while either of these tweens runs, so the box is briefly
+scrollable and a scrollbar for those frames would shove every line sideways */
+.lorebook-editor-modal .lorebook-modal-body.is-resizing,
+.lorebook-editor-modal .lorebook-modal-body.is-tracking {
+  overflow: hidden;
+}
+
+.lorebook-editor-modal .lorebook-modal-body.is-tracking {
+  transition: none;
+}
+
+/* the trailing gap matches the trigger padding so the Details row sits evenly between its two rules */
+.lorebook-editor-body-inner {
+  display: block;
+  padding: 0 22px 4px;
+}
+
+.lorebook-editor-modal .lorebook-field {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 9px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  padding: 12px 0;
+  transition: border-color 150ms ease-out;
+}
+
+.lorebook-editor-modal .lorebook-field:focus-within {
+  border-top-color: rgba(255, 255, 255, 0.16);
+}
+
+/* the label carries the same size, line box and top padding as the value beside it, that is what
+puts the two on one baseline in every row */
+.lorebook-editor-modal .lorebook-field-label {
+  padding-top: 7px;
+  color: #71717a;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.6;
+  letter-spacing: normal;
+  text-transform: none;
+  transition: color 150ms ease-out;
+}
+
+.lorebook-field:focus-within .lorebook-field-label {
+  color: #a1a1aa;
+}
+
+.lorebook-editor-modal .lorebook-field input,
+.lorebook-editor-modal .lorebook-field textarea {
+  min-height: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 7px 0;
+  font-size: 14px;
+  line-height: 1.6;
+  box-shadow: none;
+}
+
+.lorebook-editor-modal .lorebook-field input:focus,
+.lorebook-editor-modal .lorebook-field textarea:focus {
+  background: transparent;
+  box-shadow: none;
+}
+
+.lorebook-editor-modal .lorebook-field textarea {
+  min-height: 132px;
+}
+
+/* the category bar carries no label, the options say what they are, so it spans the full body width
+instead of sitting in the label gutter */
+.lorebook-category-row {
+  padding: 12px 0;
+}
+
+.lorebook-category-tabs.t-tabs {
+  width: 100%;
+  display: flex;
+  justify-content: flex-start;
+  gap: 3px;
+  overflow-x: auto;
+  background: rgba(255, 255, 255, 0.045);
+  box-shadow: var(--shadow-border);
+  scrollbar-width: none;
+}
+
+.lorebook-category-tabs.t-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.lorebook-category-tab.t-tab {
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.lorebook-category-tab.t-tab:focus-visible {
+  outline: 0;
+}
+
+.lorebook-category-tab.t-tab:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .lorebook-repair-modal {
@@ -839,51 +896,43 @@ punching a gap at the top and bottom of the scroll pane */
 }
 
 .lorebook-details {
-  border-radius: 12px;
-  background: rgba(0, 0, 0, 0.28);
-  box-shadow: var(--shadow-border);
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  background: transparent;
 }
 
 .lorebook-details-trigger {
-  height: 40px;
-  min-height: 40px;
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   border: 0;
-  border-radius: 12px;
   background: transparent;
-  padding: 0 12px;
-  color: #d4d4d8;
-  font-size: 13px;
-  font-weight: 650;
+  padding: 4px 0;
+  font: inherit;
   text-align: left;
-  box-shadow: none;
   cursor: pointer;
-  transition:
-    background-color 150ms ease-out,
-    box-shadow 150ms ease-out,
-    color 150ms ease-out;
 }
 
-.lorebook-details[data-open="true"] .lorebook-details-trigger {
-  border-bottom-right-radius: 0;
-  border-bottom-left-radius: 0;
+.lorebook-details-trigger .lorebook-field-label {
+  padding-top: 0;
 }
 
-.lorebook-details-trigger:hover {
-  background: rgba(255, 255, 255, 0.055);
-  color: #f4f4f5;
+.lorebook-details-state {
+  color: #52525b;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.6;
+  transition: color 150ms ease-out;
+}
+
+/* the label reads as a heading like every other gutter label, only the Show/Hide word is the control */
+.lorebook-details-trigger:hover .lorebook-details-state,
+.lorebook-details-trigger:focus-visible .lorebook-details-state {
+  color: #d4d4d8;
 }
 
 .lorebook-details-trigger:focus-visible {
-  background: rgba(255, 255, 255, 0.055);
-  color: #f4f4f5;
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.13),
-    0 0 0 3px rgba(96, 165, 250, 0.12);
   outline: 0;
 }
 
@@ -894,8 +943,71 @@ punching a gap at the top and bottom of the scroll pane */
 
 .lorebook-details-panel {
   display: grid;
-  gap: 14px;
-  padding: 6px 12px 12px;
+  padding: 0;
+}
+
+/* the last row closes as tight as the trigger opens, so the panel is evenly inset top and bottom */
+.lorebook-details-panel .lorebook-field:last-child {
+  padding-bottom: 4px;
+}
+
+.lorebook-details-panel .lorebook-field:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.lorebook-editor-modal .lorebook-details-panel textarea {
+  min-height: 92px;
+}
+
+.lorebook-editor-modal footer {
+  padding: 14px 22px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+/* the footer reads as text, not chrome, so the buttons drop their pills and their side padding, which
+also lands the outermost one on the same left edge as every label above it */
+.lorebook-editor-modal footer .lorebook-primary-button,
+.lorebook-editor-modal footer .lorebook-secondary-button,
+.lorebook-editor-modal footer .lorebook-delete-button {
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  font-size: 14px;
+}
+
+.lorebook-editor-modal .lorebook-footer-actions {
+  gap: 20px;
+}
+
+.lorebook-editor-modal footer .lorebook-secondary-button {
+  color: #71717a;
+  font-weight: 600;
+}
+
+.lorebook-editor-modal footer .lorebook-secondary-button:hover {
+  color: #d4d4d8;
+}
+
+/* the submit keeps its weight to stay the loudest thing down here now that the fill is gone */
+.lorebook-editor-modal footer .lorebook-primary-button {
+  color: #d4d4d8;
+  font-weight: 700;
+}
+
+.lorebook-editor-modal footer .lorebook-primary-button:hover {
+  color: #ffffff;
+}
+
+.lorebook-editor-modal footer .lorebook-primary-button:disabled,
+.lorebook-editor-modal footer .lorebook-delete-button:disabled {
+  background: transparent;
+  color: #52525b;
+}
+
+.lorebook-editor-modal footer .lorebook-delete-button:hover {
+  background: transparent;
+  color: #fecaca;
 }
 
 .lorebook-details .t-acc-panel,
@@ -1027,6 +1139,16 @@ punching a gap at the top and bottom of the scroll pane */
   .lorebook-timeline-actions .lorebook-primary-button {
     width: 100%;
   }
+
+  /* the label gutter costs too much width on a phone, so the labels move above their controls */
+  .lorebook-editor-modal .lorebook-field {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  .lorebook-editor-modal .lorebook-field-label {
+    padding-top: 0;
+  }
 }
 
 /* three buttons need ~440px, below that they stack rather than run off the edge */
@@ -1052,9 +1174,11 @@ punching a gap at the top and bottom of the scroll pane */
   .lorebook-modal input,
   .lorebook-modal select,
   .lorebook-modal textarea,
-  .lorebook-category-trigger,
-  .lorebook-category-chevron,
-  .lorebook-category-option,
+  .lorebook-category-tab,
+  .lorebook-field,
+  .lorebook-field-label,
+  .lorebook-details-state,
+  .lorebook-name-input,
   .lorebook-details-trigger {
     transition: none !important;
   }

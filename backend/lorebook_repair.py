@@ -199,6 +199,10 @@ def create_lorebook_repair_router(deps: WritingDeps) -> APIRouter:
             "max_tokens": story["max_tokens"],
             "stream": True,
         }
+        providerOptions = deps.openrouter_provider_options()
+        if providerOptions:
+            body["provider"] = providerOptions
+
         effectiveThinkingEnabled = deps.effective_thinking_enabled(story["model"], True)
         reasoningConfig = deps.enabled_reasoning_config(
             story["model"], True, story["reasoning_effort"]

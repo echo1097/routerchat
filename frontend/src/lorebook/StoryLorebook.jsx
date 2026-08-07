@@ -1,13 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ArrowLeft,
-  ChevronDown,
   Eye,
   EyeOff,
   Plus,
   Search,
-  X,
 } from "lucide-react";
 import { cx, CONTROL_MOTION } from "../uiShared.js";
 import RepairModal, { repairDurationParts } from "./RepairModal.jsx";
@@ -25,6 +23,21 @@ const CATEGORY_OPTIONS = [
 ];
 
 const ENTRY_CATEGORY_OPTIONS = CATEGORY_OPTIONS.filter((option) => !["all", "timeline"].includes(option.id));
+
+const DESCRIPTION_PROMPTS = {
+  character: "Who are they? What do they look like, and how do they act?",
+  location: "What is this place like? What happens here?",
+  item: "What is it, and why does it matter?",
+  event: "What happened, and who was there?",
+  note: "What should the writer keep in mind?",
+  synopsis: "What happens in this chapter, from start to finish?",
+};
+
+//matches --resize-dur on the editor body, the two have to agree or scrolling comes back mid tween
+const BODY_RESIZE_MS = 220;
+
+//matches --acc-expand and --acc-collapse, the details panel owns the motion for that stretch
+const DETAILS_TWEEN_MS = 250;
 
 const EMPTY_DRAFT = {
   name: "",
@@ -104,7 +117,7 @@ function entryFromDraft(draft, existingEntry) {
   };
 }
 
-function useSlidingTabs(activeCategory, tabCount) {
+function useSlidingTabs(activeCategory, tabCount, active = true) {
   const tabsRef = useRef(null);
   const pillRef = useRef(null);
   const measuredRef = useRef(false);
@@ -112,6 +125,14 @@ function useSlidingTabs(activeCategory, tabCount) {
   useEffect(() => {
     const tabsBar = tabsRef.current;
     const pill = pillRef.current;
+
+    /* a bar that unmounts between uses starts over, otherwise the pill would slide in from
+    wherever it sat the last time the bar was on screen */
+    if (!active) {
+      measuredRef.current = false;
+      return undefined;
+    }
+
     if (!tabsBar || !pill) return undefined;
 
     function movePill(animate) {
@@ -137,13 +158,30 @@ function useSlidingTabs(activeCategory, tabCount) {
       measuredRef.current = true;
     });
 
-    function handleResize() {
+    function handleWindowResize() {
       movePill(false);
     }
 
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, [activeCategory, tabCount]);
+    /* anything else that reflows the bar after the pill was placed leaves it on stale offsets, a
+    scrollbar that comes and goes for a frame is enough, so remeasure off the bar itself. the first
+    callback is the observer reporting the size it already has, which would cancel the slide */
+    let observedOnce = false;
+    const observer = new ResizeObserver(() => {
+      if (!observedOnce) {
+        observedOnce = true;
+        return;
+      }
+
+      movePill(true);
+    });
+
+    observer.observe(tabsBar);
+    window.addEventListener("resize", handleWindowResize);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", handleWindowResize);
+    };
+  }, [activeCategory, tabCount, active]);
 
   return { tabsRef, pillRef };
 }
@@ -772,10 +810,13 @@ function LorebookEditorModal({
   const [rendered, setRendered] = useState(open);
   const [modalState, setModalState] = useState(open ? "open" : "closed");
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [categoryMenuState, setCategoryMenuState] = useState("closed");
-  const categoryControlRef = useRef(null);
-  const categoryTriggerRef = useRef(null);
-  const categoryCloseTimeoutRef = useRef(null);
+  const [bodyHeight, setBodyHeight] = useState(null);
+  const [bodyResizing, setBodyResizing] = useState(false);
+  const [bodyTracking, setBodyTracking] = useState(false);
+  const bodyInnerRef = useRef(null);
+  const measuredHeightRef = useRef(null);
+  const bodyResizeTimeoutRef = useRef(null);
+  const { tabsRef, pillRef } = useSlidingTabs(draft.category, ENTRY_CATEGORY_OPTIONS.length, rendered);
 
   useEffect(() => {
     if (open) {
@@ -794,41 +835,58 @@ function LorebookEditorModal({
       setRendered(false);
       setModalState("closed");
       setDetailsOpen(false);
+      setBodyHeight(null); //the next open measures fresh instead of tweening from the old category
     }, closeMs);
 
     return () => window.clearTimeout(timeoutId);
   }, [open, rendered]);
 
-  useEffect(() => () => window.clearTimeout(categoryCloseTimeoutRef.current), []);
+  /* while the box tweens toward a taller stack the new fields stick out past it, so scrolling stays
+  off until the tween lands and no scrollbar can flicker in and out on the way */
+  function markBodyResizing() {
+    setBodyResizing(true);
+    window.clearTimeout(bodyResizeTimeoutRef.current);
+    bodyResizeTimeoutRef.current = window.setTimeout(() => setBodyResizing(false), BODY_RESIZE_MS + 40);
+  }
 
-  useEffect(() => {
-    if (open && !locked) return;
+  /* switching category adds or drops whole fields, so the body is pinned to whatever the current
+  fields measure and tweens between the two heights instead of snapping */
+  useLayoutEffect(() => {
+    const inner = bodyInnerRef.current;
+    if (!inner) return undefined;
 
-    window.clearTimeout(categoryCloseTimeoutRef.current);
-    setCategoryMenuState("closed");
-  }, [open, locked]);
+    function syncBodyHeight() {
+      const nextHeight = inner.offsetHeight; //offsetHeight, not a rect, the modal is mid scale transform while it opens
+      const previousHeight = measuredHeightRef.current;
+      measuredHeightRef.current = nextHeight;
+      setBodyHeight(nextHeight);
 
-  useEffect(() => {
-    if (categoryMenuState !== "open") return undefined;
+      if (previousHeight === null || previousHeight === nextHeight) return;
 
-    function handlePointerDown(event) {
-      if (!categoryControlRef.current?.contains(event.target)) closeCategoryMenu();
+      markBodyResizing();
     }
 
-    function handleKeyDown(event) {
-      if (event.key !== "Escape") return;
+    syncBodyHeight();
 
-      event.preventDefault();
-      closeCategoryMenu(true);
-    }
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
+    const observer = new ResizeObserver(syncBodyHeight);
+    observer.observe(inner);
     return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
+      observer.disconnect();
+      window.clearTimeout(bodyResizeTimeoutRef.current);
+      measuredHeightRef.current = null;
+      setBodyResizing(false);
     };
-  }, [categoryMenuState]);
+  }, [rendered]);
+
+  /* the details panel runs its own open and close tween, so for that stretch the body tracks it
+  frame for frame instead of easing toward it and dragging the footer along late */
+  useEffect(() => {
+    if (!rendered) return undefined;
+
+    setBodyTracking(true);
+    const timeoutId = window.setTimeout(() => setBodyTracking(false), DETAILS_TWEEN_MS + 40);
+    return () => window.clearTimeout(timeoutId);
+  }, [detailsOpen, rendered]);
 
   useEffect(() => {
     if (!open) return;
@@ -836,38 +894,25 @@ function LorebookEditorModal({
     setDetailsOpen(Boolean(draft.aliasesText.trim() || draft.notes.trim()));
   }, [open]);
 
+  /* the header shows an Esc affordance instead of a close glyph, so the key has to do the job */
+  useEffect(() => {
+    if (!open) return undefined;
+
+    function handleKeyDown(event) {
+      if (event.key !== "Escape") return;
+
+      event.preventDefault();
+      onClose();
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [open, onClose]);
+
   if (!rendered) return null;
 
   const showAliases = !["note", "synopsis"].includes(draft.category);
   const showNotes = !["character", "note", "synopsis"].includes(draft.category);
-  const selectedCategory = ENTRY_CATEGORY_OPTIONS.find((option) => option.id === draft.category) || ENTRY_CATEGORY_OPTIONS[0];
-  const categoryMenuOpen = categoryMenuState === "open";
-
-  function openCategoryMenu() {
-    if (locked) return;
-
-    window.clearTimeout(categoryCloseTimeoutRef.current);
-    setCategoryMenuState("open");
-  }
-
-  function closeCategoryMenu(restoreFocus = false) {
-    if (categoryMenuState === "closed" || categoryMenuState === "closing") return;
-
-    setCategoryMenuState("closing");
-    const closeMs = parseFloat(
-      getComputedStyle(document.documentElement).getPropertyValue("--dropdown-close-dur"),
-    ) || 150;
-
-    categoryCloseTimeoutRef.current = window.setTimeout(() => {
-      setCategoryMenuState("closed");
-      if (restoreFocus) categoryTriggerRef.current?.focus();
-    }, closeMs);
-  }
-
-  function selectCategory(categoryId) {
-    onChange("category", categoryId);
-    closeCategoryMenu(true);
-  }
 
   return createPortal(
     <div className="lorebook-modal-guard fixed inset-0 z-[80] grid place-items-center bg-black/60 px-3 py-4 backdrop-blur-sm sm:px-6">
@@ -879,69 +924,42 @@ function LorebookEditorModal({
       />
       <form
         onSubmit={onSubmit}
-        className={cx("lorebook-modal t-modal", modalState === "open" && "is-open", modalState === "closing" && "is-closing")}
+        className={cx(
+          "lorebook-modal lorebook-editor-modal t-modal",
+          modalState === "open" && "is-open",
+          modalState === "closing" && "is-closing",
+        )}
         aria-modal="true"
-        aria-labelledby="lorebook-editor-title"
+        aria-label={editing ? "Edit lorebook entry" : "Create lorebook entry"}
       >
         <header>
-          <div>
-            <div className="lorebook-modal-eyebrow">{editing ? "Edit entry" : "New entry"}</div>
-            <h2 id="lorebook-editor-title">{editing ? draft.name || "Edit entry" : "Create lorebook entry"}</h2>
-          </div>
-          <div className="lorebook-modal-actions">
-            <button type="button" className={cx("lorebook-icon-button", CONTROL_MOTION)} onClick={onClose} aria-label="Close lorebook editor">
-              <X size={18} />
-            </button>
-          </div>
-        </header>
-
-        <div className="lorebook-modal-body">
-          <label>
-            Name
+          <div className="lorebook-editor-heading">
             <input
+              id="lorebook-entry-name"
               className="lorebook-name-input"
+              aria-label="Entry name"
               autoFocus
               value={draft.name}
               onChange={(event) => onChange("name", event.target.value)}
-              placeholder="Entry name"
+              placeholder="Untitled entry"
               disabled={locked}
               data-1p-ignore="true"
             />
-          </label>
+          </div>
+        </header>
 
-          <label>
-            Category
-            <span ref={categoryControlRef} className="lorebook-category-control">
-              <button
-                ref={categoryTriggerRef}
-                type="button"
-                className="lorebook-category-trigger"
-                onClick={() => (categoryMenuOpen ? closeCategoryMenu() : openCategoryMenu())}
-                onKeyDown={(event) => {
-                  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-                    event.preventDefault();
-                    openCategoryMenu();
-                  }
-                }}
-                aria-expanded={categoryMenuOpen}
-                aria-controls="lorebook-category-menu"
-                aria-haspopup="listbox"
-                disabled={locked}
-              >
-                <span>{selectedCategory.label}</span>
-                <ChevronDown className="lorebook-category-chevron" size={17} aria-hidden="true" />
-              </button>
-              <span
-                id="lorebook-category-menu"
-                className={cx(
-                  "t-dropdown lorebook-category-menu",
-                  categoryMenuState === "open" && "is-open",
-                  categoryMenuState === "closing" && "is-closing",
-                )}
-                data-origin="top-left"
-                role="listbox"
-                aria-label="Category"
-              >
+        <div
+          className={cx(
+            "lorebook-modal-body t-resize",
+            bodyResizing && "is-resizing",
+            bodyTracking && "is-tracking",
+          )}
+          style={bodyHeight === null ? undefined : { height: `${bodyHeight}px` }}
+        >
+          <div ref={bodyInnerRef} className="lorebook-editor-body-inner">
+            <div className="lorebook-category-row">
+              <div ref={tabsRef} className="lorebook-category-tabs t-tabs" role="tablist" aria-label="Entry category">
+                <span ref={pillRef} className="t-tabs-pill" aria-hidden="true" />
                 {ENTRY_CATEGORY_OPTIONS.map((option) => {
                   const selected = draft.category === option.id;
 
@@ -949,74 +967,78 @@ function LorebookEditorModal({
                     <button
                       key={option.id}
                       type="button"
-                      className={cx("lorebook-category-option", selected && "is-selected")}
-                      onClick={() => selectCategory(option.id)}
-                      role="option"
+                      className="lorebook-category-tab t-tab"
+                      onClick={() => {
+                        markBodyResizing(); //a frame late here is a frame of scrollbar, and the pill measures against it
+                        onChange("category", option.id);
+                      }}
+                      role="tab"
                       aria-selected={selected}
+                      disabled={locked}
                     >
                       {option.label}
                     </button>
                   );
                 })}
-              </span>
-            </span>
-          </label>
+              </div>
+            </div>
 
-          <label>
-            Description
-            <textarea
-              value={draft.description}
-              onChange={(event) => onChange("description", event.target.value)}
-              placeholder="Core lorebook text the writer should remember"
-              disabled={locked}
-              data-1p-ignore="true"
-            />
-          </label>
-
-          {(showAliases || showNotes) && (
-            <div className="lorebook-details t-acc" data-open={String(detailsOpen && !locked)}>
-              <button
-                type="button"
-                className="lorebook-details-trigger t-acc-head"
-                onClick={() => setDetailsOpen((wasOpen) => !wasOpen)}
-                aria-expanded={detailsOpen && !locked}
-                aria-controls="lorebook-details-panel"
+            <label className="lorebook-field">
+              <span className="lorebook-field-label">Description</span>
+              <textarea
+                value={draft.description}
+                onChange={(event) => onChange("description", event.target.value)}
+                placeholder={DESCRIPTION_PROMPTS[draft.category] || DESCRIPTION_PROMPTS.note}
                 disabled={locked}
-              >
-                <span>Details</span>
-                <span className="t-acc-chevron" aria-hidden="true"><ChevronDown size={17} /></span>
-              </button>
-              <div id="lorebook-details-panel" className="t-acc-panel">
-                <div className="t-acc-panel-inner">
-                  <div className="lorebook-details-panel">
-                    {showAliases && <label>
-                      Aliases
-                      <input
-                        value={draft.aliasesText}
-                        onChange={(event) => onChange("aliasesText", event.target.value)}
-                        placeholder="Seren, Doctor Mishra"
-                        disabled={locked}
-                        data-1p-ignore="true"
-                      />
-                    </label>}
+                data-1p-ignore="true"
+              />
+            </label>
 
-                    {showNotes && <label>
-                      Notes
-                      <textarea
-                        value={draft.notes}
-                        onChange={(event) => onChange("notes", event.target.value)}
-                        placeholder="Extra structured details for this entry"
-                        disabled={locked}
-                        data-1p-ignore="true"
-                      />
-                    </label>}
+            {(showAliases || showNotes) && (
+              <div className="lorebook-details t-acc" data-open={String(detailsOpen && !locked)}>
+                <button
+                  type="button"
+                  className="lorebook-details-trigger t-acc-head"
+                  onClick={() => setDetailsOpen((wasOpen) => !wasOpen)}
+                  aria-expanded={detailsOpen && !locked}
+                  aria-controls="lorebook-details-panel"
+                  disabled={locked}
+                >
+                  <span className="lorebook-field-label">Details</span>
+                  <span className="lorebook-details-state">{detailsOpen && !locked ? "Hide" : "Show"}</span>
+                </button>
+                <div id="lorebook-details-panel" className="t-acc-panel">
+                  <div className="t-acc-panel-inner">
+                    <div className="lorebook-details-panel">
+                      {showAliases && <label className="lorebook-field">
+                        <span className="lorebook-field-label">Aliases</span>
+                        <input
+                          value={draft.aliasesText}
+                          onChange={(event) => onChange("aliasesText", event.target.value)}
+                          placeholder="Nicknames, titles, other names this goes by"
+                          disabled={locked}
+                          data-1p-ignore="true"
+                        />
+                      </label>}
+
+                      {showNotes && <label className="lorebook-field is-stacked">
+                        <span className="lorebook-field-label">Notes</span>
+                        <textarea
+                          value={draft.notes}
+                          onChange={(event) => onChange("notes", event.target.value)}
+                          placeholder="Extra structured details for this entry"
+                          disabled={locked}
+                          data-1p-ignore="true"
+                        />
+                      </label>}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {error && <div className="lorebook-form-error">{error}</div>}
+            {error && <div className="lorebook-form-error">{error}</div>}
+          </div>
         </div>
 
         <footer>

@@ -593,11 +593,6 @@
   color: #71717a;
 }
 
-.brainstorm-thinking-required {
-  margin-left: 6px;
-  color: #52525b;
-}
-
 .brainstorm-model-chevron {
   flex: none;
   transition-property: transform;

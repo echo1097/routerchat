@@ -136,6 +136,9 @@ class AppSettingsPatchRequest(BaseModel):
     default_model: str | None = None
     hide_free_models: bool | None = None
     nitro_mode: bool | None = None
+    cheapest_mode: bool | None = None
+    privacy_mode: bool | None = None
+    zdr_mode: bool | None = None
     smooth_streaming: bool | None = None
 
 
@@ -1066,6 +1069,9 @@ def app_settings_payload() -> dict[str, Any]:
         "default_model": default_model_id(),
         "hide_free_models": bool(read_app_setting("hide_free_models")),
         "nitro_mode": bool(read_app_setting("nitro_mode")),
+        "cheapest_mode": bool(read_app_setting("cheapest_mode")),
+        "privacy_mode": bool(read_app_setting("privacy_mode")),
+        "zdr_mode": bool(read_app_setting("zdr_mode")),
         "smooth_streaming": bool(read_app_setting("smooth_streaming")),
     }
 
@@ -1076,6 +1082,22 @@ def openrouter_request_model(model_id: str, nitro_mode: bool) -> str:
     if model_id.endswith(":nitro"):
         return model_id
     return f"{model_id}:nitro"
+
+
+def openrouter_provider_options() -> dict[str, Any] | None:
+    provider: dict[str, Any] = {}
+
+    if bool(read_app_setting("cheapest_mode")):
+        provider["sort"] = "price"
+
+    #zdr is the stricter promise, so it already covers what privacy mode asks for
+    if bool(read_app_setting("zdr_mode")):
+        provider["zdr"] = True
+        provider["data_collection"] = "deny"
+    elif bool(read_app_setting("privacy_mode")):
+        provider["data_collection"] = "deny"
+
+    return provider or None
 
 
 async def fetch_models_from_openrouter(api_key: str) -> list[dict[str, Any]]:
@@ -1302,6 +1324,16 @@ def update_app_settings(payload: AppSettingsPatchRequest) -> dict[str, Any]:
         write_app_setting("hide_free_models", payload.hide_free_models)
     if payload.nitro_mode is not None:
         write_app_setting("nitro_mode", payload.nitro_mode)
+        if payload.nitro_mode and payload.cheapest_mode is None:
+            write_app_setting("cheapest_mode", False)
+    if payload.cheapest_mode is not None:
+        write_app_setting("cheapest_mode", payload.cheapest_mode)
+        if payload.cheapest_mode and payload.nitro_mode is None:
+            write_app_setting("nitro_mode", False)
+    if payload.privacy_mode is not None:
+        write_app_setting("privacy_mode", payload.privacy_mode)
+    if payload.zdr_mode is not None:
+        write_app_setting("zdr_mode", payload.zdr_mode)
     if payload.smooth_streaming is not None:
         write_app_setting("smooth_streaming", payload.smooth_streaming)
     return app_settings_payload()
@@ -2156,6 +2188,10 @@ async def stream_openrouter_response(
         "max_tokens": payload.max_tokens,
         "stream": True,
     }
+    providerOptions = openrouter_provider_options()
+    if providerOptions:
+        body["provider"] = providerOptions
+
     supportsReasoning = model_supports_reasoning(payload.model)
     effectiveThinkingEnabled = effective_thinking_enabled(
         payload.model, payload.thinking_enabled
@@ -2613,6 +2649,7 @@ writingDeps = WritingDeps(
     headers_for_key=headers_for_key,
     write_system_prompt=writeSystemPrompt,
     openrouter_request_model=openrouter_request_model,
+    openrouter_provider_options=openrouter_provider_options,
     model_supports_reasoning=model_supports_reasoning,
     effective_thinking_enabled=effective_thinking_enabled,
     enabled_reasoning_config=enabled_reasoning_config,

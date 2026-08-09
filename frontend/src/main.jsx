@@ -577,6 +577,12 @@ function exportFileName(chat) {
   return `routerchat-${title}-${new Date().toISOString().slice(0, 10)}.json`;
 }
 
+function shortTitle(title) {
+  const trimmed = (title || "").trim();
+  if (trimmed.length <= 48) return trimmed;
+  return `${trimmed.slice(0, 48).trimEnd()}…`;
+}
+
 function chatRoute(chat) {
   if (!chat?.id) return { page: "home" };
   return {
@@ -4222,13 +4228,13 @@ function SettingsDrawer({
   onTogglePromptNavigationRail,
   onExportChats,
   onImportChats,
+  onNotify,
 }) {
   const [apiKey, setApiKey] = useState("");
   const [query, setQuery] = useState("");
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [transferMessage, setTransferMessage] = useState("");
   const [selectedCloudChatId, setSelectedCloudChatId] = useState("");
   const [cloudSearch, setCloudSearch] = useState("");
   const [activePage, setActivePage] = useState("general");
@@ -4446,13 +4452,11 @@ function SettingsDrawer({
 
   async function exportChats() {
     if (!cloudChatId) return;
-    setTransferMessage("");
     setExporting(true);
     try {
       await onExportChats(cloudChatId, cloudChat);
-      setTransferMessage(`Exported ${cloudChat?.title || "chat"}`);
     } catch (error) {
-      setTransferMessage(error.message);
+      onNotify(error.message || "Export failed");
     } finally {
       setExporting(false);
     }
@@ -4462,17 +4466,13 @@ function SettingsDrawer({
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    setTransferMessage("");
     setImporting(true);
     try {
       const text = await file.text();
       const payload = JSON.parse(text);
-      const result = await onImportChats(payload);
-      setTransferMessage(
-        `Imported ${result.imported_chats || 0} chats and ${result.imported_messages || 0} messages`,
-      );
+      await onImportChats(payload);
     } catch (error) {
-      setTransferMessage(error.message || "Import failed");
+      onNotify(error.message || "Import failed");
     } finally {
       setImporting(false);
     }
@@ -4675,21 +4675,23 @@ function SettingsDrawer({
         </p>
       </div>
 
-      <section className="min-h-0 px-1 py-3">
-        <h2 className="text-balance text-sm font-semibold text-zinc-100">
+      <section className="flex min-h-0 flex-1 flex-col px-1 py-3">
+        <h2 className="shrink-0 text-balance text-sm font-semibold text-zinc-100">
           Select Chat
         </h2>
-        <div className="mt-2 space-y-2">
-          <SearchClearField
-            value={cloudSearch}
-            onChange={setCloudSearch}
-            placeholder="Search chats"
-          />
-          <div className="relative">
+        <div className="mt-2 flex min-h-0 flex-1 flex-col gap-2">
+          <div className="shrink-0">
+            <SearchClearField
+              value={cloudSearch}
+              onChange={setCloudSearch}
+              placeholder="Search chats"
+            />
+          </div>
+          <div className="relative min-h-0 flex-1">
             <div
               ref={chatListRef}
               onScroll={handleChatListScroll}
-              className="settings-chat-list max-h-36 min-h-0 space-y-1 overflow-y-auto"
+              className="settings-chat-list h-full max-h-36 min-h-0 space-y-1 overflow-y-auto"
             >
               {filteredCloudChats.length === 0 ? (
                 <div className="grid min-h-10 w-full grid-cols-[18px_minmax(0,1fr)_14px] items-center gap-2 rounded-xl bg-black/15 px-3 py-3 text-pretty text-xs leading-5 text-zinc-500 shadow-[var(--shadow-border)]">
@@ -4752,7 +4754,7 @@ function SettingsDrawer({
         </div>
       </section>
 
-      <section className="mt-auto pb-1 pt-6">
+      <section className="shrink-0 pb-1 pt-6">
         <div className="flex gap-2">
           <button
             type="button"
@@ -4789,18 +4791,6 @@ function SettingsDrawer({
         className="hidden"
         onChange={importChats}
       />
-
-      <p
-        aria-live="polite"
-        className={cx(
-          "px-1 text-xs leading-5 text-zinc-500 transition-[opacity,filter,transform] duration-150 ease-out",
-          transferMessage
-            ? "min-h-6 translate-y-0 py-2 opacity-100 blur-0"
-            : "h-0 min-h-0 -translate-y-1 overflow-hidden py-0 opacity-0 blur-[2px]",
-        )}
-      >
-        {transferMessage || "\u00a0"}
-      </p>
     </section>
   );
 
@@ -7037,7 +7027,7 @@ function App() {
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
-    showToast("Chat exported");
+    showToast(`Exported ${shortTitle(chat?.title) || "chat"}`);
   }
 
   async function exportChatFromMenu(chat) {
@@ -7055,7 +7045,9 @@ function App() {
       body: JSON.stringify(payload),
     });
     await loadChats();
-    showToast("Chats imported");
+    showToast(
+      `Imported ${result.imported_chats || 0} chats and ${result.imported_messages || 0} messages`,
+    );
     return result;
   }
 
@@ -8798,6 +8790,7 @@ function App() {
         onTogglePromptNavigationRail={updatePromptNavigationRail}
         onExportChats={exportChats}
         onImportChats={importChats}
+        onNotify={showToast}
       />
       <ConfirmModal
         dialog={confirmDialog}

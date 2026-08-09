@@ -1479,6 +1479,7 @@ function PromptNavigationRail({ messages, streamRef, visible, activeChatId }) {
     const promptGap = 8;
     const maxScroll = Math.max(scroller.scrollHeight - scroller.clientHeight, 1);
     const activeLine = scroller.scrollTop + scroller.clientHeight * 0.5;
+    const scrollerTop = scroller.getBoundingClientRect().top;
 
     const messageNodes = Array.from(scroller.querySelectorAll("[data-message-id]"));
 
@@ -1486,7 +1487,13 @@ function PromptNavigationRail({ messages, streamRef, visible, activeChatId }) {
       const node = messageNodes.find(
         (messageNode) => messageNode.dataset.messageId === String(message.id),
       );
-      const scrollTop = Math.min(Math.max((node?.offsetTop || 0) - 24, 0), maxScroll);
+      if (!node) return null;
+
+      const nodeTop = node.getBoundingClientRect().top;
+      const scrollTop = Math.min(
+        Math.max(scroller.scrollTop + nodeTop - scrollerTop - 24, 0),
+        maxScroll,
+      );
       const previewText = truncatePromptText(message.content);
 
       return {
@@ -1495,42 +1502,36 @@ function PromptNavigationRail({ messages, streamRef, visible, activeChatId }) {
         scrollTop,
         previewText,
       };
-    });
+    }).filter(Boolean);
+
+    if (baseItems.length === 0) {
+      setRailItems([]);
+      setActivePromptId(null);
+      return;
+    }
 
     let activeIndex = 0;
     let nextActiveId = baseItems[0]?.id || null;
-    for (const item of baseItems) {
+    for (const [itemIndex, item] of baseItems.entries()) {
       if (item.scrollTop <= activeLine) {
         nextActiveId = item.id;
-        activeIndex = item.index;
+        activeIndex = itemIndex;
       }
     }
 
-    const maxVisibleCount = Math.max(
-      Math.floor((railHeight - railPadding) / promptGap),
-      1,
-    );
-    const oddVisibleCount = maxVisibleCount % 2 === 0
-      ? maxVisibleCount - 1
-      : maxVisibleCount;
-    const visibleCount = Math.max(
-      Math.min(
-        baseItems.length % 2 === 0 ? baseItems.length - 1 : baseItems.length,
-        oddVisibleCount,
-      ),
-      1,
-    );
-    const visibleRadius = Math.floor(visibleCount / 2);
+    const maxVisibleCount = Math.max(Math.floor(railHeight / promptGap), 1);
+    const visibleCount = Math.min(baseItems.length, maxVisibleCount);
+    const visibleCenter = (visibleCount - 1) / 2;
     const maxStartIndex = Math.max(baseItems.length - visibleCount, 0);
     const startIndex = Math.min(
-      Math.max(activeIndex - visibleRadius, 0),
+      Math.max(Math.round(activeIndex - visibleCenter), 0),
       maxStartIndex,
     );
     const visibleItems = baseItems.slice(startIndex, startIndex + visibleCount);
 
     const nextItems = visibleItems.map((item, visibleIndex) => ({
       ...item,
-      top: railCenter + (visibleIndex - visibleRadius) * promptGap,
+      top: railCenter + (visibleIndex - visibleCenter) * promptGap,
     }));
 
     setRailItems(nextItems);
@@ -1554,6 +1555,9 @@ function PromptNavigationRail({ messages, streamRef, visible, activeChatId }) {
     const observer = new ResizeObserver(scheduleMeasure);
     observer.observe(scroller);
     observer.observe(rail);
+    if (scroller.firstElementChild) {
+      observer.observe(scroller.firstElementChild);
+    }
 
     scroller.addEventListener("scroll", scheduleMeasure, { passive: true });
     window.addEventListener("resize", scheduleMeasure);
@@ -1578,9 +1582,28 @@ function PromptNavigationRail({ messages, streamRef, visible, activeChatId }) {
     const scroller = streamRef.current;
     if (!scroller) return;
 
+    const messageNode = Array.from(
+      scroller.querySelectorAll('[data-message-role="user"]'),
+    ).find((node) => node.dataset.messageId === String(item.id));
+    if (!messageNode) return;
+
+    const scrollerTop = scroller.getBoundingClientRect().top;
+    const messageTop = messageNode.getBoundingClientRect().top;
+    const maxScroll = Math.max(scroller.scrollHeight - scroller.clientHeight, 0);
+    const scrollTop = Math.min(
+      Math.max(scroller.scrollTop + messageTop - scrollerTop - 24, 0),
+      maxScroll,
+    );
+    const reducedMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    const nearbyPrompt = (
+      Math.abs(scrollTop - scroller.scrollTop) <= scroller.clientHeight * 2
+    );
+
     scroller.scrollTo({
-      top: item.scrollTop,
-      behavior: "smooth",
+      top: scrollTop,
+      behavior: !reducedMotion && nearbyPrompt ? "smooth" : "auto",
     });
   }
 
@@ -1935,7 +1958,7 @@ const MessageItem = memo(function MessageItem({
             className={cx(
               editing
                 ? "prompt-edit-surface w-full rounded-[28px] px-5 pb-5 pt-4"
-                : "whitespace-pre-wrap rounded-[22px] bg-neutral-200 px-4 py-3 text-pretty text-sm leading-6 text-neutral-950",
+                : "chat-user-prompt whitespace-pre-wrap rounded-[22px] bg-neutral-200 px-4 py-3 text-pretty text-sm leading-6 text-neutral-950",
             )}
           >
             {editing ? (

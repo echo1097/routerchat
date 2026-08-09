@@ -229,6 +229,12 @@ textarea::placeholder {
   background: rgba(255, 255, 255, 0.24);
 }
 
+.chat-user-prompt::selection,
+.chat-user-prompt *::selection {
+  background: #171717;
+  color: #ffffff;
+}
+
 .t-tt-wrap {
   position: relative;
   display: inline-flex;

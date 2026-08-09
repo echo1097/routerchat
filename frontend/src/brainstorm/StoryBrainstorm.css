@@ -3,7 +3,7 @@
   min-height: 0;
   height: 100%;
   overflow: hidden;
-  background: #09090a;
+  background: #090909;
 }
 
 .brainstorm-header {
@@ -35,7 +35,7 @@
   border: 0;
   border-radius: 999px;
   padding: 0;
-  color: #d4d4d8;
+  color: #d4d4d4;
   background: transparent;
   box-shadow: none;
   cursor: pointer;
@@ -56,7 +56,7 @@
 
 .brainstorm-story-title {
   margin-top: 18px;
-  color: #52525b;
+  color: #525252;
   font-size: 11px;
   font-weight: 600;
   line-height: 1;
@@ -66,7 +66,7 @@
 
 .brainstorm-header h1 {
   margin: 6px 0 0;
-  color: #f4f4f5;
+  color: #f5f5f5;
   font-size: 26px;
   line-height: 1;
   font-weight: 650;
@@ -84,8 +84,8 @@
   width: 300px;
   border-radius: 18px;
   padding: 16px;
-  color: #e4e4e7;
-  background: #171719;
+  color: #e5e5e5;
+  background: #171717;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.075);
   transition-property: background-color, box-shadow;
   transition-duration: 160ms;
@@ -93,18 +93,18 @@
 }
 
 .brainstorm-node:hover {
-  background: #1a1a1d;
+  background: #1a1a1a;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
 }
 
 .brainstorm-idea-node.is-selected {
-  background: #202023;
+  background: #202020;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.32);
 }
 
 .brainstorm-prompt-node {
   width: 280px;
-  background: #121214;
+  background: #121212;
 }
 
 .brainstorm-prompt-node.is-failed {
@@ -115,7 +115,7 @@
   display: flex;
   min-height: 20px;
   align-items: center;
-  color: #68686f;
+  color: #686868;
   font-size: 10px;
   font-weight: 650;
   letter-spacing: 0.13em;
@@ -137,7 +137,7 @@
   margin: 7px 0 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  color: #a8a8b0;
+  color: #a8a8a8;
   font-size: 13px;
   line-height: 1.6;
   text-wrap: pretty;
@@ -145,7 +145,7 @@
 
 .brainstorm-node .brainstorm-prompt-content {
   max-height: 130px;
-  color: #d0d0d5;
+  color: #d0d0d0;
 }
 
 .brainstorm-node-actions {
@@ -176,7 +176,7 @@
   place-items: center;
   border: 0;
   border-radius: 12px;
-  color: #71717a;
+  color: #737373;
   background: transparent;
   cursor: pointer;
   transition-property: color, background-color, scale;
@@ -186,7 +186,7 @@
 
 .brainstorm-node-actions button:hover:not(:disabled),
 .brainstorm-edit-actions button:hover {
-  color: #f4f4f5;
+  color: #f5f5f5;
   background: rgba(255, 255, 255, 0.07);
 }
 
@@ -196,7 +196,7 @@
 }
 
 .brainstorm-node-actions button:disabled {
-  color: #52525b;
+  color: #525252;
   cursor: default;
   opacity: 0.5;
 }
@@ -213,7 +213,7 @@
   margin-top: 13px;
   align-items: center;
   border-top: 1px solid rgba(255, 255, 255, 0.065);
-  color: #85858d;
+  color: #858585;
   font-size: 12px;
   font-weight: 550;
 }
@@ -227,7 +227,7 @@
   gap: 12px;
   border: 0;
   padding: 0 4px 0 0;
-  color: #85858d;
+  color: #858585;
   font-size: 12px;
   font-weight: 550;
   text-align: left;
@@ -236,12 +236,12 @@
 }
 
 .brainstorm-thinking-trigger:disabled {
-  color: #85858d;
+  color: #858585;
   cursor: default;
 }
 
 .brainstorm-thinking-trigger:hover {
-  color: #d4d4d8;
+  color: #d4d4d4;
 }
 
 /* Keeps the button itself the hit target across its full width. */
@@ -281,7 +281,7 @@
   max-height: 180px;
   overflow: hidden;
   overscroll-behavior: contain;
-  color: #8e8e96;
+  color: #8e8e8e;
   cursor: text;
   font-size: 12px;
   line-height: 1.6;
@@ -301,7 +301,7 @@
 .brainstorm-thinking-waiting {
   display: block;
   padding-bottom: 8px;
-  color: #5f5f66;
+  color: #5f5f5f;
 }
 
 .brainstorm-edit-form {
@@ -323,7 +323,7 @@
   border: 0;
   border-radius: 12px;
   padding: 10px 11px;
-  color: #f4f4f5;
+  color: #f5f5f5;
   background: rgba(0, 0, 0, 0.24);
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
   outline: none;
@@ -344,7 +344,7 @@
   width: 7px !important;
   height: 7px !important;
   border: 0 !important;
-  background: #45454b !important;
+  background: #454545 !important;
 }
 
 .brainstorm-empty {
@@ -359,7 +359,7 @@
 
 .brainstorm-empty h2 {
   margin: 0;
-  color: #d4d4d8;
+  color: #d4d4d4;
   font-size: 22px;
   font-weight: 600;
   text-wrap: balance;
@@ -368,7 +368,7 @@
 .brainstorm-empty p {
   margin: 10px auto 0;
   max-width: 390px;
-  color: #52525b;
+  color: #525252;
   font-size: 14px;
   line-height: 1.6;
   text-wrap: pretty;
@@ -389,17 +389,8 @@
   width: min(820px, 100%);
   border-radius: 20px;
   padding: 11px 14px 9px;
-  background: #151517;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  background: #141414;
   pointer-events: auto;
-  transition-property: background-color, box-shadow;
-  transition-duration: 500ms;
-  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
-}
-
-.brainstorm-composer-surface:focus-within {
-  background: #18181a;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14);
 }
 
 .brainstorm-composer textarea {
@@ -409,7 +400,7 @@
   max-height: 126px;
   border: 0;
   padding: 0;
-  color: #f4f4f5;
+  color: #f5f5f5;
   font-size: 14px;
   line-height: 24px;
   background: transparent;
@@ -419,7 +410,7 @@
 }
 
 .brainstorm-composer textarea::placeholder {
-  color: #52525b;
+  color: #525252;
 }
 
 .brainstorm-composer-controls {
@@ -448,7 +439,7 @@
   border: 0;
   border-radius: 999px;
   padding: 0 11px;
-  color: #a1a1aa;
+  color: #a3a3a3;
   font-size: 12px;
   background: transparent;
   cursor: pointer;
@@ -469,7 +460,7 @@
   border: 0;
   border-radius: 999px;
   padding: 0 8px 0 11px;
-  color: #a1a1aa;
+  color: #a3a3a3;
   font-size: 12px;
   background: transparent;
   cursor: pointer;
@@ -479,7 +470,7 @@
 }
 
 .brainstorm-branch-trigger:hover {
-  color: #f4f4f5;
+  color: #f5f5f5;
   background: rgba(255, 255, 255, 0.065);
 }
 
@@ -511,8 +502,7 @@
   gap: 4px;
   border-radius: 16px;
   padding: 6px;
-  background: #29292c;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
+  background: #292929;
 }
 
 .brainstorm-branch-menu button {
@@ -524,7 +514,7 @@
   border: 0;
   border-radius: 11px;
   padding: 5px;
-  color: #d4d4d8;
+  color: #d4d4d4;
   background: transparent;
   cursor: pointer;
   transition-property: color, background-color, scale;
@@ -533,7 +523,7 @@
 
 .brainstorm-branch-menu button:hover,
 .brainstorm-branch-menu button.is-active {
-  color: #f4f4f5;
+  color: #f5f5f5;
   background: rgba(255, 255, 255, 0.08);
 }
 
@@ -547,25 +537,25 @@
 }
 
 .brainstorm-branch-menu button span:last-child {
-  color: #71717a;
+  color: #737373;
   font-size: 9px;
 }
 
 .brainstorm-selection-pill {
-  color: #d4d4d8;
+  color: #d4d4d4;
   background: rgba(255, 255, 255, 0.07);
 }
 
 .brainstorm-model-button {
   max-width: 280px;
   padding: 0 12px 0 0;
-  color: #d4d4d8;
+  color: #d4d4d4;
   font-weight: 500;
 }
 
 .brainstorm-selection-pill:hover,
 .brainstorm-model-button:hover {
-  color: #f4f4f5;
+  color: #f5f5f5;
   background: transparent;
 }
 
@@ -590,7 +580,7 @@
   display: inline-flex;
   flex: none;
   align-items: center;
-  color: #71717a;
+  color: #737373;
 }
 
 .brainstorm-model-chevron {
@@ -611,8 +601,7 @@
   width: 256px;
   border-radius: 16px;
   padding: 6px;
-  background: #29292c;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
+  background: #292929;
 }
 
 .brainstorm-model-menu button {
@@ -625,7 +614,7 @@
   border: 0;
   border-radius: 12px;
   padding: 8px 12px;
-  color: #d4d4d8;
+  color: #d4d4d4;
   font-size: 14px;
   text-align: left;
   background: transparent;
@@ -635,7 +624,7 @@
 }
 
 .brainstorm-model-menu button:hover {
-  color: #f4f4f5;
+  color: #f5f5f5;
   background: rgba(255, 255, 255, 0.08);
 }
 
@@ -644,7 +633,7 @@
 }
 
 .brainstorm-model-menu button:disabled {
-  color: #f4f4f5;
+  color: #f5f5f5;
   background: transparent;
   cursor: default;
 }
@@ -656,7 +645,7 @@
 .brainstorm-model-menu button > span:last-child {
   max-width: 132px;
   overflow: hidden;
-  color: #71717a;
+  color: #737373;
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -664,7 +653,7 @@
 
 .brainstorm-model-menu button.is-active,
 .brainstorm-model-menu button.is-active > span:last-child {
-  color: #f4f4f5;
+  color: #f5f5f5;
 }
 
 .brainstorm-send-button {
@@ -676,7 +665,7 @@
   justify-content: center;
   border: 0;
   border-radius: 50%;
-  color: #d4d4d8;
+  color: #d4d4d4;
   background: transparent;
   cursor: pointer;
   transition-property: color, opacity, scale;
@@ -689,7 +678,7 @@
 }
 
 .brainstorm-send-button:disabled {
-  color: #71717a;
+  color: #737373;
   background: transparent;
   cursor: not-allowed;
   opacity: 0.7;
@@ -701,7 +690,7 @@
   right: 24px;
   overflow: hidden;
   border-radius: 20px;
-  background: #18181b;
+  background: #181818;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
   isolation: isolate;
 }
@@ -711,7 +700,7 @@
   height: 40px;
   border: 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  color: #a1a1aa;
+  color: #a3a3a3;
   background: transparent;
   transition-property: color, background-color;
   transition-duration: 150ms;
@@ -719,7 +708,7 @@
 }
 
 .brainstorm-workspace .react-flow__controls-button:hover {
-  color: #f4f4f5;
+  color: #f5f5f5;
   background: rgba(255, 255, 255, 0.07);
 }
 

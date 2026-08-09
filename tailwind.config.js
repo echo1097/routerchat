@@ -4,15 +4,12 @@ export default {
   theme: {
     extend: {
       colors: {
-        ink: "#f4f4f5",
-        muted: "#a1a1aa",
+        ink: "#f5f5f5",
+        muted: "#a3a3a3",
         line: "rgba(255,255,255,0.09)",
-        panel: "#111113",
-        lift: "#18181b",
-        accent: "#60a5fa",
-      },
-      boxShadow: {
-        composer: "0 22px 80px rgba(0, 0, 0, 0.45)",
+        panel: "#111111",
+        lift: "#181818",
+        accent: "#d4d4d4",
       },
       fontFamily: {
         sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],

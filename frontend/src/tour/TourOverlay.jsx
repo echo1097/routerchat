@@ -137,21 +137,21 @@ function TourOverlay({ step, stepNumber, stepCount, isLastStep, onNext, onPrevio
         }}
       >
         <div className="mb-2 flex shrink-0 items-center justify-between gap-3">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
             Step {stepNumber} of {stepCount}
           </span>
           <button
             type="button"
             aria-label="Close tour"
             onClick={onClose}
-            className={cx("text-zinc-500 hover:text-zinc-200", CONTROL_MOTION)}
+            className={cx("text-neutral-500 hover:text-neutral-200", CONTROL_MOTION)}
           >
             <i className="fi fi-br-cross-small" aria-hidden="true" />
           </button>
         </div>
 
         {/* the body is the only part allowed to scroll, the step counter and the buttons stay put */}
-        <p className="mb-4 min-h-0 overflow-y-auto text-pretty text-sm leading-6 text-zinc-200">
+        <p className="mb-4 min-h-0 overflow-y-auto text-pretty text-sm leading-6 text-neutral-200">
           {step.body}
         </p>
 
@@ -161,7 +161,7 @@ function TourOverlay({ step, stepNumber, stepCount, isLastStep, onNext, onPrevio
             disabled={stepNumber === 1}
             onClick={onPrevious}
             className={cx(
-              "flex-1 rounded-full border border-line px-3 py-1.5 text-[12px] font-medium text-zinc-300 hover:text-white disabled:cursor-not-allowed disabled:opacity-40",
+              "flex-1 rounded-full border border-line px-3 py-1.5 text-[12px] font-medium text-neutral-300 hover:text-white disabled:cursor-not-allowed disabled:opacity-40",
               CONTROL_MOTION,
             )}
           >
@@ -171,7 +171,7 @@ function TourOverlay({ step, stepNumber, stepCount, isLastStep, onNext, onPrevio
             type="button"
             onClick={onNext}
             className={cx(
-              "flex-1 rounded-full bg-accent px-3 py-1.5 text-[12px] font-semibold text-zinc-950 hover:bg-blue-300",
+              "flex-1 rounded-full bg-accent px-3 py-1.5 text-[12px] font-semibold text-neutral-950 hover:bg-white",
               CONTROL_MOTION,
             )}
           >

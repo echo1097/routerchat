@@ -689,7 +689,7 @@ function IconButton({ label, children, className, ...props }) {
       aria-label={label}
       title={label}
       className={cx(
-        "inline-flex h-10 w-10 items-center justify-center rounded-full border border-line bg-white/[0.04] text-zinc-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
+        "inline-flex h-10 w-10 items-center justify-center rounded-full border border-line bg-white/[0.04] text-neutral-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
         CONTROL_MOTION,
         SOFT_SURFACE,
         "hover:border-white/15 hover:bg-white/[0.075] hover:text-white",
@@ -708,7 +708,7 @@ function AssistantActionButton({ label, children, ...props }) {
       aria-label={label}
       title={label}
       className={cx(
-        "inline-flex h-6 w-6 items-center justify-center rounded-md text-zinc-500 hover:text-zinc-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15",
+        "inline-flex h-6 w-6 items-center justify-center rounded-md text-neutral-500 hover:text-neutral-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15",
         CONTROL_MOTION,
       )}
       {...props}
@@ -796,7 +796,7 @@ function ResponseInfoButton({ message }) {
         aria-controls={popoverId}
         onClick={togglePopover}
         className={cx(
-          "inline-flex h-6 w-6 items-center justify-center rounded-md text-zinc-500 hover:text-zinc-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15",
+          "inline-flex h-6 w-6 items-center justify-center rounded-md text-neutral-500 hover:text-neutral-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15",
           CONTROL_MOTION,
         )}
       >
@@ -964,11 +964,11 @@ function OverflowActions({
         aria-haspopup="menu"
         onClick={toggleMenu}
         className={cx(
-          "chat-history-menu-button grid h-7 w-7 place-items-center rounded-full bg-transparent text-zinc-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15",
+          "chat-history-menu-button grid h-7 w-7 place-items-center rounded-full bg-transparent text-neutral-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15",
           CONTROL_MOTION,
           open
-            ? "text-zinc-200"
-            : "hover:text-zinc-200",
+            ? "text-neutral-200"
+            : "hover:text-neutral-200",
         )}
       >
         <i className="fi fi-bs-menu-dots" aria-hidden="true" />
@@ -996,7 +996,7 @@ function ChatHistoryActions({ chat, isFirst, forceVisible, onRename, onDelete, o
               closeMenu();
               onRename(chat);
             }}
-            className="chat-history-menu-item text-zinc-200 hover:bg-white/[0.07] focus:bg-white/[0.07] focus:outline-none"
+            className="chat-history-menu-item text-neutral-200 hover:bg-white/[0.07] focus:bg-white/[0.07] focus:outline-none"
           >
             <Pencil size={14} />
             Edit name
@@ -1008,7 +1008,7 @@ function ChatHistoryActions({ chat, isFirst, forceVisible, onRename, onDelete, o
               closeMenu();
               onTogglePin(chat);
             }}
-            className="chat-history-menu-item text-zinc-200 hover:bg-white/[0.07] focus:bg-white/[0.07] focus:outline-none"
+            className="chat-history-menu-item text-neutral-200 hover:bg-white/[0.07] focus:bg-white/[0.07] focus:outline-none"
           >
             <i className="fi fi-rr-thumbtack text-[14px] leading-none" aria-hidden="true" />
             {chat.pinned ? "Unpin chat" : "Pin chat"}
@@ -1020,7 +1020,7 @@ function ChatHistoryActions({ chat, isFirst, forceVisible, onRename, onDelete, o
               closeMenu();
               onExport(chat);
             }}
-            className="chat-history-menu-item text-zinc-200 hover:bg-white/[0.07] focus:bg-white/[0.07] focus:outline-none"
+            className="chat-history-menu-item text-neutral-200 hover:bg-white/[0.07] focus:bg-white/[0.07] focus:outline-none"
           >
             <i className="fi fi-rr-file-export text-[14px] leading-none" aria-hidden="true" />
             Export chat
@@ -1060,7 +1060,7 @@ function StoryHistoryActions({ story, onRename, onDelete }) {
               closeMenu();
               onRename(story);
             }}
-            className="chat-history-menu-item text-zinc-200 hover:bg-white/[0.07] focus:bg-white/[0.07] focus:outline-none"
+            className="chat-history-menu-item text-neutral-200 hover:bg-white/[0.07] focus:bg-white/[0.07] focus:outline-none"
           >
             <Pencil size={14} />
             Edit name
@@ -1100,7 +1100,7 @@ function ChapterHistoryActions({ chapter, onRename, onDelete, onToggleContext })
               closeMenu();
               onRename(chapter);
             }}
-            className="chat-history-menu-item text-zinc-200 hover:bg-white/[0.07] focus:bg-white/[0.07] focus:outline-none"
+            className="chat-history-menu-item text-neutral-200 hover:bg-white/[0.07] focus:bg-white/[0.07] focus:outline-none"
           >
             <Pencil size={14} />
             Edit name
@@ -1112,7 +1112,7 @@ function ChapterHistoryActions({ chapter, onRename, onDelete, onToggleContext })
               closeMenu();
               onToggleContext(chapter);
             }}
-            className="chat-history-menu-item text-zinc-200 hover:bg-white/[0.07] focus:bg-white/[0.07] focus:outline-none"
+            className="chat-history-menu-item text-neutral-200 hover:bg-white/[0.07] focus:bg-white/[0.07] focus:outline-none"
           >
             {chapter.disabled ? <Eye size={14} /> : <EyeOff size={14} />}
             {chapter.disabled ? "Show chapter" : "Hide chapter"}
@@ -1241,9 +1241,9 @@ function ConversationRail({
                     cancelRename();
                   }
                 }}
-                className="block h-6 w-full min-w-0 rounded-md bg-white/[0.06] px-1.5 text-sm font-medium text-zinc-100 outline-none shadow-[var(--shadow-border)]"
+                className="block h-6 w-full min-w-0 rounded-md bg-white/[0.06] px-1.5 text-sm font-medium text-neutral-100 outline-none shadow-[var(--shadow-border)]"
               />
-              <div className="truncate text-[11px] leading-3 text-zinc-500">
+              <div className="truncate text-[11px] leading-3 text-neutral-500">
                 {promptModelName(models, chat.model)}
               </div>
             </div>
@@ -1259,10 +1259,10 @@ function ConversationRail({
                 CONTROL_MOTION,
               )}
             >
-              <div className="truncate text-balance text-sm font-medium leading-4 text-zinc-100">
+              <div className="truncate text-balance text-sm font-medium leading-4 text-neutral-100">
                 {chat.title}
               </div>
-              <div className="truncate text-[11px] leading-3 text-zinc-500">
+              <div className="truncate text-[11px] leading-3 text-neutral-500">
                 {promptModelName(models, chat.model)}
               </div>
             </button>
@@ -1310,7 +1310,7 @@ function ConversationRail({
 
   const historyItems =
     chats.length === 0 ? (
-      <div className="px-3 py-8 text-pretty text-sm leading-6 text-zinc-500">
+      <div className="px-3 py-8 text-pretty text-sm leading-6 text-neutral-500">
         {chatMode === "write"
           ? "Your stories will appear here."
           : "Your conversations will appear here."}
@@ -1344,7 +1344,7 @@ function ConversationRail({
       />
       <aside
         className={cx(
-          "chat-sidebar t-resize fixed inset-y-0 left-0 z-40 flex w-[292px] flex-col overflow-hidden border-r border-line bg-[#0b0b0d]/95 lg:static lg:z-auto lg:translate-x-0",
+          "chat-sidebar t-resize fixed inset-y-0 left-0 z-40 flex w-[292px] flex-col overflow-hidden border-r border-line bg-[#0b0b0b]/95 lg:static lg:z-auto lg:translate-x-0",
           collapsed
             ? "lg:w-0 lg:-translate-x-3 lg:border-r-0 lg:border-transparent lg:opacity-0"
             : "lg:w-[276px] lg:opacity-100",
@@ -1380,7 +1380,7 @@ function ConversationRail({
                 onCloseMobile();
               }}
               className={cx(
-                "flex h-10 min-w-0 flex-1 items-center justify-center gap-2 rounded-full bg-zinc-100 px-4 text-sm font-semibold text-zinc-950 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
+                "flex h-10 min-w-0 flex-1 items-center justify-center gap-2 rounded-full bg-neutral-100 px-4 text-sm font-semibold text-neutral-950 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
                 CONTROL_MOTION,
               )}
             >
@@ -1410,7 +1410,7 @@ function ConversationRail({
             {historyItems}
           </nav>
 
-          <div className="mt-4 shrink-0 px-3 pb-1 text-left text-[11px] font-medium leading-none text-zinc-700">
+          <div className="mt-4 shrink-0 px-3 pb-1 text-left text-[11px] font-medium leading-none text-neutral-700">
             RouterChat {APP_VERSION}
           </div>
         </div>
@@ -1438,7 +1438,7 @@ function SidebarRevealButton({ visible, onClick }) {
         onFocus={() => setNearEdge(true)}
         onBlur={() => setNearEdge(false)}
         className={cx(
-          "sidebar-reveal-button absolute left-3 top-1/2 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-line bg-[#18181b]/95 text-zinc-300 shadow-[var(--shadow-surface)] backdrop-blur-xl hover:border-white/15 hover:bg-white/[0.09] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
+          "sidebar-reveal-button absolute left-3 top-1/2 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-line bg-[#181818]/95 text-neutral-300 [box-shadow:var(--shadow-surface)] backdrop-blur-xl hover:border-white/15 hover:bg-white/[0.09] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
           nearEdge
             ? "translate-x-0 opacity-100"
             : "-translate-x-2 opacity-0 focus-visible:translate-x-0 focus-visible:opacity-100",
@@ -1726,9 +1726,9 @@ function ContextWindowMeter({ info, placement = "above" }) {
         aria-label={ariaLabel}
         aria-describedby={tooltipId}
         className={cx(
-          "t-tt-trigger grid h-8 w-8 place-items-center rounded-full text-zinc-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+          "t-tt-trigger grid h-8 w-8 place-items-center rounded-full text-neutral-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
           CONTROL_MOTION,
-          "hover:text-zinc-100",
+          "hover:text-neutral-100",
         )}
       >
         <svg
@@ -1764,7 +1764,7 @@ function ContextWindowMeter({ info, placement = "above" }) {
         role="tooltip"
         className="t-tt context-meter-tooltip"
       >
-        <span className="block text-zinc-100">
+        <span className="block text-neutral-100">
           {info.displayUsage}
         </span>
       </span>
@@ -1786,7 +1786,7 @@ const ThinkingBlock = memo(function ThinkingBlock({ reasoning, streaming, durati
         type="button"
         onClick={() => setOpen((value) => !value)}
         className={cx(
-          "inline-flex min-h-7 items-center gap-2 rounded-md py-0 pr-2 text-xs font-medium text-zinc-500 hover:text-zinc-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
+          "inline-flex min-h-7 items-center gap-2 rounded-md py-0 pr-2 text-xs font-medium text-neutral-500 hover:text-neutral-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
           CONTROL_MOTION,
         )}
       >
@@ -1800,7 +1800,7 @@ const ThinkingBlock = memo(function ThinkingBlock({ reasoning, streaming, durati
         {streaming && <span className="h-1.5 w-1.5 rounded-full bg-accent" />}
       </button>
       {open && (
-        <div className="mt-3 border-l border-white/10 pl-4 text-pretty text-sm leading-7 text-zinc-500">
+        <div className="mt-3 border-l border-white/10 pl-4 text-pretty text-sm leading-7 text-neutral-500">
           <ThinkingContent>{reasoning}</ThinkingContent>
         </div>
       )}
@@ -1823,7 +1823,7 @@ const MarkdownContent = memo(function MarkdownContent({ children }) {
         ),
         code: ({ inline, ...props }) =>
           inline ? (
-            <code className="rounded-md bg-white/[0.07] px-1.5 py-0.5 text-[0.92em] text-zinc-100" {...props} />
+            <code className="rounded-md bg-white/[0.07] px-1.5 py-0.5 text-[0.92em] text-neutral-100" {...props} />
           ) : (
             <code {...props} />
           ),
@@ -1935,7 +1935,7 @@ const MessageItem = memo(function MessageItem({
             className={cx(
               editing
                 ? "prompt-edit-surface w-full rounded-[28px] px-5 pb-5 pt-4"
-                : "whitespace-pre-wrap rounded-[22px] bg-blue-500/85 px-4 py-3 text-pretty text-sm leading-6 text-white shadow-lg shadow-blue-950/20",
+                : "whitespace-pre-wrap rounded-[22px] bg-neutral-200 px-4 py-3 text-pretty text-sm leading-6 text-neutral-950",
             )}
           >
             {editing ? (
@@ -1954,14 +1954,14 @@ const MessageItem = memo(function MessageItem({
                       cancelEditing();
                     }
                   }}
-                  className="block max-h-[260px] min-h-[108px] w-full resize-none bg-transparent text-base leading-7 text-zinc-50 outline-none placeholder:text-zinc-500 sm:text-[17px]"
+                  className="block max-h-[260px] min-h-[108px] w-full resize-none bg-transparent text-base leading-7 text-neutral-50 outline-none placeholder:text-neutral-500 sm:text-[17px]"
                 />
                 <div className="mt-5 flex justify-end gap-3">
                   <button
                     type="button"
                     onClick={cancelEditing}
                     className={cx(
-                      "inline-flex min-h-11 items-center rounded-full px-5 text-sm font-medium text-zinc-100 shadow-[0_0_0_1px_rgba(255,255,255,0.13)] hover:bg-white/[0.055] hover:shadow-[0_0_0_1px_rgba(255,255,255,0.2)] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
+                      "inline-flex min-h-11 items-center rounded-full px-5 text-sm font-medium text-neutral-100 shadow-[0_0_0_1px_rgba(255,255,255,0.13)] hover:bg-white/[0.055] hover:shadow-[0_0_0_1px_rgba(255,255,255,0.2)] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
                       CONTROL_MOTION,
                     )}
                   >
@@ -1972,7 +1972,7 @@ const MessageItem = memo(function MessageItem({
                     disabled={saving || !draft.trim()}
                     onClick={saveEdit}
                     className={cx(
-                      "inline-flex min-h-11 items-center rounded-full bg-white px-6 text-sm font-semibold text-zinc-950 hover:bg-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/45 disabled:cursor-not-allowed disabled:bg-white/35 disabled:text-zinc-700 disabled:active:scale-100",
+                      "inline-flex min-h-11 items-center rounded-full bg-white px-6 text-sm font-semibold text-neutral-950 hover:bg-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/45 disabled:cursor-not-allowed disabled:bg-white/35 disabled:text-neutral-700 disabled:active:scale-100",
                       CONTROL_MOTION,
                     )}
                   >
@@ -2016,12 +2016,12 @@ const MessageItem = memo(function MessageItem({
         streaming={reasoningStreaming}
         durationMs={reasoningDurationMs}
       />
-      <div className="max-w-3xl text-[15px] leading-7 text-zinc-100">
+      <div className="max-w-3xl text-[15px] leading-7 text-neutral-100">
         {message.content ? (
           <MarkdownContent>{message.content}</MarkdownContent>
         ) : (
-          <div className="flex items-center gap-2 text-zinc-500">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-zinc-500" />
+          <div className="flex items-center gap-2 text-neutral-500">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-neutral-500" />
             Working
           </div>
         )}
@@ -2059,7 +2059,7 @@ function WriteLanding({ openingMessage, stories, onStartNew, onContinue }) {
     <section className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-4 pb-[12vh] pt-20 sm:px-8 lg:px-10">
       <div className="pointer-events-auto mx-auto flex w-full max-w-[760px] flex-col items-center">
         {openingMessage && (
-          <div className="mb-8 text-center text-[22px] font-medium leading-tight text-zinc-200 sm:text-3xl">
+          <div className="mb-8 text-center text-[22px] font-medium leading-tight text-neutral-200 sm:text-3xl">
             {openingMessage}
           </div>
         )}
@@ -2068,7 +2068,7 @@ function WriteLanding({ openingMessage, stories, onStartNew, onContinue }) {
             type="button"
             onClick={onStartNew}
             className={cx(
-              "inline-flex h-11 min-w-[178px] items-center justify-center rounded-full bg-zinc-100 px-5 text-sm font-medium text-zinc-950 shadow-[0_12px_36px_rgba(0,0,0,0.24)] hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
+              "inline-flex h-11 min-w-[178px] items-center justify-center rounded-full bg-neutral-100 px-5 text-sm font-medium text-neutral-950 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
               CONTROL_MOTION,
             )}
           >
@@ -2085,7 +2085,7 @@ function WriteLanding({ openingMessage, stories, onStartNew, onContinue }) {
               aria-expanded={hasStories && continueOpen}
               aria-controls={continuePanelId}
               className={cx(
-                "t-acc-head inline-flex h-11 w-full min-w-[178px] items-center justify-center gap-2 rounded-full bg-[#18181a] px-5 text-sm font-medium text-zinc-100 shadow-[0_0_0_1px_rgba(255,255,255,0.11),0_12px_36px_rgba(0,0,0,0.2)] hover:bg-[#1f1f22] disabled:cursor-not-allowed disabled:text-zinc-600 disabled:hover:bg-[#18181a] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
+                "t-acc-head inline-flex h-11 w-full min-w-[178px] items-center justify-center gap-2 rounded-full bg-[#181818] px-5 text-sm font-medium text-neutral-100 [box-shadow:var(--shadow-surface)] hover:bg-[#1f1f1f] disabled:cursor-not-allowed disabled:text-neutral-600 disabled:hover:bg-[#181818] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
                 CONTROL_MOTION,
               )}
             >
@@ -2093,13 +2093,13 @@ function WriteLanding({ openingMessage, stories, onStartNew, onContinue }) {
             </button>
             <div id={continuePanelId} className="t-acc-panel absolute left-0 right-0 top-full z-30">
               <div className="t-acc-panel-inner px-1 pb-1 pt-2">
-                <div className="max-h-[240px] overflow-y-auto rounded-2xl bg-[#121214] p-1 shadow-[0_0_0_1px_rgba(255,255,255,0.1),0_18px_44px_rgba(0,0,0,0.28)]">
+                <div className="max-h-[240px] overflow-y-auto rounded-2xl bg-[#121212] p-1 [box-shadow:var(--shadow-popover)]">
                   {stories.map((story) => (
                     <button
                       key={story.id}
                       type="button"
                       onClick={() => onContinue(story.id)}
-                      className="flex h-10 w-full min-w-0 items-center rounded-xl px-3 text-left text-sm font-medium text-zinc-300 hover:bg-white/[0.055] hover:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35"
+                      className="flex h-10 w-full min-w-0 items-center rounded-xl px-3 text-left text-sm font-medium text-neutral-300 hover:bg-white/[0.055] hover:text-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35"
                     >
                       <span className="truncate">{story.title}</span>
                     </button>
@@ -2127,8 +2127,8 @@ function TemporaryChatButton({ active, onClick }) {
         "pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-full text-[17px] leading-none focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
         CONTROL_MOTION,
         active
-          ? "text-zinc-100"
-          : "text-zinc-400 hover:text-zinc-100",
+          ? "text-neutral-100"
+          : "text-neutral-400 hover:text-neutral-100",
       )}
     >
       <span className="t-icon-swap temp-chat-toggle-icon" data-state={active ? "b" : "a"}>
@@ -2148,7 +2148,7 @@ function TemporaryChatMarker({ visible }) {
 
   return (
     <div
-      className="pointer-events-none absolute left-4 top-16 z-20 flex h-10 w-10 items-center justify-center text-[18px] leading-none text-zinc-100 sm:left-8 sm:top-4 lg:left-10"
+      className="pointer-events-none absolute left-4 top-16 z-20 flex h-10 w-10 items-center justify-center text-[18px] leading-none text-neutral-100 sm:left-8 sm:top-4 lg:left-10"
       aria-hidden="true"
     >
       <i className="fi fi-rs-ghost" />
@@ -2280,7 +2280,7 @@ function StoryRail({
       />
       <aside
         className={cx(
-          "chat-sidebar t-resize fixed inset-y-0 left-0 z-40 flex w-[292px] flex-col overflow-hidden border-r border-line bg-[#0b0b0d]/95 lg:static lg:z-auto lg:translate-x-0",
+          "chat-sidebar t-resize fixed inset-y-0 left-0 z-40 flex w-[292px] flex-col overflow-hidden border-r border-line bg-[#0b0b0b]/95 lg:static lg:z-auto lg:translate-x-0",
           collapsed
             ? "lg:w-0 lg:-translate-x-3 lg:border-r-0 lg:border-transparent lg:opacity-0"
             : "lg:w-[276px] lg:opacity-100",
@@ -2319,7 +2319,7 @@ function StoryRail({
               }}
               disabled={navigationLocked}
               className={cx(
-                "flex h-10 min-w-0 flex-1 items-center justify-center gap-2 rounded-full bg-zinc-100 px-4 text-sm font-semibold text-zinc-950 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
+                "flex h-10 min-w-0 flex-1 items-center justify-center gap-2 rounded-full bg-neutral-100 px-4 text-sm font-semibold text-neutral-950 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
                 CONTROL_MOTION,
               )}
             >
@@ -2340,7 +2340,7 @@ function StoryRail({
 
           <nav className="chat-rail-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
             {stories.length === 0 ? (
-              <div className="px-3 py-8 text-pretty text-sm leading-6 text-zinc-500">
+              <div className="px-3 py-8 text-pretty text-sm leading-6 text-neutral-500">
                 Your stories will appear here.
               </div>
             ) : (
@@ -2374,7 +2374,7 @@ function StoryRail({
                                 cancelRename();
                               }
                             }}
-                            className="block h-7 w-full min-w-0 rounded-md bg-white/[0.06] px-1.5 text-sm font-medium text-zinc-100 outline-none shadow-[var(--shadow-border)]"
+                            className="block h-7 w-full min-w-0 rounded-md bg-white/[0.06] px-1.5 text-sm font-medium text-neutral-100 outline-none shadow-[var(--shadow-border)]"
                           />
                         </div>
                       ) : (
@@ -2388,7 +2388,7 @@ function StoryRail({
                           disabled={navigationLocked}
                           className="min-w-0 rounded-xl px-1 py-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
                         >
-                          <div className="truncate text-sm font-medium leading-4 text-zinc-100">
+                          <div className="truncate text-sm font-medium leading-4 text-neutral-100">
                             {story.title}
                           </div>
                         </button>
@@ -2407,12 +2407,12 @@ function StoryRail({
                           data-tour="write-new-chapter-button"
                           onClick={onCreateChapter}
                           disabled={navigationLocked}
-                          className="mb-1 flex h-8 w-full items-center justify-center rounded-xl text-xs font-medium text-zinc-400 hover:bg-white/[0.045] hover:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
+                          className="mb-1 flex h-8 w-full items-center justify-center rounded-xl text-xs font-medium text-neutral-400 hover:bg-white/[0.045] hover:text-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
                         >
                           New chapter
                         </button>
                         {chapters.length === 0 ? (
-                          <div className="px-2 py-3 text-xs leading-5 text-zinc-600">
+                          <div className="px-2 py-3 text-xs leading-5 text-neutral-600">
                             No chapters yet.
                           </div>
                         ) : (
@@ -2427,11 +2427,11 @@ function StoryRail({
                                   "group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-xl px-2 py-1",
                                   chapter.id === activeChapterId
                                     ? chapter.disabled
-                                      ? "bg-white/[0.075] text-zinc-400"
-                                      : "bg-white/[0.075] text-zinc-100"
+                                      ? "bg-white/[0.075] text-neutral-400"
+                                      : "bg-white/[0.075] text-neutral-100"
                                     : chapter.disabled
-                                      ? "text-zinc-600 hover:bg-white/[0.04] hover:text-zinc-300"
-                                      : "text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-100",
+                                      ? "text-neutral-600 hover:bg-white/[0.04] hover:text-neutral-300"
+                                      : "text-neutral-400 hover:bg-white/[0.04] hover:text-neutral-100",
                                 )}
                               >
                                 {renamingChapter ? (
@@ -2450,7 +2450,7 @@ function StoryRail({
                                         cancelRename();
                                       }
                                     }}
-                                    className="block h-6 w-full min-w-0 rounded-md bg-white/[0.06] px-1.5 text-xs font-medium text-zinc-100 outline-none shadow-[var(--shadow-border)]"
+                                    className="block h-6 w-full min-w-0 rounded-md bg-white/[0.06] px-1.5 text-xs font-medium text-neutral-100 outline-none shadow-[var(--shadow-border)]"
                                   />
                                 ) : (
                                   <button
@@ -2469,7 +2469,7 @@ function StoryRail({
                                     {chapter.disabled && (
                                       <EyeOff
                                         size={13}
-                                        className="shrink-0 text-zinc-500"
+                                        className="shrink-0 text-neutral-500"
                                         aria-hidden="true"
                                       />
                                     )}
@@ -2493,7 +2493,7 @@ function StoryRail({
             )}
           </nav>
 
-          <div className="mt-4 shrink-0 px-3 pb-1 text-left text-[11px] font-medium leading-none text-zinc-700">
+          <div className="mt-4 shrink-0 px-3 pb-1 text-left text-[11px] font-medium leading-none text-neutral-700">
             RouterChat {APP_VERSION}
           </div>
         </div>
@@ -2790,13 +2790,13 @@ function StoryWorkspace({
         <div className="mx-auto flex min-h-[65dvh] max-w-4xl flex-col items-center justify-center text-center">
           <button
             type="button"
-            className="mb-6 inline-flex h-10 items-center justify-center rounded-full px-4 text-sm text-zinc-400 shadow-[var(--shadow-border)] hover:text-zinc-100 lg:hidden"
+            className="mb-6 inline-flex h-10 items-center justify-center rounded-full px-4 text-sm text-neutral-400 shadow-[var(--shadow-border)] hover:text-neutral-100 lg:hidden"
             onClick={onOpenRail}
           >
             Open stories
           </button>
-          <div className="text-2xl font-medium text-zinc-100">Choose a story and chapter</div>
-          <p className="mt-3 max-w-md text-sm leading-6 text-zinc-500">
+          <div className="text-2xl font-medium text-neutral-100">Choose a story and chapter</div>
+          <p className="mt-3 max-w-md text-sm leading-6 text-neutral-500">
             Story mode keeps prose in the chapter canvas. The chat section is separate.
           </p>
         </div>
@@ -2837,14 +2837,14 @@ function StoryWorkspace({
           <div className="write-canvas-header mb-4 space-y-3">
             <div className="flex items-start justify-between gap-3">
               <div className="grid min-w-0 justify-items-start gap-1 text-left">
-                <div className="block w-full truncate text-left text-xs font-medium uppercase leading-none tracking-[0.18em] text-zinc-600">
+                <div className="block w-full truncate text-left text-xs font-medium uppercase leading-none tracking-[0.18em] text-neutral-600">
                   {activeStory.title}
                 </div>
-                <h1 className="m-0 block w-full truncate text-left text-2xl font-semibold leading-none text-zinc-100">
+                <h1 className="m-0 block w-full truncate text-left text-2xl font-semibold leading-none text-neutral-100">
                   {activeChapter.title}
                 </h1>
               </div>
-              <div className="flex shrink-0 items-center gap-3 text-xs text-zinc-500">
+              <div className="flex shrink-0 items-center gap-3 text-xs text-neutral-500">
                 {writeStatus ? (
                   <WriteOperationStatus
                     status={writeStatus}
@@ -2883,7 +2883,7 @@ function StoryWorkspaceBackButton({ onBack }) {
       type="button"
       onClick={onBack}
       className={cx(
-        "inline-flex h-8 items-center gap-2 rounded-full bg-white/[0.035] px-3 text-xs font-medium text-zinc-300 shadow-[var(--shadow-border)] hover:bg-white/[0.06] hover:text-zinc-100 hover:shadow-[var(--shadow-border-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+        "inline-flex h-8 items-center gap-2 rounded-full bg-white/[0.035] px-3 text-xs font-medium text-neutral-300 shadow-[var(--shadow-border)] hover:bg-white/[0.06] hover:text-neutral-100 hover:shadow-[var(--shadow-border-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
         CONTROL_MOTION,
       )}
     >
@@ -2923,17 +2923,17 @@ function StoryLorebookMockup({ story, entries, onBack }) {
         <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
           <div className="grid min-w-0 justify-items-start gap-2 text-left">
             <StoryWorkspaceBackButton onBack={onBack} />
-            <div className="block w-full truncate text-left text-xs font-medium uppercase leading-none tracking-[0.18em] text-zinc-600">
+            <div className="block w-full truncate text-left text-xs font-medium uppercase leading-none tracking-[0.18em] text-neutral-600">
               {story.title}
             </div>
-            <h1 className="m-0 block w-full truncate text-left text-2xl font-semibold leading-none text-zinc-100">
+            <h1 className="m-0 block w-full truncate text-left text-2xl font-semibold leading-none text-neutral-100">
               Lorebook
             </h1>
           </div>
           <button
             type="button"
             className={cx(
-              "inline-flex h-9 items-center gap-2 rounded-full bg-zinc-100 px-4 text-sm font-semibold text-zinc-950 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
+              "inline-flex h-9 items-center gap-2 rounded-full bg-neutral-100 px-4 text-sm font-semibold text-neutral-950 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
               CONTROL_MOTION,
             )}
           >
@@ -2957,12 +2957,12 @@ function StoryLorebookMockup({ story, entries, onBack }) {
                 )}
               >
                 <div className="flex items-center justify-between gap-3">
-                  <span className="truncate text-sm font-medium text-zinc-100">{entry.name}</span>
-                  <span className="shrink-0 rounded-full bg-white/[0.06] px-2 py-1 text-[11px] leading-none text-zinc-500">
+                  <span className="truncate text-sm font-medium text-neutral-100">{entry.name}</span>
+                  <span className="shrink-0 rounded-full bg-white/[0.06] px-2 py-1 text-[11px] leading-none text-neutral-500">
                     {entry.category || "general"}
                   </span>
                 </div>
-                <p className="mt-2 line-clamp-2 text-sm leading-6 text-zinc-500">
+                <p className="mt-2 line-clamp-2 text-sm leading-6 text-neutral-500">
                   {entry.content || "No notes yet."}
                 </p>
               </button>
@@ -2972,20 +2972,20 @@ function StoryLorebookMockup({ story, entries, onBack }) {
           <div className="min-h-[420px] rounded-2xl bg-white/[0.035] p-5 shadow-[var(--shadow-border)]">
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
-                <div className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-600">
+                <div className="text-xs font-medium uppercase tracking-[0.18em] text-neutral-600">
                   Universal story canon
                 </div>
-                <div className="mt-1 text-xl font-semibold text-zinc-100">
+                <div className="mt-1 text-xl font-semibold text-neutral-100">
                   {visibleEntries[0]?.name || "New lore entry"}
                 </div>
               </div>
-              <i className="fi fi-rr-book-alt text-xl leading-none text-zinc-500" aria-hidden="true" />
+              <i className="fi fi-rr-book-alt text-xl leading-none text-neutral-500" aria-hidden="true" />
             </div>
             <textarea
               defaultValue={visibleEntries[0]?.content || ""}
               placeholder="Write the rules, references, and continuity notes that apply to the whole story."
               data-1p-ignore="true"
-              className="min-h-[300px] w-full resize-none bg-transparent text-[15px] leading-7 text-zinc-200 outline-none placeholder:text-zinc-600"
+              className="min-h-[300px] w-full resize-none bg-transparent text-[15px] leading-7 text-neutral-200 outline-none placeholder:text-neutral-600"
             />
           </div>
         </div>
@@ -3067,10 +3067,10 @@ function StoryCharactersMockup({ story, onBack }) {
           <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
             <div className="grid min-w-0 justify-items-start gap-2 text-left">
               <StoryWorkspaceBackButton onBack={onBack} />
-              <div className="block w-full truncate text-left text-xs font-medium uppercase leading-none tracking-[0.18em] text-zinc-600">
+              <div className="block w-full truncate text-left text-xs font-medium uppercase leading-none tracking-[0.18em] text-neutral-600">
                 {story.title}
               </div>
-              <h1 className="m-0 block w-full truncate text-left text-2xl font-semibold leading-none text-zinc-100">
+              <h1 className="m-0 block w-full truncate text-left text-2xl font-semibold leading-none text-neutral-100">
                 Characters
               </h1>
             </div>
@@ -3078,7 +3078,7 @@ function StoryCharactersMockup({ story, onBack }) {
               type="button"
               onClick={openNewCharacter}
               className={cx(
-                "inline-flex h-9 items-center gap-2 rounded-full bg-zinc-100 px-4 text-sm font-semibold text-zinc-950 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
+                "inline-flex h-9 items-center gap-2 rounded-full bg-neutral-100 px-4 text-sm font-semibold text-neutral-950 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
                 CONTROL_MOTION,
               )}
             >
@@ -3089,7 +3089,7 @@ function StoryCharactersMockup({ story, onBack }) {
 
           <div className="grid gap-4 md:grid-cols-3">
             {characters.length === 0 ? (
-              <div className="py-8 text-sm text-zinc-600 md:col-span-3">
+              <div className="py-8 text-sm text-neutral-600 md:col-span-3">
                 No characters
               </div>
             ) : (
@@ -3104,12 +3104,12 @@ function StoryCharactersMockup({ story, onBack }) {
                   )}
                 >
                   <div className="flex flex-wrap items-baseline gap-2">
-                    <div className="truncate text-base font-semibold text-zinc-100">{character.name}</div>
+                    <div className="truncate text-base font-semibold text-neutral-100">{character.name}</div>
                     {character.age && (
-                      <span className="shrink-0 text-xs text-zinc-600">age {character.age}</span>
+                      <span className="shrink-0 text-xs text-neutral-600">age {character.age}</span>
                     )}
                   </div>
-                  <div className="mt-3 space-y-2 text-sm leading-6 text-zinc-500">
+                  <div className="mt-3 space-y-2 text-sm leading-6 text-neutral-500">
                     <div className="line-clamp-2">
                       {character.physicalDescription || "No physical description yet."}
                     </div>
@@ -3117,7 +3117,7 @@ function StoryCharactersMockup({ story, onBack }) {
                       {character.personality || "No personality yet."}
                     </div>
                   </div>
-                  <div className="mt-4 text-xs font-medium text-zinc-600">Click to edit</div>
+                  <div className="mt-4 text-xs font-medium text-neutral-600">Click to edit</div>
                 </button>
               ))
             )}
@@ -3163,12 +3163,12 @@ function CharacterEditorModal({
       />
       <form
         onSubmit={onSubmit}
-        className="t-modal is-open relative z-10 grid max-h-[calc(100dvh-2rem)] w-full max-w-[620px] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-[24px] bg-[#18181b] text-zinc-100 shadow-[var(--shadow-surface)]"
+        className="t-modal is-open relative z-10 grid max-h-[calc(100dvh-2rem)] w-full max-w-[620px] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-[24px] bg-[#181818] text-neutral-100 [box-shadow:var(--shadow-surface)]"
         aria-modal="true"
         aria-labelledby="character-editor-title"
       >
         <header className="flex items-center justify-between gap-4 border-b border-white/10 px-5 py-4">
-          <h2 id="character-editor-title" className="m-0 text-lg font-semibold text-zinc-100">
+          <h2 id="character-editor-title" className="m-0 text-lg font-semibold text-neutral-100">
             {title}
           </h2>
           <IconButton label="Close character editor" onClick={onClose}>
@@ -3177,54 +3177,54 @@ function CharacterEditorModal({
         </header>
 
         <div className="min-h-0 space-y-3 overflow-y-auto px-5 py-4">
-          <label className="grid gap-1.5 text-xs font-medium text-zinc-500">
+          <label className="grid gap-1.5 text-xs font-medium text-neutral-500">
             Name
             <input
               autoFocus
               value={draft.name}
               onChange={(event) => onChange("name", event.target.value)}
               data-1p-ignore="true"
-              className="h-10 rounded-xl bg-black/20 px-3 text-sm text-zinc-100 shadow-[var(--shadow-border)] outline-none placeholder:text-zinc-700 focus:ring-2 focus:ring-accent/35"
+              className="h-10 rounded-xl bg-black/20 px-3 text-sm text-neutral-100 shadow-[var(--shadow-border)] outline-none placeholder:text-neutral-700 focus:ring-2 focus:ring-accent/35"
               placeholder="Name"
             />
           </label>
-          <label className="grid gap-1.5 text-xs font-medium text-zinc-500">
+          <label className="grid gap-1.5 text-xs font-medium text-neutral-500">
             Age
             <input
               value={draft.age}
               onChange={(event) => onChange("age", event.target.value)}
               data-1p-ignore="true"
-              className="h-10 rounded-xl bg-black/20 px-3 text-sm text-zinc-100 shadow-[var(--shadow-border)] outline-none placeholder:text-zinc-700 focus:ring-2 focus:ring-accent/35"
+              className="h-10 rounded-xl bg-black/20 px-3 text-sm text-neutral-100 shadow-[var(--shadow-border)] outline-none placeholder:text-neutral-700 focus:ring-2 focus:ring-accent/35"
               placeholder="Age"
             />
           </label>
-          <label className="grid gap-1.5 text-xs font-medium text-zinc-500">
+          <label className="grid gap-1.5 text-xs font-medium text-neutral-500">
             Physical Description
             <textarea
               value={draft.physicalDescription}
               onChange={(event) => onChange("physicalDescription", event.target.value)}
               data-1p-ignore="true"
-              className="min-h-[86px] resize-none rounded-xl bg-black/20 px-3 py-2 text-sm leading-6 text-zinc-100 shadow-[var(--shadow-border)] outline-none placeholder:text-zinc-700 focus:ring-2 focus:ring-accent/35"
+              className="min-h-[86px] resize-none rounded-xl bg-black/20 px-3 py-2 text-sm leading-6 text-neutral-100 shadow-[var(--shadow-border)] outline-none placeholder:text-neutral-700 focus:ring-2 focus:ring-accent/35"
               placeholder="Build, face, clothing, voice, marks, vibe"
             />
           </label>
-          <label className="grid gap-1.5 text-xs font-medium text-zinc-500">
+          <label className="grid gap-1.5 text-xs font-medium text-neutral-500">
             Personality
             <textarea
               value={draft.personality}
               onChange={(event) => onChange("personality", event.target.value)}
               data-1p-ignore="true"
-              className="min-h-[86px] resize-none rounded-xl bg-black/20 px-3 py-2 text-sm leading-6 text-zinc-100 shadow-[var(--shadow-border)] outline-none placeholder:text-zinc-700 focus:ring-2 focus:ring-accent/35"
+              className="min-h-[86px] resize-none rounded-xl bg-black/20 px-3 py-2 text-sm leading-6 text-neutral-100 shadow-[var(--shadow-border)] outline-none placeholder:text-neutral-700 focus:ring-2 focus:ring-accent/35"
               placeholder="Temper, habits, values, flaws, humor"
             />
           </label>
-          <label className="grid gap-1.5 text-xs font-medium text-zinc-500">
+          <label className="grid gap-1.5 text-xs font-medium text-neutral-500">
             Background
             <textarea
               value={draft.background}
               onChange={(event) => onChange("background", event.target.value)}
               data-1p-ignore="true"
-              className="min-h-[104px] resize-none rounded-xl bg-black/20 px-3 py-2 text-sm leading-6 text-zinc-100 shadow-[var(--shadow-border)] outline-none placeholder:text-zinc-700 focus:ring-2 focus:ring-accent/35"
+              className="min-h-[104px] resize-none rounded-xl bg-black/20 px-3 py-2 text-sm leading-6 text-neutral-100 shadow-[var(--shadow-border)] outline-none placeholder:text-neutral-700 focus:ring-2 focus:ring-accent/35"
               placeholder="History, relationships, secrets, why they matter"
             />
           </label>
@@ -3235,7 +3235,7 @@ function CharacterEditorModal({
             type="button"
             onClick={onClose}
             className={cx(
-              "inline-flex h-10 items-center justify-center rounded-full px-4 text-sm font-medium text-zinc-300 hover:bg-white/[0.06] hover:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+              "inline-flex h-10 items-center justify-center rounded-full px-4 text-sm font-medium text-neutral-300 hover:bg-white/[0.06] hover:text-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
               CONTROL_MOTION,
             )}
           >
@@ -3244,7 +3244,7 @@ function CharacterEditorModal({
           <button
             type="submit"
             className={cx(
-              "inline-flex h-10 items-center justify-center rounded-full bg-zinc-100 px-4 text-sm font-semibold text-zinc-950 hover:bg-white disabled:cursor-not-allowed disabled:bg-white/30 disabled:text-zinc-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
+              "inline-flex h-10 items-center justify-center rounded-full bg-neutral-100 px-4 text-sm font-semibold text-neutral-950 hover:bg-white disabled:cursor-not-allowed disabled:bg-white/30 disabled:text-neutral-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
               CONTROL_MOTION,
             )}
             disabled={!draft.name.trim()}
@@ -3268,11 +3268,11 @@ function ComposerMenuButton({ label, detail, active = false, dataTour, disabled 
       onClick={onClick}
       className={cx(
         "flex min-h-10 w-full items-center justify-between gap-4 rounded-xl px-3 py-2 text-left text-sm transition-[background-color,color,scale] duration-150 ease-out hover:bg-white/[0.08] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30 active:scale-[0.96] disabled:cursor-default disabled:hover:bg-transparent disabled:active:scale-100",
-        active ? "text-zinc-100" : "text-zinc-300",
+        active ? "text-neutral-100" : "text-neutral-300",
       )}
     >
       <span>{label}</span>
-      <span className={cx("max-w-[132px] truncate text-xs", active ? "text-zinc-400" : "text-zinc-500")}>
+      <span className={cx("max-w-[132px] truncate text-xs", active ? "text-neutral-400" : "text-neutral-500")}>
         {detail}
       </span>
     </button>
@@ -3388,21 +3388,21 @@ function Composer({
       className={cx(
         isEmptyVariant
           ? "pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-4 pb-[12vh] pt-20 sm:px-8 lg:px-10"
-          : "bg-[#08080a]/90 px-4 py-4 backdrop-blur-xl sm:px-8 lg:px-10",
+          : "bg-[#080808] px-4 py-4 sm:px-8 lg:px-10",
       )}
     >
       <div className={cx("mx-auto w-full", isEmptyVariant ? "pointer-events-auto max-w-[760px]" : "max-w-4xl")}>
         {isEmptyVariant && openingMessage && (
-          <div className="mb-8 text-center text-[22px] font-medium leading-tight text-zinc-200 sm:text-3xl">
+          <div className="mb-8 text-center text-[22px] font-medium leading-tight text-neutral-200 sm:text-3xl">
             {openingMessage}
           </div>
         )}
         <div
           className={cx(
-            "transition-[background-color,box-shadow] duration-500 ease-[cubic-bezier(0.2,0,0,1)]",
+            "bg-[#141414]",
             isEmptyVariant
-              ? "rounded-[30px] bg-[#18181a] shadow-[0_0_0_1px_rgba(255,255,255,0.105),0_24px_72px_rgba(0,0,0,0.34)] focus-within:bg-[#1b1b1e] focus-within:shadow-[0_0_0_1px_rgba(255,255,255,0.15),0_26px_78px_rgba(0,0,0,0.38)]"
-              : "rounded-[24px] bg-lift shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_22px_80px_rgba(0,0,0,0.45)] focus-within:bg-[#19191d] focus-within:shadow-[0_0_0_1px_rgba(255,255,255,0.12),0_20px_72px_rgba(0,0,0,0.42)]",
+              ? "rounded-[30px]"
+              : "rounded-[24px]",
           )}
         >
           <div className={cx(isEmptyVariant ? "px-6 pt-5 sm:px-7 sm:pt-6" : "px-4 pt-3")}>
@@ -3426,10 +3426,10 @@ function Composer({
                     : `Ask ${promptModelName(models, settings.model)} anything`
               }
               className={cx(
-                "block w-full resize-none bg-transparent text-zinc-100 outline-none",
+                "block w-full resize-none bg-transparent text-neutral-100 outline-none",
                 isEmptyVariant
-                  ? "max-h-[184px] min-h-[72px] text-base leading-7 placeholder:text-zinc-500 sm:text-lg sm:leading-8"
-                  : "max-h-[126px] min-h-6 text-sm leading-6 placeholder:text-zinc-600",
+                  ? "max-h-[184px] min-h-[72px] text-base leading-7 placeholder:text-neutral-500 sm:text-lg sm:leading-8"
+                  : "max-h-[126px] min-h-6 text-sm leading-6 placeholder:text-neutral-600",
               )}
             />
           </div>
@@ -3455,18 +3455,18 @@ function Composer({
                     aria-expanded={contextMenuOpen}
                     aria-haspopup="menu"
                     className={cx(
-                      "inline-flex h-10 min-w-0 items-center gap-1.5 rounded-full text-xs font-medium text-zinc-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30 active:scale-[0.96]",
+                      "inline-flex h-10 min-w-0 items-center gap-1.5 rounded-full text-xs font-medium text-neutral-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30 active:scale-[0.96]",
                       isWritePromptBar ? "pl-0 pr-6" : "px-3",
                       isWritePromptBar ? "" : "bg-white/[0.07] shadow-[inset_0_1px_rgba(255,255,255,0.06)] hover:bg-white/[0.11]",
                       PROMPT_BAR_CONTROL_MOTION,
                     )}
                   >
                     <span>Writing tools</span>
-                    <span className="text-zinc-500">{WRITE_GENERATION_MODES[writeGenerationMode]}</span>
+                    <span className="text-neutral-500">{WRITE_GENERATION_MODES[writeGenerationMode]}</span>
                     <ChevronDown size={14} className={cx("writing-tools-chevron transition-transform duration-200", contextMenuOpen && "rotate-180")} />
                   </button>
                   {contextMenuOpen && (
-                    <div role="menu" className="absolute bottom-[calc(100%+8px)] -left-4 z-30 w-72 rounded-2xl bg-[#29292c] p-1.5 shadow-[0_0_0_1px_rgba(255,255,255,0.12),0_16px_40px_rgba(0,0,0,0.38)]">
+                    <div role="menu" className="absolute bottom-[calc(100%+8px)] -left-4 z-30 w-72 rounded-2xl bg-[#292929] p-1.5">
                       <ComposerMenuButton label="Lorebook" detail="Story knowledge" onClick={() => { onOpenLorebook(); setContextMenuOpen(false); }} />
                       <ComposerMenuButton label="Brainstorm" detail="Branch story ideas" onClick={() => { onOpenBrainstorm(); setContextMenuOpen(false); }} />
                       <ComposerMenuButton label="System Prompt" detail={systemPrompt.trim() ? "Custom instructions" : "Default instructions"} onClick={() => { setSystemPromptOpen(true); setContextMenuOpen(false); }} active={Boolean(systemPrompt.trim())} />
@@ -3503,7 +3503,7 @@ function Composer({
                   aria-expanded={modelMenuOpen}
                   aria-haspopup="menu"
                   className={cx(
-                    "inline-flex h-10 min-w-0 max-w-[220px] items-center gap-1.5 rounded-full text-xs font-medium text-zinc-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30 active:scale-[0.96] sm:max-w-[280px]",
+                    "inline-flex h-10 min-w-0 max-w-[220px] items-center gap-1.5 rounded-full text-xs font-medium text-neutral-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30 active:scale-[0.96] sm:max-w-[280px]",
                     "pl-0 pr-3",
                     isWritePromptBar ? "" : "bg-transparent shadow-none hover:bg-transparent",
                     PROMPT_BAR_CONTROL_MOTION,
@@ -3511,20 +3511,20 @@ function Composer({
                 >
                   <span className="truncate">{promptModelName(models, settings.model)}</span>
                   {canThink && (
-                    <span className="hidden text-zinc-500 sm:inline">
+                    <span className="hidden text-neutral-500 sm:inline">
                       <span>{thinkingEnabled ? "Thinking" : "Instant"}</span>
                     </span>
                   )}
                   <ChevronDown size={14} className={cx("thinking-toggle-chevron shrink-0 transition-transform duration-200", modelMenuOpen && "rotate-180")} />
                 </button>
                 {modelMenuOpen && (
-                  <div role="menu" className="absolute bottom-[calc(100%+8px)] right-0 z-30 w-64 rounded-2xl bg-[#29292c] p-1.5 shadow-[0_0_0_1px_rgba(255,255,255,0.12),0_16px_40px_rgba(0,0,0,0.38)]">
+                  <div role="menu" className="absolute bottom-[calc(100%+8px)] right-0 z-30 w-64 rounded-2xl bg-[#292929] p-1.5">
                     <ComposerMenuButton
                       label="Settings"
                       detail={(
                         <>
                           {promptModelName(models, settings.model)}
-                          {modelLocked && <span className="ml-1 text-zinc-400">locked</span>}
+                          {modelLocked && <span className="ml-1 text-neutral-400">locked</span>}
                         </>
                       )}
                       onClick={() => { onOpenSettings(); setModelMenuOpen(false); }}
@@ -3556,10 +3556,10 @@ function Composer({
                 "group relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
                 PROMPT_BAR_CONTROL_MOTION,
                 isStreaming
-                  ? "text-zinc-200"
+                  ? "text-neutral-200"
                   : cx(
-                    "text-zinc-300 hover:text-white",
-                    "disabled:cursor-not-allowed disabled:text-zinc-600 disabled:active:scale-100",
+                    "text-neutral-300 hover:text-white",
+                    "disabled:cursor-not-allowed disabled:text-neutral-600 disabled:active:scale-100",
                   ),
               )}
               aria-label={isStreaming ? "Stop" : "Send"}
@@ -3750,14 +3750,14 @@ function SystemPromptModal({ open, value, onSave, onClose }) {
         aria-modal="true"
         aria-labelledby="system-prompt-title"
         className={cx(
-          "t-modal relative z-10 flex max-h-[min(620px,calc(100dvh-2rem))] w-full max-w-[560px] flex-col overflow-hidden rounded-[24px] bg-[#18181b] text-zinc-100 shadow-[var(--shadow-surface)]",
+          "t-modal relative z-10 flex max-h-[min(620px,calc(100dvh-2rem))] w-full max-w-[560px] flex-col overflow-hidden rounded-[24px] bg-[#181818] text-neutral-100 [box-shadow:var(--shadow-surface)]",
           isOpen ? "is-open" : "is-closing",
         )}
       >
         <header className="flex items-center justify-between gap-4 px-4 pb-3 pt-4">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h2 id="system-prompt-title" className="text-balance text-base font-semibold leading-6 text-zinc-100">
+              <h2 id="system-prompt-title" className="text-balance text-base font-semibold leading-6 text-neutral-100">
                 System prompt
               </h2>
               <span
@@ -3766,14 +3766,14 @@ function SystemPromptModal({ open, value, onSave, onClose }) {
                   saveState === "save failed"
                     ? "text-red-300"
                     : saveState === "saving" || saveState === "unsaved"
-                      ? "text-zinc-400"
+                      ? "text-neutral-400"
                       : "text-emerald-300",
                 )}
               >
                 {saveStateLabel}
               </span>
             </div>
-            <p className="mt-0.5 text-pretty text-xs leading-5 text-zinc-500">
+            <p className="mt-0.5 text-pretty text-xs leading-5 text-neutral-500">
               Story-specific instructions sent with every write request
             </p>
           </div>
@@ -3782,7 +3782,7 @@ function SystemPromptModal({ open, value, onSave, onClose }) {
             type="button"
             onClick={onClose}
             className={cx(
-              "grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/[0.05] text-zinc-400 hover:bg-white/[0.08] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15",
+              "grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/[0.05] text-neutral-400 hover:bg-white/[0.08] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15",
               CONTROL_MOTION,
             )}
             aria-label="Close system prompt"
@@ -3798,7 +3798,7 @@ function SystemPromptModal({ open, value, onSave, onClose }) {
               onChange={(event) => updateDraft(event.target.value)}
               placeholder="No story system prompt"
               data-1p-ignore="true"
-              className="block h-full w-full resize-none overflow-y-auto bg-transparent text-sm leading-6 text-zinc-100 outline-none placeholder:text-zinc-500"
+              className="block h-full w-full resize-none overflow-y-auto bg-transparent text-sm leading-6 text-neutral-100 outline-none placeholder:text-neutral-500"
             />
           </div>
         </div>
@@ -3809,7 +3809,7 @@ function SystemPromptModal({ open, value, onSave, onClose }) {
                 type="button"
                 onClick={clearPrompt}
                 className={cx(
-                  "inline-flex h-10 items-center justify-center rounded-full px-3 text-sm font-medium text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+                  "inline-flex h-10 items-center justify-center rounded-full px-3 text-sm font-medium text-neutral-400 hover:bg-white/[0.06] hover:text-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
                   CONTROL_MOTION,
                 )}
               >
@@ -3820,7 +3820,7 @@ function SystemPromptModal({ open, value, onSave, onClose }) {
               type="button"
               onClick={onClose}
               className={cx(
-                "inline-flex h-10 items-center justify-center rounded-full px-4 text-sm font-medium text-zinc-300 hover:bg-white/[0.06] hover:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+                "inline-flex h-10 items-center justify-center rounded-full px-4 text-sm font-medium text-neutral-300 hover:bg-white/[0.06] hover:text-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
                 CONTROL_MOTION,
               )}
             >
@@ -3831,7 +3831,7 @@ function SystemPromptModal({ open, value, onSave, onClose }) {
               onClick={saveNow}
               disabled={!canSave}
               className={cx(
-                "inline-flex h-10 items-center justify-center rounded-full bg-zinc-100 px-4 text-sm font-semibold text-zinc-950 hover:bg-white disabled:cursor-not-allowed disabled:bg-white/30 disabled:text-zinc-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:active:scale-100",
+                "inline-flex h-10 items-center justify-center rounded-full bg-neutral-100 px-4 text-sm font-semibold text-neutral-950 hover:bg-white disabled:cursor-not-allowed disabled:bg-white/30 disabled:text-neutral-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:active:scale-100",
                 CONTROL_MOTION,
               )}
             >
@@ -3923,29 +3923,29 @@ function WriteHistoryModal({ open, entries, title, onClose }) {
         aria-modal="true"
         aria-labelledby="write-history-title"
         className={cx(
-          "t-modal relative z-10 flex max-h-[min(680px,calc(100dvh-2rem))] w-full max-w-[600px] flex-col overflow-hidden rounded-[26px] bg-[#19191c] text-zinc-100 shadow-[var(--shadow-surface)]",
+          "t-modal relative z-10 flex max-h-[min(680px,calc(100dvh-2rem))] w-full max-w-[600px] flex-col overflow-hidden rounded-[26px] bg-[#191919] text-neutral-100 [box-shadow:var(--shadow-surface)]",
           isOpen ? "is-open" : "is-closing",
         )}
       >
         <header className="flex items-start justify-between gap-5 px-5 pb-4 pt-5 sm:px-6 sm:pt-6">
           <div className="min-w-0">
-            <h2 id="write-history-title" className="text-balance text-lg font-semibold leading-6 tracking-[-0.01em] text-zinc-100">
+            <h2 id="write-history-title" className="text-balance text-lg font-semibold leading-6 tracking-[-0.01em] text-neutral-100">
               {title}
             </h2>
             {eventCount > 0 ? (
-              <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-sm leading-5 text-zinc-500">
+              <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-sm leading-5 text-neutral-500">
                 <span>{runGroups.length} {runGroups.length === 1 ? "prompt" : "prompts"}</span>
                 <span aria-hidden="true">·</span>
                 <span>{eventCount} {eventCount === 1 ? "event" : "events"}</span>
                 {totalCost > 0 && (
                   <>
                     <span aria-hidden="true">·</span>
-                    <span className="tabular-nums text-zinc-400">{formatCost(totalCost)}</span>
+                    <span className="tabular-nums text-neutral-400">{formatCost(totalCost)}</span>
                   </>
                 )}
               </p>
             ) : (
-              <p className="mt-1 text-sm leading-5 text-zinc-500">Prompts and changes will appear here</p>
+              <p className="mt-1 text-sm leading-5 text-neutral-500">Prompts and changes will appear here</p>
             )}
           </div>
           <button
@@ -3953,7 +3953,7 @@ function WriteHistoryModal({ open, entries, title, onClose }) {
             type="button"
             onClick={onClose}
             className={cx(
-              "grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/[0.05] text-zinc-400 shadow-[var(--shadow-border)] hover:bg-white/[0.09] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
+              "grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/[0.05] text-neutral-400 shadow-[var(--shadow-border)] hover:bg-white/[0.09] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
               CONTROL_MOTION,
             )}
             aria-label="Close history"
@@ -3978,8 +3978,8 @@ function WriteHistoryModal({ open, entries, title, onClose }) {
             </div>
           ) : (
             <div className="rounded-[20px] bg-black/20 px-4 py-12 text-center shadow-[var(--shadow-border)]">
-              <div className="text-sm font-medium text-zinc-300">No history yet</div>
-              <div className="mt-1 text-xs leading-5 text-zinc-600">Your next writing run will show up here.</div>
+              <div className="text-sm font-medium text-neutral-300">No history yet</div>
+              <div className="mt-1 text-xs leading-5 text-neutral-600">Your next writing run will show up here.</div>
             </div>
           )}
         </div>
@@ -4019,26 +4019,26 @@ function WriteHistoryRunAccordion({
       >
         <span className="min-w-0">
           <span className="flex min-w-0 items-center gap-2.5">
-            <span className="truncate text-sm font-semibold text-zinc-100">{title}</span>
-            <span className="shrink-0 text-[11px] font-medium tabular-nums text-zinc-600">
+            <span className="truncate text-sm font-semibold text-neutral-100">{title}</span>
+            <span className="shrink-0 text-[11px] font-medium tabular-nums text-neutral-600">
               {actionCount} {actionCount === 1 ? "action" : "actions"}
             </span>
             {runCost > 0 && (
-              <span className="shrink-0 text-[11px] font-medium tabular-nums text-zinc-600">
+              <span className="shrink-0 text-[11px] font-medium tabular-nums text-neutral-600">
                 {formatCost(runCost)}
               </span>
             )}
           </span>
-          <span className="mt-0.5 block truncate text-xs leading-5 text-zinc-500">{promptText}</span>
+          <span className="mt-0.5 block truncate text-xs leading-5 text-neutral-500">{promptText}</span>
         </span>
-        <span className="t-acc-chevron grid h-9 w-9 shrink-0 place-items-center rounded-full text-zinc-500">
+        <span className="t-acc-chevron grid h-9 w-9 shrink-0 place-items-center rounded-full text-neutral-500">
           <ChevronDown size={17} strokeWidth={1.8} aria-hidden="true" />
         </span>
       </button>
       <div className="t-acc-panel min-h-0">
         <div className="t-acc-panel-inner min-h-0 px-3.5 pb-4 sm:px-4">
           <div className="mb-4 rounded-2xl bg-white/[0.035] px-3.5 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.045)]">
-            <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600">Prompt</div>
+            <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-600">Prompt</div>
             {run.prompt ? (
               <WriteHistoryDetail
                 entry={run.prompt}
@@ -4047,13 +4047,13 @@ function WriteHistoryRunAccordion({
                 promptCard
               />
             ) : (
-              <div className="text-sm text-zinc-600">Prompt details unavailable</div>
+              <div className="text-sm text-neutral-600">Prompt details unavailable</div>
             )}
           </div>
 
           <div className="mb-2 flex items-center justify-between px-1">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600">Activity</div>
-            <div className="text-[10px] font-medium tabular-nums text-zinc-700">{actionCount}</div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-600">Activity</div>
+            <div className="text-[10px] font-medium tabular-nums text-neutral-700">{actionCount}</div>
           </div>
 
           {run.actions.length > 0 ? (
@@ -4064,10 +4064,10 @@ function WriteHistoryRunAccordion({
                     {index < run.actions.length - 1 && (
                       <span className="absolute bottom-0 top-[14px] w-px bg-white/[0.07]" />
                     )}
-                    <span className="relative mt-[7px] h-2 w-2 rounded-full bg-zinc-600 ring-4 ring-[#141416]" />
+                    <span className="relative mt-[7px] h-2 w-2 rounded-full bg-neutral-600 ring-4 ring-[#141414]" />
                   </span>
                   <div className={cx("min-w-0 pb-3", index === run.actions.length - 1 && "pb-0")}>
-                    <div className="text-pretty text-sm font-medium leading-5 text-zinc-300">{entry.label}</div>
+                    <div className="text-pretty text-sm font-medium leading-5 text-neutral-300">{entry.label}</div>
                     <WriteHistoryDetail
                       entry={entry}
                       expanded={Boolean(expandedEntries[entry.id])}
@@ -4079,7 +4079,7 @@ function WriteHistoryRunAccordion({
               ))}
             </ol>
           ) : (
-            <div className="px-1 text-xs leading-5 text-zinc-600">No actions recorded for this prompt.</div>
+            <div className="px-1 text-xs leading-5 text-neutral-600">No actions recorded for this prompt.</div>
           )}
         </div>
       </div>
@@ -4102,9 +4102,9 @@ function WriteHistoryStats({ entry }) {
     <span className="flex shrink-0 items-center gap-2 self-start text-[11px] font-medium leading-5 tabular-nums">
       {wordsAdded > 0 && !isHide && <span className="text-emerald-300">+{wordsAdded}</span>}
       {wordsRemoved > 0 && (
-        <span className={isHide ? "text-zinc-500" : "text-red-300"}>&minus;{wordsRemoved}</span>
+        <span className={isHide ? "text-neutral-500" : "text-red-300"}>&minus;{wordsRemoved}</span>
       )}
-      {hasCost && <span className="text-zinc-500">{formatCost(cost)}</span>}
+      {hasCost && <span className="text-neutral-500">{formatCost(cost)}</span>}
     </span>
   );
 }
@@ -4120,8 +4120,8 @@ function WriteHistoryDetail({ entry, expanded, onToggle, promptCard = false }) {
       <div
         className={cx(
           promptCard
-            ? "text-pretty text-sm leading-5 text-zinc-300"
-            : "mt-0.5 truncate text-xs leading-5 text-zinc-500",
+            ? "text-pretty text-sm leading-5 text-neutral-300"
+            : "mt-0.5 truncate text-xs leading-5 text-neutral-500",
         )}
         title={entry.detail}
       >
@@ -4135,8 +4135,8 @@ function WriteHistoryDetail({ entry, expanded, onToggle, promptCard = false }) {
       <div
         className={cx(
           promptCard
-            ? "text-pretty text-sm leading-5 text-zinc-300"
-            : "text-xs leading-5 text-zinc-500",
+            ? "text-pretty text-sm leading-5 text-neutral-300"
+            : "text-xs leading-5 text-neutral-500",
           expanded ? "whitespace-pre-wrap break-words" : promptCard ? "line-clamp-2" : "truncate",
         )}
         title={expanded ? undefined : entry.detail}
@@ -4147,7 +4147,7 @@ function WriteHistoryDetail({ entry, expanded, onToggle, promptCard = false }) {
         type="button"
         onClick={onToggle}
         className={cx(
-          "-ml-2 mt-1 inline-flex min-h-10 items-center rounded-full px-2 text-[11px] font-medium leading-none text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
+          "-ml-2 mt-1 inline-flex min-h-10 items-center rounded-full px-2 text-[11px] font-medium leading-none text-neutral-500 hover:bg-white/[0.05] hover:text-neutral-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
           CONTROL_MOTION,
         )}
       >
@@ -4179,7 +4179,7 @@ function SettingSwitch({ checked, onChange, label, disabled = false }) {
         checked ? "bg-accent/80" : "bg-white/[0.08]",
       )}
     >
-      <span className="t-toggle-thumb absolute left-1 top-1 h-5 w-5 rounded-full bg-zinc-50" />
+      <span className="t-toggle-thumb absolute left-1 top-1 h-5 w-5 rounded-full bg-neutral-50" />
     </button>
   );
 }
@@ -4188,8 +4188,8 @@ function SettingRow({ title, description, children }) {
   return (
     <div className="flex items-center justify-between gap-3">
       <div className="min-w-0">
-        <h2 className="text-balance text-sm font-semibold text-zinc-100">{title}</h2>
-        <p className="mt-0.5 text-pretty text-xs leading-5 text-zinc-500">{description}</p>
+        <h2 className="text-balance text-sm font-semibold text-neutral-100">{title}</h2>
+        <p className="mt-0.5 text-pretty text-xs leading-5 text-neutral-500">{description}</p>
       </div>
       {children}
     </div>
@@ -4494,7 +4494,7 @@ function SettingsDrawer({
   const keySection = (
     <section className="border-b border-white/[0.08] pb-3">
       <div className="mb-2.5 flex items-center justify-between gap-3">
-        <h2 className="flex items-center gap-2 text-balance text-sm font-semibold text-zinc-100">
+        <h2 className="flex items-center gap-2 text-balance text-sm font-semibold text-neutral-100">
           OpenRouter key
           {StatusDot}
         </h2>
@@ -4505,14 +4505,14 @@ function SettingsDrawer({
           value={apiKey}
           onChange={(event) => setApiKey(event.target.value)}
           placeholder="sk-or-v1-..."
-          className="h-10 min-w-0 flex-1 rounded-xl bg-black/20 px-3 text-sm text-zinc-100 shadow-[var(--shadow-border)] outline-none transition-[background-color,box-shadow] duration-150 ease-out placeholder:text-zinc-600 focus:bg-black/25 focus:shadow-[0_0_0_1px_rgba(255,255,255,0.16)]"
+          className="h-10 min-w-0 flex-1 rounded-xl bg-black/20 px-3 text-sm text-neutral-100 shadow-[var(--shadow-border)] outline-none transition-[background-color,box-shadow] duration-150 ease-out placeholder:text-neutral-600 focus:bg-black/25 focus:shadow-[0_0_0_1px_rgba(255,255,255,0.16)]"
         />
         <button
           type="button"
           onClick={saveKey}
           disabled={saving || !apiKey.trim()}
           className={cx(
-            "h-10 rounded-xl bg-zinc-100 px-3 text-sm font-semibold text-zinc-950 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500 disabled:shadow-[var(--shadow-border)] disabled:active:scale-100",
+            "h-10 rounded-xl bg-neutral-100 px-3 text-sm font-semibold text-neutral-950 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:cursor-not-allowed disabled:bg-neutral-800 disabled:text-neutral-500 disabled:shadow-[var(--shadow-border)] disabled:active:scale-100",
             CONTROL_MOTION,
           )}
         >
@@ -4626,7 +4626,7 @@ function SettingsDrawer({
     <section className="flex h-full min-h-0 flex-col">
       <div className="shrink-0">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-balance text-sm font-semibold text-zinc-100">
+          <h2 className="text-balance text-sm font-semibold text-neutral-100">
             {promptModeName} system prompt
           </h2>
           {settings.system_prompt && (
@@ -4637,7 +4637,7 @@ function SettingsDrawer({
                 onPersist({ ...settings, system_prompt: "" });
               }}
               className={cx(
-                "flex shrink-0 items-center gap-1 rounded-full bg-white/[0.055] px-2 py-0.5 text-[11px] font-medium leading-normal text-zinc-400 shadow-[var(--shadow-border)] hover:bg-white/[0.085] hover:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
+                "flex shrink-0 items-center gap-1 rounded-full bg-white/[0.055] px-2 py-0.5 text-[11px] font-medium leading-normal text-neutral-400 shadow-[var(--shadow-border)] hover:bg-white/[0.085] hover:text-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
                 CONTROL_MOTION,
               )}
             >
@@ -4646,7 +4646,7 @@ function SettingsDrawer({
             </button>
           )}
         </div>
-        <p className="mt-0.5 mb-3 text-pretty text-xs leading-5 text-zinc-500">
+        <p className="mt-0.5 mb-3 text-pretty text-xs leading-5 text-neutral-500">
           {promptModeName === "Write"
             ? "Optional instructions sent before every write-mode message. Chat mode has its own system prompt."
             : "Optional instructions sent before every chat-mode message. Write mode has its own system prompt."}
@@ -4660,7 +4660,7 @@ function SettingsDrawer({
             onBlur={() => onPersist(settings)}
             placeholder={`No ${promptModeName.toLowerCase()} system prompt`}
             data-1p-ignore="true"
-            className="block h-full w-full resize-none overflow-y-auto bg-transparent text-sm leading-6 text-zinc-100 outline-none placeholder:text-zinc-500"
+            className="block h-full w-full resize-none overflow-y-auto bg-transparent text-sm leading-6 text-neutral-100 outline-none placeholder:text-neutral-500"
           />
         </div>
       </div>
@@ -4670,13 +4670,13 @@ function SettingsDrawer({
   const importExportSection = (
     <section className="flex h-full min-h-0 flex-col">
       <div className="border-b border-white/[0.08] pb-3">
-        <p className="mt-1 text-pretty text-xs leading-5 text-zinc-500">
+        <p className="mt-1 text-pretty text-xs leading-5 text-neutral-500">
           Share a selected conversation as a JSON file.
         </p>
       </div>
 
       <section className="flex min-h-0 flex-1 flex-col px-1 py-3">
-        <h2 className="shrink-0 text-balance text-sm font-semibold text-zinc-100">
+        <h2 className="shrink-0 text-balance text-sm font-semibold text-neutral-100">
           Select Chat
         </h2>
         <div className="mt-2 flex min-h-0 flex-1 flex-col gap-2">
@@ -4694,7 +4694,7 @@ function SettingsDrawer({
               className="settings-chat-list h-full max-h-36 min-h-0 space-y-1 overflow-y-auto"
             >
               {filteredCloudChats.length === 0 ? (
-                <div className="grid min-h-10 w-full grid-cols-[18px_minmax(0,1fr)_14px] items-center gap-2 rounded-xl bg-black/15 px-3 py-3 text-pretty text-xs leading-5 text-zinc-500 shadow-[var(--shadow-border)]">
+                <div className="grid min-h-10 w-full grid-cols-[18px_minmax(0,1fr)_14px] items-center gap-2 rounded-xl bg-black/15 px-3 py-3 text-pretty text-xs leading-5 text-neutral-500 shadow-[var(--shadow-border)]">
                   <span className="col-start-2 min-w-0">
                     {chats.length === 0 ? "No chats yet." : "No matching chats."}
                   </span>
@@ -4711,15 +4711,15 @@ function SettingsDrawer({
                         "grid min-h-10 w-full grid-cols-[18px_minmax(0,1fr)_14px] items-center gap-2 rounded-xl px-3 py-2 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
                         CONTROL_MOTION,
                         selected
-                          ? "bg-white/[0.065] text-zinc-100 shadow-[var(--shadow-border)]"
-                          : "text-zinc-300 hover:bg-white/[0.035] hover:text-zinc-100",
+                          ? "bg-white/[0.065] text-neutral-100 shadow-[var(--shadow-border)]"
+                          : "text-neutral-300 hover:bg-white/[0.035] hover:text-neutral-100",
                       )}
                     >
                       <span className="col-start-2 min-w-0">
                         <span className="block truncate text-sm font-medium">
                           {chat.title}
                         </span>
-                        <span className="mt-0.5 block truncate text-xs text-zinc-500">
+                        <span className="mt-0.5 block truncate text-xs text-neutral-500">
                           {promptModelName(models, chat.model)}
                         </span>
                       </span>
@@ -4727,7 +4727,7 @@ function SettingsDrawer({
                         size={14}
                         aria-hidden="true"
                         className={cx(
-                          "col-start-3 justify-self-end text-zinc-200",
+                          "col-start-3 justify-self-end text-neutral-200",
                           selected ? "opacity-100" : "opacity-0",
                         )}
                       />
@@ -4739,14 +4739,14 @@ function SettingsDrawer({
             <div
               aria-hidden="true"
               className={cx(
-                "settings-list-fade pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-[#202022]/95 to-transparent transition-opacity duration-150 ease-out",
+                "settings-list-fade pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-[#202020]/95 to-transparent transition-opacity duration-150 ease-out",
                 chatListScrolled ? "opacity-100" : "opacity-0",
               )}
             />
             <div
               aria-hidden="true"
               className={cx(
-                "settings-list-fade pointer-events-none absolute inset-x-0 bottom-0 h-7 bg-gradient-to-t from-[#202022]/95 to-transparent transition-opacity duration-150 ease-out",
+                "settings-list-fade pointer-events-none absolute inset-x-0 bottom-0 h-7 bg-gradient-to-t from-[#202020]/95 to-transparent transition-opacity duration-150 ease-out",
                 chatListHasMoreBelow ? "opacity-100" : "opacity-0",
               )}
             />
@@ -4761,7 +4761,7 @@ function SettingsDrawer({
             disabled={exporting || importing || !cloudChatId}
             onClick={exportChats}
             className={cx(
-              "flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-white/[0.055] px-3 text-xs font-semibold text-zinc-100 shadow-[var(--shadow-border)] hover:bg-white/[0.085] hover:shadow-[var(--shadow-border-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 disabled:cursor-not-allowed disabled:text-zinc-600 disabled:opacity-60 disabled:active:scale-100",
+              "flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-white/[0.055] px-3 text-xs font-semibold text-neutral-100 shadow-[var(--shadow-border)] hover:bg-white/[0.085] hover:shadow-[var(--shadow-border-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 disabled:cursor-not-allowed disabled:text-neutral-600 disabled:opacity-60 disabled:active:scale-100",
               CONTROL_MOTION,
             )}
           >
@@ -4774,7 +4774,7 @@ function SettingsDrawer({
             disabled={exporting || importing}
             onClick={() => fileInputRef.current?.click()}
             className={cx(
-              "flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-white/[0.055] px-3 text-xs font-semibold text-zinc-100 shadow-[var(--shadow-border)] hover:bg-white/[0.085] hover:shadow-[var(--shadow-border-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 disabled:cursor-not-allowed disabled:text-zinc-600 disabled:opacity-60 disabled:active:scale-100",
+              "flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-white/[0.055] px-3 text-xs font-semibold text-neutral-100 shadow-[var(--shadow-border)] hover:bg-white/[0.085] hover:shadow-[var(--shadow-border-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 disabled:cursor-not-allowed disabled:text-neutral-600 disabled:opacity-60 disabled:active:scale-100",
               CONTROL_MOTION,
             )}
           >
@@ -4799,18 +4799,18 @@ function SettingsDrawer({
       <div className="pb-2.5">
         <div className="mb-3 flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="flex items-center gap-2 text-balance text-sm font-semibold text-zinc-100">
+            <h2 className="flex items-center gap-2 text-balance text-sm font-semibold text-neutral-100">
               Model
               {modelLocked && (
-                <span className="inline-flex min-h-6 items-center rounded-full bg-white/[0.04] px-2 text-[11px] font-medium text-zinc-500 shadow-[var(--shadow-border)]">
+                <span className="inline-flex min-h-6 items-center rounded-full bg-white/[0.04] px-2 text-[11px] font-medium text-neutral-500 shadow-[var(--shadow-border)]">
                   Model locked
                 </span>
               )}
             </h2>
-            <p className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-zinc-500">
+            <p className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-neutral-500">
               <span className="truncate">{selectedModel?.name || settings.model}</span>
               {selectedModelPrice && (
-                <span className="inline-flex min-h-5 shrink-0 items-center rounded-full bg-white/[0.055] px-2 text-[11px] font-medium leading-none tabular-nums text-zinc-500 shadow-[var(--shadow-border)]">
+                <span className="inline-flex min-h-5 shrink-0 items-center rounded-full bg-white/[0.055] px-2 text-[11px] font-medium leading-none tabular-nums text-neutral-500 shadow-[var(--shadow-border)]">
                   {selectedModelPrice}
                 </span>
               )}
@@ -4822,8 +4822,8 @@ function SettingsDrawer({
                   "inline-flex min-h-5 shrink-0 items-center rounded-full px-2 text-[11px] font-medium leading-none shadow-[var(--shadow-border)] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 disabled:cursor-default disabled:active:scale-100",
                   CONTROL_MOTION,
                   settings.model === defaultModel
-                    ? "bg-white/[0.045] text-zinc-500"
-                    : "bg-white/[0.065] text-zinc-300 hover:bg-white/[0.1] hover:text-zinc-100",
+                    ? "bg-white/[0.045] text-neutral-500"
+                    : "bg-white/[0.065] text-neutral-300 hover:bg-white/[0.1] hover:text-neutral-100",
                 )}
               >
                 {settings.model === defaultModel ? "Default" : "Set default"}
@@ -4837,7 +4837,7 @@ function SettingsDrawer({
         >
           <div
             ref={modelSearchInputRef}
-            className="t-input model-search-input flex h-10 items-center gap-2 rounded-xl bg-black/20 px-3 text-zinc-500 shadow-[var(--shadow-border)] transition-[background-color,box-shadow] duration-150 ease-out focus-within:bg-black/25 focus-within:shadow-[0_0_0_1px_rgba(255,255,255,0.16)]"
+            className="t-input model-search-input flex h-10 items-center gap-2 rounded-xl bg-black/20 px-3 text-neutral-500 shadow-[var(--shadow-border)] transition-[background-color,box-shadow] duration-150 ease-out focus-within:bg-black/25 focus-within:shadow-[0_0_0_1px_rgba(255,255,255,0.16)]"
           >
           <Search size={15} />
           <input
@@ -4846,20 +4846,20 @@ function SettingsDrawer({
             onChange={handleModelSearchChange}
             placeholder="Search models"
             data-1p-ignore="true"
-            className="min-w-0 flex-1 bg-transparent text-sm text-zinc-100 outline-none placeholder:text-zinc-600"
+            className="min-w-0 flex-1 bg-transparent text-sm text-neutral-100 outline-none placeholder:text-neutral-600"
           />
-          <span className="rounded-full bg-white/[0.05] px-2 py-0.5 text-[11px] tabular-nums text-zinc-500">
+          <span className="rounded-full bg-white/[0.05] px-2 py-0.5 text-[11px] tabular-nums text-neutral-500">
             {filteredModels.length}
           </span>
           </div>
         </div>
         {modelLocked && (
-          <p className="mt-2 text-pretty text-xs leading-5 text-zinc-600">
+          <p className="mt-2 text-pretty text-xs leading-5 text-neutral-600">
             Model selection is locked after the first message in a chat.
           </p>
         )}
       </div>
-      <div className="grid grid-cols-[minmax(0,1fr)_104px] items-center px-1 pb-2 pt-1 text-[11px] font-medium uppercase tracking-[0.08em] text-zinc-600">
+      <div className="grid grid-cols-[minmax(0,1fr)_104px] items-center px-1 pb-2 pt-1 text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-600">
         <span>Model</span>
         <span className="whitespace-nowrap text-center">Price + Context</span>
       </div>
@@ -4870,7 +4870,7 @@ function SettingsDrawer({
           className="min-h-0 h-full overflow-y-auto"
         >
           {filteredModels.length === 0 ? (
-            <div className="mt-3 rounded-[18px] bg-black/15 p-4 text-pretty text-sm leading-6 text-zinc-500 shadow-[var(--shadow-border)]">
+            <div className="mt-3 rounded-[18px] bg-black/15 p-4 text-pretty text-sm leading-6 text-neutral-500 shadow-[var(--shadow-border)]">
               {models.length === 0 ? "Save an API key to load models." : "No matching models."}
             </div>
           ) : (
@@ -4900,14 +4900,14 @@ function SettingsDrawer({
                       modelLocked && !isSelected && "cursor-not-allowed active:scale-100",
                     )}
                   >
-                    <span className="block truncate text-sm font-medium text-zinc-100">
+                    <span className="block truncate text-sm font-medium text-neutral-100">
                       {model.name}
                     </span>
-                    <span className="mt-0.5 block truncate text-xs text-zinc-600">
+                    <span className="mt-0.5 block truncate text-xs text-neutral-600">
                       {model.id}
                     </span>
                   </button>
-                  <span className="flex min-w-0 flex-col items-center px-1 text-center text-xs leading-4 tabular-nums text-zinc-500">
+                  <span className="flex min-w-0 flex-col items-center px-1 text-center text-xs leading-4 tabular-nums text-neutral-500">
                     <span className="whitespace-nowrap">{modelPrice || "-"}</span>
                     <span className="whitespace-nowrap">{modelContext}</span>
                   </span>
@@ -4919,14 +4919,14 @@ function SettingsDrawer({
         <div
           aria-hidden="true"
           className={cx(
-            "settings-list-fade pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-[#202022]/95 to-transparent transition-opacity duration-150 ease-out",
+            "settings-list-fade pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-[#202020]/95 to-transparent transition-opacity duration-150 ease-out",
             modelListScrolled ? "opacity-100" : "opacity-0",
           )}
         />
         <div
           aria-hidden="true"
           className={cx(
-            "settings-list-fade pointer-events-none absolute inset-x-0 bottom-0 h-7 bg-gradient-to-t from-[#202022]/95 to-transparent transition-opacity duration-150 ease-out",
+            "settings-list-fade pointer-events-none absolute inset-x-0 bottom-0 h-7 bg-gradient-to-t from-[#202020]/95 to-transparent transition-opacity duration-150 ease-out",
             modelListHasMoreBelow ? "opacity-100" : "opacity-0",
           )}
         />
@@ -4942,7 +4942,7 @@ function SettingsDrawer({
       onToggle={toggleAccordion}
       trailing={!canThink ? "Unavailable" : null}
     >
-      <p className="mb-3 text-pretty text-xs leading-5 text-zinc-500">
+      <p className="mb-3 text-pretty text-xs leading-5 text-neutral-500">
         Select model reasoning effort
       </p>
       <SlidingTabs
@@ -4965,14 +4965,14 @@ function SettingsDrawer({
       open={openAccordions.generation}
       onToggle={toggleAccordion}
     >
-      <p className="mb-3 text-pretty text-xs leading-5 text-zinc-500">
+      <p className="mb-3 text-pretty text-xs leading-5 text-neutral-500">
         Customize model outputs
       </p>
       <div className="space-y-3">
         <div className="settings-slider-row">
           <div className="mb-2.5 flex items-center justify-between text-xs font-medium">
-            <span className="text-zinc-400">Temperature</span>
-            <span className="min-w-9 rounded-full bg-white/[0.055] px-2 py-0.5 text-center tabular-nums text-zinc-200 shadow-[var(--shadow-border)]">
+            <span className="text-neutral-400">Temperature</span>
+            <span className="min-w-9 rounded-full bg-white/[0.055] px-2 py-0.5 text-center tabular-nums text-neutral-200 shadow-[var(--shadow-border)]">
               {settings.temperature}
             </span>
           </div>
@@ -4991,13 +4991,13 @@ function SettingsDrawer({
         </div>
         <div className="settings-slider-row">
           <div className="mb-2.5 flex items-center justify-between text-xs font-medium">
-            <span className="text-zinc-400">Max output tokens</span>
+            <span className="text-neutral-400">Max output tokens</span>
             <div className="flex items-center gap-1.5">
-              <span className="max-w-[140px] truncate rounded-full bg-white/[0.055] px-2 py-0.5 text-[11px] font-medium leading-normal text-zinc-500 shadow-[var(--shadow-border)]">
+              <span className="max-w-[140px] truncate rounded-full bg-white/[0.055] px-2 py-0.5 text-[11px] font-medium leading-normal text-neutral-500 shadow-[var(--shadow-border)]">
                 {selectedModelOutputName}
               </span>
               {selectedModelContext && (
-                <span className="shrink-0 rounded-full bg-white/[0.055] px-2 py-0.5 text-[11px] font-medium leading-normal tabular-nums text-zinc-500 shadow-[var(--shadow-border)]">
+                <span className="shrink-0 rounded-full bg-white/[0.055] px-2 py-0.5 text-[11px] font-medium leading-normal tabular-nums text-neutral-500 shadow-[var(--shadow-border)]">
                   {selectedModelContext}
                 </span>
               )}
@@ -5023,7 +5023,7 @@ function SettingsDrawer({
                       setEditingMaxTokens(false);
                     }
                   }}
-                  className="w-16 shrink-0 rounded-full bg-white/[0.08] px-2 py-0.5 text-center tabular-nums text-zinc-100 shadow-[var(--shadow-border)] outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                  className="w-16 shrink-0 rounded-full bg-white/[0.08] px-2 py-0.5 text-center tabular-nums text-neutral-100 shadow-[var(--shadow-border)] outline-none focus-visible:ring-2 focus-visible:ring-white/20"
                 />
               ) : (
                 <button
@@ -5033,7 +5033,7 @@ function SettingsDrawer({
                     setEditingMaxTokens(true);
                   }}
                   className={cx(
-                    "w-16 shrink-0 rounded-full bg-white/[0.055] px-2 py-0.5 text-center tabular-nums text-zinc-200 shadow-[var(--shadow-border)] hover:bg-white/[0.085] hover:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
+                    "w-16 shrink-0 rounded-full bg-white/[0.055] px-2 py-0.5 text-center tabular-nums text-neutral-200 shadow-[var(--shadow-border)] hover:bg-white/[0.085] hover:text-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
                     CONTROL_MOTION,
                   )}
                 >
@@ -5082,7 +5082,7 @@ function SettingsDrawer({
         aria-labelledby="settings-modal-title"
         aria-hidden={!open}
         className={cx(
-          "t-modal relative z-10 grid h-[min(400px,calc(100vh-2rem))] w-full max-w-[560px] overflow-hidden rounded-[18px] bg-[#202022] text-zinc-100 shadow-[var(--shadow-surface)] md:grid-cols-[132px_minmax(0,1fr)]",
+          "t-modal relative z-10 grid h-[min(400px,calc(100vh-2rem))] w-full max-w-[560px] overflow-hidden rounded-[18px] bg-[#202020] text-neutral-100 [box-shadow:var(--shadow-surface)] md:grid-cols-[132px_minmax(0,1fr)]",
           open ? "is-open" : "is-closing",
         )}
       >
@@ -5092,7 +5092,7 @@ function SettingsDrawer({
             onClick={onClose}
             aria-label="Close settings"
             className={cx(
-              "mb-2.5 grid h-10 w-10 place-items-center rounded-xl bg-white/[0.06] text-zinc-100 hover:bg-white/[0.09] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+              "mb-2.5 grid h-10 w-10 place-items-center rounded-xl bg-white/[0.06] text-neutral-100 hover:bg-white/[0.09] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
               CONTROL_MOTION,
             )}
           >
@@ -5111,8 +5111,8 @@ function SettingsDrawer({
                     "flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-xs font-medium leading-none focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
                     CONTROL_MOTION,
                     selected
-                      ? "bg-white/[0.08] text-zinc-50"
-                      : "text-zinc-200 hover:bg-white/[0.045] hover:text-zinc-50",
+                      ? "bg-white/[0.08] text-neutral-50"
+                      : "text-neutral-200 hover:bg-white/[0.045] hover:text-neutral-50",
                     )}
                 >
                   <span
@@ -5140,7 +5140,7 @@ function SettingsDrawer({
             <div className="flex items-center justify-between gap-4">
               <h1
                 id="settings-modal-title"
-                className="text-lg font-medium tracking-normal text-zinc-50 md:text-xl"
+                className="text-lg font-medium tracking-normal text-neutral-50 md:text-xl"
               >
                 {visibleSettingsPages.find((page) => page.id === activePage)?.label || "Settings"}
               </h1>
@@ -5231,14 +5231,14 @@ function Accordion({ id, title, open, onToggle, trailing, children }) {
         onClick={() => onToggle(id)}
       >
         <span className="flex min-w-0 items-center gap-3">
-          <span className="truncate text-sm font-semibold text-zinc-100">{title}</span>
+          <span className="truncate text-sm font-semibold text-neutral-100">{title}</span>
           {trailing && (
-            <span className="shrink-0 rounded-full bg-white/[0.04] px-2.5 py-1 text-[11px] text-zinc-600 shadow-[var(--shadow-border)]">
+            <span className="shrink-0 rounded-full bg-white/[0.04] px-2.5 py-1 text-[11px] text-neutral-600 shadow-[var(--shadow-border)]">
               {trailing}
             </span>
           )}
         </span>
-        <span className="t-acc-chevron shrink-0 text-zinc-400">
+        <span className="t-acc-chevron shrink-0 text-neutral-400">
           <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <path
               d="M4 6.5L8 10.5L12 6.5"
@@ -5499,7 +5499,7 @@ function SearchClearField({ value, onChange, placeholder }) {
     <div
       ref={wrapRef}
       className={cx(
-        "cloud-search t-clear flex h-10 items-center gap-2 rounded-xl bg-black/20 px-3 text-zinc-500 shadow-[var(--shadow-border)] transition-[background-color,box-shadow] duration-150 ease-out focus-within:bg-black/25 focus-within:shadow-[0_0_0_1px_rgba(255,255,255,0.16)]",
+        "cloud-search t-clear flex h-10 items-center gap-2 rounded-xl bg-black/20 px-3 text-neutral-500 shadow-[var(--shadow-border)] transition-[background-color,box-shadow] duration-150 ease-out focus-within:bg-black/25 focus-within:shadow-[0_0_0_1px_rgba(255,255,255,0.16)]",
         value && "has-value",
         isClearing && "is-clearing",
       )}
@@ -5512,7 +5512,7 @@ function SearchClearField({ value, onChange, placeholder }) {
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         data-1p-ignore="true"
-        className="relative z-[4] min-w-0 flex-1 bg-transparent text-sm text-zinc-100 outline-none placeholder:text-transparent"
+        className="relative z-[4] min-w-0 flex-1 bg-transparent text-sm text-neutral-100 outline-none placeholder:text-transparent"
       />
       <div ref={mirrorRef} className="t-clear-mirror" aria-hidden="true">
         {value}
@@ -5527,7 +5527,7 @@ function SearchClearField({ value, onChange, placeholder }) {
         onMouseDown={(event) => event.preventDefault()}
         onClick={clearSearch}
         className={cx(
-          "t-clear-btn relative z-[4] grid h-7 w-7 shrink-0 place-items-center rounded-full text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+          "t-clear-btn relative z-[4] grid h-7 w-7 shrink-0 place-items-center rounded-full text-neutral-500 hover:bg-white/[0.06] hover:text-neutral-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
           CONTROL_MOTION,
           !value && "pointer-events-none opacity-0",
         )}
@@ -5637,14 +5637,14 @@ function ConfirmModal({ dialog, onClose }) {
         aria-modal="true"
         aria-labelledby="delete-modal-title"
         className={cx(
-          "t-modal relative z-10 w-fit max-w-[calc(100vw-2rem)] rounded-[24px] bg-[#18181b] p-4 text-zinc-100 shadow-[var(--shadow-surface)] sm:max-w-[560px]",
+          "t-modal relative z-10 w-fit max-w-[calc(100vw-2rem)] rounded-[24px] bg-[#181818] p-4 text-neutral-100 [box-shadow:var(--shadow-surface)] sm:max-w-[560px]",
           open ? "is-open" : "is-closing",
         )}
       >
         <div className="flex items-center justify-between gap-4">
           <h2
             id="delete-modal-title"
-            className="flex min-w-0 flex-1 items-baseline gap-2 overflow-hidden text-base font-semibold text-zinc-100"
+            className="flex min-w-0 flex-1 items-baseline gap-2 overflow-hidden text-base font-semibold text-neutral-100"
           >
             <span className="shrink-0">{renderedDialog.title || "Delete chat"}</span>
             {renderedDialog.chatTitle && (
@@ -5663,7 +5663,7 @@ function ConfirmModal({ dialog, onClose }) {
           </h2>
         </div>
         {renderedDialog.body && (
-          <p className="mt-2 text-sm text-zinc-400">{renderedDialog.body}</p>
+          <p className="mt-2 text-sm text-neutral-400">{renderedDialog.body}</p>
         )}
         <div className="mt-4 flex justify-end gap-2">
           <button
@@ -5672,7 +5672,7 @@ function ConfirmModal({ dialog, onClose }) {
             disabled={busy}
             onClick={onClose}
             className={cx(
-              "h-10 rounded-full bg-white/[0.05] px-4 text-sm font-medium text-zinc-300 hover:bg-white/[0.08] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15 disabled:cursor-not-allowed disabled:opacity-55",
+              "h-10 rounded-full bg-white/[0.05] px-4 text-sm font-medium text-neutral-300 hover:bg-white/[0.08] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15 disabled:cursor-not-allowed disabled:opacity-55",
               CONTROL_MOTION,
             )}
           >
@@ -5683,10 +5683,10 @@ function ConfirmModal({ dialog, onClose }) {
             disabled={busy}
             onClick={confirm}
             className={cx(
-              "h-10 rounded-full px-4 text-sm font-semibold text-zinc-950 focus:outline-none disabled:cursor-not-allowed disabled:opacity-55",
+              "h-10 rounded-full px-4 text-sm font-semibold text-neutral-950 focus:outline-none disabled:cursor-not-allowed disabled:opacity-55",
               //not every confirm is a delete, a retry styled blood red reads like it is about to eat your chapter
               renderedDialog.tone === "neutral"
-                ? "bg-zinc-100 hover:bg-white focus-visible:ring-2 focus-visible:ring-white/40"
+                ? "bg-neutral-100 hover:bg-white focus-visible:ring-2 focus-visible:ring-white/40"
                 : "bg-red-400 hover:bg-red-300 focus-visible:ring-2 focus-visible:ring-red-200/60",
               CONTROL_MOTION,
             )}
@@ -5784,18 +5784,18 @@ function NewStoryModal({ open, onClose, onCreate }) {
         aria-labelledby="new-story-modal-title"
         onSubmit={createStory}
         className={cx(
-          "t-modal relative z-10 w-full max-w-[420px] rounded-[24px] bg-[#18181b] p-4 text-zinc-100 shadow-[var(--shadow-surface)]",
+          "t-modal relative z-10 w-full max-w-[420px] rounded-[24px] bg-[#181818] p-4 text-neutral-100 [box-shadow:var(--shadow-surface)]",
           isOpen ? "is-open" : "is-closing",
         )}
       >
         <div>
           <h2
             id="new-story-modal-title"
-            className="text-balance text-base font-semibold text-zinc-100"
+            className="text-balance text-base font-semibold text-neutral-100"
           >
             Name your new story
           </h2>
-          <p className="mt-2 text-pretty text-sm leading-6 text-zinc-400">
+          <p className="mt-2 text-pretty text-sm leading-6 text-neutral-400">
             You can rename your story from the sidebar at any time
           </p>
         </div>
@@ -5810,7 +5810,7 @@ function NewStoryModal({ open, onClose, onCreate }) {
           onChange={(event) => setTitle(event.target.value)}
           placeholder="Story name"
           aria-label="Story name"
-          className="mt-4 h-11 w-full rounded-2xl bg-black/25 px-3.5 text-sm font-medium text-zinc-100 shadow-[var(--shadow-border)] outline-none placeholder:text-zinc-600 focus:shadow-[var(--shadow-border-hover)] disabled:cursor-not-allowed disabled:opacity-60"
+          className="mt-4 h-11 w-full rounded-2xl bg-black/25 px-3.5 text-sm font-medium text-neutral-100 shadow-[var(--shadow-border)] outline-none placeholder:text-neutral-600 focus:shadow-[var(--shadow-border-hover)] disabled:cursor-not-allowed disabled:opacity-60"
         />
         <div className="mt-5 flex justify-end gap-2">
           <button
@@ -5818,7 +5818,7 @@ function NewStoryModal({ open, onClose, onCreate }) {
             disabled={busy}
             onClick={onClose}
             className={cx(
-              "h-10 rounded-full bg-white/[0.05] px-4 text-sm font-medium text-zinc-300 hover:bg-white/[0.08] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15 disabled:cursor-not-allowed disabled:opacity-55",
+              "h-10 rounded-full bg-white/[0.05] px-4 text-sm font-medium text-neutral-300 hover:bg-white/[0.08] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15 disabled:cursor-not-allowed disabled:opacity-55",
               CONTROL_MOTION,
             )}
           >
@@ -5828,7 +5828,7 @@ function NewStoryModal({ open, onClose, onCreate }) {
             type="submit"
             disabled={!canCreate}
             className={cx(
-              "h-10 rounded-full bg-zinc-100 px-4 text-sm font-semibold text-zinc-950 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:cursor-not-allowed disabled:opacity-55",
+              "h-10 rounded-full bg-neutral-100 px-4 text-sm font-semibold text-neutral-950 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:cursor-not-allowed disabled:opacity-55",
               CONTROL_MOTION,
             )}
           >
@@ -8517,7 +8517,7 @@ function App() {
     !(isWritingMode && ["lorebook", "characters", "brainstorm"].includes(storyWorkspaceView) && !showLandingComposer);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#070708] text-ink">
+    <div className="flex h-screen overflow-hidden bg-[#080808] text-ink">
       {isWritingMode ? (
         <StoryRail
           stories={writingStories}

@@ -10,6 +10,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 import backend.main as main
+from backend.local_access import create_secret_file
 from backend.writing import (
     build_brainstorm_messages,
     build_story_messages,
@@ -59,11 +60,39 @@ class StoryApiTest(unittest.TestCase):
         self.originalDbPath = main.DB_PATH
         main.DATA_DIR = Path(self.tempDir.name)
         main.DB_PATH = main.DATA_DIR / "routerchat-test.sqlite3"
+        self.baseUrl = "http://127.0.0.1:8000"
+        self.apiSecretPath = main.DATA_DIR / "run" / "api-secret"
+        self.apiSecret = create_secret_file(self.apiSecretPath)
+        self.localAccessEnvironment = patch.dict(
+            os.environ,
+            {
+                "ROUTERCHAT_API_SECRET_FILE": str(self.apiSecretPath),
+                "ROUTERCHAT_BASE_URL": self.baseUrl,
+                "ROUTERCHAT_TRUSTED_ORIGINS": self.baseUrl,
+            },
+        )
+        self.localAccessEnvironment.start()
+        main.reset_local_access_config()
         main.init_db()
         acceptCurrentTos()
-        self.client = TestClient(main.app)
+        self.client = TestClient(
+            main.app,
+            base_url=self.baseUrl,
+            headers={"Origin": self.baseUrl, "Sec-Fetch-Site": "same-origin"},
+        )
+        bootstrapResponse = self.client.post(
+            "/api/bootstrap",
+            data={"secret": self.apiSecret},
+            headers={"Origin": "null", "Sec-Fetch-Site": "cross-site"},
+            follow_redirects=False,
+        )
+        if bootstrapResponse.status_code != 303:
+            raise RuntimeError("test client could not bootstrap local API access")
 
     def tearDown(self):
+        self.client.close()
+        main.reset_local_access_config()
+        self.localAccessEnvironment.stop()
         main.DATA_DIR = self.originalDataDir
         main.DB_PATH = self.originalDbPath
         self.tempDir.cleanup()
@@ -1541,7 +1570,13 @@ class StoryApiTest(unittest.TestCase):
                 """
             )
 
-        failure_client = TestClient(main.app, raise_server_exceptions=False)
+        failure_client = TestClient(
+            main.app,
+            base_url=self.baseUrl,
+            headers={"Origin": self.baseUrl, "Sec-Fetch-Site": "same-origin"},
+            raise_server_exceptions=False,
+        )
+        failure_client.cookies.update(self.client.cookies)
         failed = failure_client.post(
             "/api/stories/with-initial-chapter",
             json={

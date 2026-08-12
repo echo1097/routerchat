@@ -10,7 +10,7 @@ from scripts.package_release import buildReleasePackage
 class ReleasePackageTest(unittest.TestCase):
     def test_package_has_only_the_approved_application_layout(self):
         with tempfile.TemporaryDirectory() as tempDir:
-            zipPath, checksumPath = buildReleasePackage(Path(tempDir), "v1.0.1")
+            zipPath, checksumPath = buildReleasePackage(Path(tempDir), "v1.0.2")
 
             with zipfile.ZipFile(zipPath) as archive:
                 names = set(archive.namelist())
@@ -40,6 +40,7 @@ class ReleasePackageTest(unittest.TestCase):
                     "version.json",
                 },
             )
+            self.assertIn("backend/local_access.py", names)
             self.assertIn("backend/main.py", names)
             self.assertIn("dist/index.html", names)
             self.assertFalse(
@@ -57,8 +58,8 @@ class ReleasePackageTest(unittest.TestCase):
             tempfile.TemporaryDirectory() as firstDir,
             tempfile.TemporaryDirectory() as secondDir,
         ):
-            firstZip, _ = buildReleasePackage(Path(firstDir), "1.0.1")
-            secondZip, _ = buildReleasePackage(Path(secondDir), "1.0.1")
+            firstZip, _ = buildReleasePackage(Path(firstDir), "1.0.2")
+            secondZip, _ = buildReleasePackage(Path(secondDir), "1.0.2")
 
             self.assertEqual(firstZip.read_bytes(), secondZip.read_bytes())
 

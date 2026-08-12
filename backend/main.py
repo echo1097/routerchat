@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import hmac
 import json
 import os
 import re
@@ -9,20 +10,23 @@ import sqlite3
 import tempfile
 import uuid
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, AsyncIterator, Literal
+from urllib.parse import parse_qs
 
 import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend.lorebook_repair import create_lorebook_repair_router
 from backend.lorebook_update_stream import create_lorebook_update_stream_router
+from backend.local_access import read_secret_file, validate_base_url
 from backend.writing import WritingDeps, create_writing_router
 
 
@@ -31,8 +35,28 @@ STATIC_DIR = ROOT_DIR / "dist"
 TOS_PATH = ROOT_DIR / "TOS.md"
 VERSION_PATH = ROOT_DIR / "version.json"
 USER_DATA_ENV_VAR = "ROUTERCHAT_USER_DATA_DIR"
+API_SECRET_FILE_ENV_VAR = "ROUTERCHAT_API_SECRET_FILE"
+BASE_URL_ENV_VAR = "ROUTERCHAT_BASE_URL"
+TRUSTED_ORIGINS_ENV_VAR = "ROUTERCHAT_TRUSTED_ORIGINS"
+DEFAULT_BASE_URL = "http://127.0.0.1:8000"
+SESSION_COOKIE_NAME = "routerchat_session"
+BOOTSTRAP_PATH = "/api/bootstrap"
+HEALTH_PATH = "/api/health"
 TOS_DATE_PATTERN = re.compile(r"^\*\*Last updated:\s*(.+?)\s*\*\*$", re.MULTILINE)
-TOS_EXEMPT_PATHS = {"/api/health", "/api/tos", "/api/tos/accept"}
+TOS_EXEMPT_PATHS = {HEALTH_PATH, BOOTSTRAP_PATH, "/api/tos", "/api/tos/accept"}
+MUTATION_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+API_AUTH_REQUIRED_DETAIL = {
+    "code": "api_auth_required",
+    "message": "Open RouterChat through its launcher to authorize this browser.",
+}
+INVALID_REQUEST_HOST_DETAIL = {
+    "code": "invalid_request_host",
+    "message": "The request Host is not allowed.",
+}
+INVALID_REQUEST_ORIGIN_DETAIL = {
+    "code": "invalid_request_origin",
+    "message": "The request origin is not allowed.",
+}
 TOS_MISSING_DETAIL = {
     "code": "tos_missing",
     "message": "TOS.md could not be read. Restore it from the repository to use RouterChat.",
@@ -91,11 +115,108 @@ load_dotenv(ENV_PATH)
 app = FastAPI(title="RouterChat", version=APP_VERSION)
 
 
+@dataclass(frozen=True)
+class LocalAccessConfig:
+    baseUrl: str
+    allowedHost: str
+    trustedOrigins: frozenset[str]
+    secret: str
+
+
+def load_local_access_config(
+    environment: Mapping[str, str] | None = None,
+) -> LocalAccessConfig:
+    environment = os.environ if environment is None else environment
+    baseUrl = validate_base_url(environment.get(BASE_URL_ENV_VAR, DEFAULT_BASE_URL))
+    allowedHost = baseUrl.removeprefix("http://")
+
+    secretFileValue = environment.get(API_SECRET_FILE_ENV_VAR, "").strip()
+    if not secretFileValue:
+        raise RuntimeError(f"{API_SECRET_FILE_ENV_VAR} must point to a protected credential file.")
+    secret = read_secret_file(Path(secretFileValue).expanduser())
+
+    trustedValue = environment.get(TRUSTED_ORIGINS_ENV_VAR, baseUrl)
+    trustedOrigins = frozenset(
+        validate_base_url(value.strip())
+        for value in trustedValue.split(",")
+        if value.strip()
+    )
+    if not trustedOrigins:
+        raise RuntimeError(f"{TRUSTED_ORIGINS_ENV_VAR} cannot be empty.")
+
+    return LocalAccessConfig(
+        baseUrl=baseUrl,
+        allowedHost=allowedHost,
+        trustedOrigins=trustedOrigins,
+        secret=secret,
+    )
+
+
+def reset_local_access_config() -> None:
+    if hasattr(app.state, "localAccessConfig"):
+        delattr(app.state, "localAccessConfig")
+
+
+def local_access_config(targetApp: FastAPI) -> LocalAccessConfig:
+    config = getattr(targetApp.state, "localAccessConfig", None)
+    if config is None:
+        config = load_local_access_config()
+        targetApp.state.localAccessConfig = config
+    return config
+
+
+def request_header_values(request: Request, name: bytes) -> list[str]:
+    values = []
+    for headerName, headerValue in request.scope.get("headers", []):
+        if headerName.lower() != name:
+            continue
+        try:
+            values.append(headerValue.decode("ascii"))
+        except UnicodeDecodeError:
+            values.append("")
+    return values
+
+
+def security_error(statusCode: int, detail: dict[str, str]) -> JSONResponse:
+    return JSONResponse(
+        status_code=statusCode,
+        content={"detail": detail},
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+def is_api_path(path: str) -> bool:
+    return path == "/api" or path.startswith("/api/")
+
+
 @app.middleware("http")
-async def require_tos_acceptance(request: Request, call_next: Any) -> Response:
-    #guard every api route rather than the handful that talk to openrouter, so a new endpoint cant quietly skip the gate
+async def enforce_local_api_security(request: Request, call_next: Any) -> Response:
+    config = local_access_config(request.app)
+    hostValues = request_header_values(request, b"host")
+    if len(hostValues) != 1 or hostValues[0] != config.allowedHost:
+        return security_error(400, INVALID_REQUEST_HOST_DETAIL)
+
     path = request.url.path
-    if not path.startswith("/api/") or path in TOS_EXEMPT_PATHS:
+    if not is_api_path(path) or path in {HEALTH_PATH, BOOTSTRAP_PATH}:
+        return await call_next(request)
+
+    sessionSecret = request.cookies.get(SESSION_COOKIE_NAME, "")
+    if not hmac.compare_digest(sessionSecret, config.secret):
+        return security_error(401, API_AUTH_REQUIRED_DETAIL)
+
+    if request.method in MUTATION_METHODS:
+        originValues = request_header_values(request, b"origin")
+        if len(originValues) != 1 or originValues[0] not in config.trustedOrigins:
+            return security_error(403, INVALID_REQUEST_ORIGIN_DETAIL)
+
+        fetchSiteValues = request_header_values(request, b"sec-fetch-site")
+        if len(fetchSiteValues) > 1 or (
+            fetchSiteValues and fetchSiteValues[0].lower() != "same-origin"
+        ):
+            return security_error(403, INVALID_REQUEST_ORIGIN_DETAIL)
+
+    #guard every api route rather than the handful that talk to openrouter, so a new endpoint cant quietly skip the gate
+    if path in TOS_EXEMPT_PATHS:
         return await call_next(request)
 
     tos = load_tos()
@@ -106,6 +227,44 @@ async def require_tos_acceptance(request: Request, call_next: Any) -> Response:
         return JSONResponse(status_code=403, content={"detail": TOS_REQUIRED_DETAIL})
 
     return await call_next(request)
+
+
+@app.post(BOOTSTRAP_PATH, include_in_schema=False)
+async def bootstrap_local_session(request: Request) -> Response:
+    contentType = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    contentLength = request.headers.get("content-length", "")
+    try:
+        declaredLength = int(contentLength) if contentLength else 0
+    except ValueError:
+        declaredLength = 513
+
+    suppliedSecret = ""
+    if contentType == "application/x-www-form-urlencoded" and declaredLength <= 512:
+        body = await request.body()
+        if len(body) <= 512:
+            try:
+                fields = parse_qs(body.decode("ascii"), keep_blank_values=True)
+                secretsFound = fields.get("secret", [])
+                if len(secretsFound) == 1:
+                    suppliedSecret = secretsFound[0]
+            except (UnicodeDecodeError, ValueError):
+                suppliedSecret = ""
+
+    config = local_access_config(request.app)
+    if not hmac.compare_digest(suppliedSecret, config.secret):
+        return security_error(401, API_AUTH_REQUIRED_DETAIL)
+
+    response = RedirectResponse(url="/", status_code=303)
+    response.headers["Cache-Control"] = "no-store"
+    response.set_cookie(
+        SESSION_COOKIE_NAME,
+        config.secret,
+        httponly=True,
+        secure=False,
+        samesite="strict",
+        path="/api",
+    )
+    return response
 
 
 class FrontendStaticFiles(StaticFiles):
@@ -848,6 +1007,7 @@ def message_order_clause() -> str:
 
 @app.on_event("startup")
 def on_startup() -> None:
+    local_access_config(app)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     init_db()
     with get_db() as conn:
@@ -1305,7 +1465,6 @@ def health() -> dict[str, Any]:
     return {
         "ok": True,
         "version": APP_VERSION,
-        "has_key": bool(read_openrouter_key()),
     }
 
 

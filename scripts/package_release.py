@@ -19,6 +19,7 @@ requiredFiles = (
 )
 requiredAppFiles = (
     Path("backend/__init__.py"),
+    Path("backend/local_access.py"),
     Path("backend/main.py"),
     Path("dist/index.html"),
 )

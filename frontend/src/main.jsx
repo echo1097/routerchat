@@ -8875,9 +8875,11 @@ function Root() {
         status: "unavailable",
         tos: null,
         message:
-          error?.code === "tos_missing"
-            ? error.message
-            : "Could not reach the RouterChat backend to load the Terms of Service.",
+          error?.code === "api_auth_required"
+            ? "Open RouterChat through its launcher to authorize this browser."
+            : error?.code === "tos_missing"
+              ? error.message
+              : "Could not reach the RouterChat backend to load the Terms of Service.",
       });
     }
   }, []);

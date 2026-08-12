@@ -9,6 +9,7 @@ release/
 requirements.generated.lock
 __pycache__/
 .pytest_cache/
+.routerchat-run/
 .DS_Store
 bugs/
 mockup/

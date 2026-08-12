@@ -4,13 +4,15 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from scripts.package_release import buildReleasePackage
+from scripts.package_release import buildReleasePackage, readVersionMetadata
 
 
 class ReleasePackageTest(unittest.TestCase):
     def test_package_has_only_the_approved_application_layout(self):
+        releaseTag = readVersionMetadata()["releaseTag"]
+
         with tempfile.TemporaryDirectory() as tempDir:
-            zipPath, checksumPath = buildReleasePackage(Path(tempDir), "v1.0.2")
+            zipPath, checksumPath = buildReleasePackage(Path(tempDir), f"v{releaseTag}")
 
             with zipfile.ZipFile(zipPath) as archive:
                 names = set(archive.namelist())
@@ -54,12 +56,14 @@ class ReleasePackageTest(unittest.TestCase):
             )
 
     def test_package_output_is_deterministic(self):
+        releaseTag = readVersionMetadata()["releaseTag"]
+
         with (
             tempfile.TemporaryDirectory() as firstDir,
             tempfile.TemporaryDirectory() as secondDir,
         ):
-            firstZip, _ = buildReleasePackage(Path(firstDir), "1.0.2")
-            secondZip, _ = buildReleasePackage(Path(secondDir), "1.0.2")
+            firstZip, _ = buildReleasePackage(Path(firstDir), releaseTag)
+            secondZip, _ = buildReleasePackage(Path(secondDir), releaseTag)
 
             self.assertEqual(firstZip.read_bytes(), secondZip.read_bytes())
 

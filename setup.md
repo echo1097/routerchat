@@ -24,7 +24,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://echo1097.git
 
 When installation finishes, RouterChat opens at `http://127.0.0.1:8000`. Open settings, choose **API**, paste your key, and save it.
 
-## Start, stop, update, and repair
+## Start, stop, update, repair, and uninstall
 
 - **Start on macOS:** double-click `Start RouterChat.command` in the RouterChat installation folder.
 - **Start on Windows:** open **RouterChat** from the Start Menu or double-click `Start RouterChat.cmd`.
@@ -32,6 +32,10 @@ When installation finishes, RouterChat opens at `http://127.0.0.1:8000`. Open se
 - **Update on macOS:** double-click `Update RouterChat.command`.
 - **Update on Windows:** open **Update RouterChat** from the Start Menu or double-click `Update RouterChat.cmd`.
 - **Repair:** rerun the original one-click installer command. Repair preserves `user-data`.
+- **Uninstall on macOS:** double-click `Uninstall RouterChat.command` in `~/Applications/RouterChat`.
+- **Uninstall on Windows:** open **Uninstall RouterChat** from the Start Menu.
+
+The uninstaller asks whether to save your database first. If you choose yes, it places `routerchat.sqlite3` and `README-userdata.txt` in a timestamped folder under Downloads before removing RouterChat.
 
 The launcher opens the browser only after RouterChat is healthy. If port 8000 belongs to another program, it reports the conflict and does not stop that program.
 

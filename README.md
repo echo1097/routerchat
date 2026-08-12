@@ -30,6 +30,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://echo1097.git
 
 See the [setup guide](setup.md) for starting, updating, repairing, data locations, and manual developer installation. For support, see [SUPPORT.md](SUPPORT.md).
 
+To remove RouterChat, run **Uninstall RouterChat** from `~/Applications/RouterChat` on macOS or the Start Menu on Windows. The uninstaller can save your database to Downloads before removing the app.
+
 > [!WARNING]
 > Tested locally on macOS Apple Silicon and on Windows 11 x64 using a sandbox VM. macOS Intel has not yet been tested.
 

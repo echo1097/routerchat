@@ -3,11 +3,13 @@ import ReactMarkdown from "react-markdown";
 import { FileWarning, Loader2 } from "lucide-react";
 
 import { cx, CONTROL_MOTION } from "./uiShared.js";
+import { MARKDOWN_IMAGE_COMPONENT } from "./markdownImage.jsx";
 
 //fractional scroll heights and browser zoom lie to you by a pixel or two, so dont demand an exact landing
 const SCROLL_TOLERANCE = 4;
 
 const TOS_MARKDOWN_COMPONENTS = {
+  ...MARKDOWN_IMAGE_COMPONENT,
   h1: ({ node, ...props }) => (
     <h1 className="mb-2 mt-8 text-xl font-semibold text-ink first:mt-0" {...props} />
   ),

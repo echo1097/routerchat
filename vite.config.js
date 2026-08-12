@@ -18,6 +18,9 @@ export default defineConfig({
     outDir: "../dist",
     emptyOutDir: true,
   },
+  esbuild: {
+    jsx: "automatic",
+  },
   test: {
     dir: resolve(configDir, "tests/frontend"),
   },

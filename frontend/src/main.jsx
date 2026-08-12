@@ -13,6 +13,8 @@ import React, {
 import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
 import ReactMarkdown from "react-markdown";
+
+import { MARKDOWN_IMAGE_COMPONENT } from "./markdownImage.jsx";
 import {
   ArrowLeft,
   Check,
@@ -1835,6 +1837,7 @@ const MarkdownContent = memo(function MarkdownContent({ children }) {
   return (
     <ReactMarkdown
       components={{
+        ...MARKDOWN_IMAGE_COMPONENT,
         p: ({ node, ...props }) => <p className="mb-4 text-pretty last:mb-0" {...props} />,
         a: ({ node, ...props }) => (
           <a

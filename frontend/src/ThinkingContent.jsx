@@ -1,5 +1,7 @@
 import ReactMarkdown from "react-markdown";
 
+import { MARKDOWN_IMAGE_COMPONENT } from "./markdownImage.jsx";
+
 function formatThinkingMarkdown(value) {
   return (value || "")
     .replace(/([^\n])\s+(\d+\.\s+)/g, "$1\n$2")
@@ -27,6 +29,7 @@ function ThinkingSubheading({ node, ...props }) {
 // Module scope on purpose: inline components would be new element types on every render, so
 // streamed reasoning would tear down and rebuild this whole subtree on each token.
 const THINKING_MARKDOWN_COMPONENTS = {
+  ...MARKDOWN_IMAGE_COMPONENT,
   p: ({ node, ...props }) => <p className="mb-3 text-pretty last:mb-0" {...props} />,
   h1: ThinkingHeading,
   h2: ThinkingHeading,

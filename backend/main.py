@@ -8,6 +8,7 @@ import re
 import sqlite3
 import tempfile
 import uuid
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, AsyncIterator, Literal
@@ -27,10 +28,9 @@ from backend.writing import WritingDeps, create_writing_router
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = ROOT_DIR / "dist"
-DATA_DIR = ROOT_DIR / "data"
-DB_PATH = DATA_DIR / "routerchat.sqlite3"
-ENV_PATH = ROOT_DIR / ".env"
 TOS_PATH = ROOT_DIR / "TOS.md"
+VERSION_PATH = ROOT_DIR / "version.json"
+USER_DATA_ENV_VAR = "ROUTERCHAT_USER_DATA_DIR"
 TOS_DATE_PATTERN = re.compile(r"^\*\*Last updated:\s*(.+?)\s*\*\*$", re.MULTILINE)
 TOS_EXEMPT_PATHS = {"/api/health", "/api/tos", "/api/tos/accept"}
 TOS_MISSING_DETAIL = {
@@ -47,9 +47,48 @@ OPENROUTER_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=10
 DEFAULT_MODEL_ID = "anthropic/claude-3.5-sonnet"
 ReasoningEffort = Literal["low", "medium", "high", "xhigh"]
 
+
+def resolve_user_data_paths(
+    environment: Mapping[str, str] | None = None,
+) -> tuple[Path, Path, Path]:
+    environment = os.environ if environment is None else environment
+
+    if USER_DATA_ENV_VAR not in environment:
+        dataDir = ROOT_DIR / "data"
+        return dataDir, dataDir / "routerchat.sqlite3", ROOT_DIR / ".env"
+
+    configuredPath = environment[USER_DATA_ENV_VAR]
+    if not configuredPath.strip():
+        raise RuntimeError(f"{USER_DATA_ENV_VAR} cannot be empty.")
+
+    userDataDir = Path(configuredPath).expanduser().resolve(strict=False)
+    return userDataDir, userDataDir / "routerchat.sqlite3", userDataDir / ".env"
+
+
+def load_version_metadata() -> dict[str, str]:
+    try:
+        metadata = json.loads(VERSION_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError("version.json is missing or invalid.") from exc
+
+    requiredFields = ("version", "releaseTag", "minimumUpdaterVersion")
+    missingField = any(
+        not isinstance(metadata.get(field), str) or not metadata[field].strip()
+        for field in requiredFields
+    )
+    if missingField:
+        raise RuntimeError("version.json is missing required version fields.")
+
+    return {field: metadata[field].strip() for field in requiredFields}
+
+
+DATA_DIR, DB_PATH, ENV_PATH = resolve_user_data_paths()
+VERSION_METADATA = load_version_metadata()
+APP_VERSION = VERSION_METADATA["version"]
+
 load_dotenv(ENV_PATH)
 
-app = FastAPI(title="RouterChat", version="0.1.0")
+app = FastAPI(title="RouterChat", version=APP_VERSION)
 
 
 @app.middleware("http")
@@ -261,7 +300,7 @@ def load_tos() -> dict[str, Any] | None:
 
 
 def get_db() -> sqlite3.Connection:
-    DATA_DIR.mkdir(exist_ok=True)
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
@@ -809,6 +848,7 @@ def message_order_clause() -> str:
 
 @app.on_event("startup")
 def on_startup() -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
     init_db()
     with get_db() as conn:
         conn.execute(
@@ -855,6 +895,7 @@ def read_openrouter_key() -> str | None:
 
 
 def write_openrouter_key(api_key: str) -> None:
+    ENV_PATH.parent.mkdir(parents=True, exist_ok=True)
     lines: list[str] = []
     replaced = False
     if ENV_PATH.exists():
@@ -871,11 +912,18 @@ def write_openrouter_key(api_key: str) -> None:
         next_lines.append(f"OPENROUTER_API_KEY={api_key}")
 
     with tempfile.NamedTemporaryFile(
-        "w", encoding="utf-8", dir=ROOT_DIR, delete=False
+        "w", encoding="utf-8", dir=ENV_PATH.parent, delete=False
     ) as handle:
         handle.write("\n".join(next_lines).rstrip() + "\n")
         temp_name = handle.name
-    Path(temp_name).replace(ENV_PATH)
+
+    tempPath = Path(temp_name)
+    if os.name == "posix":
+        tempPath.chmod(0o600)
+    tempPath.replace(ENV_PATH)
+    if os.name == "posix":
+        ENV_PATH.chmod(0o600)
+
     os.environ["OPENROUTER_API_KEY"] = api_key
 
 
@@ -1254,7 +1302,11 @@ def chat_title_from_message(message: str) -> str:
 
 @app.get("/api/health")
 def health() -> dict[str, Any]:
-    return {"ok": True, "has_key": bool(read_openrouter_key())}
+    return {
+        "ok": True,
+        "version": APP_VERSION,
+        "has_key": bool(read_openrouter_key()),
+    }
 
 
 @app.get("/api/tos")

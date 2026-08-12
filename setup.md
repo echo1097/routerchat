@@ -1,199 +1,91 @@
 # RouterChat Setup
 
-RouterChat runs on your own computer. Nothing is hosted for you, so you have to install two free programs, download the project, and start it. It takes about 15 minutes the first time.
+RouterChat runs locally on your computer and requires an [OpenRouter API key](https://openrouter.ai/keys). RouterChat itself is free; model usage may cost money.
 
-You do not need to know how to code. You will copy commands into a black text window and press Enter.
+## Install RouterChat
 
-**Stuck?** Download [assistant.md](assistant.md) and upload it to ChatGPT or Claude. It turns the AI into a RouterChat setup helper.
+The one-click installer downloads the open-source RouterChat package, verifies it, and creates a private Python runtime. It does not require administrator access or a global Python, Node.js, npm, or Git installation.
 
----
-
-## Before you start
-
-Three things:
-
-1. **Python**: free, runs the part of RouterChat that talks to the AI models.
-2. **Node.js**: free, builds the part you look at in your browser. It comes with a helper called **npm**.
-3. **An OpenRouter API key**: this is the part that actually costs money. Get one at [openrouter.ai/keys](https://openrouter.ai/keys). RouterChat is free; the AI models are not.
-
-### The terminal
-
-The "terminal" is a window where you type commands instead of clicking buttons.
-
-- **macOS:** it's called **Terminal**. Press `Cmd + Space`, type `Terminal`, press Enter.
-- **Windows:** it's called **PowerShell**. Press the Start button, type `PowerShell`, press Enter.
-
-Rules for the whole guide:
-
-- Run one line at a time. Type or paste it, press Enter, wait for it to finish.
-- If a command fails, **stop**. Fix that error before moving on. Skipping ahead makes things worse.
-- Some commands print a wall of text. That is normal. Only errors matter.
-
----
-
-## Step 1: Install Python
-
-First check if you already have it.
-
-**macOS:**
+**macOS (Apple Silicon or Intel):**
 
 ```sh
-python3 --version
+curl -fsSL https://echo1097.github.io/get-routerchat/install.sh | sh
 ```
 
-**Windows:**
+[Inspect the macOS installer before running it.](https://github.com/echo1097/get-routerchat/blob/main/install.sh)
+
+**Windows x64:**
 
 ```powershell
-python --version
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://echo1097.github.io/get-routerchat/install.ps1 | iex"
 ```
 
-If it prints `Python 3.10` or higher (like `Python 3.13.1`), skip to Step 2.
+[Inspect the Windows installer before running it.](https://github.com/echo1097/get-routerchat/blob/main/install.ps1)
 
-If it says "command not found" or shows an older version:
+When installation finishes, RouterChat opens at `http://127.0.0.1:8000`. Open settings, choose **API**, paste your key, and save it.
 
-1. Go to [python.org/downloads](https://www.python.org/downloads/).
-2. Download the big yellow "Download Python" button.
-3. Open the downloaded file.
-4. **Windows only:** on the first screen, check the box that says **Add python.exe to PATH**. This is easy to miss and everything breaks without it.
-5. Click through the installer.
-6. **Close your terminal window and open a new one.** New programs only show up in fresh windows.
-7. Run the version command again to confirm.
+## Start, stop, update, and repair
 
----
+- **Start on macOS:** double-click `Start RouterChat.command` in the RouterChat installation folder.
+- **Start on Windows:** open **RouterChat** from the Start Menu or double-click `Start RouterChat.cmd`.
+- **Stop:** close the launcher window. RouterChat stops with it.
+- **Update on macOS:** double-click `Update RouterChat.command`.
+- **Update on Windows:** open **Update RouterChat** from the Start Menu or double-click `Update RouterChat.cmd`.
+- **Repair:** rerun the original one-click installer command. Repair preserves `user-data`.
 
-## Step 2: Install Node.js
+The launcher opens the browser only after RouterChat is healthy. If port 8000 belongs to another program, it reports the conflict and does not stop that program.
 
-Check if you already have it:
+## Installed files and private data
 
-```sh
-node --version
-npm --version
+On macOS, RouterChat lives at:
+
+```text
+~/Library/Application Support/RouterChat/
 ```
 
-RouterChat needs Node **20.19.0 or newer**, or **22.12.0 or newer**. If you have that, skip to Step 3.
+On Windows, RouterChat lives at:
 
-Otherwise:
+```text
+%LOCALAPPDATA%\RouterChat\
+```
 
-1. Go to [nodejs.org/en/download](https://nodejs.org/en/download).
-2. Download the **LTS** installer for your system.
-   - **Windows:** grab the `.msi` installer.
-   - **macOS:** grab the `.pkg` installer. If it asks for your chip type, pick **ARM64** for Apple Silicon (M1/M2/M3/M4) or **x64** for Intel. Not sure? Apple menu → About This Mac → look at the chip line.
-3. Run the installer and keep all the default options.
-4. **Close your terminal and open a new one.**
-5. Run `node --version` and `npm --version` again to confirm.
+The important child folders are:
 
----
+- `app`: replaceable RouterChat application files.
+- `runtime`: RouterChat's private Python and virtual environment.
+- `user-data/.env`: your OpenRouter API key. Never share this file.
+- `user-data/routerchat.sqlite3`: chats, stories, settings, and history.
+- `logs`: sanitized launcher, installer, and updater logs.
+- `backups`: recent update backups used for rollback.
 
-## Step 3: Download RouterChat
+Updates and repairs replace `app` but preserve `user-data`. See [SUPPORT.md](SUPPORT.md) before sharing logs or version information.
 
-**Best option (makes updating easy):** paste this into your terminal.
+## Manual installation for developers
+
+The manual path is for contributors and advanced users who want a Git clone. It keeps the existing repo-local `.env` and `data/routerchat.sqlite3` behavior.
+
+Install Python 3.13, Node.js 22, npm, and Git, then run:
 
 ```sh
 git clone https://github.com/echo1097/routerchat.git
 cd routerchat
-```
-
-If `git` is not installed, macOS will offer to install it, so say yes and run the command again. Windows users can get it from [git-scm.com](https://git-scm.com/downloads).
-
-Later, updating is one command: `git pull`.
-
-**Simpler option (harder to update):** go to the [GitHub page](https://github.com/echo1097/routerchat), click the green **Code** button, click **Download ZIP**, and unzip it somewhere you can find again, like your Desktop.
-
-### Point your terminal at the folder
-
-Your terminal needs to be "inside" the routerchat folder before the next step. If you used `git clone` above, you already are, so skip ahead.
-
-**macOS:** right-click the `routerchat` folder in Finder and choose **New Terminal at Folder**. If you don't see that option, open Terminal, type `cd ` (with a space), then drag the folder into the window and press Enter.
-
-**Windows:** open the `routerchat` folder in File Explorer, click the address bar at the top, type `powershell`, and press Enter.
-
-To confirm it worked, run `ls` (macOS) or `dir` (Windows). You should see files like `requirements.txt` and `package.json`.
-
----
-
-## Step 4: Set it up and start it
-
-Copy these one line at a time. The first two commands make a private sandbox for RouterChat's Python parts so it doesn't mess with the rest of your computer.
-
-**macOS:**
-
-```sh
 python3 -m venv .venv
 source .venv/bin/activate
-python3 -m pip install --upgrade pip
-python3 -m pip install -r requirements.txt
-npm install
+python3 -m pip install -r requirements.lock
+npm ci
 npm run build
 python3 -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
 ```
 
-**Windows:**
+On Windows, activate the environment with `.\.venv\Scripts\Activate.ps1` and use `python` in place of `python3`.
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-npm install
-npm run build
-python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
-```
-
-> **Windows: if `Activate.ps1` gets blocked** with a message about execution policies, run this once, then run the activate line again:
->
-> ```powershell
-> Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
-> ```
-
-After the last command, the terminal will look frozen and print something about "Uvicorn running". That means it worked. It is supposed to sit there.
-
-Open your browser and go to:
-
-```txt
-http://127.0.0.1:8000
-```
-
-**Leave the terminal window open.** Closing it shuts RouterChat off.
-
----
-
-## Step 5: Add your OpenRouter key
-
-1. In RouterChat, click the **model name** next to the send button. That opens settings.
-2. Go to the **API** page.
-3. Paste your OpenRouter key and save.
-
-RouterChat checks the key with OpenRouter before saving it to a file called `.env`. Keep that file private and never paste your key into screenshots, GitHub issues, or chats.
-
-You're done. Type a message and press Enter.
-
----
-
-## Starting it again tomorrow
-
-You never have to redo the install. Open your terminal in the `routerchat` folder and run two lines.
-
-**macOS:**
+For later manual starts, activate `.venv`, run the Uvicorn command again, and open `http://127.0.0.1:8000`. Stop it with `Ctrl + C`. After `git pull`, synchronize dependencies and rebuild:
 
 ```sh
-source .venv/bin/activate
-python3 -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
+python3 -m pip install -r requirements.lock
+npm ci
+npm run build
 ```
-
-**Windows:**
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
-```
-
-Then open `http://127.0.0.1:8000` again.
-
-If you updated the project with `git pull`, also run `npm install` and `npm run build` once before starting.
-
-## Stopping it
-
-Click the terminal window and press `Ctrl + C`. The page will stop loading, which is expected.
 
 ---
 
@@ -238,31 +130,25 @@ Clicking the model name opens settings, which has six pages:
 
 ## If something goes wrong
 
-**"Directory 'dist' does not exist"**: you skipped the build step. Run `npm run build`, then start the server again.
+**"frontend build missing"**: a manual installation skipped the build step. Run `npm run build`, then start the server again.
 
-**npm complains about "engines" or your Node version**: your Node is too old. Redo Step 2 with a newer installer, then close and reopen your terminal.
+**npm complains about "engines" or your Node version**: this only applies to manual installations. Install Node.js 22 LTS, then close and reopen your terminal.
 
 **"python is not recognized" / "command not found: python"**: Python either isn't installed or wasn't added to PATH. On Windows, reinstall it and check the **Add python.exe to PATH** box. On macOS, use `python3` instead of `python`.
 
-**"Port 8000 is already in use"**: something else is using that door. Either restart your computer, or start RouterChat on a different port by changing `--port 8000` to `--port 8001` and opening `http://127.0.0.1:8001` instead.
+**"Port 8000 is already in use"**: close the other program or RouterChat instance using port 8000, then start RouterChat again. The packaged launcher will not kill an unidentified process.
 
 **Models won't load**: your key is missing or invalid. Re-save it on the API settings page.
 
-**Your chats vanished**: they live in `data/routerchat.sqlite3`. If that file is gone, they're gone. Copy it somewhere safe if your history matters to you.
+**Your chats vanished**: packaged data is in `user-data/routerchat.sqlite3`; manual Git clone data is in `data/routerchat.sqlite3`. Do not delete or share the database.
 
-**Everything is broken and you don't know why**: download [assistant.md](assistant.md), upload it to an AI, and paste in the exact error text.
+**Everything is broken and you don't know why**: rerun the installer to repair packaged files. If that fails, follow [SUPPORT.md](SUPPORT.md) and share only sanitized logs.
 
 ---
 
-## Where your stuff lives
+## Manual Git clone data
 
-Inside the `routerchat` folder:
-
-- `.env`: your API key. Private.
-- `data/routerchat.sqlite3`: every chat, message, and setting. **This is the one worth backing up.**
-- `dist/`, `.venv/`, `node_modules/`: generated files. Safe to ignore; they rebuild themselves.
-
-None of this is uploaded anywhere or committed to GitHub.
+Inside a manually cloned `routerchat` folder, `.env` contains the key and `data/routerchat.sqlite3` contains local app data. `dist`, `.venv`, and `node_modules` are generated. None of these private files are committed to GitHub.
 
 ---
 

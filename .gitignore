@@ -5,6 +5,8 @@ node_modules/
 dist/
 playwright-report/
 test-results/
+release/
+requirements.generated.lock
 __pycache__/
 .pytest_cache/
 .DS_Store

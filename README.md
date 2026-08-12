@@ -1,4 +1,4 @@
-# RouterChat 1.0.0
+# RouterChat 1.0.1
 A 100% free local OpenRouter chat interface. Strictly BYOK. 
 
 > [!IMPORTANT]
@@ -14,11 +14,25 @@ RouterChat is licensed under the [Apache License 2.0](LICENSE).
 
 AI was used to support development and documentation for this project. All code and documentation were reviewed by myself before being published.
 
-## How to set up
+## Install RouterChat
 
-Read [setup.md](setup.md)
+RouterChat runs locally and only needs an [OpenRouter API key](https://openrouter.ai/keys). The installer keeps its Python runtime private, so you do not need to install Python, Node.js, npm, or Git.
 
-For extra support, upload [assistant.md](assistant.md) to your favorite AI to turn it into a support bot to help you set up and troubleshoot!
+You can inspect the open-source [macOS installer](https://github.com/echo1097/get-routerchat/blob/main/install.sh) or [Windows installer](https://github.com/echo1097/get-routerchat/blob/main/install.ps1) before running it.
+
+**macOS (Apple Silicon or Intel):**
+
+```sh
+curl -fsSL https://echo1097.github.io/get-routerchat/install.sh | sh
+```
+
+**Windows x64:**
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://echo1097.github.io/get-routerchat/install.ps1 | iex"
+```
+
+See the [setup guide](setup.md) for starting, updating, repairing, data locations, and manual developer installation. For support, see [SUPPORT.md](SUPPORT.md).
 
 ## Features
 
@@ -46,8 +60,9 @@ For extra support, upload [assistant.md](assistant.md) to your favorite AI to tu
 - To report a bug open an issue and provide as much context and information as you can so I can reproduce and fix it. 
 - AI slop pull requests will not be merged. If you are using AI to assist your development, clean up and review the code manually and be transparent in your usage of AI.
 
-## Notes
-- Chats and cached model metadata are stored in `data/routerchat.sqlite3`.
+## Local data
+
+Packaged installations keep the OpenRouter key and database outside the replaceable application directory. Git clone installations continue to use `.env` and `data/routerchat.sqlite3` inside the repository. RouterChat does not upload your chats or key anywhere.
 
 ## Media
 UI

@@ -70,6 +70,22 @@ On Windows:
 %LOCALAPPDATA%\RouterChat\
 ```
 
+### Opening that folder
+
+Both folders are normally hidden, so typing the path in is easier than clicking your way there.
+
+**macOS.** In Finder, press **Shift + Command + G**, or use the menu bar: **Go > Go to Folder**. Paste the path below and press Enter.
+
+```text
+~/Library/Application Support/RouterChat
+```
+
+**Windows.** Press **Windows + R**, or open File Explorer and click the address bar at the top. Paste the path below and press Enter.
+
+```text
+%LOCALAPPDATA%\RouterChat
+```
+
 Inside that folder:
 
 | Folder | What's in it |

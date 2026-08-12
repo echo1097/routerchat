@@ -193,10 +193,10 @@ source .venv/bin/activate
 
 **4. Install the backend packages.**
 
-`requirements.lock` pins exact versions, so you get the same set that was tested.
+`requirements.lock` pins exact versions and artifact hashes, so you get the same files that were tested.
 
 ```sh
-python3 -m pip install -r requirements.lock
+python3 -m pip install --require-hashes -r requirements.lock
 ```
 
 **5. Install the frontend packages.**
@@ -276,7 +276,7 @@ To stop the server, press **Ctrl + C** in the terminal running it.
 Dependencies and the built frontend can go stale, so refresh them:
 
 ```sh
-python3 -m pip install -r requirements.lock
+python3 -m pip install --require-hashes -r requirements.lock
 npm ci
 npm run build
 ```

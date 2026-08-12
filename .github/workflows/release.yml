@@ -45,15 +45,15 @@ jobs:
 
       - name: Confirm the dependency lock is current
         run: |
-          uv pip compile --universal --python-version 3.13 \
-            --custom-compile-command "uv pip compile --universal --python-version 3.13 requirements.txt -o requirements.lock" \
-            requirements.txt -o requirements.generated.lock
-          diff --unified requirements.lock requirements.generated.lock
+          uv pip compile --universal --python-version 3.13 --generate-hashes \
+            --custom-compile-command "uv pip compile --universal --python-version 3.13 --generate-hashes requirements.txt -o requirements.lock" \
+            requirements.txt -o requirements.lock
+          git diff --exit-code -- requirements.lock
 
       - name: Create the test environment
         run: |
           python -m venv .venv
-          uv pip sync --python .venv/bin/python requirements.lock
+          uv pip sync --require-hashes --python .venv/bin/python requirements.lock
 
       - name: Test backend and package rules
         run: .venv/bin/python -m unittest discover -s tests -p "test_*.py"

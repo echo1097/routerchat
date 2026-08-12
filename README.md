@@ -10,10 +10,6 @@ RouterChat is provided as-is. You are responsible for how you use it, including 
 
 RouterChat is licensed under the [Apache License 2.0](LICENSE).
 
-## AI usage disclaimer
-
-AI was used to support development and documentation for this project. All code and documentation were reviewed by myself before being published.
-
 ## Install RouterChat
 
 RouterChat runs locally and only needs an [OpenRouter API key](https://openrouter.ai/keys). The installer keeps its Python runtime private, so you do not need to install Python, Node.js, npm, or Git.
@@ -33,6 +29,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://echo1097.git
 ```
 
 See the [setup guide](setup.md) for starting, updating, repairing, data locations, and manual developer installation. For support, see [SUPPORT.md](SUPPORT.md).
+
+> [!WARNING]
+> Tested locally on macOS Apple Silicon and on Windows 11 x64 using a sandbox VM. macOS Intel has not yet been tested.
 
 ## Features
 
@@ -55,6 +54,10 @@ See the [setup guide](setup.md) for starting, updating, repairing, data location
 - Memory
     - Chat mode
     - Write mode (DONE)
+
+## AI usage disclaimer
+
+AI was used to support development and documentation for this project. All code and documentation were reviewed by myself before being published.
 
 ## Bug reporting and contributing
 - To report a bug open an issue and provide as much context and information as you can so I can reproduce and fix it. 

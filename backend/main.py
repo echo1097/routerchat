@@ -315,6 +315,15 @@ class ChatCreateRequest(BaseModel):
     reasoning_effort: ReasoningEffort = "medium"
     nitro_mode: bool = False
     temporary: bool = False
+    folder_id: str | None = None
+
+
+class FolderCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+
+class FolderPatchRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
 
 
 class ChatPatchRequest(BaseModel):
@@ -328,6 +337,7 @@ class ChatPatchRequest(BaseModel):
     thinking_enabled: bool | None = None
     reasoning_effort: ReasoningEffort | None = None
     pinned: bool | None = None
+    folder_id: str | None = None
 
 
 class AppSettingsPatchRequest(BaseModel):
@@ -481,6 +491,13 @@ def init_db() -> None:
               reasoning_effort TEXT NOT NULL DEFAULT 'medium',
               temporary INTEGER NOT NULL DEFAULT 0,
               pinned INTEGER NOT NULL DEFAULT 0,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS chat_folders (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
             );
@@ -717,6 +734,7 @@ def init_db() -> None:
             ON tos_acceptances(tos_hash);
             """
         )
+        ensure_chat_folder_column(conn)
         ensure_message_order_column(conn)
         ensure_message_usage_columns(conn)
         ensure_chat_settings_columns(conn)
@@ -744,6 +762,18 @@ def ensure_chat_settings_columns(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE chats ADD COLUMN temporary INTEGER NOT NULL DEFAULT 0")
     if "pinned" not in existing_columns:
         conn.execute("ALTER TABLE chats ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0")
+
+
+def ensure_chat_folder_column(conn: sqlite3.Connection) -> None:
+    existing_columns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(chats)").fetchall()
+    }
+    if "folder_id" not in existing_columns:
+        conn.execute("ALTER TABLE chats ADD COLUMN folder_id TEXT")
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_chats_folder ON chats(folder_id, updated_at DESC)"
+    )
 
 
 def ensure_writing_thread_settings_columns(conn: sqlite3.Connection) -> None:
@@ -1348,6 +1378,16 @@ def row_to_chat(row: sqlite3.Row) -> dict[str, Any]:
         "reasoning_effort": row["reasoning_effort"],
         "temporary": bool(row["temporary"]),
         "pinned": bool(row["pinned"]),
+        "folder_id": row["folder_id"] if "folder_id" in row.keys() else None,
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def row_to_folder(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "id": row["id"],
+        "name": row["name"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
@@ -1571,6 +1611,112 @@ async def get_models(response: Response) -> dict[str, Any]:
         raise
 
 
+def folder_or_404(conn: sqlite3.Connection, folder_id: str) -> sqlite3.Row:
+    folder = conn.execute(
+        "SELECT * FROM chat_folders WHERE id = ?", (folder_id,)
+    ).fetchone()
+    if not folder:
+        raise HTTPException(status_code=404, detail="Folder not found.")
+    return folder
+
+
+@app.get("/api/folders")
+def list_folders() -> dict[str, Any]:
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM chat_folders ORDER BY created_at ASC"
+        ).fetchall()
+        counts = conn.execute(
+            """
+            SELECT folder_id, COUNT(*) AS chat_count FROM chats
+            WHERE temporary = 0 AND folder_id IS NOT NULL
+            GROUP BY folder_id
+            """
+        ).fetchall()
+
+    chat_counts = {row["folder_id"]: row["chat_count"] for row in counts}
+    folders = []
+    for row in rows:
+        folder = row_to_folder(row)
+        folder["chat_count"] = chat_counts.get(folder["id"], 0)
+        folders.append(folder)
+    return {"folders": folders}
+
+
+@app.post("/api/folders")
+def create_folder(payload: FolderCreateRequest) -> dict[str, Any]:
+    now = utc_now()
+    folder_id = str(uuid.uuid4())
+    with get_db() as conn:
+        conn.execute(
+            """
+            INSERT INTO chat_folders (id, name, created_at, updated_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (folder_id, payload.name.strip(), now, now),
+        )
+        row = conn.execute(
+            "SELECT * FROM chat_folders WHERE id = ?", (folder_id,)
+        ).fetchone()
+
+    folder = row_to_folder(row)
+    folder["chat_count"] = 0
+    return {"folder": folder}
+
+
+@app.patch("/api/folders/{folder_id}")
+def update_folder(folder_id: str, payload: FolderPatchRequest) -> dict[str, Any]:
+    updates = patch_updates(payload)
+    with get_db() as conn:
+        folder_or_404(conn, folder_id)
+        if updates:
+            if "name" in updates:
+                updates["name"] = updates["name"].strip()
+
+            assignments = [f"{key} = ?" for key in updates]
+            values = list(updates.values())
+            assignments.append("updated_at = ?")
+            values.append(utc_now())
+            values.append(folder_id)
+            conn.execute(
+                f"UPDATE chat_folders SET {', '.join(assignments)} WHERE id = ?", values
+            )
+
+        row = conn.execute(
+            "SELECT * FROM chat_folders WHERE id = ?", (folder_id,)
+        ).fetchone()
+        count = conn.execute(
+            "SELECT COUNT(*) AS chat_count FROM chats WHERE folder_id = ? AND temporary = 0",
+            (folder_id,),
+        ).fetchone()
+
+    folder = row_to_folder(row)
+    folder["chat_count"] = count["chat_count"]
+    return {"folder": folder}
+
+
+@app.delete("/api/folders/{folder_id}")
+def delete_folder(folder_id: str, delete_chats: bool = False) -> dict[str, Any]:
+    with get_db() as conn:
+        folder_or_404(conn, folder_id)
+        if delete_chats:
+            chat_ids = [
+                row["id"]
+                for row in conn.execute(
+                    "SELECT id FROM chats WHERE folder_id = ?", (folder_id,)
+                ).fetchall()
+            ]
+            for chat_id in chat_ids:
+                conn.execute("DELETE FROM messages WHERE chat_id = ?", (chat_id,))
+                conn.execute("DELETE FROM chats WHERE id = ?", (chat_id,))
+        else:
+            conn.execute(
+                "UPDATE chats SET folder_id = NULL WHERE folder_id = ?", (folder_id,)
+            )
+        conn.execute("DELETE FROM chat_folders WHERE id = ?", (folder_id,))
+    return {"ok": True}
+
+
 @app.get("/api/chats")
 def list_chats() -> dict[str, Any]:
     with get_db() as conn:
@@ -1589,14 +1735,17 @@ def create_chat(payload: ChatCreateRequest) -> dict[str, Any]:
     now = utc_now()
     chat_id = str(uuid.uuid4())
     model = payload.model or default_model_id()
+    folder_id = (payload.folder_id or "").strip() or None
     with get_db() as conn:
+        if folder_id:
+            folder_or_404(conn, folder_id)
         conn.execute(
             """
             INSERT INTO chats (
               id, title, model, system_prompt, temperature, max_tokens,
-              thinking_enabled, reasoning_effort, temporary, created_at, updated_at
+              thinking_enabled, reasoning_effort, temporary, folder_id, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 chat_id,
@@ -1608,6 +1757,7 @@ def create_chat(payload: ChatCreateRequest) -> dict[str, Any]:
                 int(payload.thinking_enabled),
                 payload.reasoning_effort,
                 int(payload.temporary),
+                folder_id,
                 now,
                 now,
             ),
@@ -1778,6 +1928,12 @@ def update_chat(chat_id: str, payload: ChatPatchRequest) -> dict[str, Any]:
                 status_code=409,
                 detail=f"This chat is locked to {chat['model']}. Start a new chat to use another model.",
             )
+        if "folder_id" in updates:
+            nextFolderId = (updates["folder_id"] or "").strip() or None
+            if nextFolderId:
+                folder_or_404(conn, nextFolderId)
+            updates["folder_id"] = nextFolderId
+
         for key, value in updates.items():
             if key in {"thinking_enabled", "pinned"}:
                 value = int(bool(value))

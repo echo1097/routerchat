@@ -24,7 +24,6 @@ import {
   EyeOff,
   Menu,
   MessageSquarePlus,
-  PanelLeftClose,
   PanelLeftOpen,
   Pencil,
   Plus,
@@ -79,6 +78,7 @@ import "./styles.css";
 const DEFAULT_MODEL = "anthropic/claude-3.5-sonnet";
 const APP_VERSION = packageInfo.version;
 const APP_SETTINGS_STORAGE_KEY = "routerchat.appSettings";
+const CHAT_FOLDERS_STORAGE_KEY = "routerchat.chatFolders";
 const OPENING_MESSAGE_STORAGE_KEY = "routerchat.lastOpeningMessage";
 const PENDING_CHAPTER_DRAFTS_STORAGE_KEY = "routerchat.pendingChapterDrafts";
 
@@ -685,6 +685,20 @@ function writeLocalAppSettings(next) {
   window.localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify(merged));
 }
 
+function readLocalChatFolders() {
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(CHAT_FOLDERS_STORAGE_KEY) || "[]");
+    if (!Array.isArray(stored)) return [];
+    return stored.filter((folder) => folder && folder.id && typeof folder.name === "string");
+  } catch {
+    return [];
+  }
+}
+
+function clearLocalChatFolders() {
+  window.localStorage.removeItem(CHAT_FOLDERS_STORAGE_KEY);
+}
+
 function IconButton({ label, children, className, ...props }) {
   return (
     <button
@@ -1003,7 +1017,18 @@ function OverflowActions({
   );
 }
 
-function ChatHistoryActions({ chat, isFirst, forceVisible, onRename, onDelete, onExport, onTogglePin }) {
+function ChatHistoryActions({
+  chat,
+  isFirst,
+  forceVisible,
+  folders,
+  onRename,
+  onDelete,
+  onExport,
+  onTogglePin,
+  onMoveToFolder,
+}) {
+  const [moveOpen, setMoveOpen] = useState(false);
   return (
     <OverflowActions
       id={`chat-${chat.id}`}
@@ -1041,6 +1066,59 @@ function ChatHistoryActions({ chat, isFirst, forceVisible, onRename, onDelete, o
           <button
             type="button"
             role="menuitem"
+            aria-expanded={moveOpen}
+            onClick={() => setMoveOpen((current) => !current)}
+            className="chat-history-menu-item text-neutral-200 hover:bg-white/[0.07] focus:bg-white/[0.07] focus:outline-none"
+          >
+            <MaskIcon src="/icons/folder.png" size={14} />
+            Move to folder
+          </button>
+          {moveOpen && (
+            <div className="border-l border-white/10 pl-2">
+              {folders.length === 0 && (
+                <div className="px-2 py-1.5 text-[12px] leading-4 text-neutral-500">
+                  No folders yet
+                </div>
+              )}
+              {folders.map((folder) => (
+                <button
+                  key={folder.id}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMoveOpen(false);
+                    closeMenu();
+                    onMoveToFolder(chat, folder.id);
+                  }}
+                  className={cx(
+                    "chat-history-menu-item hover:bg-white/[0.07] focus:bg-white/[0.07] focus:outline-none",
+                    chat.folder_id === folder.id ? "text-white" : "text-neutral-300",
+                  )}
+                >
+                  <MaskIcon src="/icons/folder.png" size={13} />
+                  <span className="truncate">{folder.name}</span>
+                </button>
+              ))}
+              {chat.folder_id && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMoveOpen(false);
+                    closeMenu();
+                    onMoveToFolder(chat, null);
+                  }}
+                  className="chat-history-menu-item text-neutral-300 hover:bg-white/[0.07] focus:bg-white/[0.07] focus:outline-none"
+                >
+                  <X size={13} />
+                  Remove from folder
+                </button>
+              )}
+            </div>
+          )}
+          <button
+            type="button"
+            role="menuitem"
             onClick={() => {
               closeMenu();
               onExport(chat);
@@ -1061,6 +1139,58 @@ function ChatHistoryActions({ chat, isFirst, forceVisible, onRename, onDelete, o
           >
             <Trash2 size={14} />
             Delete chat
+          </button>
+        </>
+      )}
+    </OverflowActions>
+  );
+}
+
+function FolderActions({ folder, onRename, onDelete, onNewChat }) {
+  return (
+    <OverflowActions
+      id={`folder-${folder.id}`}
+      title={folder.name}
+      label="Folder actions"
+      menuWidth={196}
+    >
+      {(closeMenu) => (
+        <>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              closeMenu();
+              onNewChat(folder.id);
+            }}
+            className="chat-history-menu-item text-neutral-200 hover:bg-white/[0.07] focus:bg-white/[0.07] focus:outline-none"
+          >
+            <MaskIcon src="/icons/new-message.png" size={14} />
+            New chat here
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              closeMenu();
+              onRename(folder);
+            }}
+            className="chat-history-menu-item text-neutral-200 hover:bg-white/[0.07] focus:bg-white/[0.07] focus:outline-none"
+          >
+            <Pencil size={14} />
+            Edit name
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              closeMenu();
+              onDelete(folder);
+            }}
+            className="chat-history-menu-item text-red-300 hover:bg-red-500/10 focus:bg-red-500/10 focus:outline-none"
+          >
+            <Trash2 size={14} />
+            Delete folder
           </button>
         </>
       )}
@@ -1160,7 +1290,16 @@ function ChapterHistoryActions({ chapter, onRename, onDelete, onToggleContext })
   );
 }
 
-function ChatSearchModal({ open, chats, onSelect, onClose }) {
+function SidebarSearchModal({
+  open,
+  items,
+  onSelect,
+  onClose,
+  label = "Search chats",
+  emptyText = "Your conversations will appear here.",
+  noMatchText = "No chats match that search.",
+  fallbackTitle = "Untitled chat",
+}) {
   const [rendered, setRendered] = useState(open);
   const [phase, setPhase] = useState(open ? "open" : "closed");
   const [query, setQuery] = useState("");
@@ -1200,8 +1339,8 @@ function ChatSearchModal({ open, chats, onSelect, onClose }) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose, rendered]);
 
-  const recentChats = useMemo(() => {
-    const sorted = [...chats].sort((first, second) => {
+  const recentItems = useMemo(() => {
+    const sorted = [...items].sort((first, second) => {
       const firstTime = Date.parse(first.updated_at || first.created_at || "") || 0;
       const secondTime = Date.parse(second.updated_at || second.created_at || "") || 0;
       return secondTime - firstTime;
@@ -1210,8 +1349,8 @@ function ChatSearchModal({ open, chats, onSelect, onClose }) {
     const trimmed = query.trim().toLowerCase();
     if (!trimmed) return sorted;
 
-    return sorted.filter((chat) => (chat.title || "").toLowerCase().includes(trimmed));
-  }, [chats, query]);
+    return sorted.filter((item) => (item.title || "").toLowerCase().includes(trimmed));
+  }, [items, query]);
 
   if (!rendered) return null;
 
@@ -1231,7 +1370,7 @@ function ChatSearchModal({ open, chats, onSelect, onClose }) {
       <section
         role="dialog"
         aria-modal="true"
-        aria-label="Search chats"
+        aria-label={label}
         className={cx(
           "t-modal relative z-10 flex max-h-[min(620px,calc(100dvh-3rem))] w-full max-w-[560px] flex-col overflow-hidden rounded-[26px] bg-[#191919] text-neutral-100 [box-shadow:var(--shadow-surface)]",
           isOpen ? "is-open" : "is-closing",
@@ -1262,29 +1401,29 @@ function ChatSearchModal({ open, chats, onSelect, onClose }) {
         </header>
 
         <div className="chat-rail-scrollbar min-h-0 flex-1 overflow-y-auto px-3 pb-4 pt-2">
-          {recentChats.length > 0 && (
+          {recentItems.length > 0 && (
             <div className="px-3 pb-1 pt-2 text-[15px] leading-6 text-neutral-500">
               {query.trim() ? "Results" : "Last opened"}
             </div>
           )}
 
-          {recentChats.length === 0 ? (
+          {recentItems.length === 0 ? (
             <div className="px-3 py-6 text-sm leading-6 text-neutral-500">
-              {query.trim() ? "No chats match that search." : "Your conversations will appear here."}
+              {query.trim() ? noMatchText : emptyText}
             </div>
           ) : (
             <div className="space-y-0.5">
-              {recentChats.map((chat) => (
+              {recentItems.map((item) => (
                 <button
-                  key={chat.id}
+                  key={item.id}
                   type="button"
-                  onClick={() => onSelect(chat.id)}
+                  onClick={() => onSelect(item.id)}
                   className={cx(
                     "flex w-full items-center rounded-xl px-3 py-2.5 text-left text-[15px] leading-6 text-neutral-100 hover:bg-white/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
                     CONTROL_MOTION,
                   )}
                 >
-                  <span className="truncate">{chat.title || "Untitled chat"}</span>
+                  <span className="truncate">{item.title || fallbackTitle}</span>
                 </button>
               ))}
             </div>
@@ -1293,6 +1432,41 @@ function ChatSearchModal({ open, chats, onSelect, onClose }) {
       </section>
     </div>,
     document.body,
+  );
+}
+
+function SidebarGroup({ label, open, onToggle, children, dropProps = {}, dropActive = false }) {
+  const panelId = `${label.toLowerCase()}-chat-history`;
+
+  return (
+    <section
+      className={cx(
+        "t-acc chat-history-group rounded-2xl border border-transparent px-1 transition-[background-color,border-color,box-shadow] duration-150 ease-out",
+        dropActive && "border-white/20 bg-white/[0.07]",
+      )}
+      data-open={String(open)}
+      {...dropProps}
+    >
+      <button
+        type="button"
+        className="t-acc-head chat-history-group-heading"
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={onToggle}
+      >
+        <span>{label}</span>
+        <span className="t-acc-chevron chat-history-group-chevron" aria-hidden="true">
+          <svg viewBox="0 0 16 16" fill="none">
+            <path d="M4 6.5L8 10.5L12 6.5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </span>
+      </button>
+      <div id={panelId} className="t-acc-panel">
+        <div className="t-acc-panel-inner chat-history-group-items">
+          {children}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -1306,6 +1480,12 @@ function ConversationRail({
   onDeleteChat,
   onExportChat,
   onTogglePinChat,
+  folders,
+  onCreateFolder,
+  onRenameFolder,
+  onDeleteFolder,
+  onMoveChatToFolder,
+  onNewChatInFolder,
   mobileOpen,
   onCloseMobile,
   collapsed,
@@ -1320,9 +1500,18 @@ function ConversationRail({
   const [renameDraft, setRenameDraft] = useState("");
   const [pinnedOpen, setPinnedOpen] = useState(true);
   const [recentsOpen, setRecentsOpen] = useState(true);
+  const [foldersOpen, setFoldersOpen] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [newFolderOpen, setNewFolderOpen] = useState(false);
+  const [renamingFolderId, setRenamingFolderId] = useState(null);
+  const [folderRenameDraft, setFolderRenameDraft] = useState("");
+  const [expandedFolderIds, setExpandedFolderIds] = useState([]);
+  const [dragChatId, setDragChatId] = useState(null);
+  const [dropFolderId, setDropFolderId] = useState(null);
+  const [recentsDropActive, setRecentsDropActive] = useState(false);
   const railScrollTimeoutRef = useRef(null);
   const skipRenameCommitRef = useRef(false);
+  const skipFolderRenameCommitRef = useRef(false);
 
   useEffect(
     () => () => {
@@ -1370,8 +1559,60 @@ function ConversationRail({
     setRenameDraft("");
   }
 
+  async function createFolder(name) {
+    const folder = await onCreateFolder(name);
+    setFoldersOpen(true);
+    if (folder?.id) setExpandedFolderIds((current) => [...current, folder.id]);
+  }
+
+  function toggleFolderExpanded(folderId) {
+    setExpandedFolderIds((current) => (
+      current.includes(folderId)
+        ? current.filter((id) => id !== folderId)
+        : [...current, folderId]
+    ));
+  }
+
+  function startFolderRename(folder) {
+    skipFolderRenameCommitRef.current = false;
+    setRenamingFolderId(folder.id);
+    setFolderRenameDraft(folder.name || "");
+  }
+
+  function cancelFolderRename() {
+    skipFolderRenameCommitRef.current = true;
+    setRenamingFolderId(null);
+    setFolderRenameDraft("");
+  }
+
+  async function commitFolderRename(folder) {
+    if (skipFolderRenameCommitRef.current) {
+      skipFolderRenameCommitRef.current = false;
+      return;
+    }
+    const nextName = folderRenameDraft.trim();
+    setRenamingFolderId(null);
+    setFolderRenameDraft("");
+    if (nextName && nextName !== folder.name) {
+      await onRenameFolder(folder.id, nextName);
+    }
+  }
+
+  function handleChatDrop(folderId) {
+    const chat = chats.find((item) => item.id === dragChatId);
+    setDragChatId(null);
+    setDropFolderId(null);
+    setRecentsDropActive(false);
+    if (!chat) return;
+    if (folderId) setExpandedFolderIds((current) => (
+      current.includes(folderId) ? current : [...current, folderId]
+    ));
+    void onMoveChatToFolder(chat, folderId);
+  }
+
   const pinnedChats = chats.filter((chat) => chat.pinned);
-  const recentChats = chats.filter((chat) => !chat.pinned);
+  const recentChats = chats.filter((chat) => !chat.pinned && !chat.folder_id);
+  const draggedFolderChat = chats.find((chat) => chat.id === dragChatId && chat.folder_id);
 
   function renderChatRows(groupChats, startIndex = 0) {
     return groupChats.map((chat, chatIndex) => {
@@ -1381,11 +1622,23 @@ function ConversationRail({
       return (
         <div
           key={chat.id}
+          draggable={!renaming}
+          onDragStart={(event) => {
+            event.dataTransfer.effectAllowed = "move";
+            event.dataTransfer.setData("text/plain", chat.id);
+            setDragChatId(chat.id);
+          }}
+          onDragEnd={() => {
+            setDragChatId(null);
+            setDropFolderId(null);
+            setRecentsDropActive(false);
+          }}
           className={cx(
             "group relative grid select-none grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-2xl border border-transparent px-2 py-1 transition-[background-color,border-color,box-shadow] duration-150 ease-out",
             chat.id === activeChatId
               ? "bg-white/[0.08] shadow-[var(--shadow-border)]"
               : "hover:bg-white/[0.045] hover:shadow-[var(--shadow-border)]",
+            dragChatId === chat.id && "opacity-45",
           )}
         >
           {renaming ? (
@@ -1433,49 +1686,141 @@ function ConversationRail({
             chat={chat}
             isFirst={index === 0}
             forceVisible={index === 0 && highlightFirstChatActions}
+            folders={folders}
             onRename={startRename}
             onDelete={onDeleteChat}
             onExport={onExportChat}
             onTogglePin={onTogglePinChat}
+            onMoveToFolder={onMoveChatToFolder}
           />
         </div>
       );
     });
   }
 
-  function renderHistoryGroup(label, groupChats, open, onToggle, startIndex = 0) {
-    const panelId = `${label.toLowerCase()}-chat-history`;
-    return (
-      <section className="t-acc chat-history-group" data-open={String(open)}>
-        <button
-          type="button"
-          className="t-acc-head chat-history-group-heading"
-          aria-expanded={open}
-          aria-controls={panelId}
-          onClick={onToggle}
+  function renderFolderRows() {
+    return folders.map((folder) => {
+      const renaming = renamingFolderId === folder.id;
+      const expanded = expandedFolderIds.includes(folder.id);
+      const folderChats = chats.filter((chat) => chat.folder_id === folder.id);
+
+      return (
+        <div key={folder.id}>
+        <div
+          onDragOver={(event) => {
+            if (!dragChatId) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+            setDropFolderId(folder.id);
+          }}
+          onDragLeave={() => setDropFolderId((current) => (current === folder.id ? null : current))}
+          onDrop={(event) => {
+            event.preventDefault();
+            handleChatDrop(folder.id);
+          }}
+          className={cx(
+            "group relative grid select-none grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-2xl border border-transparent px-2 py-1 transition-[background-color,border-color,box-shadow] duration-150 ease-out hover:bg-white/[0.045] hover:shadow-[var(--shadow-border)]",
+            dropFolderId === folder.id && "border-white/20 bg-white/[0.07]",
+          )}
         >
-          <span>{label}</span>
-          <span className="t-acc-chevron chat-history-group-chevron" aria-hidden="true">
-            <svg viewBox="0 0 16 16" fill="none">
-              <path d="M4 6.5L8 10.5L12 6.5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </span>
-        </button>
-        <div id={panelId} className="t-acc-panel">
-          <div className="t-acc-panel-inner chat-history-group-items">
-            {renderChatRows(groupChats, startIndex)}
-          </div>
+          {renaming ? (
+            <div className="flex min-h-8 min-w-0 items-center gap-2 rounded-xl px-1 py-0.5">
+              <MaskIcon src="/icons/folder.png" size={16} className="text-neutral-300" />
+              <input
+                autoFocus
+                value={folderRenameDraft}
+                onChange={(event) => setFolderRenameDraft(event.target.value)}
+                data-1p-ignore="true"
+                onBlur={() => commitFolderRename(folder)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") event.currentTarget.blur();
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    cancelFolderRename();
+                  }
+                }}
+                className="block h-6 w-full min-w-0 rounded-md bg-white/[0.06] px-1.5 text-sm font-medium text-neutral-100 outline-none shadow-[var(--shadow-border)]"
+              />
+            </div>
+          ) : (
+            <button
+              type="button"
+              aria-expanded={expanded}
+              onClick={() => toggleFolderExpanded(folder.id)}
+              className={cx(
+                "flex min-h-8 min-w-0 items-center gap-2 rounded-xl px-1 py-0.5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15",
+                CONTROL_MOTION,
+              )}
+            >
+              <MaskIcon src="/icons/folder.png" size={16} className="text-neutral-300" />
+              <span className="truncate text-sm font-medium leading-4 text-neutral-100">
+                {folder.name}
+              </span>
+              {folderChats.length > 0 && (
+                <span className="shrink-0 text-[11px] leading-3 text-neutral-500">
+                  {folderChats.length}
+                </span>
+              )}
+            </button>
+          )}
+          <FolderActions
+            folder={folder}
+            onRename={startFolderRename}
+            onDelete={onDeleteFolder}
+            onNewChat={onNewChatInFolder}
+          />
         </div>
-      </section>
+
+        {expanded && (
+          <div className="mt-1 space-y-1 border-l border-white/10 pl-2">
+            {folderChats.length > 0 ? (
+              renderChatRows(folderChats, 1)
+            ) : (
+              <div className="px-2 py-2 text-[12px] leading-4 text-neutral-500">
+                Drag a chat here, or use New chat in this folder.
+              </div>
+            )}
+          </div>
+        )}
+        </div>
+      );
+    });
+  }
+
+  function renderHistoryGroup(label, groupChats, open, onToggle, startIndex = 0) {
+    return renderGroupShell(label, open, onToggle, renderChatRows(groupChats, startIndex));
+  }
+
+  function renderGroupShell(label, open, onToggle, children, dropProps = {}, dropActive = false) {
+    return (
+      <SidebarGroup
+        label={label}
+        open={open}
+        onToggle={onToggle}
+        dropProps={dropProps}
+        dropActive={dropActive}
+      >
+        {children}
+      </SidebarGroup>
     );
   }
 
+  const folderGroup = folders.length > 0 && renderGroupShell(
+    "Folders",
+    foldersOpen,
+    () => setFoldersOpen((current) => !current),
+    renderFolderRows(),
+  );
+
   const historyItems =
     chats.length === 0 ? (
-      <div className="px-3 py-8 text-pretty text-sm leading-6 text-neutral-500">
-        {chatMode === "write"
-          ? "Your stories will appear here."
-          : "Your conversations will appear here."}
+      <div className="space-y-4">
+        {folderGroup}
+        <div className="px-3 py-8 text-pretty text-sm leading-6 text-neutral-500">
+          {chatMode === "write"
+            ? "Your stories will appear here."
+            : "Your conversations will appear here."}
+        </div>
       </div>
     ) : (
       <div className="space-y-4">
@@ -1485,12 +1830,27 @@ function ConversationRail({
           pinnedOpen,
           () => setPinnedOpen((current) => !current),
         )}
-        {renderHistoryGroup(
+        {folderGroup}
+        {renderGroupShell(
           "Recents",
-          recentChats,
           recentsOpen,
           () => setRecentsOpen((current) => !current),
-          pinnedChats.length,
+          renderChatRows(recentChats, pinnedChats.length),
+          {
+            onDragOver: (event) => {
+              if (!draggedFolderChat) return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "move";
+              setRecentsDropActive(true);
+            },
+            onDragLeave: () => setRecentsDropActive(false),
+            onDrop: (event) => {
+              event.preventDefault();
+              setRecentsDropActive(false);
+              handleChatDrop(null);
+            },
+          },
+          recentsDropActive,
         )}
       </div>
     );
@@ -1506,7 +1866,7 @@ function ConversationRail({
       />
       <aside
         className={cx(
-          "chat-sidebar t-resize fixed inset-y-0 left-0 z-40 flex w-[292px] flex-col overflow-hidden border-r border-line bg-[#000000]/95 lg:static lg:z-auto lg:translate-x-0",
+          "chat-sidebar t-resize fixed inset-y-0 left-0 z-40 flex w-[292px] flex-col overflow-hidden border-r border-line bg-[#080808] lg:static lg:z-auto lg:translate-x-0",
           collapsed
             ? "lg:w-0 lg:-translate-x-3 lg:border-r-0 lg:border-transparent lg:opacity-0"
             : "lg:w-[276px] lg:opacity-100",
@@ -1572,7 +1932,7 @@ function ConversationRail({
             </div>
           </div>
 
-          <div className="mb-2 flex justify-center">
+          <div className="mb-3.5 flex justify-center">
             <SlidingTabs
               options={CHAT_MODES}
               value={chatMode}
@@ -1585,7 +1945,7 @@ function ConversationRail({
             />
           </div>
 
-          <div className="mb-2">
+          <div>
             <button
               type="button"
               onClick={() => {
@@ -1593,12 +1953,24 @@ function ConversationRail({
                 onCloseMobile();
               }}
               className={cx(
-                "flex h-12 w-full items-center gap-3 rounded-xl bg-transparent px-2 text-[15px] font-medium text-white hover:bg-white/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
+                "flex h-9 w-full items-center gap-3 rounded-xl bg-transparent px-2 text-[15px] font-medium text-white hover:bg-white/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
                 CONTROL_MOTION,
               )}
             >
               <MaskIcon src="/icons/new-message.png" size={20} className="text-neutral-200" />
               New chat
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setNewFolderOpen(true)}
+              className={cx(
+                "flex h-9 w-full items-center gap-3 rounded-xl bg-transparent px-2 text-[15px] font-medium text-white hover:bg-white/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
+                CONTROL_MOTION,
+              )}
+            >
+              <MaskIcon src="/icons/folder.png" size={20} className="text-neutral-200" />
+              New folder
             </button>
           </div>
 
@@ -1614,15 +1986,27 @@ function ConversationRail({
         </div>
       </aside>
 
-      <ChatSearchModal
+      <SidebarSearchModal
         open={searchOpen}
-        chats={chats}
+        items={chats}
         onSelect={(chatId) => {
           setSearchOpen(false);
           onLoadChat(chatId);
           onCloseMobile();
         }}
         onClose={() => setSearchOpen(false)}
+      />
+
+      <NamePromptModal
+        open={newFolderOpen}
+        onClose={() => setNewFolderOpen(false)}
+        onCreate={createFolder}
+        heading="Name your new folder"
+        description="You can rename your folder from the sidebar at any time"
+        placeholder="Folder name"
+        inputLabel="Folder name"
+        submitLabel="Create folder"
+        dialogLabel="Close new folder dialog"
       />
     </>
   );
@@ -2283,64 +2667,14 @@ function EmptyChatState() {
   );
 }
 
-function WriteLanding({ openingMessage, stories, onStartNew, onContinue }) {
-  const [continueOpen, setContinueOpen] = useState(false);
-  const continuePanelId = useId();
-  const hasStories = stories.length > 0;
+function WriteLanding({ openingMessage }) {
+  if (!openingMessage) return null;
 
   return (
     <section className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-4 pb-[12vh] pt-20 sm:px-8 lg:px-10">
-      <div className="pointer-events-auto mx-auto flex w-full max-w-[760px] flex-col items-center">
-        {openingMessage && (
-          <div className="mb-8 text-center text-[22px] font-medium leading-tight text-neutral-200 sm:text-3xl">
-            {openingMessage}
-          </div>
-        )}
-        <div className="flex w-full flex-col items-center justify-center gap-3 sm:flex-row sm:items-start">
-          <button
-            type="button"
-            onClick={onStartNew}
-            className={cx(
-              "inline-flex h-11 min-w-[178px] items-center justify-center rounded-full bg-neutral-100 px-5 text-sm font-medium text-neutral-950 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
-              CONTROL_MOTION,
-            )}
-          >
-            Start a new story
-          </button>
-          <div
-            className="t-acc relative w-[178px] max-w-full"
-            data-open={String(hasStories && continueOpen)}
-          >
-            <button
-              type="button"
-              onClick={() => setContinueOpen((current) => !current)}
-              disabled={!hasStories}
-              aria-expanded={hasStories && continueOpen}
-              aria-controls={continuePanelId}
-              className={cx(
-                "t-acc-head inline-flex h-11 w-full min-w-[178px] items-center justify-center gap-2 rounded-full bg-[#181818] px-5 text-sm font-medium text-neutral-100 [box-shadow:var(--shadow-surface)] hover:bg-[#1f1f1f] disabled:cursor-not-allowed disabled:text-neutral-600 disabled:hover:bg-[#181818] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
-                CONTROL_MOTION,
-              )}
-            >
-              <span>Continue a story</span>
-            </button>
-            <div id={continuePanelId} className="t-acc-panel absolute left-0 right-0 top-full z-30">
-              <div className="t-acc-panel-inner px-1 pb-1 pt-2">
-                <div className="max-h-[240px] overflow-y-auto rounded-2xl bg-[#121212] p-1 [box-shadow:var(--shadow-popover)]">
-                  {stories.map((story) => (
-                    <button
-                      key={story.id}
-                      type="button"
-                      onClick={() => onContinue(story.id)}
-                      className="flex h-10 w-full min-w-0 items-center rounded-xl px-3 text-left text-sm font-medium text-neutral-300 hover:bg-white/[0.055] hover:text-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35"
-                    >
-                      <span className="truncate">{story.title}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
+      <div className="mx-auto flex w-full max-w-[760px] flex-col items-center">
+        <div className="text-balance text-center text-[28px] font-medium leading-tight tracking-[-0.02em] text-neutral-200 sm:text-[42px]">
+          {openingMessage}
         </div>
       </div>
     </section>
@@ -2450,6 +2784,7 @@ function StoryRail({
   onCreateChapter,
   onSelectStory,
   onSelectChapter,
+  onNewStory,
   onRenameStory,
   onRenameChapter,
   onDeleteStory,
@@ -2461,6 +2796,8 @@ function StoryRail({
 }) {
   const [renameTarget, setRenameTarget] = useState(null);
   const [renameDraft, setRenameDraft] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [recentsOpen, setRecentsOpen] = useState(true);
   const renameInputRef = useRef(null);
   const skipRenameCommitRef = useRef(false);
 
@@ -2513,7 +2850,7 @@ function StoryRail({
       />
       <aside
         className={cx(
-          "chat-sidebar t-resize fixed inset-y-0 left-0 z-40 flex w-[292px] flex-col overflow-hidden border-r border-line bg-[#0b0b0b]/95 lg:static lg:z-auto lg:translate-x-0",
+          "chat-sidebar t-resize fixed inset-y-0 left-0 z-40 flex w-[292px] flex-col overflow-hidden border-r border-line bg-[#080808] lg:static lg:z-auto lg:translate-x-0",
           collapsed
             ? "lg:w-0 lg:-translate-x-3 lg:border-r-0 lg:border-transparent lg:opacity-0"
             : "lg:w-[276px] lg:opacity-100",
@@ -2528,7 +2865,57 @@ function StoryRail({
               : "lg:translate-x-0 lg:opacity-100",
           )}
         >
-          <div className="mb-3 flex justify-center">
+          <div className="mb-4 flex items-center justify-between gap-2 pl-2">
+            <div className="flex min-w-0 items-baseline gap-1.5">
+              <span className="truncate text-[19px] font-bold tracking-[-0.015em] text-white">
+                RouterChat
+              </span>
+              <span className="shrink-0 text-[19px] font-bold tracking-[-0.015em] text-neutral-500">
+                {APP_VERSION}
+              </span>
+            </div>
+
+            <div className="flex shrink-0 items-center">
+              <button
+                type="button"
+                aria-label="Search stories"
+                title="Search stories"
+                onClick={() => setSearchOpen(true)}
+                className={cx(
+                  "hidden h-10 w-9 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 lg:inline-flex",
+                  CONTROL_MOTION,
+                )}
+              >
+                <MaskIcon src="/icons/search.png" size={19} />
+              </button>
+              <button
+                type="button"
+                aria-label="Collapse sidebar"
+                title="Collapse sidebar"
+                onClick={onCollapse}
+                className={cx(
+                  "hidden h-10 w-9 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 lg:inline-flex",
+                  CONTROL_MOTION,
+                )}
+              >
+                <MaskIcon src="/icons/sidebar.png" size={15.5} />
+              </button>
+              <button
+                type="button"
+                aria-label="Close stories"
+                title="Close stories"
+                onClick={onCloseMobile}
+                className={cx(
+                  "inline-flex h-10 w-9 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 lg:hidden",
+                  CONTROL_MOTION,
+                )}
+              >
+                <X size={19} />
+              </button>
+            </div>
+          </div>
+
+          <div className="mb-3.5 flex justify-center">
             <SlidingTabs
               options={CHAT_MODES}
               value="write"
@@ -2541,7 +2928,7 @@ function StoryRail({
             />
           </div>
 
-          <div className="mb-4 flex items-center justify-center gap-2">
+          <div className="mb-4">
             <button
               type="button"
               data-tour="write-home-button"
@@ -2552,23 +2939,35 @@ function StoryRail({
               }}
               disabled={navigationLocked}
               className={cx(
-                "flex h-10 min-w-0 flex-1 items-center justify-center gap-2 rounded-full bg-neutral-100 px-4 text-sm font-semibold text-neutral-950 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
+                "flex h-9 w-full items-center gap-3 rounded-xl bg-transparent px-2 text-[15px] font-medium text-white hover:bg-white/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:cursor-not-allowed disabled:opacity-55",
                 CONTROL_MOTION,
               )}
             >
-              <i className="fi fi-rr-home" aria-hidden="true" />
+              <span
+                aria-hidden="true"
+                className="grid h-5 w-5 shrink-0 place-items-center text-[17px] leading-none text-neutral-200"
+              >
+                <i className="fi fi-rr-home" />
+              </span>
               Home
             </button>
-            <IconButton
-              label="Collapse sidebar"
-              className="hidden lg:inline-flex"
-              onClick={onCollapse}
+
+            <button
+              type="button"
+              onClick={() => {
+                if (navigationLocked) return;
+                onNewStory();
+                onCloseMobile();
+              }}
+              disabled={navigationLocked}
+              className={cx(
+                "flex h-9 w-full items-center gap-3 rounded-xl bg-transparent px-2 text-[15px] font-medium text-white hover:bg-white/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:cursor-not-allowed disabled:opacity-55",
+                CONTROL_MOTION,
+              )}
             >
-              <PanelLeftClose size={17} />
-            </IconButton>
-            <IconButton label="Close stories" className="lg:hidden" onClick={onCloseMobile}>
-              <X size={17} />
-            </IconButton>
+              <MaskIcon src="/icons/newbook.png" size={20} className="text-neutral-200" />
+              New story
+            </button>
           </div>
 
           <nav className="chat-rail-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
@@ -2577,160 +2976,178 @@ function StoryRail({
                 Your stories will appear here.
               </div>
             ) : (
-              stories.map((story) => {
-                const active = story.id === activeStoryId;
-                const renamingStory =
-                  renameTarget?.entityType === "story" && renameTarget.id === story.id;
-                return (
-                  <div key={story.id} className="space-y-1">
-                    <div
-                      data-tour={active ? "write-story-rail" : undefined}
-                      className={cx(
-                        "group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-2xl border border-transparent px-2 py-1",
-                        active ? "bg-white/[0.08] shadow-[var(--shadow-border)]" : "hover:bg-white/[0.045]",
-                      )}
-                    >
-                      {renamingStory ? (
-                        <div className="min-h-8 min-w-0 rounded-xl px-1 py-0.5">
-                          <input
-                            ref={renameInputRef}
-                            autoFocus
-                            aria-label="Rename story"
-                            data-1p-ignore="true"
-                            value={renameDraft}
-                            onChange={(event) => setRenameDraft(event.target.value)}
-                            onBlur={() => commitRename("story", story)}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter") event.currentTarget.blur();
-                              if (event.key === "Escape") {
-                                event.preventDefault();
-                                cancelRename();
-                              }
-                            }}
-                            className="block h-7 w-full min-w-0 rounded-md bg-white/[0.06] px-1.5 text-sm font-medium text-neutral-100 outline-none shadow-[var(--shadow-border)]"
-                          />
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (navigationLocked) return;
-                            onSelectStory(story.id);
-                            onCloseMobile();
-                          }}
-                          disabled={navigationLocked}
-                          className="min-w-0 rounded-xl px-1 py-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
-                        >
-                          <div className="truncate text-sm font-medium leading-4 text-neutral-100">
-                            {story.title}
-                          </div>
-                        </button>
-                      )}
-                      <StoryHistoryActions
-                        story={story}
-                        onRename={(item) => startRename("story", item)}
-                        onDelete={onDeleteStory}
-                      />
-                    </div>
-
-                    {active && (
-                      <div className="ml-3 space-y-1 border-l border-white/10 pl-2">
-                        <button
-                          type="button"
-                          data-tour="write-new-chapter-button"
-                          onClick={onCreateChapter}
-                          disabled={navigationLocked}
-                          className="mb-1 flex h-8 w-full items-center justify-center rounded-xl text-xs font-medium text-neutral-400 hover:bg-white/[0.045] hover:text-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
-                        >
-                          New chapter
-                        </button>
-                        {chapters.length === 0 ? (
-                          <div className="px-2 py-3 text-xs leading-5 text-neutral-600">
-                            No chapters yet.
+              <SidebarGroup
+                label="Recents"
+                open={recentsOpen}
+                onToggle={() => setRecentsOpen((current) => !current)}
+              >
+                {stories.map((story) => {
+                  const active = story.id === activeStoryId;
+                  const renamingStory =
+                    renameTarget?.entityType === "story" && renameTarget.id === story.id;
+                  return (
+                    <div key={story.id} className="space-y-1">
+                      <div
+                        data-tour={active ? "write-story-rail" : undefined}
+                        className={cx(
+                          "group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-2xl border border-transparent px-2 py-1",
+                          active ? "bg-white/[0.08] shadow-[var(--shadow-border)]" : "hover:bg-white/[0.045]",
+                        )}
+                      >
+                        {renamingStory ? (
+                          <div className="min-h-8 min-w-0 rounded-xl px-1 py-0.5">
+                            <input
+                              ref={renameInputRef}
+                              autoFocus
+                              aria-label="Rename story"
+                              data-1p-ignore="true"
+                              value={renameDraft}
+                              onChange={(event) => setRenameDraft(event.target.value)}
+                              onBlur={() => commitRename("story", story)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") event.currentTarget.blur();
+                                if (event.key === "Escape") {
+                                  event.preventDefault();
+                                  cancelRename();
+                                }
+                              }}
+                              className="block h-7 w-full min-w-0 rounded-md bg-white/[0.06] px-1.5 text-sm font-medium text-neutral-100 outline-none shadow-[var(--shadow-border)]"
+                            />
                           </div>
                         ) : (
-                          chapters.map((chapter) => {
-                            const renamingChapter =
-                              renameTarget?.entityType === "chapter"
-                              && renameTarget.id === chapter.id;
-                            return (
-                              <div
-                                key={chapter.id}
-                                className={cx(
-                                  "group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-xl px-2 py-1",
-                                  chapter.id === activeChapterId
-                                    ? chapter.disabled
-                                      ? "bg-white/[0.075] text-neutral-400"
-                                      : "bg-white/[0.075] text-neutral-100"
-                                    : chapter.disabled
-                                      ? "text-neutral-600 hover:bg-white/[0.04] hover:text-neutral-300"
-                                      : "text-neutral-400 hover:bg-white/[0.04] hover:text-neutral-100",
-                                )}
-                              >
-                                {renamingChapter ? (
-                                  <input
-                                    ref={renameInputRef}
-                                    autoFocus
-                                    aria-label="Rename chapter"
-                                    data-1p-ignore="true"
-                                    value={renameDraft}
-                                    onChange={(event) => setRenameDraft(event.target.value)}
-                                    onBlur={() => commitRename("chapter", chapter)}
-                                    onKeyDown={(event) => {
-                                      if (event.key === "Enter") event.currentTarget.blur();
-                                      if (event.key === "Escape") {
-                                        event.preventDefault();
-                                        cancelRename();
-                                      }
-                                    }}
-                                    className="block h-6 w-full min-w-0 rounded-md bg-white/[0.06] px-1.5 text-xs font-medium text-neutral-100 outline-none shadow-[var(--shadow-border)]"
-                                  />
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      if (navigationLocked) return;
-                                      onSelectChapter(chapter.id);
-                                      onCloseMobile();
-                                    }}
-                                    disabled={navigationLocked}
-                                    className="flex min-w-0 items-center gap-1.5 text-left text-xs leading-5 focus:outline-none"
-                                  >
-                                    <span className="min-w-0 flex-1 truncate">
-                                      {chapter.title}
-                                    </span>
-                                    {chapter.disabled && (
-                                      <EyeOff
-                                        size={13}
-                                        className="shrink-0 text-neutral-500"
-                                        aria-hidden="true"
-                                      />
-                                    )}
-                                  </button>
-                                )}
-                                <ChapterHistoryActions
-                                  chapter={chapter}
-                                  onRename={(item) => startRename("chapter", item)}
-                                  onDelete={onDeleteChapter}
-                                  onToggleContext={onToggleChapterContext}
-                                />
-                              </div>
-                            );
-                          })
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (navigationLocked) return;
+                              onSelectStory(story.id);
+                              onCloseMobile();
+                            }}
+                            disabled={navigationLocked}
+                            className="min-w-0 rounded-xl px-1 py-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
+                          >
+                            <div className="truncate text-sm font-medium leading-4 text-neutral-100">
+                              {story.title}
+                            </div>
+                          </button>
                         )}
+                        <StoryHistoryActions
+                          story={story}
+                          onRename={(item) => startRename("story", item)}
+                          onDelete={onDeleteStory}
+                        />
                       </div>
-                    )}
-                  </div>
-                );
-              })
+
+                      {active && (
+                        <div className="ml-3 space-y-1 border-l border-white/10 pl-2">
+                          <button
+                            type="button"
+                            data-tour="write-new-chapter-button"
+                            onClick={onCreateChapter}
+                            disabled={navigationLocked}
+                            className="mb-1 flex h-8 w-full items-center justify-center rounded-xl text-xs font-medium text-neutral-400 hover:bg-white/[0.045] hover:text-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
+                          >
+                            New chapter
+                          </button>
+                          {chapters.length === 0 ? (
+                            <div className="px-2 py-3 text-xs leading-5 text-neutral-600">
+                              No chapters yet.
+                            </div>
+                          ) : (
+                            chapters.map((chapter) => {
+                              const renamingChapter =
+                                renameTarget?.entityType === "chapter"
+                                && renameTarget.id === chapter.id;
+                              return (
+                                <div
+                                  key={chapter.id}
+                                  className={cx(
+                                    "group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-xl px-2 py-1",
+                                    chapter.id === activeChapterId
+                                      ? chapter.disabled
+                                        ? "bg-white/[0.075] text-neutral-400"
+                                        : "bg-white/[0.075] text-neutral-100"
+                                      : chapter.disabled
+                                        ? "text-neutral-600 hover:bg-white/[0.04] hover:text-neutral-300"
+                                        : "text-neutral-400 hover:bg-white/[0.04] hover:text-neutral-100",
+                                  )}
+                                >
+                                  {renamingChapter ? (
+                                    <input
+                                      ref={renameInputRef}
+                                      autoFocus
+                                      aria-label="Rename chapter"
+                                      data-1p-ignore="true"
+                                      value={renameDraft}
+                                      onChange={(event) => setRenameDraft(event.target.value)}
+                                      onBlur={() => commitRename("chapter", chapter)}
+                                      onKeyDown={(event) => {
+                                        if (event.key === "Enter") event.currentTarget.blur();
+                                        if (event.key === "Escape") {
+                                          event.preventDefault();
+                                          cancelRename();
+                                        }
+                                      }}
+                                      className="block h-6 w-full min-w-0 rounded-md bg-white/[0.06] px-1.5 text-xs font-medium text-neutral-100 outline-none shadow-[var(--shadow-border)]"
+                                    />
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (navigationLocked) return;
+                                        onSelectChapter(chapter.id);
+                                        onCloseMobile();
+                                      }}
+                                      disabled={navigationLocked}
+                                      className="flex min-w-0 items-center gap-1.5 text-left text-xs leading-5 focus:outline-none"
+                                    >
+                                      <span className="min-w-0 flex-1 truncate">
+                                        {chapter.title}
+                                      </span>
+                                      {chapter.disabled && (
+                                        <EyeOff
+                                          size={13}
+                                          className="shrink-0 text-neutral-500"
+                                          aria-hidden="true"
+                                        />
+                                      )}
+                                    </button>
+                                  )}
+                                  <ChapterHistoryActions
+                                    chapter={chapter}
+                                    onRename={(item) => startRename("chapter", item)}
+                                    onDelete={onDeleteChapter}
+                                    onToggleContext={onToggleChapterContext}
+                                  />
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </SidebarGroup>
             )}
           </nav>
-
-          <div className="mt-4 shrink-0 px-3 pb-1 text-left text-[11px] font-medium leading-none text-neutral-700">
-            RouterChat {APP_VERSION}
-          </div>
         </div>
       </aside>
+
+      <SidebarSearchModal
+        open={searchOpen}
+        items={stories}
+        label="Search stories"
+        emptyText="Your stories will appear here."
+        noMatchText="No stories match that search."
+        fallbackTitle="Untitled story"
+        onSelect={(storyId) => {
+          setSearchOpen(false);
+          if (navigationLocked) return;
+          onSelectStory(storyId);
+          onCloseMobile();
+        }}
+        onClose={() => setSearchOpen(false)}
+      />
     </>
   );
 }
@@ -5850,6 +6267,17 @@ function ConfirmModal({ dialog, onClose }) {
     }
   }
 
+  async function runSecondary() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await renderedDialog.onSecondary();
+      onClose();
+    } catch {
+      setBusy(false);
+    }
+  }
+
   const open = phase === "open";
 
   return createPortal(
@@ -5911,6 +6339,19 @@ function ConfirmModal({ dialog, onClose }) {
           >
             Cancel
           </button>
+          {renderedDialog.secondaryLabel && renderedDialog.onSecondary && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={runSecondary}
+              className={cx(
+                "h-10 rounded-full bg-white/[0.05] px-4 text-sm font-medium text-red-300 hover:bg-red-500/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-200/40 disabled:cursor-not-allowed disabled:opacity-55",
+                CONTROL_MOTION,
+              )}
+            >
+              {renderedDialog.secondaryLabel}
+            </button>
+          )}
           <button
             type="button"
             disabled={busy}
@@ -5936,11 +6377,38 @@ function ConfirmModal({ dialog, onClose }) {
 }
 
 function NewStoryModal({ open, onClose, onCreate }) {
+  return (
+    <NamePromptModal
+      open={open}
+      onClose={onClose}
+      onCreate={onCreate}
+      heading="Name your new story"
+      description="You can rename your story from the sidebar at any time"
+      placeholder="Story name"
+      inputLabel="Story name"
+      submitLabel="Create story"
+      dialogLabel="Close new story dialog"
+    />
+  );
+}
+
+function NamePromptModal({
+  open,
+  onClose,
+  onCreate,
+  heading,
+  description,
+  placeholder,
+  inputLabel,
+  submitLabel,
+  dialogLabel,
+}) {
   const [rendered, setRendered] = useState(open);
   const [phase, setPhase] = useState(open ? "open" : "closed");
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
   const titleInputId = useId();
+  const headingId = useId();
   const titleRef = useRef(null);
 
   useEffect(() => {
@@ -5981,17 +6449,17 @@ function NewStoryModal({ open, onClose, onCreate }) {
 
   if (!rendered) return null;
 
-  const storyTitle = title.trim();
-  const canCreate = storyTitle.length > 0 && !busy;
+  const nextName = title.trim();
+  const canCreate = nextName.length > 0 && !busy;
   const isOpen = phase === "open";
 
-  async function createStory(event) {
+  async function createItem(event) {
     event.preventDefault();
     if (!canCreate) return;
 
     setBusy(true);
     try {
-      await onCreate(storyTitle);
+      await onCreate(nextName);
       onClose();
     } catch {
       setBusy(false);
@@ -6002,7 +6470,7 @@ function NewStoryModal({ open, onClose, onCreate }) {
     <div className="fixed inset-0 z-[80] grid place-items-center px-4 py-6">
       <button
         type="button"
-        aria-label="Close new story dialog"
+        aria-label={dialogLabel}
         className={cx(
           "absolute inset-0 bg-black/60 backdrop-blur-sm transition-[opacity,backdrop-filter] duration-150 ease-out",
           isOpen ? "opacity-100" : "opacity-0",
@@ -6014,8 +6482,8 @@ function NewStoryModal({ open, onClose, onCreate }) {
       <form
         role="dialog"
         aria-modal="true"
-        aria-labelledby="new-story-modal-title"
-        onSubmit={createStory}
+        aria-labelledby={headingId}
+        onSubmit={createItem}
         className={cx(
           "t-modal relative z-10 w-full max-w-[420px] rounded-[24px] bg-[#181818] p-4 text-neutral-100 [box-shadow:var(--shadow-surface)]",
           isOpen ? "is-open" : "is-closing",
@@ -6023,13 +6491,13 @@ function NewStoryModal({ open, onClose, onCreate }) {
       >
         <div>
           <h2
-            id="new-story-modal-title"
+            id={headingId}
             className="text-balance text-base font-semibold text-neutral-100"
           >
-            Name your new story
+            {heading}
           </h2>
           <p className="mt-2 text-pretty text-sm leading-6 text-neutral-400">
-            You can rename your story from the sidebar at any time
+            {description}
           </p>
         </div>
         <input
@@ -6041,8 +6509,8 @@ function NewStoryModal({ open, onClose, onCreate }) {
           maxLength={120}
           data-1p-ignore="true"
           onChange={(event) => setTitle(event.target.value)}
-          placeholder="Story name"
-          aria-label="Story name"
+          placeholder={placeholder}
+          aria-label={inputLabel}
           className="mt-4 h-11 w-full rounded-2xl bg-black/25 px-3.5 text-sm font-medium text-neutral-100 shadow-[var(--shadow-border)] outline-none placeholder:text-neutral-600 focus:shadow-[var(--shadow-border-hover)] disabled:cursor-not-allowed disabled:opacity-60"
         />
         <div className="mt-5 flex justify-end gap-2">
@@ -6065,7 +6533,7 @@ function NewStoryModal({ open, onClose, onCreate }) {
               CONTROL_MOTION,
             )}
           >
-            {busy ? "Creating" : "Create story"}
+            {busy ? "Creating" : submitLabel}
           </button>
         </div>
       </form>
@@ -6076,6 +6544,7 @@ function NewStoryModal({ open, onClose, onCreate }) {
 function App() {
   const localAppSettings = readLocalAppSettings();
   const [chats, setChats] = useState([]);
+  const [folders, setFolders] = useState([]);
   const [messages, setMessages] = useState([]);
   const [stories, setStories] = useState([]);
   const [chapters, setChapters] = useState([]);
@@ -6573,6 +7042,32 @@ function App() {
     setChats(payload.chats || []);
   }, []);
 
+  const loadFolders = useCallback(async () => {
+    const payload = await api("/api/folders");
+    let nextFolders = payload.folders || [];
+
+    //folders used to live in localStorage before they had a table, so lift those over once and forget the key
+    const legacyFolders = readLocalChatFolders();
+    if (legacyFolders.length > 0) {
+      try {
+        if (nextFolders.length === 0) {
+          for (const folder of legacyFolders) {
+            await api("/api/folders", {
+              method: "POST",
+              body: JSON.stringify({ name: folder.name }),
+            });
+          }
+          nextFolders = (await api("/api/folders")).folders || [];
+        }
+        clearLocalChatFolders();
+      } catch {
+        //a failed lift is not worth blocking the sidebar, the key stays put so the next load can retry
+      }
+    }
+
+    setFolders(nextFolders);
+  }, []);
+
   const loadStories = useCallback(async () => {
     const nextStories = await storyApi.listStories();
     setStories(nextStories);
@@ -6804,8 +7299,9 @@ function App() {
     loadAppSettings();
     loadModels();
     loadChats();
+    loadFolders();
     loadStories();
-  }, [loadAppSettings, loadChats, loadKeyStatus, loadModels, loadStories]);
+  }, [loadAppSettings, loadChats, loadFolders, loadKeyStatus, loadModels, loadStories]);
 
   useEffect(() => {
     scrollToBottom(true);
@@ -7324,6 +7820,116 @@ function App() {
     }
   }
 
+  async function createFolder(name) {
+    try {
+      const payload = await api("/api/folders", {
+        method: "POST",
+        body: JSON.stringify({ name }),
+      });
+      await loadFolders();
+      showToast(`Folder "${payload.folder.name}" created`);
+      return payload.folder;
+    } catch (error) {
+      setStatus(error.message);
+      throw error;
+    }
+  }
+
+  async function renameFolder(folderId, name) {
+    try {
+      await api(`/api/folders/${folderId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name }),
+      });
+      await loadFolders();
+    } catch (error) {
+      setStatus(error.message);
+      throw error;
+    }
+  }
+
+  function deleteFolder(folder) {
+    const folderChats = chats.filter((chat) => chat.folder_id === folder.id);
+    setConfirmDialog({
+      title: "Delete folder?",
+      chatTitle: folder.name,
+      body: folderChats.length
+        ? `The ${folderChats.length} ${folderChats.length === 1 ? "chat" : "chats"} inside will move back to Recents.`
+        : "This cannot be undone.",
+      confirmLabel: "Delete folder",
+      secondaryLabel: folderChats.length ? "Delete folder and chats" : null,
+      onSecondary: async () => {
+        await removeFolder(folder, true);
+      },
+      onConfirm: async () => {
+        await removeFolder(folder, false);
+      },
+    });
+  }
+
+  async function removeFolder(folder, deleteChats) {
+    try {
+      await api(`/api/folders/${folder.id}?delete_chats=${deleteChats ? "true" : "false"}`, {
+        method: "DELETE",
+      });
+      await loadFolders();
+      await loadChats();
+      if (deleteChats && chats.some((chat) => chat.folder_id === folder.id && chat.id === activeChatId)) {
+        await resetChat();
+      }
+      showToast(deleteChats ? "Folder and chats deleted" : "Folder deleted");
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function moveChatToFolder(chat, folderId) {
+    const previousFolderId = chat.folder_id || null;
+    const nextFolderId = folderId || null;
+    if (previousFolderId === nextFolderId) return;
+
+    setChats((current) => current.map((item) => (
+      item.id === chat.id ? { ...item, folder_id: nextFolderId } : item
+    )));
+
+    try {
+      await api(`/api/chats/${chat.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ folder_id: nextFolderId || "" }),
+      });
+      await loadChats();
+      await loadFolders();
+      const folder = folders.find((item) => item.id === nextFolderId);
+      showToast(folder ? `Moved to ${folder.name}` : "Removed from folder");
+    } catch (error) {
+      setChats((current) => current.map((item) => (
+        item.id === chat.id ? { ...item, folder_id: previousFolderId } : item
+      )));
+      setStatus(error.message);
+    }
+  }
+
+  async function createChatInFolder(folderId) {
+    try {
+      const payload = await api("/api/chats", {
+        method: "POST",
+        body: JSON.stringify({
+          ...settings,
+          chat_system_prompt: settings.system_prompt,
+          folder_id: folderId,
+        }),
+      });
+      applyChat(payload.chat, []);
+      await navigateToChat(payload.chat);
+      await loadChats();
+      await loadFolders();
+      return payload.chat;
+    } catch (error) {
+      setStatus(error.message);
+      throw error;
+    }
+  }
+
   async function saveKey(apiKey) {
     try {
       const payload = await api("/api/settings/openrouter-key", {
@@ -7787,19 +8393,6 @@ function App() {
     } catch (error) {
       setStatus(error.message);
     }
-  }
-
-  async function continueStory(storyId = null) {
-    if (rejectWriteNavigationDuringGeneration() || isStreaming) return;
-    const nextStoryId = storyId || stories[0]?.id || (await loadStories())[0]?.id;
-    if (!nextStoryId) return;
-    const navigationIntent = beginNavigationIntent();
-    const result = await loadStoryBundle(nextStoryId, null, { navigationIntent });
-    if (!result) return;
-    if (!navigationIntentIsCurrent(navigationIntent)) return;
-    commitStoryBundle(result);
-    setStoryWorkspaceView("chapter");
-    writeRoute(storyRoute(result.story.id, null, "chapter"));
   }
 
   async function selectStory(storyId) {
@@ -8765,6 +9358,9 @@ function App() {
           onCreateChapter={createStoryChapter}
           onSelectStory={selectStory}
           onSelectChapter={selectChapter}
+          onNewStory={() => {
+            if (!isStreaming) setNewStoryDialogOpen(true);
+          }}
           onRenameStory={renameStoryItem}
           onRenameChapter={renameChapterItem}
           onDeleteStory={deleteStoryItem}
@@ -8785,6 +9381,12 @@ function App() {
           onDeleteChat={deleteChat}
           onExportChat={exportChatFromMenu}
           onTogglePinChat={toggleChatPin}
+          folders={folders}
+          onCreateFolder={createFolder}
+          onRenameFolder={renameFolder}
+          onDeleteFolder={deleteFolder}
+          onMoveChatToFolder={moveChatToFolder}
+          onNewChatInFolder={createChatInFolder}
           mobileOpen={railOpen}
           onCloseMobile={() => setRailOpen(false)}
           collapsed={railCollapsed}
@@ -8929,14 +9531,7 @@ function App() {
 
         {showComposer && (showLandingComposer ? (
           isWritingMode ? (
-            <WriteLanding
-              openingMessage={landingMessage}
-              stories={stories}
-              onStartNew={() => {
-                if (!isStreaming) setNewStoryDialogOpen(true);
-              }}
-              onContinue={continueStory}
-            />
+            <WriteLanding openingMessage={landingMessage} />
           ) : (
             <Composer
               value={prompt}

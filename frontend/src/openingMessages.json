@@ -36,7 +36,6 @@
       "Need help with a scene?"
     ],
     "evening": [
-      "Lets work on the draft.",
       "What should we edit tonight?",
       "Which scene needs work?",
       "Got a line you want to fix?"
@@ -45,7 +44,8 @@
       "Late night writing?",
       "Still working on the draft?",
       "Want to write for a bit?",
-      "What are we fixing tonight?"
+      "Just one more scene?",
+      "Moonlit writing?"
     ]
   }
 }

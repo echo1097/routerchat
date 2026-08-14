@@ -44,6 +44,7 @@ import { TosGateModal, TosLoadingScreen, TosUnavailableScreen } from "./TosGate.
 import StoryBrainstorm from "./brainstorm/StoryBrainstorm.jsx";
 import StoryLorebook from "./lorebook/StoryLorebook.jsx";
 import { repairLorebook as repairLorebookStream } from "./lorebook/repairLorebookApi.js";
+import { generateLorebookEntry as generateLorebookEntryStream } from "./lorebook/generateEntryApi.js";
 import { updateLorebookStream } from "./lorebook/lorebookUpdateApi.js";
 import NotificationStack from "./notifications/NotificationStack.jsx";
 import { useNotifications } from "./notifications/useNotifications.js";
@@ -3376,6 +3377,7 @@ function StoryWorkspace({
   onConfirmDeleteLorebookEntry,
   onRepairTimeline,
   onRepairLorebook,
+  onGenerateLorebookEntry,
 }) {
   const canvasScrollRef = useRef(null);
   const generationActiveRef = useRef(false);
@@ -3467,6 +3469,7 @@ function StoryWorkspace({
         onConfirmDeleteEntry={onConfirmDeleteLorebookEntry}
         onRepairTimeline={onRepairTimeline}
         onRepairLorebook={onRepairLorebook}
+        onGenerateEntry={onGenerateLorebookEntry}
         locked={writingLocked}
       />
     );
@@ -8793,6 +8796,15 @@ function App() {
     }
   }
 
+  async function generateLorebookEntry(category, brief, onEvent) {
+    if (!activeStoryId || isStreaming || lorebookUpdating) {
+      throw new Error("Finish the current writing task first.");
+    }
+
+    //nothing is saved here, the draft goes back to the editor and the author decides
+    return generateLorebookEntryStream({ storyId: activeStoryId, category, brief, onEvent });
+  }
+
   function updateChapterCanvasContent(content) {
     setChapterContent(content);
     chapterContentRef.current = content;
@@ -9498,6 +9510,7 @@ function App() {
             onConfirmDeleteLorebookEntry={confirmDeleteLorebookEntry}
             onRepairTimeline={repairTimeline}
             onRepairLorebook={repairLorebook}
+            onGenerateLorebookEntry={generateLorebookEntry}
           />
         ) : !isWritingMode ? (
           <>

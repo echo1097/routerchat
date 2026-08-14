@@ -10,6 +10,7 @@ import {
 import { cx, CONTROL_MOTION } from "../uiShared.js";
 import RepairModal, { repairDurationParts } from "./RepairModal.jsx";
 import RepairLorebookButton from "./RepairLorebookButton.jsx";
+import GenerateEntryModal from "./GenerateEntryModal.jsx";
 import "./StoryLorebook.css";
 
 const CATEGORY_OPTIONS = [
@@ -197,6 +198,7 @@ export default function StoryLorebook({
   onConfirmDeleteEntry,
   onRepairTimeline,
   onRepairLorebook,
+  onGenerateEntry,
   locked = false,
 }) {
   const [localEntries, setLocalEntries] = useState(() => {
@@ -320,6 +322,20 @@ export default function StoryLorebook({
     setEditorError("");
     setLorebookError("");
     setEditorOpen(true);
+  }
+
+  /* a generated entry lands in the draft rather than the lorebook, so the author still reads it over
+  and presses Create entry themselves */
+  function applyGeneratedEntry(generatedEntry) {
+    setEditorError("");
+    setDraft((currentDraft) => ({
+      ...currentDraft,
+      name: generatedEntry.name || currentDraft.name,
+      category: normalizeCategory(generatedEntry.category || currentDraft.category),
+      description: generatedEntry.description || "",
+      aliasesText: (generatedEntry.aliases || []).join(", "),
+      notes: generatedEntry.notes || "",
+    }));
   }
 
   function openEditEntry(entry) {
@@ -589,6 +605,8 @@ export default function StoryLorebook({
         onSubmit={saveEntry}
         onDelete={deleteEditingEntry}
         deleting={Boolean(editingEntryId) && deletingEntryId === editingEntryId}
+        onGenerateEntry={onGenerateEntry}
+        onApplyGenerated={applyGeneratedEntry}
         locked={locked}
       />
     </>
@@ -805,10 +823,13 @@ function LorebookEditorModal({
   onClose,
   onSubmit,
   onDelete,
+  onGenerateEntry,
+  onApplyGenerated,
   locked,
 }) {
   const [rendered, setRendered] = useState(open);
   const [modalState, setModalState] = useState(open ? "open" : "closed");
+  const [generateOpen, setGenerateOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [bodyHeight, setBodyHeight] = useState(null);
   const [bodyResizing, setBodyResizing] = useState(false);
@@ -834,6 +855,7 @@ function LorebookEditorModal({
     const timeoutId = window.setTimeout(() => {
       setRendered(false);
       setModalState("closed");
+      setGenerateOpen(false);
       setDetailsOpen(false);
       setBodyHeight(null); //the next open measures fresh instead of tweening from the old category
     }, closeMs);
@@ -894,9 +916,10 @@ function LorebookEditorModal({
     setDetailsOpen(Boolean(draft.aliasesText.trim() || draft.notes.trim()));
   }, [open]);
 
-  /* the header shows an Esc affordance instead of a close glyph, so the key has to do the job */
+  /* the header shows an Esc affordance instead of a close glyph, so the key has to do the job. the
+  generator sits on top of this one and owns Esc for as long as it is open */
   useEffect(() => {
-    if (!open) return undefined;
+    if (!open || generateOpen) return undefined;
 
     function handleKeyDown(event) {
       if (event.key !== "Escape") return;
@@ -907,12 +930,13 @@ function LorebookEditorModal({
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [open, onClose]);
+  }, [open, generateOpen, onClose]);
 
   if (!rendered) return null;
 
   const showAliases = !["note", "synopsis"].includes(draft.category);
   const showNotes = !["character", "note", "synopsis"].includes(draft.category);
+  const categoryLabel = ENTRY_CATEGORY_OPTIONS.find((option) => option.id === draft.category)?.label || "entry";
 
   return createPortal(
     <div className="lorebook-modal-guard fixed inset-0 z-[80] grid place-items-center bg-black/60 px-3 py-4 backdrop-blur-sm sm:px-6">
@@ -1063,9 +1087,29 @@ function LorebookEditorModal({
             >
               {saving ? "Saving..." : editing ? "Save entry" : "Create entry"}
             </button>
+            {/* generating is for a blank entry, an entry that already exists has words worth keeping */}
+            {onGenerateEntry && !editing && (
+              <button
+                type="button"
+                onClick={() => setGenerateOpen(true)}
+                disabled={saving || locked}
+                className={cx("lorebook-generate-button", CONTROL_MOTION)}
+              >
+                Generate entry
+              </button>
+            )}
           </div>
         </footer>
       </form>
+
+      <GenerateEntryModal
+        open={generateOpen}
+        category={draft.category}
+        categoryLabel={categoryLabel}
+        onClose={() => setGenerateOpen(false)}
+        onGenerate={(brief, onEvent) => onGenerateEntry(draft.category, brief, onEvent)}
+        onApply={onApplyGenerated}
+      />
     </div>,
     document.body,
   );

@@ -96,6 +96,11 @@ function draftFromEntry(entry) {
   };
 }
 
+function draftHasText(draft) {
+  return [draft.name, draft.description, draft.aliasesText, draft.notes]
+    .some((value) => value.trim());
+}
+
 function entryFromDraft(draft, existingEntry) {
   const category = normalizeCategory(draft.category);
   const aliases = ["note", "synopsis"].includes(category) ? [] : normalizeArray(draft.aliasesText);
@@ -106,7 +111,7 @@ function entryFromDraft(draft, existingEntry) {
   return {
     id: existingEntry?.id || crypto.randomUUID(),
     story_id: existingEntry?.story_id,
-    name: draft.name.trim(),
+    name: draft.name.trim() || "Untitled entry",
     category,
     description: draft.description.trim(),
     aliases,
@@ -354,7 +359,7 @@ export default function StoryLorebook({
 
   async function saveEntry(event) {
     event.preventDefault();
-    if (!draft.name.trim() || savingEntry || locked) return;
+    if (!draftHasText(draft) || savingEntry || locked) return;
 
     const existingEntry = localEntries.find((entry) => entry.id === editingEntryId);
     const nextEntry = entryFromDraft(draft, existingEntry);
@@ -937,6 +942,7 @@ function LorebookEditorModal({
   const showAliases = !["note", "synopsis"].includes(draft.category);
   const showNotes = !["character", "note", "synopsis"].includes(draft.category);
   const categoryLabel = ENTRY_CATEGORY_OPTIONS.find((option) => option.id === draft.category)?.label || "entry";
+  const hasDraftText = draftHasText(draft);
 
   return createPortal(
     <div className="lorebook-modal-guard fixed inset-0 z-[80] grid place-items-center bg-black/60 px-3 py-4 backdrop-blur-sm sm:px-6">
@@ -1082,7 +1088,7 @@ function LorebookEditorModal({
             </button>
             <button
               type="submit"
-              disabled={!draft.name.trim() || saving || locked}
+              disabled={!hasDraftText || saving || locked}
               className={cx("lorebook-primary-button", CONTROL_MOTION)}
             >
               {saving ? "Saving..." : editing ? "Save entry" : "Create entry"}
@@ -1092,7 +1098,7 @@ function LorebookEditorModal({
               <button
                 type="button"
                 onClick={() => setGenerateOpen(true)}
-                disabled={saving || locked}
+                disabled={hasDraftText || saving || locked}
                 className={cx("lorebook-generate-button", CONTROL_MOTION)}
               >
                 Generate entry

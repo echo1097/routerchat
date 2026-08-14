@@ -200,7 +200,12 @@ export default function GenerateEntryModal({
   if (!rendered) return null;
 
   return createPortal(
-    <div className="lorebook-modal-guard fixed inset-0 z-[90] grid place-items-center bg-black/60 px-3 py-4 backdrop-blur-sm sm:px-6">
+    <div
+      className={cx(
+        "lorebook-modal-guard fixed inset-0 z-[90] grid place-items-center bg-black/60 px-3 py-4 backdrop-blur-sm sm:px-6",
+        modalState === "closing" && "pointer-events-none",
+      )}
+    >
       <button
         type="button"
         className="absolute inset-0 cursor-default"

@@ -962,6 +962,123 @@ test("confirms timeline repair, streams thinking, and keeps the dialog open unti
   await expect(timeline).toHaveValue("- Mara opens the gate\n- Mara crosses the threshold");
 });
 
+test("creates an entry immediately after the generated draft closes", async ({ page }) => {
+  const api = await installWriteApi(page);
+
+  await page.route("**/api/stories/story-1/lorebook/generate/stream", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/x-ndjson",
+    body: `${JSON.stringify({
+      type: "complete",
+      value: {
+        entry: {
+          name: "Mara",
+          category: "character",
+          description: "A keeper of the north gate.",
+          aliases: [],
+          notes: "",
+        },
+      },
+    })}\n`,
+  }));
+
+  await page.route("**/api/stories/story-1/lorebook", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        entry: {
+          id: "created-entry",
+          name: "Mara",
+          category: "character",
+          description: "A keeper of the north gate.",
+          aliases: [],
+          tags: [],
+          metadata: {},
+          disabled: false,
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z",
+        },
+      }),
+    });
+  });
+
+  await api.open();
+  await page.getByRole("button", { name: /Writing tools/ }).click();
+  await page.getByRole("menu").getByText("Lorebook", { exact: true }).click();
+  await page.getByRole("button", { name: "New entry" }).click();
+  await page.getByRole("button", { name: "Generate entry", exact: true }).click();
+  await page.getByRole("textbox", { name: /What should this character be/ }).fill("A keeper of the north gate");
+  await page.getByRole("button", { name: "Generate", exact: true }).click();
+
+  const createRequest = page.waitForRequest((request) => (
+    request.method() === "POST" && request.url().endsWith("/api/stories/story-1/lorebook")
+  ));
+  await page.getByRole("button", { name: "Create entry", exact: true }).click();
+  expect((await createRequest).postDataJSON()).toMatchObject({
+    name: "Mara",
+    description: "A keeper of the north gate.",
+  });
+  await expect(page.getByRole("dialog", { name: "Create lorebook entry" })).toBeHidden();
+});
+
+test("switches from generating to creating when the author writes an entry", async ({ page }) => {
+  const api = await installWriteApi(page);
+
+  await page.route("**/api/stories/story-1/lorebook", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+
+    const entry = route.request().postDataJSON();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        entry: {
+          ...entry,
+          id: "manual-entry",
+          tags: [],
+          metadata: {},
+          disabled: false,
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z",
+        },
+      }),
+    });
+  });
+
+  await api.open();
+  await page.getByRole("button", { name: /Writing tools/ }).click();
+  await page.getByRole("menu").getByText("Lorebook", { exact: true }).click();
+  await page.getByRole("button", { name: "New entry" }).click();
+
+  const createButton = page.getByRole("button", { name: "Create entry", exact: true });
+  const generateButton = page.getByRole("button", { name: "Generate entry", exact: true });
+  await expect(createButton).toBeDisabled();
+  await expect(generateButton).toBeEnabled();
+
+  await page.getByRole("textbox", { name: "Description" }).fill("A keeper of the north gate.");
+  await expect(createButton).toBeEnabled();
+  await expect(generateButton).toBeDisabled();
+
+  const createRequest = page.waitForRequest((request) => (
+    request.method() === "POST" && request.url().endsWith("/api/stories/story-1/lorebook")
+  ));
+  await createButton.click();
+  expect((await createRequest).postDataJSON()).toMatchObject({
+    name: "Untitled entry",
+    description: "A keeper of the north gate.",
+  });
+  await expect(page.getByRole("dialog", { name: "Create lorebook entry" })).toBeHidden();
+});
+
 test("edits and reloads migrated Markdown with working undo and redo", async ({ page }) => {
   const legacyContent = "# Existing title\n\nA paragraph with **old formatting**.";
   const api = await installWriteApi(page, { legacyContent });

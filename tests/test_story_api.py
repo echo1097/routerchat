@@ -2143,6 +2143,7 @@ class StoryApiTest(unittest.TestCase):
             {
                 "backend.writing",
                 "backend.lorebook_repair",
+                "backend.lorebook_generate",
                 "backend.lorebook_update_stream",
             },
         )

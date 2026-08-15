@@ -2284,6 +2284,37 @@ function historyRunGroups(entries) {
   return groups;
 }
 
+//the dot colour is the only thing separating one kind of action from another, so it carries the
+//whole distinction on its own
+const HISTORY_KIND_DOTS = {
+  write: "bg-neutral-300",
+  thinking: "bg-violet-400",
+  write_failed: "bg-amber-400",
+  lore_create: "bg-emerald-400",
+  lore_update: "bg-sky-400",
+  lore_hide: "bg-neutral-700",
+  lore_summary: "bg-neutral-500",
+};
+
+function historyKindDot(kind) {
+  return HISTORY_KIND_DOTS[kind] || "bg-neutral-600";
+}
+
+function historyWordTotals(entries) {
+  //hides never wrote anything, the text just left context, and lore_summary already restates the
+  //lorebook rows above it, so counting either one would inflate the tally
+  return entries.reduce(
+    (totals, entry) => {
+      if (entry.kind === "lore_hide" || entry.kind === "lore_summary") return totals;
+      return {
+        added: totals.added + (toFiniteNumber(entry.words_added) || 0),
+        removed: totals.removed + (toFiniteNumber(entry.words_removed) || 0),
+      };
+    },
+    { added: 0, removed: 0 },
+  );
+}
+
 function historyCostTotal(entries) {
   //old history predates cost tracking so anything non numeric just doesnt count toward the tally
   return entries.reduce((total, entry) => {
@@ -4544,6 +4575,8 @@ function WriteHistoryModal({ open, entries, title, onClose }) {
   const runGroups = historyRunGroups(entries);
   const eventCount = entries.filter((entry) => !isPromptEntry(entry)).length;
   const totalCost = historyCostTotal(entries);
+  const totalWords = historyWordTotals(entries);
+  const lastRunId = runGroups.length > 0 ? runGroups[runGroups.length - 1].id : null;
 
   function toggleExpanded(entryId) {
     setExpandedEntries((current) => ({
@@ -4552,10 +4585,12 @@ function WriteHistoryModal({ open, entries, title, onClose }) {
     }));
   }
 
+  //the newest run is open by default, so the flip has to resolve that default first or the
+  //first click on an untouched run just rewrites the state it already had
   function toggleRun(runId) {
     setOpenRuns((current) => ({
       ...current,
-      [runId]: current[runId] === false,
+      [runId]: !(current[runId] ?? runId === lastRunId),
     }));
   }
 
@@ -4576,53 +4611,50 @@ function WriteHistoryModal({ open, entries, title, onClose }) {
         aria-modal="true"
         aria-labelledby="write-history-title"
         className={cx(
-          "t-modal relative z-10 flex max-h-[min(680px,calc(100dvh-2rem))] w-full max-w-[600px] flex-col overflow-hidden rounded-[26px] bg-[#191919] text-neutral-100 [box-shadow:var(--shadow-surface)]",
+          "t-modal relative z-10 flex max-h-[min(720px,calc(100dvh-2rem))] w-full max-w-[720px] flex-col overflow-hidden rounded-[26px] bg-[#191919] text-neutral-100 [box-shadow:var(--shadow-surface)]",
           isOpen ? "is-open" : "is-closing",
         )}
       >
-        <header className="flex items-start justify-between gap-5 px-5 pb-4 pt-5 sm:px-6 sm:pt-6">
-          <div className="min-w-0">
-            <h2 id="write-history-title" className="text-balance text-lg font-semibold leading-6 tracking-[-0.01em] text-neutral-100">
+        <header className="shrink-0 px-5 pb-4 pt-5 sm:px-6 sm:pt-6">
+          <div className="flex items-start justify-between gap-5">
+            <h2
+              id="write-history-title"
+              className="min-w-0 text-balance text-lg font-semibold leading-6 tracking-[-0.01em] text-neutral-100"
+            >
               {title}
             </h2>
-            {eventCount > 0 ? (
-              <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-sm leading-5 text-neutral-500">
-                <span>{runGroups.length} {runGroups.length === 1 ? "prompt" : "prompts"}</span>
-                <span aria-hidden="true">·</span>
-                <span>{eventCount} {eventCount === 1 ? "event" : "events"}</span>
-                {totalCost > 0 && (
-                  <>
-                    <span aria-hidden="true">·</span>
-                    <span className="tabular-nums text-neutral-400">{formatCost(totalCost)}</span>
-                  </>
-                )}
-              </p>
-            ) : (
-              <p className="mt-1 text-sm leading-5 text-neutral-500">Prompts and changes will appear here</p>
-            )}
+            <button
+              ref={closeRef}
+              type="button"
+              onClick={onClose}
+              className={cx(
+                "grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/[0.05] text-neutral-400 shadow-[var(--shadow-border)] hover:bg-white/[0.09] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
+                CONTROL_MOTION,
+              )}
+              aria-label="Close history"
+            >
+              <X size={17} />
+            </button>
           </div>
-          <button
-            ref={closeRef}
-            type="button"
-            onClick={onClose}
-            className={cx(
-              "grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/[0.05] text-neutral-400 shadow-[var(--shadow-border)] hover:bg-white/[0.09] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
-              CONTROL_MOTION,
-            )}
-            aria-label="Close history"
-          >
-            <X size={17} />
-          </button>
+
+          {eventCount === 0 && (
+            <p className="mt-1 text-sm leading-5 text-neutral-500">
+              Prompts and changes will appear here
+            </p>
+          )}
         </header>
-        <div className="min-h-0 overflow-y-auto px-3 pb-3 sm:px-4 sm:pb-4">
+
+        {/*this has to be the flex child itself, a percentage height inside one resolves against an
+           indefinite height and silently grows to the content instead of scrolling*/}
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3 sm:px-4 sm:pb-4">
           {runGroups.length > 0 ? (
             <div className="space-y-2.5">
               {runGroups.map((run, index) => (
                 <WriteHistoryRunAccordion
                   key={run.id}
                   run={run}
-                  open={openRuns[run.id] ?? index === runGroups.length - 1}
-                  title={`Prompt ${index + 1}`}
+                  index={index}
+                  open={openRuns[run.id] ?? run.id === lastRunId}
                   onToggle={() => toggleRun(run.id)}
                   expandedEntries={expandedEntries}
                   onToggleEntry={toggleExpanded}
@@ -4632,29 +4664,83 @@ function WriteHistoryModal({ open, entries, title, onClose }) {
           ) : (
             <div className="rounded-[20px] bg-black/20 px-4 py-12 text-center shadow-[var(--shadow-border)]">
               <div className="text-sm font-medium text-neutral-300">No history yet</div>
-              <div className="mt-1 text-xs leading-5 text-neutral-600">Your next writing run will show up here.</div>
+              <div className="mt-1 text-xs leading-5 text-neutral-600">
+                Your next writing run will show up here.
+              </div>
             </div>
           )}
         </div>
+
+        {eventCount > 0 && (
+          <footer className="shrink-0 border-t border-white/[0.06] px-5 py-3.5 sm:px-6">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] leading-5 tabular-nums text-neutral-400">
+              <WriteHistoryTotal
+                value={formatInteger(runGroups.length)}
+                label={runGroups.length === 1 ? "prompt" : "prompts"}
+              />
+              <WriteHistoryDivider />
+              <WriteHistoryTotal
+                value={formatInteger(eventCount)}
+                label={eventCount === 1 ? "action" : "actions"}
+              />
+              {(totalWords.added > 0 || totalWords.removed > 0) && (
+                <>
+                  <WriteHistoryDivider />
+                  <span className="flex items-center">
+                    {totalWords.added > 0 && (
+                      <span className="text-emerald-300">+{formatInteger(totalWords.added)}</span>
+                    )}
+                    {totalWords.added > 0 && totalWords.removed > 0 && (
+                      <span className="px-1 text-neutral-700">/</span>
+                    )}
+                    {totalWords.removed > 0 && (
+                      <span className="text-red-300">&minus;{formatInteger(totalWords.removed)}</span>
+                    )}
+                    <span className="ml-1.5 text-neutral-500">words</span>
+                  </span>
+                </>
+              )}
+              {totalCost > 0 && (
+                <>
+                  <WriteHistoryDivider />
+                  <span className="text-neutral-200">{formatCost(totalCost)}</span>
+                </>
+              )}
+            </div>
+          </footer>
+        )}
       </section>
     </div>,
     document.body,
   );
 }
 
+function WriteHistoryTotal({ label, value }) {
+  return (
+    <span>
+      <span className="font-medium text-neutral-200">{value}</span>
+      <span className="ml-1.5 text-neutral-500">{label}</span>
+    </span>
+  );
+}
+
+function WriteHistoryDivider() {
+  return <span className="text-neutral-700">&middot;</span>;
+}
+
 function WriteHistoryRunAccordion({
   run,
+  index,
   open,
-  title,
   onToggle,
   expandedEntries,
   onToggleEntry,
 }) {
   const actionCount = run.actions.length;
   const runCost = historyCostTotal(run.actions);
-  const promptText = run.prompt?.detail
-    ? promptPreview(run.prompt.detail, 86)
-    : "Prompt details unavailable";
+  const runWords = historyWordTotals(run.actions);
+  const promptText = compactPrompt(run.prompt?.detail);
+  const hasPrompt = Boolean(promptText);
 
   return (
     <section
@@ -4664,35 +4750,40 @@ function WriteHistoryRunAccordion({
       <button
         type="button"
         className={cx(
-          "t-acc-head flex min-h-[72px] w-full items-center justify-between gap-4 rounded-[20px] px-3.5 py-3 text-left hover:bg-white/[0.025] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/20 sm:px-4",
+          "t-acc-head flex w-full items-center justify-between gap-4 rounded-[20px] py-3 pl-3.5 pr-2.5 text-left hover:bg-white/[0.025] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/20 sm:pl-4 sm:pr-3",
           CONTROL_MOTION,
         )}
         aria-expanded={open}
         onClick={onToggle}
       >
         <span className="min-w-0">
-          <span className="flex min-w-0 items-center gap-2.5">
-            <span className="truncate text-sm font-semibold text-neutral-100">{title}</span>
-            <span className="shrink-0 text-[11px] font-medium tabular-nums text-neutral-600">
+          <span className="block text-sm font-semibold leading-5 text-neutral-100">
+            Prompt {index + 1}
+          </span>
+          <span className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] font-medium leading-4 tabular-nums text-neutral-600">
+            <span>
               {actionCount} {actionCount === 1 ? "action" : "actions"}
             </span>
-            {runCost > 0 && (
-              <span className="shrink-0 text-[11px] font-medium tabular-nums text-neutral-600">
-                {formatCost(runCost)}
-              </span>
-            )}
+            {runWords.added > 0 && <span className="text-emerald-300/80">+{formatInteger(runWords.added)}</span>}
+            {runWords.removed > 0 && <span className="text-red-300/80">&minus;{formatInteger(runWords.removed)}</span>}
+            {runCost > 0 && <span>{formatCost(runCost)}</span>}
           </span>
-          <span className="mt-0.5 block truncate text-xs leading-5 text-neutral-500">{promptText}</span>
         </span>
         <span className="t-acc-chevron grid h-9 w-9 shrink-0 place-items-center rounded-full text-neutral-500">
           <ChevronDown size={17} strokeWidth={1.8} aria-hidden="true" />
         </span>
       </button>
+
       <div className="t-acc-panel min-h-0">
         <div className="t-acc-panel-inner min-h-0 px-3.5 pb-4 sm:px-4">
           <div className="mb-4 rounded-2xl bg-white/[0.035] px-3.5 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.045)]">
-            <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-600">Prompt</div>
-            {run.prompt ? (
+            <div className="mb-1 flex items-start justify-between gap-3">
+              <div className="mt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-600">
+                Prompt
+              </div>
+              <WriteHistoryCopyButton text={promptText} />
+            </div>
+            {hasPrompt ? (
               <WriteHistoryDetail
                 entry={run.prompt}
                 expanded={Boolean(expandedEntries[run.prompt.id])}
@@ -4700,39 +4791,30 @@ function WriteHistoryRunAccordion({
                 promptCard
               />
             ) : (
-              <div className="text-sm text-neutral-600">Prompt details unavailable</div>
+              <div className="text-sm leading-5 text-neutral-600">Prompt details unavailable</div>
             )}
           </div>
 
-          <div className="mb-2 flex items-center justify-between px-1">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-600">Activity</div>
-            <div className="text-[10px] font-medium tabular-nums text-neutral-700">{actionCount}</div>
+          <div className="mb-2.5 px-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-600">
+            Activity
           </div>
 
           {run.actions.length > 0 ? (
-            <ol>
-              {run.actions.map((entry, index) => (
-                <li key={entry.id} className="grid grid-cols-[18px_minmax(0,1fr)_auto] gap-3 px-1">
-                  <span className="relative flex justify-center" aria-hidden="true">
-                    {index < run.actions.length - 1 && (
-                      <span className="absolute bottom-0 top-[14px] w-px bg-white/[0.07]" />
-                    )}
-                    <span className="relative mt-[7px] h-2 w-2 rounded-full bg-neutral-600 ring-4 ring-[#141414]" />
-                  </span>
-                  <div className={cx("min-w-0 pb-3", index === run.actions.length - 1 && "pb-0")}>
-                    <div className="text-pretty text-sm font-medium leading-5 text-neutral-300">{entry.label}</div>
-                    <WriteHistoryDetail
-                      entry={entry}
-                      expanded={Boolean(expandedEntries[entry.id])}
-                      onToggle={() => onToggleEntry(entry.id)}
-                    />
-                  </div>
-                  <WriteHistoryStats entry={entry} />
-                </li>
+            <ol className="px-1">
+              {run.actions.map((entry, actionIndex) => (
+                <WriteHistoryAction
+                  key={entry.id}
+                  entry={entry}
+                  last={actionIndex === run.actions.length - 1}
+                  expanded={Boolean(expandedEntries[entry.id])}
+                  onToggle={() => onToggleEntry(entry.id)}
+                />
               ))}
             </ol>
           ) : (
-            <div className="px-1 text-xs leading-5 text-neutral-600">No actions recorded for this prompt.</div>
+            <div className="px-1 text-xs leading-5 text-neutral-600">
+              No actions recorded for this prompt.
+            </div>
           )}
         </div>
       </div>
@@ -4740,16 +4822,76 @@ function WriteHistoryRunAccordion({
   );
 }
 
+function WriteHistoryAction({ entry, last, expanded, onToggle }) {
+  const failed = entry.kind === "write_failed";
+
+  return (
+    <li className="grid grid-cols-[18px_minmax(0,1fr)_auto] gap-x-3">
+      <span className="relative flex justify-center" aria-hidden="true">
+        {!last && <span className="absolute bottom-0 top-[16px] w-px bg-white/[0.07]" />}
+        <span className={cx("mt-[7px] h-2 w-2 rounded-full", historyKindDot(entry.kind))} />
+      </span>
+      <div className={cx("min-w-0", last ? "pb-0" : "pb-3.5")}>
+        <div
+          className={cx(
+            "text-pretty text-sm font-medium leading-5",
+            failed ? "text-amber-200" : "text-neutral-300",
+          )}
+        >
+          {entry.label}
+        </div>
+        <WriteHistoryDetail entry={entry} expanded={expanded} onToggle={onToggle} />
+      </div>
+      <WriteHistoryStats entry={entry} />
+    </li>
+  );
+}
+
+function WriteHistoryCopyButton({ text }) {
+  const [copied, setCopied] = useState(false);
+  const timeoutRef = useRef(null);
+
+  useEffect(() => () => window.clearTimeout(timeoutRef.current), []);
+
+  async function handleCopy() {
+    if (!text) return;
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    window.clearTimeout(timeoutRef.current);
+    timeoutRef.current = window.setTimeout(() => setCopied(false), 1600);
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      disabled={!text}
+      aria-label={copied ? "Prompt copied" : "Copy prompt"}
+      title={copied ? "Copied" : "Copy prompt"}
+      className={cx(
+        "-mr-1.5 -mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-full text-neutral-500 hover:bg-white/[0.06] hover:text-neutral-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 disabled:pointer-events-none disabled:opacity-0",
+        copied && "text-emerald-300 hover:text-emerald-300",
+        CONTROL_MOTION,
+      )}
+    >
+      {copied ? (
+        <Check size={16} strokeWidth={2.2} aria-hidden="true" />
+      ) : (
+        <Copy size={15} strokeWidth={1.9} aria-hidden="true" />
+      )}
+    </button>
+  );
+}
+
 function WriteHistoryStats({ entry }) {
   const wordsAdded = toFiniteNumber(entry.words_added) || 0;
   const wordsRemoved = toFiniteNumber(entry.words_removed) || 0;
-  const cost = toFiniteNumber(entry.cost);
-  const hasCost = isFiniteNumber(cost) && cost > 0;
-  if (!wordsAdded && !wordsRemoved && !hasCost) return null;
+  if (!wordsAdded && !wordsRemoved) return null;
 
   //a hide destroys nothing, it just drops the entry out of context, so it doesnt get to wear the deletion colour
   const isHide = entry.kind === "lore_hide";
 
+  //cost lives on the run header and the modal totals, per row it was just noise beside the diff
   //self-start keeps this on the labels first line, without it the span stretches to the whole row and centers itself six pixels low
   return (
     <span className="flex shrink-0 items-center gap-2 self-start text-[11px] font-medium leading-5 tabular-nums">
@@ -4757,7 +4899,6 @@ function WriteHistoryStats({ entry }) {
       {wordsRemoved > 0 && (
         <span className={isHide ? "text-neutral-500" : "text-red-300"}>&minus;{wordsRemoved}</span>
       )}
-      {hasCost && <span className="text-neutral-500">{formatCost(cost)}</span>}
     </span>
   );
 }
@@ -4774,9 +4915,8 @@ function WriteHistoryDetail({ entry, expanded, onToggle, promptCard = false }) {
         className={cx(
           promptCard
             ? "text-pretty text-sm leading-5 text-neutral-300"
-            : "mt-0.5 truncate text-xs leading-5 text-neutral-500",
+            : "text-pretty text-xs leading-5 text-neutral-500",
         )}
-        title={entry.detail}
       >
         {entry.detail}
       </div>
@@ -4784,17 +4924,18 @@ function WriteHistoryDetail({ entry, expanded, onToggle, promptCard = false }) {
   }
 
   return (
-    <div className={promptCard ? "" : "mt-1"}>
+    <div className={promptCard ? "" : "mt-0.5"}>
       <div
         className={cx(
           promptCard
             ? "text-pretty text-sm leading-5 text-neutral-300"
             : "text-xs leading-5 text-neutral-500",
-          expanded ? "whitespace-pre-wrap break-words" : promptCard ? "line-clamp-2" : "truncate",
+          expanded ? "whitespace-pre-wrap break-words" : promptCard ? "line-clamp-4" : "line-clamp-2",
         )}
-        title={expanded ? undefined : entry.detail}
       >
-        {expanded ? entry.detail : promptPreview(entry.detail)}
+        {/*the card is the only place the prompt appears now, so it clamps the real text by line
+           rather than handing over a character truncated preview of it*/}
+        {expanded || promptCard ? entry.detail : promptPreview(entry.detail)}
       </div>
       <button
         type="button"

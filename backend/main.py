@@ -343,6 +343,7 @@ class ChatPatchRequest(BaseModel):
 
 class AppSettingsPatchRequest(BaseModel):
     default_model: str | None = None
+    generate_chat_name: bool | None = None
     hide_free_models: bool | None = None
     nitro_mode: bool | None = None
     cheapest_mode: bool | None = None
@@ -1306,6 +1307,7 @@ def tos_payload(tos: dict[str, Any]) -> dict[str, Any]:
 def app_settings_payload() -> dict[str, Any]:
     return {
         "default_model": default_model_id(),
+        "generate_chat_name": bool(read_app_setting("generate_chat_name")),
         "hide_free_models": bool(read_app_setting("hide_free_models")),
         "nitro_mode": bool(read_app_setting("nitro_mode")),
         "cheapest_mode": bool(read_app_setting("cheapest_mode")),
@@ -1501,6 +1503,52 @@ def chat_title_from_message(message: str) -> str:
     return title[:48]
 
 
+CHAT_TITLE_PROMPT = (
+    "Give a short name for this chat based on the message below. "
+    "Use 3 to 5 words in Title Case. "
+    "Reply with the name only, with no quotes, no final punctuation, and no explanation."
+)
+
+CHAT_TITLE_MAX_LENGTH = 48
+
+
+def title_case_word(word: str) -> str:
+    #an acronym the model chose on purpose reads worse after capitalize() lowercases the rest of it
+    if word.isupper() and len(word) > 1:
+        return word
+    if any(letter.isupper() for letter in word[1:]):
+        return word
+    return word[:1].upper() + word[1:]
+
+
+def chat_title_from_model_output(raw: str | None) -> str | None:
+    if not raw:
+        return None
+
+    lines = [line.strip() for line in raw.splitlines() if line.strip()]
+    if not lines:
+        return None
+
+    #a chatty model puts its preamble first and the actual name on the last line
+    title = lines[-1]
+    title = re.sub(r"^(?:chat\s+)?(?:name|title)\s*[:\-]\s*", "", title, flags=re.IGNORECASE)
+    title = title.strip().strip("\"'`“”‘’*")
+    title = title.rstrip(".!?:;,")
+    title = " ".join(title.split())
+
+    if not title:
+        return None
+
+    #the word count lives in the prompt, so only trim here when the sidebar could not show it anyway
+    if len(title) > CHAT_TITLE_MAX_LENGTH:
+        trimmed = title[:CHAT_TITLE_MAX_LENGTH].rsplit(" ", 1)[0]
+        title = trimmed or title[:CHAT_TITLE_MAX_LENGTH]
+
+    title = " ".join(title_case_word(word) for word in title.split(" "))
+
+    return title or None
+
+
 @app.get("/api/health")
 def health() -> dict[str, Any]:
     return {
@@ -1572,6 +1620,8 @@ def update_app_settings(payload: AppSettingsPatchRequest) -> dict[str, Any]:
         if ids and model_id not in ids:
             raise HTTPException(status_code=400, detail="Unknown model.")
         write_app_setting("default_model", model_id)
+    if payload.generate_chat_name is not None:
+        write_app_setting("generate_chat_name", payload.generate_chat_name)
     if payload.hide_free_models is not None:
         write_app_setting("hide_free_models", payload.hide_free_models)
     if payload.nitro_mode is not None:
@@ -1946,6 +1996,49 @@ def update_chat(chat_id: str, payload: ChatPatchRequest) -> dict[str, Any]:
         result = conn.execute(
             f"UPDATE chats SET {', '.join(assignments)} WHERE id = ?", values
         )
+    return get_chat(chat_id)
+
+
+@app.post("/api/chats/{chat_id}/title")
+async def name_chat(chat_id: str) -> dict[str, Any]:
+    with get_db() as conn:
+        chat = conn.execute("SELECT * FROM chats WHERE id = ?", (chat_id,)).fetchone()
+        if not chat:
+            raise HTTPException(status_code=404, detail="Chat not found.")
+        #a rename or an earlier naming run already settled this, and neither should be overwritten
+        if chat["title"] != "New chat":
+            return get_chat(chat_id)
+        first = conn.execute(
+            f"""
+            SELECT content FROM messages
+            WHERE chat_id = ? AND role = 'user'
+            ORDER BY {message_order_clause()}
+            LIMIT 1
+            """,
+            (chat_id,),
+        ).fetchone()
+
+    if not first or not (first["content"] or "").strip():
+        return get_chat(chat_id)
+
+    message = first["content"]
+    api_key = read_openrouter_key()
+    title = None
+    if api_key:
+        title = await generate_chat_title(
+            api_key, chat["model"], chat["reasoning_effort"], message
+        )
+
+    #a chat that cannot be named is still better off with the old derived title than a placeholder
+    if not title:
+        title = chat_title_from_message(message)
+
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE chats SET title = ?, updated_at = ? WHERE id = ? AND title = 'New chat'",
+            (title, utc_now(), chat_id),
+        )
+
     return get_chat(chat_id)
 
 
@@ -2409,6 +2502,66 @@ def enabled_reasoning_config(
         "exclude": False,
         "effort": reasoning_effort,
     }
+
+
+#a title is a handful of tokens, so the long read budget a real generation needs would only ever
+#leave the rename lock sitting there after something already went wrong
+CHAT_TITLE_TIMEOUT = httpx.Timeout(connect=10.0, read=30.0, write=15.0, pool=10.0)
+
+
+def chat_title_request_body(model_id: str, reasoning_effort: ReasoningEffort, message: str) -> dict[str, Any]:
+    body: dict[str, Any] = {
+        "model": openrouter_request_model(model_id, bool(read_app_setting("nitro_mode"))),
+        "messages": [{"role": "user", "content": f"{CHAT_TITLE_PROMPT}\n\n{message}"}],
+        "temperature": 0.3,
+        "max_tokens": 32,
+        "stream": False,
+    }
+
+    providerOptions = openrouter_provider_options()
+    if providerOptions:
+        body["provider"] = providerOptions
+
+    #asking for thinking off means passing False here, which still lets a mandatory model keep it
+    reasoningConfig = enabled_reasoning_config(model_id, False, reasoning_effort)
+    if reasoningConfig:
+        body["reasoning"] = reasoningConfig
+        body["reasoning_effort"] = reasoning_effort
+    elif model_supports_reasoning(model_id):
+        body["reasoning"] = {"enabled": False, "exclude": True}
+        body["reasoning_effort"] = "none"
+        body["include_reasoning"] = False
+
+    return body
+
+
+async def generate_chat_title(
+    api_key: str,
+    model_id: str,
+    reasoning_effort: ReasoningEffort,
+    message: str,
+) -> str | None:
+    body = chat_title_request_body(model_id, reasoning_effort, message)
+
+    try:
+        async with httpx.AsyncClient(timeout=CHAT_TITLE_TIMEOUT) as client:
+            response = await client.post(
+                f"{OPENROUTER_BASE_URL}/chat/completions",
+                headers={**headers_for_key(api_key), "Content-Type": "application/json"},
+                json=body,
+            )
+        if response.status_code >= 400:
+            return None
+        payload = response.json()
+    except (httpx.HTTPError, json.JSONDecodeError, ValueError):
+        return None
+
+    choices = payload.get("choices") or []
+    if not choices:
+        return None
+    content = (choices[0].get("message") or {}).get("content")
+
+    return chat_title_from_model_output(content)
 
 
 def model_supports_structured_output(model_id: str) -> bool:
@@ -2876,7 +3029,8 @@ async def stream_message(
             )
 
         title = chat["title"]
-        if title == "New chat":
+        #the naming route fills this in once the run is done, so leave the placeholder alone for it
+        if title == "New chat" and not bool(read_app_setting("generate_chat_name")):
             title = chat_title_from_message(message)
         conn.execute(
             """

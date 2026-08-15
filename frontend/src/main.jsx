@@ -1023,6 +1023,7 @@ function ChatHistoryActions({
   isFirst,
   forceVisible,
   folders,
+  renameDisabled,
   onRename,
   onDelete,
   onExport,
@@ -1043,11 +1044,18 @@ function ChatHistoryActions({
           <button
             type="button"
             role="menuitem"
+            disabled={renameDisabled}
+            title={renameDisabled ? "Waiting for the chat name" : undefined}
             onClick={() => {
               closeMenu();
               onRename(chat);
             }}
-            className="chat-history-menu-item text-neutral-200 hover:bg-white/[0.07] focus:bg-white/[0.07] focus:outline-none"
+            className={cx(
+              "chat-history-menu-item focus:outline-none",
+              renameDisabled
+                ? "cursor-not-allowed text-neutral-600"
+                : "text-neutral-200 hover:bg-white/[0.07] focus:bg-white/[0.07]",
+            )}
           >
             <Pencil size={14} />
             Edit name
@@ -1481,6 +1489,7 @@ function ConversationRail({
   onDeleteChat,
   onExportChat,
   onTogglePinChat,
+  namingChatId,
   folders,
   onCreateFolder,
   onRenameFolder,
@@ -1533,6 +1542,7 @@ function ConversationRail({
   }
 
   function startRename(chat) {
+    if (chat.id === namingChatId) return;
     skipRenameCommitRef.current = false;
     setRenamingChatId(chat.id);
     setRenameDraft(chat.title || "");
@@ -1688,6 +1698,7 @@ function ConversationRail({
             isFirst={index === 0}
             forceVisible={index === 0 && highlightFirstChatActions}
             folders={folders}
+            renameDisabled={chat.id === namingChatId}
             onRename={startRename}
             onDelete={onDeleteChat}
             onExport={onExportChat}
@@ -5002,6 +5013,7 @@ function SettingsDrawer({
   settings,
   setSettings,
   defaultModel,
+  generateChatName,
   hideFreeModels,
   nitroMode,
   cheapestMode,
@@ -5013,6 +5025,7 @@ function SettingsDrawer({
   onPersist,
   onModelSelected,
   onSetDefaultModel,
+  onToggleGenerateChatName,
   onToggleHideFreeModels,
   onToggleNitroMode,
   onToggleCheapestMode,
@@ -5313,6 +5326,21 @@ function SettingsDrawer({
           {saving ? "Saving" : "Save"}
         </button>
       </div>
+    </section>
+  );
+
+  const chatNameSection = (
+    <section className="border-b border-white/[0.08] py-3">
+      <SettingRow
+        title="Generate chat name"
+        description="Let the model name chats"
+      >
+        <SettingSwitch
+          checked={generateChatName}
+          onChange={onToggleGenerateChatName}
+          label="Generate chat name"
+        />
+      </SettingRow>
     </section>
   );
 
@@ -5965,6 +5993,7 @@ function SettingsDrawer({
               aria-label="API settings"
             >
               {keySection}
+              {chatNameSection}
               {modelFilterSection}
               {turboSection}
               {cheapestSection}
@@ -6719,6 +6748,10 @@ function App() {
   const [tempChatId, setTempChatId] = useState(null);
   const [settings, setSettings] = useState(newSettings);
   const [defaultModel, setDefaultModel] = useState(DEFAULT_MODEL);
+  const [generateChatName, setGenerateChatName] = useState(
+    Boolean(localAppSettings.generate_chat_name),
+  );
+  const [namingChatId, setNamingChatId] = useState(null);
   const [hideFreeModels, setHideFreeModels] = useState(Boolean(localAppSettings.hide_free_models));
   const [nitroMode, setNitroMode] = useState(Boolean(localAppSettings.nitro_mode));
   const [cheapestMode, setCheapestMode] = useState(Boolean(localAppSettings.cheapest_mode));
@@ -7383,6 +7416,10 @@ function App() {
         typeof payload.hide_free_models === "boolean"
           ? payload.hide_free_models
           : Boolean(readLocalAppSettings().hide_free_models);
+      const nextGenerateChatName =
+        typeof payload.generate_chat_name === "boolean"
+          ? payload.generate_chat_name
+          : Boolean(readLocalAppSettings().generate_chat_name);
       const nextNitroMode =
         typeof payload.nitro_mode === "boolean"
           ? payload.nitro_mode
@@ -7405,6 +7442,7 @@ function App() {
           : Boolean(readLocalAppSettings().zdr_mode);
       setDefaultModel(nextDefaultModel);
       defaultModelRef.current = nextDefaultModel;
+      setGenerateChatName(nextGenerateChatName);
       setHideFreeModels(nextHideFreeModels);
       setNitroMode(nextNitroMode);
       setSmoothStreaming(nextSmoothStreaming);
@@ -7412,6 +7450,7 @@ function App() {
       setPrivacyMode(nextPrivacyMode);
       setZdrMode(nextZdrMode);
       writeLocalAppSettings({
+        generate_chat_name: nextGenerateChatName,
         hide_free_models: nextHideFreeModels,
         nitro_mode: nextNitroMode,
         smooth_streaming: nextSmoothStreaming,
@@ -7721,6 +7760,29 @@ function App() {
     } catch (error) {
       setHideFreeModels(value);
       writeLocalAppSettings({ hide_free_models: value });
+      setStatus(`Saved locally. Restart the server to sync this setting. ${error.message}`);
+    }
+  }
+
+  async function updateGenerateChatName(value) {
+    setGenerateChatName(value);
+    writeLocalAppSettings({ generate_chat_name: value });
+    try {
+      const payload = await api("/api/settings", {
+        method: "PATCH",
+        body: JSON.stringify({ generate_chat_name: value }),
+      });
+      //an older backend drops unknown fields and still answers 200, so a missing key is a stale server
+      if (typeof payload.generate_chat_name !== "boolean") {
+        setStatus("Saved locally. Restart the server to use generated chat names.");
+        return;
+      }
+      setGenerateChatName(payload.generate_chat_name);
+      writeLocalAppSettings({ generate_chat_name: payload.generate_chat_name });
+      showToast(value ? "Chat names will be generated" : "Chat name generation off");
+    } catch (error) {
+      setGenerateChatName(value);
+      writeLocalAppSettings({ generate_chat_name: value });
       setStatus(`Saved locally. Restart the server to sync this setting. ${error.message}`);
     }
   }
@@ -8229,11 +8291,16 @@ function App() {
     let currentAssistantId = null;
     let conversationId = null;
     let currentTempMode = false;
+    //the name comes from the opening prompt, so a regenerate of that same turn is not a new chat
+    const shouldName = generateChatName && !regenerateMessageId && messages.length === 0;
 
     try {
       const tempMode = temporaryChat && (!activeChatId || activeChatId === tempChatId);
       currentTempMode = tempMode;
       conversationId = tempMode ? await ensureTemporaryChat() : await ensureChat();
+      if (shouldName) {
+        setNamingChatId(conversationId);
+      }
       const shouldAddUser = !regenerateMessageId;
       const userMessage = {
         id: `local-user-${crypto.randomUUID()}`,
@@ -8292,6 +8359,9 @@ function App() {
         await loadChats();
         await loadChat(conversationId, { replace: true });
       }
+      if (shouldName) {
+        await nameChat(conversationId, tempMode);
+      }
     } catch (error) {
       if (error.name === "AbortError") {
         setStatus("Response stopped");
@@ -8326,6 +8396,25 @@ function App() {
         delete reasoningStartedAtRef.current[currentAssistantId];
       }
       abortRef.current = null;
+      //a stopped or failed run never reaches the naming call, so the lock has to lift here too
+      setNamingChatId(null);
+    }
+  }
+
+  //the route always answers with a title, so a rejection here is the network rather than the model
+  async function nameChat(chatId, tempMode) {
+    try {
+      const payload = await api(`/api/chats/${chatId}/title`, { method: "POST" });
+      if (!tempMode) {
+        await loadChats();
+      }
+      if (chatId === activeChatId && payload.chat) {
+        await navigateToChat(payload.chat, { replace: true });
+      }
+    } catch (error) {
+      //a chat that keeps its fallback title is not worth interrupting the reply for, but a silent
+      //failure here is impossible to tell apart from the feature never running at all
+      console.error("chat naming failed", error);
     }
   }
 
@@ -9531,6 +9620,7 @@ function App() {
           onNewChat={() => resetChat({ mode: chatMode })}
           onLoadChat={loadChat}
           onRenameChat={renameChat}
+          namingChatId={namingChatId}
           onDeleteChat={deleteChat}
           onExportChat={exportChatFromMenu}
           onTogglePinChat={toggleChatPin}
@@ -9752,6 +9842,7 @@ function App() {
         settings={settings}
         setSettings={setSettings}
         defaultModel={defaultModel}
+        generateChatName={generateChatName}
         hideFreeModels={hideFreeModels}
         nitroMode={nitroMode}
         cheapestMode={cheapestMode}
@@ -9763,6 +9854,7 @@ function App() {
         onPersist={persistSettings}
         onModelSelected={(name) => showToast(`Model selected: ${name}`)}
         onSetDefaultModel={updateDefaultModel}
+        onToggleGenerateChatName={updateGenerateChatName}
         onToggleHideFreeModels={updateHideFreeModels}
         onToggleNitroMode={updateNitroMode}
         onToggleCheapestMode={updateCheapestMode}

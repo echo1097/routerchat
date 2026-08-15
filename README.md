@@ -45,7 +45,6 @@ To remove RouterChat, run **Uninstall RouterChat** from `~/Applications/RouterCh
     - Attachments (files)
     - Support for video and image models
     - Web search
-    - Generate chat names instead of just being first message
 - Writing Mode improvements
     - Import/export full stories
     - More detailed diffs
@@ -68,6 +67,8 @@ To remove RouterChat, run **Uninstall RouterChat** from `~/Applications/RouterCh
     - Redesign the History menu for chapter actions
 - Chat Mode improvements
     - Folders/Projects
+    - Generate chat names instead of just being first message
+
 - Memory
     - Write mode
 

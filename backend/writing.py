@@ -109,6 +109,105 @@ class BrainstormViewportRequest(BaseModel):
     zoom: float = Field(ge=0.1, le=4.0)
 
 
+class StoryArchiveStory(BaseModel):
+    id: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    author: str = ""
+    language: str = "English"
+    synopsis: str = ""
+    model: str | None = None
+    system_prompt: str = ""
+    temperature: float = 0.7
+    max_tokens: int = Field(default=DEFAULT_MAX_TOKENS, gt=0)
+    thinking_enabled: bool = False
+    reasoning_effort: str = "medium"
+    lorebook_auto: bool = False
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class StoryArchiveChapter(BaseModel):
+    id: str = Field(min_length=1)
+    story_id: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    content: str = ""
+    revision: int = Field(default=0, ge=0)
+    order_index: int = Field(default=0, ge=0)
+    disabled: bool = False
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class StoryArchiveHistoryEntry(BaseModel):
+    id: str = Field(min_length=1)
+    story_id: str = Field(min_length=1)
+    chapter_id: str = Field(min_length=1)
+    run_id: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+    detail: str = ""
+    entry_order: int = Field(default=0, ge=0)
+    kind: str | None = None
+    words_added: int | None = Field(default=None, ge=0)
+    words_removed: int | None = Field(default=None, ge=0)
+    created_at: str = ""
+
+
+class StoryArchiveLorebookEntry(BaseModel):
+    id: str = Field(min_length=1)
+    story_id: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    category: str = "note"
+    description: str = ""
+    aliases: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    disabled: bool = False
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class StoryArchiveBrainstormNode(BaseModel):
+    id: str = Field(min_length=1)
+    story_id: str = Field(min_length=1)
+    node_type: str = Field(min_length=1)
+    title: str = ""
+    content: str = ""
+    position_x: float = 0
+    position_y: float = 0
+    status: str = "complete"
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class StoryArchiveBrainstormEdge(BaseModel):
+    id: str = Field(min_length=1)
+    story_id: str = Field(min_length=1)
+    source_node_id: str = Field(min_length=1)
+    target_node_id: str = Field(min_length=1)
+    created_at: str = ""
+
+
+class StoryArchiveViewport(BaseModel):
+    x: float = 0
+    y: float = 0
+    zoom: float = Field(default=1, ge=0.1, le=4.0)
+
+
+class StoryArchiveBrainstorm(BaseModel):
+    nodes: list[StoryArchiveBrainstormNode] = Field(default_factory=list)
+    edges: list[StoryArchiveBrainstormEdge] = Field(default_factory=list)
+    viewport: StoryArchiveViewport = Field(default_factory=StoryArchiveViewport)
+
+
+class StoryImportRequest(BaseModel):
+    format_schema: str = Field(alias="schema")
+    story: StoryArchiveStory
+    chapters: list[StoryArchiveChapter] = Field(default_factory=list)
+    chapter_history: list[StoryArchiveHistoryEntry] = Field(default_factory=list)
+    lorebook: list[StoryArchiveLorebookEntry] = Field(default_factory=list)
+    brainstorm: StoryArchiveBrainstorm = Field(default_factory=StoryArchiveBrainstorm)
+
+
 CHAPTER_EDIT_OPERATIONS = {
     "replaceBlock",
     "replaceBlockRange",
@@ -3088,6 +3187,316 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                 "SELECT * FROM stories WHERE temporary = 0 ORDER BY updated_at DESC, created_at DESC"
             ).fetchall()
         return {"stories": [row_to_story(row) for row in rows]}
+
+    @router.get("/api/stories/{story_id}/export")
+    def export_story(story_id: str) -> dict[str, Any]:
+        with deps.get_db() as conn:
+            story = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
+            if not story:
+                raise HTTPException(status_code=404, detail="Story not found.")
+
+            chapters = conn.execute(
+                """
+                SELECT * FROM chapters
+                WHERE story_id = ?
+                ORDER BY order_index ASC, created_at ASC
+                """,
+                (story_id,),
+            ).fetchall()
+            historyRows = conn.execute(
+                """
+                SELECT * FROM chapter_history_entries
+                WHERE story_id = ?
+                ORDER BY chapter_id ASC, entry_order ASC, created_at ASC
+                """,
+                (story_id,),
+            ).fetchall()
+            lorebookRows = conn.execute(
+                """
+                SELECT * FROM lorebook_entries
+                WHERE story_id = ?
+                ORDER BY created_at ASC
+                """,
+                (story_id,),
+            ).fetchall()
+            brainstormNodes = conn.execute(
+                """
+                SELECT * FROM brainstorm_nodes
+                WHERE story_id = ?
+                ORDER BY created_at ASC
+                """,
+                (story_id,),
+            ).fetchall()
+            brainstormEdges = conn.execute(
+                """
+                SELECT * FROM brainstorm_edges
+                WHERE story_id = ?
+                ORDER BY created_at ASC
+                """,
+                (story_id,),
+            ).fetchall()
+            viewport = conn.execute(
+                "SELECT * FROM brainstorm_viewports WHERE story_id = ?",
+                (story_id,),
+            ).fetchone()
+
+        storyPayload = row_to_story(story)
+        storyPayload.pop("temporary", None)
+
+        historyPayload = []
+        for row in historyRows:
+            historyEntry = row_to_chapter_history_entry(row)
+            historyEntry.pop("cost", None)
+            historyPayload.append(historyEntry)
+
+        nodePayload = []
+        for row in brainstormNodes:
+            node = row_to_brainstorm_node(row)
+            node.pop("reasoning", None)
+            node.pop("duration_ms", None)
+            nodePayload.append(node)
+
+        return {
+            "schema": "routerchat.story.v1",
+            "exported_at": deps.utc_now(),
+            "story": storyPayload,
+            "chapters": [row_to_chapter(row) for row in chapters],
+            "chapter_history": historyPayload,
+            "lorebook": [row_to_lorebook_entry(row) for row in lorebookRows],
+            "brainstorm": {
+                "nodes": nodePayload,
+                "edges": [row_to_brainstorm_edge(row) for row in brainstormEdges],
+                "viewport": (
+                    {
+                        "x": viewport["position_x"],
+                        "y": viewport["position_y"],
+                        "zoom": viewport["zoom"],
+                    }
+                    if viewport
+                    else {"x": 0, "y": 0, "zoom": 1}
+                ),
+            },
+        }
+
+    @router.post("/api/stories/import")
+    def import_story(payload: StoryImportRequest) -> dict[str, Any]:
+        if payload.format_schema != "routerchat.story.v1":
+            raise HTTPException(status_code=422, detail="Unsupported RouterChat story format.")
+
+        sourceStoryId = payload.story.id
+
+        def requireUniqueIds(items: list[Any], label: str) -> None:
+            itemIds = [item.id for item in items]
+            if len(itemIds) != len(set(itemIds)):
+                raise HTTPException(status_code=422, detail=f"Story archive has duplicate {label} IDs.")
+
+        requireUniqueIds(payload.chapters, "chapter")
+        requireUniqueIds(payload.chapter_history, "chapter history")
+        requireUniqueIds(payload.lorebook, "lorebook")
+        requireUniqueIds(payload.brainstorm.nodes, "brainstorm node")
+        requireUniqueIds(payload.brainstorm.edges, "brainstorm edge")
+
+        storyChildren = [
+            *payload.chapters,
+            *payload.chapter_history,
+            *payload.lorebook,
+            *payload.brainstorm.nodes,
+            *payload.brainstorm.edges,
+        ]
+        if any(item.story_id != sourceStoryId for item in storyChildren):
+            raise HTTPException(status_code=422, detail="Story archive contains a mismatched story reference.")
+
+        sourceChapterIds = {chapter.id for chapter in payload.chapters}
+        if any(entry.chapter_id not in sourceChapterIds for entry in payload.chapter_history):
+            raise HTTPException(status_code=422, detail="Story archive history references a missing chapter.")
+
+        sourceNodeIds = {node.id for node in payload.brainstorm.nodes}
+        if any(
+            edge.source_node_id not in sourceNodeIds or edge.target_node_id not in sourceNodeIds
+            for edge in payload.brainstorm.edges
+        ):
+            raise HTTPException(status_code=422, detail="Story archive contains an orphaned brainstorm edge.")
+
+        now = deps.utc_now()
+        storyId = str(uuid.uuid4())
+        chapterIdMap = {chapter.id: str(uuid.uuid4()) for chapter in payload.chapters}
+        nodeIdMap = {node.id: str(uuid.uuid4()) for node in payload.brainstorm.nodes}
+        runIdMap = {
+            entry.run_id: str(uuid.uuid4())
+            for entry in payload.chapter_history
+        }
+        orderedChapters = sorted(
+            payload.chapters,
+            key=lambda chapter: (chapter.order_index, chapter.created_at, chapter.id),
+        )
+
+        with deps.get_db() as conn:
+            story = payload.story
+            conn.execute(
+                """
+                INSERT INTO stories (
+                  id, title, author, language, synopsis, model, system_prompt,
+                  temperature, max_tokens, thinking_enabled, reasoning_effort, temporary,
+                  lorebook_auto, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    storyId,
+                    story.title.strip() or "New story",
+                    story.author,
+                    story.language,
+                    story.synopsis,
+                    story.model or deps.default_model_id(),
+                    story.system_prompt,
+                    story.temperature,
+                    story.max_tokens,
+                    int(story.thinking_enabled),
+                    story.reasoning_effort,
+                    0,
+                    int(story.lorebook_auto),
+                    story.created_at or now,
+                    now,
+                ),
+            )
+
+            for chapter in orderedChapters:
+                chapterId = chapterIdMap[chapter.id]
+                conn.execute(
+                    """
+                    INSERT INTO chapters (
+                      id, story_id, title, content, word_count, revision, order_index,
+                      disabled, created_at, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        chapterId,
+                        storyId,
+                        chapter.title.strip() or "New chapter",
+                        chapter.content,
+                        word_count(chapter.content),
+                        chapter.revision,
+                        chapter.order_index,
+                        int(chapter.disabled),
+                        chapter.created_at or now,
+                        chapter.updated_at or now,
+                    ),
+                )
+
+            for entry in payload.chapter_history:
+                conn.execute(
+                    """
+                    INSERT INTO chapter_history_entries (
+                      id, story_id, chapter_id, run_id, label, detail, entry_order,
+                      kind, words_added, words_removed, cost, created_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        str(uuid.uuid4()),
+                        storyId,
+                        chapterIdMap[entry.chapter_id],
+                        runIdMap[entry.run_id],
+                        entry.label,
+                        entry.detail,
+                        entry.entry_order,
+                        entry.kind,
+                        entry.words_added,
+                        entry.words_removed,
+                        None,
+                        entry.created_at or now,
+                    ),
+                )
+
+            for entry in payload.lorebook:
+                category = normalize_lorebook_category(entry.category)
+                name = entry.name.strip()
+                description = (
+                    normalize_timeline_description(entry.description)
+                    if category == "timeline"
+                    else entry.description
+                )
+                conn.execute(
+                    """
+                    INSERT INTO lorebook_entries (
+                      id, story_id, name, category, description, aliases_json,
+                      tags_json, metadata_json, disabled, created_at, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        str(uuid.uuid4()),
+                        storyId,
+                        name,
+                        category,
+                        description,
+                        json.dumps(sanitize_lorebook_aliases(category, entry.aliases, name)),
+                        json.dumps(entry.tags),
+                        json.dumps(sanitize_lorebook_metadata(category, entry.metadata)),
+                        int(entry.disabled),
+                        entry.created_at or now,
+                        entry.updated_at or now,
+                    ),
+                )
+
+            for node in payload.brainstorm.nodes:
+                conn.execute(
+                    """
+                    INSERT INTO brainstorm_nodes (
+                      id, story_id, node_type, title, content, position_x,
+                      position_y, status, created_at, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        nodeIdMap[node.id],
+                        storyId,
+                        node.node_type,
+                        node.title,
+                        node.content,
+                        node.position_x,
+                        node.position_y,
+                        node.status,
+                        node.created_at or now,
+                        node.updated_at or now,
+                    ),
+                )
+
+            for edge in payload.brainstorm.edges:
+                conn.execute(
+                    """
+                    INSERT INTO brainstorm_edges (
+                      id, story_id, source_node_id, target_node_id, created_at
+                    )
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        str(uuid.uuid4()),
+                        storyId,
+                        nodeIdMap[edge.source_node_id],
+                        nodeIdMap[edge.target_node_id],
+                        edge.created_at or now,
+                    ),
+                )
+
+            viewport = payload.brainstorm.viewport
+            conn.execute(
+                """
+                INSERT INTO brainstorm_viewports (
+                  story_id, position_x, position_y, zoom, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (storyId, viewport.x, viewport.y, viewport.zoom, now),
+            )
+
+        return {
+            "story_id": storyId,
+            "first_chapter_id": (
+                chapterIdMap[orderedChapters[0].id] if orderedChapters else None
+            ),
+        }
 
     @router.post("/api/stories")
     def create_story(payload: StoryCreateRequest) -> dict[str, Any]:

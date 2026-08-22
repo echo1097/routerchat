@@ -241,6 +241,13 @@ const storyApi = {
     return api(`/api/stories/${encodeURIComponent(storyId)}`, { method: "DELETE" });
   },
 
+  async importStory(data) {
+    return api("/api/stories/import", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
   async closeStory(storyId) {
     return api(`/api/stories/${encodeURIComponent(storyId)}/close`, { method: "POST" });
   },
@@ -578,6 +585,15 @@ function exportFileName(chat) {
     .replace(/^-+|-+$/g, "")
     .slice(0, 42) || "chat";
   return `routerchat-${title}-${new Date().toISOString().slice(0, 10)}.json`;
+}
+
+function storyExportFileName(story) {
+  const title = (story?.title || "story")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 42) || "story";
+  return `routerchat-story-${title}-${new Date().toISOString().slice(0, 10)}.json`;
 }
 
 function shortTitle(title) {
@@ -1207,7 +1223,7 @@ function FolderActions({ folder, onRename, onDelete, onNewChat }) {
   );
 }
 
-function StoryHistoryActions({ story, onRename, onDelete }) {
+function StoryHistoryActions({ story, onRename, onExport, onDelete, exportDisabled = false }) {
   return (
     <OverflowActions
       id={`story-${story.id}`}
@@ -1228,6 +1244,26 @@ function StoryHistoryActions({ story, onRename, onDelete }) {
           >
             <Pencil size={14} />
             Edit name
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={exportDisabled}
+            title={exportDisabled ? "Wait for writing to finish" : undefined}
+            onClick={() => {
+              if (exportDisabled) return;
+              closeMenu();
+              onExport(story);
+            }}
+            className={cx(
+              "chat-history-menu-item focus:outline-none",
+              exportDisabled
+                ? "cursor-not-allowed text-neutral-600"
+                : "text-neutral-200 hover:bg-white/[0.07] focus:bg-white/[0.07]",
+            )}
+          >
+            <i className="fi fi-rr-file-export text-[14px] leading-none" aria-hidden="true" />
+            Export
           </button>
           <button
             type="button"
@@ -2828,7 +2864,9 @@ function StoryRail({
   onSelectStory,
   onSelectChapter,
   onNewStory,
+  onImportStory,
   onRenameStory,
+  onExportStory,
   onRenameChapter,
   onDeleteStory,
   onDeleteChapter,
@@ -2841,7 +2879,9 @@ function StoryRail({
   const [renameDraft, setRenameDraft] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [recentsOpen, setRecentsOpen] = useState(true);
+  const [importingStory, setImportingStory] = useState(false);
   const renameInputRef = useRef(null);
+  const importInputRef = useRef(null);
   const skipRenameCommitRef = useRef(false);
 
   function startRename(entityType, item) {
@@ -2879,6 +2919,20 @@ function StoryRail({
       setRenameDraft("");
     } catch {
       requestAnimationFrame(() => renameInputRef.current?.focus());
+    }
+  }
+
+  async function importStoryFile(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setImportingStory(true);
+    try {
+      const imported = await onImportStory(file);
+      if (imported) onCloseMobile();
+    } finally {
+      setImportingStory(false);
     }
   }
 
@@ -3011,6 +3065,29 @@ function StoryRail({
               <MaskIcon src="/icons/newbook.png" size={20} className="text-neutral-200" />
               New story
             </button>
+
+            <button
+              type="button"
+              onClick={() => importInputRef.current?.click()}
+              disabled={navigationLocked || importingStory}
+              className={cx(
+                "flex h-9 w-full items-center gap-3 rounded-xl bg-transparent px-2 text-[15px] font-medium text-white hover:bg-white/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:cursor-not-allowed disabled:opacity-55",
+                CONTROL_MOTION,
+              )}
+            >
+              <span className="grid h-5 w-5 shrink-0 place-items-center">
+                <MaskIcon src="/icons/file-import.png" size={17} className="text-neutral-200" />
+              </span>
+              {importingStory ? "Importing story" : "Import story"}
+            </button>
+            <input
+              ref={importInputRef}
+              type="file"
+              aria-label="Import story file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={importStoryFile}
+            />
           </div>
 
           <nav className="chat-rail-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
@@ -3076,7 +3153,9 @@ function StoryRail({
                         <StoryHistoryActions
                           story={story}
                           onRename={(item) => startRename("story", item)}
+                          onExport={onExportStory}
                           onDelete={onDeleteStory}
+                          exportDisabled={navigationLocked}
                         />
                       </div>
 
@@ -8711,6 +8790,64 @@ function App() {
     }
   }
 
+  async function exportStoryItem(story) {
+    if (!story?.id || rejectWriteNavigationDuringGeneration()) return;
+
+    try {
+      if (story.id === activeStoryIdRef.current) {
+        await chapterSaveCoordinator.flush(story.id);
+      }
+
+      const response = await fetch(
+        `/api/stories/${encodeURIComponent(story.id)}/export`,
+      );
+      if (!response.ok) {
+        throw new Error(await responseErrorDetail(response));
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = storyExportFileName(story);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      showToast(`Exported ${shortTitle(story.title) || "story"}`);
+    } catch (error) {
+      setStatus(error.message || "Story export failed");
+    }
+  }
+
+  async function importStoryFile(file) {
+    if (!file || rejectWriteNavigationDuringGeneration()) return;
+
+    try {
+      const text = await file.text();
+      const archive = JSON.parse(text);
+      const imported = await storyApi.importStory(archive);
+      await loadStories();
+
+      const navigationIntent = beginNavigationIntent();
+      const result = await loadStoryBundle(
+        imported.story_id,
+        imported.first_chapter_id,
+        { navigationIntent },
+      );
+      if (!result || !navigationIntentIsCurrent(navigationIntent)) return;
+
+      commitStoryBundle(result);
+      setStoryWorkspaceView("chapter");
+      writeRoute(storyRoute(result.story.id, result.chapter?.id || null, "chapter"));
+      showToast(`Imported ${shortTitle(result.story.title) || "story"}`);
+      return true;
+    } catch (error) {
+      setStatus(error.message || "Story import failed");
+      return false;
+    }
+  }
+
   async function renameStoryItem(story, title) {
     try {
       await storyApi.updateStory(story.id, { title });
@@ -9603,7 +9740,9 @@ function App() {
           onNewStory={() => {
             if (!isStreaming) setNewStoryDialogOpen(true);
           }}
+          onImportStory={importStoryFile}
           onRenameStory={renameStoryItem}
+          onExportStory={exportStoryItem}
           onRenameChapter={renameChapterItem}
           onDeleteStory={deleteStoryItem}
           onDeleteChapter={deleteChapterItem}

@@ -592,6 +592,70 @@ test("renames a story inline like chat mode", async ({ page }) => {
   expect(nativeDialogs).toEqual([]);
 });
 
+test("exports and imports a complete story from the story rail", async ({ page }) => {
+  const api = await installWriteApi(page);
+  await api.open();
+
+  const storyActions = page.getByRole("button", {
+    name: "Story actions for Reliability story",
+  });
+  await storyActions.click();
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("menuitem", { name: "Export", exact: true }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(
+    /^routerchat-story-reliability-story-\d{4}-\d{2}-\d{2}\.json$/,
+  );
+
+  const importButton = page.getByRole("button", { name: "Import story" });
+  await expect(importButton).toBeVisible();
+  const importIcon = importButton.locator("span").first();
+  await expect(importIcon).toHaveCSS(
+    "mask-image",
+    /file-import\.png/,
+  );
+
+  const archive = {
+    schema: "routerchat.story.v1",
+    story: {
+      id: "portable-story",
+      title: "Imported adventure",
+      model: "test/model",
+      temperature: 0.7,
+      max_tokens: 30000,
+      system_prompt: "",
+      thinking_enabled: false,
+      reasoning_effort: "medium",
+      lorebook_auto: false,
+    },
+    chapters: [{
+      id: "portable-chapter",
+      story_id: "portable-story",
+      title: "Imported opening",
+      content: "A portable beginning.",
+      revision: 0,
+      order_index: 0,
+      disabled: false,
+    }],
+    chapter_history: [],
+    lorebook: [],
+    brainstorm: { nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } },
+  };
+
+  await page.getByLabel("Import story file").setInputFiles({
+    name: "portable-story.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(archive)),
+  });
+
+  await expect(page).toHaveURL(/\/write\/story\/story-imported\/chapter\/chapter-imported-1$/);
+  await expect(page.getByRole("heading", { name: "Imported opening" })).toBeVisible();
+  await expect(page.getByText("Imported Imported adventure")).toBeVisible();
+  expect(api.state.storyImportRequests).toEqual([archive]);
+  await expect(page.getByLabel("Import story file")).toHaveValue("");
+});
+
 test("renames a chapter inline after flushing its draft and keeps failures editable", async ({ page }) => {
   const nativeDialogs = [];
   page.on("dialog", async (dialog) => {

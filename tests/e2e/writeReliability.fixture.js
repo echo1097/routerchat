@@ -181,6 +181,9 @@ export async function installWriteApi(page, options = {}) {
     conflictNextSave: false,
     failNextRename: null,
     suppressNextGenerationCommit: false,
+    importedStory: null,
+    importedChapters: [],
+    storyImportRequests: [],
   };
 
   function storyBundle() {
@@ -220,7 +223,48 @@ export async function installWriteApi(page, options = {}) {
       return response(route, { models: [model] });
     }
     if (method === "GET" && path === "/api/chats") return response(route, { chats: [] });
-    if (method === "GET" && path === "/api/stories") return response(route, { stories: [state.story] });
+    if (method === "GET" && path === "/api/stories") {
+      return response(route, {
+        stories: state.importedStory ? [state.importedStory, state.story] : [state.story],
+      });
+    }
+    if (method === "GET" && path === "/api/stories/story-1/export") {
+      return response(route, options.storyArchive || {
+        schema: "routerchat.story.v1",
+        story: clone(state.story),
+        chapters: clone(state.chapters),
+        chapter_history: [],
+        lorebook: [],
+        brainstorm: { nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } },
+      });
+    }
+    if (method === "POST" && path === "/api/stories/import") {
+      state.storyImportRequests.push(clone(body));
+      state.importedStory = {
+        ...clone(body.story),
+        id: "story-imported",
+        temporary: false,
+        updated_at: "2026-02-01T00:00:00Z",
+      };
+      state.importedChapters = (body.chapters || []).map((item, index) => ({
+        ...clone(item),
+        id: `chapter-imported-${index + 1}`,
+        story_id: "story-imported",
+        history: [],
+      }));
+      return response(route, {
+        story_id: "story-imported",
+        first_chapter_id: state.importedChapters[0]?.id || null,
+      });
+    }
+    if (method === "GET" && path === "/api/stories/story-imported") {
+      return response(route, {
+        story: clone(state.importedStory),
+        chapters: clone(state.importedChapters),
+        lorebook: clone(state.storyImportRequests.at(-1)?.lorebook || []),
+        latest_generation: null,
+      });
+    }
     if (method === "GET" && path === "/api/stories/story-1") return response(route, storyBundle());
     if (method === "GET" && path === "/api/stories/story-1/chapters") return response(route, { chapters: clone(state.chapters) });
     if (method === "GET" && path === "/api/stories/story-1/lorebook") return response(route, { entries: [] });

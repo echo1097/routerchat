@@ -2831,6 +2831,191 @@ class StoryApiTest(unittest.TestCase):
         legacy = self.client.get("/api/chats/legacy-chat").json()["chat"]
         self.assertFalse(legacy["pinned"])
 
+    def test_story_export_and_import_preserve_the_portable_workspace(self):
+        story = self.client.post(
+            "/api/stories",
+            json={
+                "title": "Portable story",
+                "author": "Echo",
+                "synopsis": "A story worth moving.",
+                "model": "test/model",
+                "lorebook_auto": True,
+            },
+        ).json()["story"]
+        chapter = self.client.post(
+            f"/api/stories/{story['id']}/chapters",
+            json={"title": "Opening", "content": "one two three"},
+        ).json()["chapter"]
+        lorebook = self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={
+                "name": "Mara",
+                "category": "character",
+                "description": "The protagonist.",
+                "aliases": ["Captain Mara"],
+                "tags": ["lead"],
+            },
+        ).json()["entry"]
+
+        now = "2026-02-03T04:05:06+00:00"
+        with main.get_db() as conn:
+            conn.execute(
+                """
+                INSERT INTO chapter_history_entries (
+                  id, story_id, chapter_id, run_id, label, detail, entry_order,
+                  kind, words_added, words_removed, cost, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "history-source",
+                    story["id"],
+                    chapter["id"],
+                    "run-source",
+                    "User prompt",
+                    "Make it stormier",
+                    0,
+                    "user_prompt",
+                    3,
+                    1,
+                    0.42,
+                    now,
+                ),
+            )
+            conn.execute(
+                """
+                INSERT INTO brainstorm_nodes (
+                  id, story_id, node_type, title, content, position_x,
+                  position_y, status, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                ("node-a", story["id"], "prompt", "Question", "What if?", 10, 20, "complete", now, now),
+            )
+            conn.execute(
+                """
+                INSERT INTO brainstorm_nodes (
+                  id, story_id, node_type, title, content, position_x,
+                  position_y, status, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                ("node-b", story["id"], "idea", "Answer", "A storm.", 300, 20, "complete", now, now),
+            )
+            conn.execute(
+                """
+                INSERT INTO brainstorm_edges (
+                  id, story_id, source_node_id, target_node_id, created_at
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                ("edge-source", story["id"], "node-a", "node-b", now),
+            )
+            conn.execute(
+                """
+                INSERT INTO brainstorm_viewports (
+                  story_id, position_x, position_y, zoom, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (story["id"], 42, -18, 1.4, now),
+            )
+
+        exportResponse = self.client.get(f"/api/stories/{story['id']}/export")
+        self.assertEqual(exportResponse.status_code, 200)
+        archive = exportResponse.json()
+        self.assertEqual(archive["schema"], "routerchat.story.v1")
+        self.assertEqual(archive["story"]["title"], "Portable story")
+        self.assertNotIn("temporary", archive["story"])
+        self.assertEqual(archive["chapters"][0]["content"], "one two three")
+        self.assertEqual(archive["lorebook"][0]["id"], lorebook["id"])
+        self.assertEqual(archive["chapter_history"][0]["words_added"], 3)
+        self.assertNotIn("cost", archive["chapter_history"][0])
+        self.assertNotIn("reasoning", archive["brainstorm"]["nodes"][0])
+        self.assertEqual(archive["brainstorm"]["viewport"], {"x": 42, "y": -18, "zoom": 1.4})
+        self.assertNotIn("generations", archive)
+
+        firstImport = self.client.post("/api/stories/import", json=archive)
+        secondImport = self.client.post("/api/stories/import", json=archive)
+        self.assertEqual(firstImport.status_code, 200)
+        self.assertEqual(secondImport.status_code, 200)
+        imported = firstImport.json()
+        self.assertNotEqual(imported["story_id"], story["id"])
+        self.assertNotEqual(imported["first_chapter_id"], chapter["id"])
+
+        importedBundle = self.client.get(f"/api/stories/{imported['story_id']}").json()
+        self.assertEqual(importedBundle["story"]["title"], "Portable story")
+        self.assertFalse(importedBundle["story"]["temporary"])
+        self.assertEqual(importedBundle["chapters"][0]["word_count"], 3)
+        self.assertEqual(importedBundle["chapters"][0]["history"][0]["detail"], "Make it stormier")
+        self.assertIsNone(importedBundle["chapters"][0]["history"][0]["cost"])
+        self.assertEqual(importedBundle["lorebook"][0]["name"], "Mara")
+
+        importedGraph = self.client.get(
+            f"/api/stories/{imported['story_id']}/brainstorm"
+        ).json()
+        self.assertEqual(len(importedGraph["nodes"]), 2)
+        self.assertEqual(len(importedGraph["edges"]), 1)
+        importedNodeIds = {node["id"] for node in importedGraph["nodes"]}
+        self.assertTrue(importedNodeIds.isdisjoint({"node-a", "node-b"}))
+        self.assertIn(importedGraph["edges"][0]["source_node_id"], importedNodeIds)
+        self.assertIn(importedGraph["edges"][0]["target_node_id"], importedNodeIds)
+        self.assertEqual(importedGraph["viewport"], {"x": 42, "y": -18, "zoom": 1.4})
+
+        stories = self.client.get("/api/stories").json()["stories"]
+        self.assertEqual(sum(item["title"] == "Portable story" for item in stories), 3)
+
+    def test_story_import_rejects_invalid_archives_without_creating_a_story(self):
+        baseArchive = {
+            "schema": "routerchat.story.v1",
+            "story": {"id": "story-source", "title": "Bad import"},
+            "chapters": [],
+            "chapter_history": [],
+            "lorebook": [],
+            "brainstorm": {"nodes": [], "edges": [], "viewport": {"x": 0, "y": 0, "zoom": 1}},
+        }
+        before = len(self.client.get("/api/stories").json()["stories"])
+
+        unsupported = self.client.post(
+            "/api/stories/import",
+            json={**baseArchive, "schema": "routerchat.story.v99"},
+        )
+        self.assertEqual(unsupported.status_code, 422)
+
+        duplicateChapter = {
+            "id": "chapter-source",
+            "story_id": "story-source",
+            "title": "One",
+        }
+        duplicateResponse = self.client.post(
+            "/api/stories/import",
+            json={**baseArchive, "chapters": [duplicateChapter, duplicateChapter]},
+        )
+        self.assertEqual(duplicateResponse.status_code, 422)
+        self.assertIn("duplicate chapter IDs", duplicateResponse.json()["detail"])
+
+        orphanedEdgeResponse = self.client.post(
+            "/api/stories/import",
+            json={
+                **baseArchive,
+                "brainstorm": {
+                    "nodes": [],
+                    "edges": [{
+                        "id": "edge-source",
+                        "story_id": "story-source",
+                        "source_node_id": "missing-a",
+                        "target_node_id": "missing-b",
+                    }],
+                    "viewport": {"x": 0, "y": 0, "zoom": 1},
+                },
+            },
+        )
+        self.assertEqual(orphanedEdgeResponse.status_code, 422)
+        self.assertIn("orphaned brainstorm edge", orphanedEdgeResponse.json()["detail"])
+
+        after = len(self.client.get("/api/stories").json()["stories"])
+        self.assertEqual(after, before)
+
 
 if __name__ == "__main__":
     unittest.main()

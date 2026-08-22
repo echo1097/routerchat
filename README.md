@@ -1,4 +1,4 @@
-# RouterChat 1.0.6
+# RouterChat 1.0.7
 A 100% free local OpenRouter chat interface. Strictly BYOK. 
 
 > [!IMPORTANT]
@@ -46,7 +46,6 @@ To remove RouterChat, run **Uninstall RouterChat** from `~/Applications/RouterCh
     - Support for video and image models
     - Web search
 - Writing Mode improvements
-    - Import/export full stories
     - More detailed diffs
 - Memory
     - Chat mode
@@ -65,6 +64,8 @@ To remove RouterChat, run **Uninstall RouterChat** from `~/Applications/RouterCh
     - Brainstorming
     - Better chapter history
     - Redesign the History menu for chapter actions
+    - Import/export full stories
+
 - Chat Mode improvements
     - Folders/Projects
     - Generate chat names instead of just being first message

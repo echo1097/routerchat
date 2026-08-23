@@ -733,7 +733,8 @@ textarea::placeholder {
 .settings-chat-list::-webkit-scrollbar {
   display: none;
 }
-.settings-list-fade {
+.settings-list-fade,
+.sidebar-list-fade {
   z-index: 1;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;

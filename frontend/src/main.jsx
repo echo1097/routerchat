@@ -82,6 +82,7 @@ const APP_SETTINGS_STORAGE_KEY = "routerchat.appSettings";
 const CHAT_FOLDERS_STORAGE_KEY = "routerchat.chatFolders";
 const OPENING_MESSAGE_STORAGE_KEY = "routerchat.lastOpeningMessage";
 const PENDING_CHAPTER_DRAFTS_STORAGE_KEY = "routerchat.pendingChapterDrafts";
+const FEEDBACK_FORM_URL = "https://forms.gle/gTth2TcXLYAArvGm6";
 
 const newSettings = {
   model: DEFAULT_MODEL,
@@ -1480,6 +1481,22 @@ function SidebarSearchModal({
   );
 }
 
+function FeedbackLink() {
+  return (
+    <a
+      href={FEEDBACK_FORM_URL}
+      target="_blank"
+      rel="noreferrer"
+      className={cx(
+        "flex h-9 w-full items-center rounded-xl px-2 text-[13px] font-medium text-neutral-500 hover:bg-white/[0.045] hover:text-neutral-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
+        CONTROL_MOTION,
+      )}
+    >
+      Give feedback
+    </a>
+  );
+}
+
 function SidebarGroup({ label, open, onToggle, children, dropProps = {}, dropActive = false }) {
   const panelId = `${label.toLowerCase()}-chat-history`;
 
@@ -1542,6 +1559,8 @@ function ConversationRail({
   onChatModeChange,
 }) {
   const [railScrolling, setRailScrolling] = useState(false);
+  const [railScrolled, setRailScrolled] = useState(false);
+  const [railHasMoreBelow, setRailHasMoreBelow] = useState(false);
   const [renamingChatId, setRenamingChatId] = useState(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [pinnedOpen, setPinnedOpen] = useState(true);
@@ -1556,6 +1575,7 @@ function ConversationRail({
   const [dropFolderId, setDropFolderId] = useState(null);
   const [recentsDropActive, setRecentsDropActive] = useState(false);
   const railScrollTimeoutRef = useRef(null);
+  const railRef = useRef(null);
   const skipRenameCommitRef = useRef(false);
   const skipFolderRenameCommitRef = useRef(false);
 
@@ -1568,7 +1588,30 @@ function ConversationRail({
     [],
   );
 
-  function handleRailScroll() {
+  function updateRailEdges(element) {
+    const bottomOffset = element.scrollHeight - element.clientHeight - element.scrollTop;
+    setRailScrolled(element.scrollTop > 2);
+    setRailHasMoreBelow(bottomOffset > 2);
+  }
+
+  useEffect(() => {
+    const rail = railRef.current;
+    if (!rail) return;
+
+    const frameId = requestAnimationFrame(() => updateRailEdges(rail));
+    const resizeObserver = typeof ResizeObserver === "undefined"
+      ? null
+      : new ResizeObserver(() => updateRailEdges(rail));
+    resizeObserver?.observe(rail);
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      resizeObserver?.disconnect();
+    };
+  }, [chats.length, folders.length, pinnedOpen, recentsOpen, foldersOpen, expandedFolderIds]);
+
+  function handleRailScroll(event) {
+    updateRailEdges(event.currentTarget);
     setRailScrolling(true);
     window.clearTimeout(railScrollTimeoutRef.current);
     railScrollTimeoutRef.current = window.setTimeout(
@@ -2022,15 +2065,36 @@ function ConversationRail({
             </button>
           </div>
 
-          <nav
-            onScroll={handleRailScroll}
-            className={cx(
-              "chat-rail-scrollbar min-h-0 flex-1 space-y-1 overflow-y-auto pr-1",
-              railScrolling && "is-scrolling",
-            )}
-          >
-            {historyItems}
-          </nav>
+          <div className="relative min-h-0 flex-1">
+            <nav
+              ref={railRef}
+              onScroll={handleRailScroll}
+              className={cx(
+                "chat-rail-scrollbar h-full space-y-1 overflow-y-auto pr-1",
+                railScrolling && "is-scrolling",
+              )}
+            >
+              {historyItems}
+            </nav>
+            <div
+              aria-hidden="true"
+              className={cx(
+                "sidebar-list-fade pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-[#080808]/95 to-transparent transition-opacity duration-150 ease-out",
+                railScrolled ? "opacity-100" : "opacity-0",
+              )}
+            />
+            <div
+              aria-hidden="true"
+              className={cx(
+                "sidebar-list-fade pointer-events-none absolute inset-x-0 bottom-0 h-7 bg-gradient-to-t from-[#080808]/95 to-transparent transition-opacity duration-150 ease-out",
+                railHasMoreBelow ? "opacity-100" : "opacity-0",
+              )}
+            />
+          </div>
+
+          <footer className="mt-1 -mb-2">
+            <FeedbackLink />
+          </footer>
         </div>
       </aside>
 
@@ -2875,6 +2939,9 @@ function StoryRail({
   onChatModeChange,
   navigationLocked = false,
 }) {
+  const [railScrolling, setRailScrolling] = useState(false);
+  const [railScrolled, setRailScrolled] = useState(false);
+  const [railHasMoreBelow, setRailHasMoreBelow] = useState(false);
   const [renameTarget, setRenameTarget] = useState(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -2883,6 +2950,49 @@ function StoryRail({
   const renameInputRef = useRef(null);
   const importInputRef = useRef(null);
   const skipRenameCommitRef = useRef(false);
+  const railRef = useRef(null);
+  const railScrollTimeoutRef = useRef(null);
+
+  function updateRailEdges(element) {
+    const bottomOffset = element.scrollHeight - element.clientHeight - element.scrollTop;
+    setRailScrolled(element.scrollTop > 2);
+    setRailHasMoreBelow(bottomOffset > 2);
+  }
+
+  useEffect(() => {
+    const rail = railRef.current;
+    if (!rail) return;
+
+    const frameId = requestAnimationFrame(() => updateRailEdges(rail));
+    const resizeObserver = typeof ResizeObserver === "undefined"
+      ? null
+      : new ResizeObserver(() => updateRailEdges(rail));
+    resizeObserver?.observe(rail);
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      resizeObserver?.disconnect();
+    };
+  }, [stories.length, chapters.length, activeStoryId, recentsOpen]);
+
+  useEffect(
+    () => () => {
+      if (railScrollTimeoutRef.current) {
+        window.clearTimeout(railScrollTimeoutRef.current);
+      }
+    },
+    [],
+  );
+
+  function handleRailScroll(event) {
+    updateRailEdges(event.currentTarget);
+    setRailScrolling(true);
+    window.clearTimeout(railScrollTimeoutRef.current);
+    railScrollTimeoutRef.current = window.setTimeout(
+      () => setRailScrolling(false),
+      650,
+    );
+  }
 
   function startRename(entityType, item) {
     skipRenameCommitRef.current = false;
@@ -3090,8 +3200,16 @@ function StoryRail({
             />
           </div>
 
-          <nav className="chat-rail-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
-            {stories.length === 0 ? (
+          <div className="relative min-h-0 flex-1">
+            <nav
+              ref={railRef}
+              onScroll={handleRailScroll}
+              className={cx(
+                "chat-rail-scrollbar h-full space-y-3 overflow-y-auto pr-1",
+                railScrolling && "is-scrolling",
+              )}
+            >
+              {stories.length === 0 ? (
               <div className="px-3 py-8 text-pretty text-sm leading-6 text-neutral-500">
                 Your stories will appear here.
               </div>
@@ -3250,8 +3368,27 @@ function StoryRail({
                   );
                 })}
               </SidebarGroup>
-            )}
-          </nav>
+              )}
+            </nav>
+            <div
+              aria-hidden="true"
+              className={cx(
+                "sidebar-list-fade pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-[#080808]/95 to-transparent transition-opacity duration-150 ease-out",
+                railScrolled ? "opacity-100" : "opacity-0",
+              )}
+            />
+            <div
+              aria-hidden="true"
+              className={cx(
+                "sidebar-list-fade pointer-events-none absolute inset-x-0 bottom-0 h-7 bg-gradient-to-t from-[#080808]/95 to-transparent transition-opacity duration-150 ease-out",
+                railHasMoreBelow ? "opacity-100" : "opacity-0",
+              )}
+            />
+          </div>
+
+          <footer className="mt-1 -mb-2">
+            <FeedbackLink />
+          </footer>
         </div>
       </aside>
 

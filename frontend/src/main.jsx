@@ -55,6 +55,7 @@ import { createNavigationCoordinator } from "./writing/navigationCoordinator.js"
 import {
   effectiveThinkingEnabled,
   requiresThinking,
+  resolveReasoningEffort,
   supportsReasoningEffort,
   supportsThinking,
 } from "./modelReasoning.js";
@@ -5280,9 +5281,11 @@ function SettingsDrawer({
   const [editingMaxTokens, setEditingMaxTokens] = useState(false);
   const [maxTokensDraft, setMaxTokensDraft] = useState("");
   const canThink = supportsThinking(models, settings.model);
-  const reasoningEffort = settings.reasoning_effort === "xhigh"
-    ? "max"
-    : settings.reasoning_effort;
+  const reasoningEffort = resolveReasoningEffort(
+    models,
+    settings.model,
+    settings.reasoning_effort,
+  );
   const selectedModel = models.find((model) => model.id === settings.model);
   const selectedModelOutputName = promptModelName(models, settings.model);
   const selectedModelPrice = selectedModel ? priceLabel(selectedModel) : "";
@@ -5424,6 +5427,11 @@ function SettingsDrawer({
     setSettings((current) => ({ ...current, ...next }));
   }
 
+  useEffect(() => {
+    if (!canThink || reasoningEffort === settings.reasoning_effort) return;
+    commit({ reasoning_effort: reasoningEffort });
+  }, [canThink, models, reasoningEffort, settings.model, settings.reasoning_effort]);
+
   function commit(next) {
     const merged = { ...settings, ...next };
     setSettings(merged);
@@ -5441,6 +5449,11 @@ function SettingsDrawer({
   function selectModel(model) {
     commit({
       model: model.id,
+      reasoning_effort: resolveReasoningEffort(
+        models,
+        model.id,
+        settings.reasoning_effort,
+      ),
       thinking_enabled: model?.reasoning?.mandatory === true
         ? true
         : settings.thinking_enabled,

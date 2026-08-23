@@ -1475,6 +1475,37 @@ def api_reasoning_effort(value: ReasoningEffort) -> str:
     return "max" if value == "xhigh" else value
 
 
+def resolved_reasoning_effort(model_id: str, value: ReasoningEffort) -> str:
+    preferredEffort = api_reasoning_effort(value)
+    model = model_metadata(model_id)
+    supportedEfforts = (model or {}).get("reasoning", {}).get("supported_efforts")
+
+    if not isinstance(supportedEfforts, list):
+        return preferredEffort
+
+    effortOrder = ["low", "medium", "high", "max"]
+    availableEfforts = {
+        "max" if effort == "xhigh" else effort
+        for effort in supportedEfforts
+        if effort in {*effortOrder, "xhigh"}
+    }
+    if preferredEffort in availableEfforts:
+        return preferredEffort
+
+    try:
+        preferredIndex = effortOrder.index(preferredEffort)
+    except ValueError:
+        return preferredEffort
+
+    for effort in effortOrder[preferredIndex + 1:]:
+        if effort in availableEfforts:
+            return effort
+    for effort in reversed(effortOrder[:preferredIndex]):
+        if effort in availableEfforts:
+            return effort
+    return preferredEffort
+
+
 def chat_has_messages(conn: sqlite3.Connection, chat_id: str) -> bool:
     row = conn.execute(
         "SELECT 1 FROM messages WHERE chat_id = ? LIMIT 1", (chat_id,)
@@ -2506,7 +2537,7 @@ def enabled_reasoning_config(
     return {
         "enabled": True,
         "exclude": False,
-        "effort": api_reasoning_effort(reasoning_effort),
+        "effort": resolved_reasoning_effort(model_id, reasoning_effort),
     }
 
 

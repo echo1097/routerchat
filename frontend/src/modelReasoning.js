@@ -27,6 +27,42 @@ export function supportsReasoningEffort(models, modelId, effort) {
   return effort === "max" && supportedEfforts.includes("xhigh");
 }
 
+const reasoningEffortOrder = ["low", "medium", "high", "max"];
+
+function normalizedReasoningEffort(effort) {
+  return effort === "xhigh" ? "max" : effort;
+}
+
+export function resolveReasoningEffort(models, modelId, effort) {
+  const preferredEffort = normalizedReasoningEffort(effort);
+  const supportedEfforts = modelMetadata(models, modelId)?.reasoning?.supported_efforts;
+
+  if (!Array.isArray(supportedEfforts)) return preferredEffort;
+
+  const availableEfforts = new Set(
+    supportedEfforts.map(normalizedReasoningEffort).filter((level) => (
+      reasoningEffortOrder.includes(level)
+    )),
+  );
+
+  if (availableEfforts.has(preferredEffort)) return preferredEffort;
+
+  const preferredIndex = reasoningEffortOrder.indexOf(preferredEffort);
+  if (preferredIndex === -1) return preferredEffort;
+
+  for (let index = preferredIndex + 1; index < reasoningEffortOrder.length; index += 1) {
+    const nextEffort = reasoningEffortOrder[index];
+    if (availableEfforts.has(nextEffort)) return nextEffort;
+  }
+
+  for (let index = preferredIndex - 1; index >= 0; index -= 1) {
+    const nextEffort = reasoningEffortOrder[index];
+    if (availableEfforts.has(nextEffort)) return nextEffort;
+  }
+
+  return preferredEffort;
+}
+
 export function requiresThinking(models, modelId) {
   return modelMetadata(models, modelId)?.reasoning?.mandatory === true;
 }

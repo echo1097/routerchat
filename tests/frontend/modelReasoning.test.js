@@ -4,6 +4,7 @@ import {
   effectiveThinkingEnabled,
   modelMetadata,
   requiresThinking,
+  resolveReasoningEffort,
   supportsReasoningEffort,
   supportsThinking,
 } from "../../frontend/src/modelReasoning.js";
@@ -51,5 +52,11 @@ describe("model reasoning metadata", () => {
     expect(supportsReasoningEffort(models, "test/optional", "max")).toBe(true);
     expect(supportsReasoningEffort(models, "test/optional", "low")).toBe(false);
     expect(supportsReasoningEffort(models, "test/optional", "high")).toBe(false);
+  });
+
+  it("uses the next higher supported effort before falling back lower", () => {
+    expect(resolveReasoningEffort(models, "test/optional", "low")).toBe("medium");
+    expect(resolveReasoningEffort(models, "test/optional", "high")).toBe("max");
+    expect(resolveReasoningEffort(models, "test/optional", "medium")).toBe("medium");
   });
 });

@@ -2214,6 +2214,11 @@ class StoryApiTest(unittest.TestCase):
             main.enabled_reasoning_config("test/mandatory", False, "high"),
             {"enabled": True, "exclude": False, "effort": "high"},
         )
+        self.assertEqual(
+            main.enabled_reasoning_config("test/mandatory", False, "xhigh"),
+            {"enabled": True, "exclude": False, "effort": "max"},
+        )
+        self.assertEqual(main.coerce_reasoning_effort("xhigh"), "max")
 
         with patch.object(main, "read_openrouter_key", return_value=None):
             modelsResponse = self.client.get("/api/models")

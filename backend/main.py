@@ -70,7 +70,7 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_MAX_TOKENS = 30000
 OPENROUTER_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=10.0)
 DEFAULT_MODEL_ID = "anthropic/claude-3.5-sonnet"
-ReasoningEffort = Literal["low", "medium", "high", "xhigh"]
+ReasoningEffort = Literal["low", "medium", "high", "max", "xhigh"]
 
 
 def resolve_user_data_paths(
@@ -1466,7 +1466,13 @@ def coerce_bool_int(value: Any) -> int:
 
 
 def coerce_reasoning_effort(value: Any) -> ReasoningEffort:
-    return value if value in {"low", "medium", "high", "xhigh"} else "medium"
+    if value == "xhigh":
+        return "max"
+    return value if value in {"low", "medium", "high", "max"} else "medium"
+
+
+def api_reasoning_effort(value: ReasoningEffort) -> str:
+    return "max" if value == "xhigh" else value
 
 
 def chat_has_messages(conn: sqlite3.Connection, chat_id: str) -> bool:
@@ -2500,7 +2506,7 @@ def enabled_reasoning_config(
     return {
         "enabled": True,
         "exclude": False,
-        "effort": reasoning_effort,
+        "effort": api_reasoning_effort(reasoning_effort),
     }
 
 
@@ -2526,7 +2532,7 @@ def chat_title_request_body(model_id: str, reasoning_effort: ReasoningEffort, me
     reasoningConfig = enabled_reasoning_config(model_id, False, reasoning_effort)
     if reasoningConfig:
         body["reasoning"] = reasoningConfig
-        body["reasoning_effort"] = reasoning_effort
+        body["reasoning_effort"] = reasoningConfig["effort"]
     elif model_supports_reasoning(model_id):
         body["reasoning"] = {"enabled": False, "exclude": True}
         body["reasoning_effort"] = "none"
@@ -2722,7 +2728,7 @@ async def stream_openrouter_response(
     )
     if reasoningConfig:
         body["reasoning"] = reasoningConfig
-        body["reasoning_effort"] = payload.reasoning_effort
+        body["reasoning_effort"] = reasoningConfig["effort"]
     elif supportsReasoning:
         body["reasoning"] = {"enabled": False, "exclude": True}
         body["reasoning_effort"] = "none"

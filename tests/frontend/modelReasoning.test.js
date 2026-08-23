@@ -4,6 +4,7 @@ import {
   effectiveThinkingEnabled,
   modelMetadata,
   requiresThinking,
+  supportsReasoningEffort,
   supportsThinking,
 } from "../../frontend/src/modelReasoning.js";
 
@@ -16,7 +17,7 @@ const models = [
   {
     id: "test/optional",
     supported_parameters: ["reasoning"],
-    reasoning: { mandatory: false },
+    reasoning: { mandatory: false, supported_efforts: ["medium", "max"] },
   },
   {
     id: "test/instant",
@@ -43,5 +44,12 @@ describe("model reasoning metadata", () => {
   it("does not infer reasoning support when metadata is absent", () => {
     expect(supportsThinking(models, "test/instant")).toBe(false);
     expect(requiresThinking(models, "test/instant")).toBe(false);
+  });
+
+  it("uses the model's reported reasoning effort levels", () => {
+    expect(supportsReasoningEffort(models, "test/optional", "medium")).toBe(true);
+    expect(supportsReasoningEffort(models, "test/optional", "max")).toBe(true);
+    expect(supportsReasoningEffort(models, "test/optional", "low")).toBe(false);
+    expect(supportsReasoningEffort(models, "test/optional", "high")).toBe(false);
   });
 });

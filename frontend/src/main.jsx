@@ -55,6 +55,7 @@ import { createNavigationCoordinator } from "./writing/navigationCoordinator.js"
 import {
   effectiveThinkingEnabled,
   requiresThinking,
+  supportsReasoningEffort,
   supportsThinking,
 } from "./modelReasoning.js";
 
@@ -99,7 +100,7 @@ const REASONING_EFFORTS = [
   { value: "low", label: "Low" },
   { value: "medium", label: "Medium" },
   { value: "high", label: "High" },
-  { value: "xhigh", label: "Extra high", shortLabel: "Extra" },
+  { value: "max", label: "Max" },
 ];
 
 const SETTINGS_PAGES = [
@@ -5279,6 +5280,9 @@ function SettingsDrawer({
   const [editingMaxTokens, setEditingMaxTokens] = useState(false);
   const [maxTokensDraft, setMaxTokensDraft] = useState("");
   const canThink = supportsThinking(models, settings.model);
+  const reasoningEffort = settings.reasoning_effort === "xhigh"
+    ? "max"
+    : settings.reasoning_effort;
   const selectedModel = models.find((model) => model.id === settings.model);
   const selectedModelOutputName = promptModelName(models, settings.model);
   const selectedModelPrice = selectedModel ? priceLabel(selectedModel) : "";
@@ -5707,30 +5711,23 @@ function SettingsDrawer({
 
   const importExportSection = (
     <section className="flex h-full min-h-0 flex-col">
-      <div className="border-b border-white/[0.08] pb-3">
-        <p className="mt-1 text-pretty text-xs leading-5 text-neutral-500">
-          Share a selected conversation as a JSON file.
-        </p>
-      </div>
-
       <section className="flex min-h-0 flex-1 flex-col px-1 py-3">
         <h2 className="shrink-0 text-balance text-sm font-semibold text-neutral-100">
           Select Chat
         </h2>
-        <div className="mt-2 flex min-h-0 flex-1 flex-col gap-2">
-          <div className="shrink-0">
-            <SearchClearField
-              value={cloudSearch}
-              onChange={setCloudSearch}
-              placeholder="Search chats"
-            />
-          </div>
-          <div className="relative min-h-0 flex-1">
-            <div
-              ref={chatListRef}
-              onScroll={handleChatListScroll}
-              className="settings-chat-list h-full max-h-36 min-h-0 space-y-1 overflow-y-auto"
-            >
+        <div className="mt-2 shrink-0">
+          <SearchClearField
+            value={cloudSearch}
+            onChange={setCloudSearch}
+            placeholder="Search chats"
+          />
+        </div>
+        <div className="relative mt-2 min-h-0 flex-1">
+          <div
+            ref={chatListRef}
+            onScroll={handleChatListScroll}
+            className="settings-chat-list h-full space-y-1 overflow-y-auto"
+          >
               {filteredCloudChats.length === 0 ? (
                 <div className="grid min-h-10 w-full grid-cols-[18px_minmax(0,1fr)_14px] items-center gap-2 rounded-xl bg-black/15 px-3 py-3 text-pretty text-xs leading-5 text-neutral-500 shadow-[var(--shadow-border)]">
                   <span className="col-start-2 min-w-0">
@@ -5773,26 +5770,25 @@ function SettingsDrawer({
                   );
                 })
               )}
-            </div>
-            <div
-              aria-hidden="true"
-              className={cx(
-                "settings-list-fade pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-[#202020]/95 to-transparent transition-opacity duration-150 ease-out",
-                chatListScrolled ? "opacity-100" : "opacity-0",
-              )}
-            />
-            <div
-              aria-hidden="true"
-              className={cx(
-                "settings-list-fade pointer-events-none absolute inset-x-0 bottom-0 h-7 bg-gradient-to-t from-[#202020]/95 to-transparent transition-opacity duration-150 ease-out",
-                chatListHasMoreBelow ? "opacity-100" : "opacity-0",
-              )}
-            />
           </div>
-        </div>
+          <div
+            aria-hidden="true"
+            className={cx(
+              "settings-list-fade pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-[#202020]/95 to-transparent transition-opacity duration-150 ease-out",
+              chatListScrolled ? "opacity-100" : "opacity-0",
+            )}
+          />
+          <div
+            aria-hidden="true"
+            className={cx(
+              "settings-list-fade pointer-events-none absolute inset-x-0 bottom-0 h-7 bg-gradient-to-t from-[#202020]/95 to-transparent transition-opacity duration-150 ease-out",
+              chatListHasMoreBelow ? "opacity-100" : "opacity-0",
+            )}
+          />
+          </div>
       </section>
 
-      <section className="shrink-0 pb-1 pt-6">
+      <section className="shrink-0 pb-1 pt-3">
         <div className="flex gap-2">
           <button
             type="button"
@@ -5980,15 +5976,17 @@ function SettingsDrawer({
       onToggle={toggleAccordion}
       trailing={!canThink ? "Unavailable" : null}
     >
-      <p className="mb-3 text-pretty text-xs leading-5 text-neutral-500">
-        Select model reasoning effort
-      </p>
       <SlidingTabs
         options={REASONING_EFFORTS}
-        value={settings.reasoning_effort}
+        value={reasoningEffort}
         onChange={(value) => commit({ reasoning_effort: value })}
         getValue={(effort) => effort.value}
         getLabel={(effort) => effort.shortLabel || effort.label}
+        isOptionDisabled={(effort) => !supportsReasoningEffort(
+          models,
+          settings.model,
+          effort.value,
+        )}
         ariaLabel="Reasoning effort"
         disabled={!canThink}
         className="reasoning-tabs w-full"
@@ -6003,9 +6001,6 @@ function SettingsDrawer({
       open={openAccordions.generation}
       onToggle={toggleAccordion}
     >
-      <p className="mb-3 text-pretty text-xs leading-5 text-neutral-500">
-        Customize model outputs
-      </p>
       <div className="space-y-3">
         <div className="settings-slider-row">
           <div className="mb-2.5 flex items-center justify-between text-xs font-medium">
@@ -6305,6 +6300,7 @@ function SlidingTabs({
   onChange,
   getValue,
   getLabel,
+  isOptionDisabled,
   ariaLabel,
   disabled = false,
   className,
@@ -6313,6 +6309,8 @@ function SlidingTabs({
   const pillRef = useRef(null);
   const measuredRef = useRef(false);
   const fromValueRef = useRef(fromValue);
+  const previousValueRef = useRef(value);
+  const moveToActiveRef = useRef(null);
 
   useEffect(() => {
     fromValueRef.current = fromValue;
@@ -6359,50 +6357,53 @@ function SlidingTabs({
       moveToTab(activeTab, animate);
     }
 
-    function handleResize() {
+    moveToActiveRef.current = moveToActive;
+
+    const previousValue = measuredRef.current
+      ? previousValueRef.current
+      : fromValueRef.current;
+    const previousTab = tabForValue(previousValue);
+    const shouldAnimate = Boolean(previousTab && previousValue !== value);
+
+    if (shouldAnimate) {
+      moveToTab(previousTab, false);
+    } else {
       moveToActive(false);
     }
 
-    const previousTab = tabForValue(fromValueRef.current);
-    if (!measuredRef.current && previousTab && fromValueRef.current !== value) {
-      moveToTab(previousTab, false);
-      measuredRef.current = true;
-
-      const frameId = requestAnimationFrame(() => {
-        moveToActive(true);
-        fromValueRef.current = null;
-      });
-
-      window.addEventListener("resize", handleResize);
-      return () => {
-        cancelAnimationFrame(frameId);
-        window.removeEventListener("resize", handleResize);
-      };
-    }
-
-    const shouldAnimate = measuredRef.current;
-    moveToActive(shouldAnimate);
     measuredRef.current = true;
+    previousValueRef.current = value;
+    fromValueRef.current = null;
+
+    const frameId = shouldAnimate
+      ? requestAnimationFrame(() => moveToActive(true))
+      : null;
+
+    return () => {
+      if (frameId) cancelAnimationFrame(frameId);
+    };
+  }, [options, value, fromValue]);
+
+  useEffect(() => {
+    const bar = barRef.current;
+    if (!bar) return undefined;
+
+    function handleResize() {
+      moveToActiveRef.current?.(false);
+    }
 
     const resizeObserver =
       typeof ResizeObserver === "undefined"
         ? null
-        : new ResizeObserver(() => moveToActive(false));
+        : new ResizeObserver(handleResize);
 
     resizeObserver?.observe(bar);
-
-    const frameId = shouldAnimate
-      ? null
-      : requestAnimationFrame(() => {
-          moveToActive(false);
-        });
     window.addEventListener("resize", handleResize);
     return () => {
-      if (frameId) cancelAnimationFrame(frameId);
       resizeObserver?.disconnect();
       window.removeEventListener("resize", handleResize);
     };
-  }, [options, value, fromValue]);
+  }, []);
 
   return (
     <div
@@ -6415,6 +6416,7 @@ function SlidingTabs({
       {options.map((option) => {
         const optionValue = getValue(option);
         const selected = optionValue === value;
+        const optionDisabled = disabled || isOptionDisabled?.(option);
         return (
           <button
             key={optionValue}
@@ -6422,9 +6424,12 @@ function SlidingTabs({
             role="tab"
             aria-selected={selected}
             data-value={optionValue}
-            disabled={disabled}
+            disabled={optionDisabled}
             onClick={() => onChange(optionValue)}
-            className="t-tab min-w-0 flex-1 whitespace-nowrap"
+            className={cx(
+              "t-tab min-w-0 flex-1 whitespace-nowrap",
+              optionDisabled && "is-option-disabled",
+            )}
           >
             {getLabel(option)}
           </button>

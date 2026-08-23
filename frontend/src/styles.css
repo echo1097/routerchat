@@ -633,6 +633,14 @@ textarea::placeholder {
 .t-tabs.is-disabled .t-tab:not([aria-selected="true"]):hover {
   color: var(--tabs-text-muted);
 }
+.t-tab.is-option-disabled {
+  cursor: not-allowed;
+  color: var(--tabs-text-muted);
+  opacity: 0.38;
+}
+.t-tab.is-option-disabled:not([aria-selected="true"]):hover {
+  color: var(--tabs-text-muted);
+}
 .t-tabs-pill {
   position: absolute;
   top: 3px;

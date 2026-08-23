@@ -6026,14 +6026,11 @@ function SettingsDrawer({
           <div className="mb-2.5 flex items-center justify-between text-xs font-medium">
             <span className="text-neutral-400">Max output tokens</span>
             <div className="flex items-center gap-1.5">
-              <span className="max-w-[140px] truncate rounded-full bg-white/[0.055] px-2 py-0.5 text-[11px] font-medium leading-normal text-neutral-500 shadow-[var(--shadow-border)]">
-                {selectedModelOutputName}
+              <span className="max-w-[220px] truncate rounded-full bg-white/[0.055] px-2 py-0.5 text-[11px] font-medium leading-normal tabular-nums text-neutral-500 shadow-[var(--shadow-border)]">
+                {selectedModelContext
+                  ? `${selectedModelOutputName} - ${selectedModelContext}`
+                  : selectedModelOutputName}
               </span>
-              {selectedModelContext && (
-                <span className="shrink-0 rounded-full bg-white/[0.055] px-2 py-0.5 text-[11px] font-medium leading-normal tabular-nums text-neutral-500 shadow-[var(--shadow-border)]">
-                  {selectedModelContext}
-                </span>
-              )}
               {editingMaxTokens ? (
                 <input
                   type="text"

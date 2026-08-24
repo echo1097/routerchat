@@ -8,7 +8,7 @@ Report security issues through GitHub private vulnerability reporting:
 
 **[Report a vulnerability](https://github.com/echo1097/routerchat/security/advisories/new)**
 
-This is the only accepted channel, including for installer and updater issues. Do not open a public issue or post details anywhere else.
+Installer and updater issues can be reported here or in [get-routerchat](https://github.com/echo1097/get-routerchat/security/advisories/new). Private reporting is the only accepted channel, so do not open a public issue or post details anywhere else.
 
 Include the affected component, your version, your OS, and steps to reproduce. Only the [latest release](https://github.com/echo1097/routerchat/releases/latest) is supported, so update first and confirm the problem is still there.
 

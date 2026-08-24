@@ -77,8 +77,9 @@ To remove RouterChat, run **Uninstall RouterChat** from `~/Applications/RouterCh
 
 AI was used to support development and documentation for this project. All code and documentation were reviewed by myself before being published.
 
-## Bug reporting and contributing
-- To report a bug open an issue and provide as much context and information as you can so I can reproduce and fix it. 
+## Bug reporting, feedback, and contributing
+- To report a bug open an issue and provide as much context and information as you can so I can reproduce and fix it. Alternatively if you do not have a GitHub account and prefer not to create one, fill out [this form](https://forms.gle/oLGhkQ74KJC157Q8A) instead. 
+- To provide feedback fill out [this form](https://forms.gle/oLGhkQ74KJC157Q8A).
 - AI slop pull requests will not be merged. If you are using AI to assist your development, clean up and review the code manually and be transparent in your usage of AI.
 
 ## Local data

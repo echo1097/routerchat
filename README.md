@@ -12,7 +12,7 @@ RouterChat is licensed under the [Apache License 2.0](LICENSE).
 
 ## Install RouterChat
 
-RouterChat runs locally and only needs an [OpenRouter API key](https://openrouter.ai/keys). The installer keeps its Python runtime private, so you do not need to install Python, Node.js, npm, or Git.
+RouterChat runs locally and only needs an [OpenRouter API key](https://openrouter.ai/keys). 
 
 You can inspect the open-source [macOS installer](https://github.com/echo1097/get-routerchat/blob/main/install.sh) or [Windows installer](https://github.com/echo1097/get-routerchat/blob/main/install.ps1) before running it.
 
@@ -28,7 +28,9 @@ curl -fsSL https://echo1097.github.io/get-routerchat/install.sh | sh
 powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://echo1097.github.io/get-routerchat/install.ps1 | iex"
 ```
 
-See the [setup guide](setup.md) for starting, updating, repairing, data locations, and manual developer installation. For support, see [SUPPORT.md](SUPPORT.md).
+See the [setup guide](setup.md) for starting, updating, repairing, data locations, and manual developer installation. 
+
+For support with any issues that arrise, see [SUPPORT.md](SUPPORT.md) and if necessary fill out [this form](https://forms.gle/oLGhkQ74KJC157Q8A).
 
 To remove RouterChat, run **Uninstall RouterChat** from `~/Applications/RouterChat` on macOS or the Start Menu on Windows. The uninstaller can save your database to Downloads before removing the app.
 

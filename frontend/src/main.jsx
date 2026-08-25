@@ -2807,7 +2807,7 @@ const MessageItem = memo(function MessageItem({
           </div>
         )}
       </div>
-      {message.content && (
+      {message.content && !streaming && !revealing && (
         <div className={cx("mt-3 flex max-w-3xl justify-start gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100", FADE_MOTION)}>
           <AssistantActionButton label="Copy" onClick={() => onCopy(message)}>
             <Copy size={15} />

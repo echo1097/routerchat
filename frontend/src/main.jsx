@@ -15,6 +15,8 @@ import { createRoot } from "react-dom/client";
 import ReactMarkdown from "react-markdown";
 
 import { MARKDOWN_IMAGE_COMPONENT } from "./markdownImage.jsx";
+import { streamWordsPlugin, useStreamReveal } from "./streamingText.js";
+import ChapterStreamingCanvas from "./writing/ChapterStreamingCanvas.jsx";
 import {
   ArrowLeft,
   Check,
@@ -2570,9 +2572,13 @@ const ThinkingBlock = memo(function ThinkingBlock({ reasoning, streaming, durati
   );
 });
 
-const MarkdownContent = memo(function MarkdownContent({ children }) {
+const MarkdownContent = memo(function MarkdownContent({ children, streaming, settledRef }) {
+  //only the message that is actively streaming gets split into word spans, scrollback stays plain
+  const rehypePlugins = streaming ? [streamWordsPlugin(settledRef)] : undefined;
+
   return (
     <ReactMarkdown
+      rehypePlugins={rehypePlugins}
       components={{
         ...MARKDOWN_IMAGE_COMPONENT,
         p: ({ node, ...props }) => <p className="mb-4 text-pretty last:mb-0" {...props} />,
@@ -2609,6 +2615,7 @@ const MarkdownContent = memo(function MarkdownContent({ children }) {
 const MessageItem = memo(function MessageItem({
   message,
   streaming,
+  smoothStreaming,
   reasoningStreaming,
   reasoningDurationMs,
   onCopy,
@@ -2618,6 +2625,15 @@ const MessageItem = memo(function MessageItem({
 }) {
   const isUser = message.role === "user";
   const articleRef = useRef(null);
+  const bodyRef = useRef(null);
+  const settledRef = useRef(0);
+  const paceWords = Boolean(streaming && smoothStreaming);
+  const { text: visibleContent, revealing } = useStreamReveal(
+    bodyRef,
+    paceWords,
+    message.content || "",
+    settledRef,
+  );
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(message.content || "");
   const [saving, setSaving] = useState(false);
@@ -2779,9 +2795,11 @@ const MessageItem = memo(function MessageItem({
         streaming={reasoningStreaming}
         durationMs={reasoningDurationMs}
       />
-      <div className="max-w-3xl text-[15px] leading-7 text-neutral-100">
+      <div ref={bodyRef} className="max-w-3xl text-[15px] leading-7 text-neutral-100">
         {message.content ? (
-          <MarkdownContent>{message.content}</MarkdownContent>
+          <MarkdownContent streaming={revealing} settledRef={settledRef}>
+            {visibleContent}
+          </MarkdownContent>
         ) : (
           <div className="flex items-center gap-2 text-neutral-500">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-neutral-500" />
@@ -2873,6 +2891,7 @@ function MessageList({
   messages,
   activeChatId,
   streamingMessageId,
+  smoothStreaming,
   reasoningStreamingMessageId,
   reasoningDurations,
   streamRef,
@@ -2903,6 +2922,7 @@ function MessageList({
               key={message.id}
               message={message}
               streaming={message.id === streamingMessageId}
+              smoothStreaming={smoothStreaming}
               reasoningStreaming={message.id === reasoningStreamingMessageId}
               reasoningDurationMs={reasoningDurations[message.id]}
               onCopy={onCopy}
@@ -3620,6 +3640,8 @@ function StoryWorkspace({
   contextWindowInfo,
   saveState,
   generationStatus,
+  canvasStreaming,
+  smoothStreaming,
   lorebookStatus,
   writeReasoning,
   lorebookReasoning,
@@ -3774,17 +3796,21 @@ function StoryWorkspace({
             </div>
           </div>
 
-          <Suspense fallback={<div className="chapter-editor-loading" aria-hidden="true" />}>
-            <ChapterCanvasEditor
-              key={activeChapter.id}
-              chapterId={activeChapter.id}
-              markdown={chapterContent}
-              readOnly={writingLocked}
-              placeholder="Start writing here, or prompt the model to begin."
-              onChange={onChangeContent}
-              onImportFallback={onCanvasImportFallback}
-            />
-          </Suspense>
+          {canvasStreaming && smoothStreaming ? (
+            <ChapterStreamingCanvas markdown={chapterContent} />
+          ) : (
+            <Suspense fallback={<div className="chapter-editor-loading" aria-hidden="true" />}>
+              <ChapterCanvasEditor
+                key={activeChapter.id}
+                chapterId={activeChapter.id}
+                markdown={chapterContent}
+                readOnly={writingLocked}
+                placeholder="Start writing here, or prompt the model to begin."
+                onChange={onChangeContent}
+                onImportFallback={onCanvasImportFallback}
+              />
+            </Suspense>
+          )}
         </div>
       </div>
     </section>
@@ -5658,7 +5684,7 @@ function SettingsDrawer({
 
   const smoothTextSection = (
     <section className="py-3">
-      <SettingRow title="Smooth text" description="Render model responses more smoothly">
+      <SettingRow title="Smooth text" description="Resolve model responses in a word at a time">
         <SettingSwitch
           checked={smoothStreaming}
           onChange={onToggleSmoothStreaming}
@@ -7004,6 +7030,8 @@ function App() {
   const [chapterContent, setChapterContent] = useState("");
   const [chapterSaveState, setChapterSaveState] = useState("");
   const [storyGenerationStatus, setStoryGenerationStatus] = useState("");
+  //true only while a new chapter is streaming prose into the canvas, edit runs never touch it
+  const [canvasStreaming, setCanvasStreaming] = useState(false);
   const [writeReasoning, setWriteReasoning] = useState({ text: "", streaming: false, durationMs: null });
   //the lorebook thinks in its own pass, so it gets its own reasoning rather than sharing the chapter's
   const [lorebookReasoning, setLorebookReasoning] = useState({ text: "", streaming: false, durationMs: null });
@@ -7947,6 +7975,7 @@ function App() {
     chapterContentRef.current = "";
     setChapterSaveState("");
     setStoryGenerationStatus("");
+    setCanvasStreaming(false);
     setStoryWorkspaceView("chapter");
     setSettings((current) => ({
       ...newSettings,
@@ -8528,28 +8557,16 @@ function App() {
           if (event.type === "reasoning") {
             startReasoningTimer();
             setReasoningStreamingMessageId(assistantId);
-            if (smoothStreaming) {
-              queueSmoothText("reasoning", String(event.value || ""));
-            } else {
-              applyStreamText("", String(event.value || ""));
-            }
+            queueSmoothText("reasoning", String(event.value || ""));
             continue;
           }
           clearReasoningStreaming();
-          if (smoothStreaming) {
-            queueSmoothText("content", String(event.value || ""));
-          } else {
-            applyStreamText(String(event.value || ""), "");
-          }
+          queueSmoothText("content", String(event.value || ""));
         }
       }
       if (buffered.trim()) {
         clearReasoningStreaming();
-        if (smoothStreaming) {
-          queueSmoothText("content", buffered);
-        } else {
-          applyStreamText(buffered, "");
-        }
+        queueSmoothText("content", buffered);
       }
     } finally {
       flushNow();
@@ -9721,6 +9738,7 @@ function App() {
             setStoryGenerationStatus("Writing");
             generatedText += value;
             if (run.generationMode === "new") {
+              setCanvasStreaming(true);
               setChapterContent(generatedText);
               chapterContentRef.current = generatedText;
             } else {
@@ -9842,6 +9860,7 @@ function App() {
       run.status = terminalStatus;
       setIsStreaming(false);
       setStoryGenerationStatus("");
+      setCanvasStreaming(false);
       setWriteReasoning((current) => ({
         ...current,
         streaming: false,
@@ -10044,6 +10063,8 @@ function App() {
             contextWindowInfo={contextWindowInfo}
             saveState={chapterSaveState}
             generationStatus={storyGenerationStatus}
+            canvasStreaming={canvasStreaming}
+            smoothStreaming={smoothStreaming}
             lorebookStatus={lorebookUpdating ? "Updating Lorebook" : ""}
             writeReasoning={writeReasoning}
             lorebookReasoning={lorebookReasoning}
@@ -10081,6 +10102,7 @@ function App() {
               messages={visibleMessages}
               activeChatId={visibleActiveChatId}
               streamingMessageId={streamingMessageId}
+              smoothStreaming={smoothStreaming}
               reasoningStreamingMessageId={reasoningStreamingMessageId}
               reasoningDurations={reasoningDurations}
               streamRef={streamRef}

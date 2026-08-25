@@ -2801,6 +2801,12 @@ const MessageItem = memo(function MessageItem({
           {!editing && (
             <div className={cx("flex justify-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100", FADE_MOTION)}>
               <AssistantActionButton
+                label="Copy prompt"
+                onClick={() => onCopy(message)}
+              >
+                <Copy size={15} />
+              </AssistantActionButton>
+              <AssistantActionButton
                 label="Edit prompt"
                 onClick={startEditing}
               >

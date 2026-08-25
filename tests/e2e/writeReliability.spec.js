@@ -610,7 +610,8 @@ test("exports and imports a complete story from the story rail", async ({ page }
 
   const importButton = page.getByRole("button", { name: "Import story" });
   await expect(importButton).toBeVisible();
-  const importIcon = importButton.locator("span").first();
+  //the icon sits inside a sizing wrapper, so match the masked span itself rather than nesting depth
+  const importIcon = importButton.locator('span[aria-hidden="true"]');
   await expect(importIcon).toHaveCSS(
     "mask-image",
     /file-import\.png/,
@@ -725,15 +726,18 @@ test("shows mandatory model reasoning as required even when the saved preference
   const modelButton = page.locator('[data-tour="model-button"]');
   await expect(modelButton).toBeVisible();
   await expect(modelButton).toContainText("Test model");
-  await expect(modelButton).toContainText("Thinking");
-  await expect(modelButton).toContainText("Required");
+  //mandatory reasoning overrides the saved preference, so the button carries an effort level instead
+  //of Instant, and the Required badge itself now lives in the menu below
+  await expect(modelButton).toContainText("Medium");
+  await expect(modelButton).not.toContainText("Instant");
   await modelButton.click();
 
   const thinkingRow = page.locator('[data-tour="thinking-button"]');
   await expect(thinkingRow).toBeVisible();
   await expect(thinkingRow).toContainText("Thinking");
-  await expect(thinkingRow).toContainText("On");
+  //Required stands in for the On state on a mandatory model, the row cannot be turned off
   await expect(thinkingRow).toContainText("Required");
+  await expect(thinkingRow).not.toContainText("Off");
   await expect(thinkingRow).toBeDisabled();
   expect(api.state.story.thinking_enabled).toBe(false);
 });

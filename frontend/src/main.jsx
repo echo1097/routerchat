@@ -2370,16 +2370,6 @@ function formatThoughtDuration(ms) {
   return `${seconds} ${seconds === 1 ? "second" : "seconds"}`;
 }
 
-function compactPrompt(value) {
-  return String(value || "").replace(/\s+/g, " ").trim();
-}
-
-function promptPreview(value, maxLength = 140) {
-  const compact = compactPrompt(value);
-  if (compact.length <= maxLength) return compact;
-  return `${compact.slice(0, maxLength - 1).trimEnd()}…`;
-}
-
 function isPromptEntry(entry) {
   //kind is authoritative, the label check only covers rows written before kind existed
   return entry.kind === "prompt" || entry.label === "User prompt";
@@ -2463,7 +2453,9 @@ function historyActivityRows(actions) {
     }
 
     if (!pass) {
-      pass = { id: entry.id, group: "lore_pass", entries: [] };
+      //a row is identified by the first entry under it, and a pass shares that entry with the fold row
+      //directly beneath it, so every derived row prefixes its level or the two open and close as one
+      pass = { id: `pass:${entry.id}`, group: "lore_pass", entries: [] };
       rows.push(pass);
     }
     pass.entries.push(entry);
@@ -2488,7 +2480,7 @@ function historyLoreRows(entries) {
     //timeline is one named entry the model keeps rewriting, so it never joins a count
     const group = historyFoldGroup(entry);
     if (!group) {
-      rows.push({ id: entry.id, group: null, entries: [entry], lore: true });
+      rows.push({ id: `lore:${entry.id}`, group: null, entries: [entry], lore: true });
       return;
     }
 
@@ -2499,7 +2491,7 @@ function historyLoreRows(entries) {
     }
 
     //a kind takes its place in the list where it first showed up, so the pass still reads in order
-    const row = { id: entry.id, group, entries: [entry], lore: true };
+    const row = { id: `fold:${group}:${entry.id}`, group, entries: [entry], lore: true };
     rowsByGroup.set(group, row);
     rows.push(row);
   });
@@ -2507,11 +2499,43 @@ function historyLoreRows(entries) {
   return rows;
 }
 
+//the prompt sits at the head of the same list as the model's actions, so a run reads top to bottom as
+//one sequence rather than a card and a list. an old run that never recorded a prompt keeps its first
+//entry where it was, as an action
+function historyRunRows(run) {
+  const promptLed = isPromptEntry(run.prompt);
+  const actions = promptLed ? run.actions : [run.prompt, ...run.actions];
+  const rows = historyActivityRows(actions);
+
+  if (promptLed) {
+    rows.unshift({ id: run.prompt.id, group: null, entries: [run.prompt] });
+  }
+
+  return rows;
+}
+
+//a prompt and a thought are both a wall of text rather than a list, so they expand into a readable
+//panel instead of the tree of rows every other expandable row opens into
+function historyRowText(row) {
+  if (row.name || row.lore || row.entries.length !== 1) return null;
+
+  const entry = row.entries[0];
+  if (isPromptEntry(entry)) return { kind: "prompt", text: String(entry.detail || "").trim() };
+  if (entry.kind !== "thinking") return null;
+
+  return { kind: "thinking", text: String(entry.detail || "").trim() };
+}
+
 //one level down from a folded row there is nothing left to fold, so each entry becomes a bare name
 function historyRowChildren(row) {
   if (row.group === "lore_pass") return historyLoreRows(row.entries);
   if (row.entries.length > 1) {
-    return row.entries.map((entry) => ({ id: entry.id, group: null, entries: [entry], name: true }));
+    return row.entries.map((entry) => ({
+      id: `name:${entry.id}`,
+      group: null,
+      entries: [entry],
+      name: true,
+    }));
   }
   return [];
 }
@@ -5215,11 +5239,9 @@ function WriteHistoryRunAccordion({
   onToggleEntry,
 }) {
   const actionCount = run.actions.length;
-  const activityRows = historyActivityRows(run.actions);
+  const activityRows = historyRunRows(run);
   const runCost = historyCostTotal(run.actions);
   const runWords = historyWordTotals(run.actions);
-  const promptText = compactPrompt(run.prompt?.detail);
-  const hasPrompt = Boolean(promptText);
 
   return (
     <section
@@ -5255,25 +5277,6 @@ function WriteHistoryRunAccordion({
 
       <div className="t-acc-panel min-h-0">
         <div className="t-acc-panel-inner min-h-0 px-3.5 pb-4 sm:px-4">
-          <div className="mb-4 rounded-2xl bg-white/[0.035] px-3.5 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.045)]">
-            <div className="mb-1 flex items-start justify-between gap-3">
-              <div className="mt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-600">
-                Prompt
-              </div>
-              <WriteHistoryCopyButton text={promptText} />
-            </div>
-            {hasPrompt ? (
-              <WriteHistoryDetail
-                entry={run.prompt}
-                expanded={Boolean(expandedEntries[run.prompt.id])}
-                onToggle={() => onToggleEntry(run.prompt.id)}
-                promptCard
-              />
-            ) : (
-              <div className="text-sm leading-5 text-neutral-600">Prompt details unavailable</div>
-            )}
-          </div>
-
           <div className="mb-2.5 px-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-600">
             Activity
           </div>
@@ -5321,7 +5324,7 @@ function WriteHistoryRows({ rows, guides, parentFinal, expandedEntries, onToggle
       {rows.map((row, index) => {
         const lastSibling = index === rows.length - 1;
         const children = historyRowChildren(row);
-        const expandable = children.length > 0;
+        const expandable = children.length > 0 || Boolean(historyRowText(row));
         const open = Boolean(expandedEntries[row.id]);
         const expanded = expandable && open;
 
@@ -5337,7 +5340,7 @@ function WriteHistoryRows({ rows, guides, parentFinal, expandedEntries, onToggle
             final={parentFinal && lastSibling && !expanded}
             onToggle={() => onToggleEntry(row.id)}
           >
-            {expandable && (
+            {children.length > 0 && (
               <WriteHistoryRows
                 rows={children}
                 //a guide is only drawn where its level still has rows to come
@@ -5368,6 +5371,7 @@ function WriteHistoryAction({
   const entry = row.entries[0];
   const words = historyRowWords(row);
   const depth = guides.length;
+  const textPanel = historyRowText(row);
 
   const failed = entry.kind === "write_failed";
   const textClass = HISTORY_DEPTH_TEXT[Math.min(depth, HISTORY_DEPTH_TEXT.length - 1)];
@@ -5407,9 +5411,7 @@ function WriteHistoryAction({
               </div>
             )}
 
-            {!expandable && (
-              <WriteHistoryDetail entry={entry} expanded={open} onToggle={onToggle} />
-            )}
+            {!expandable && <WriteHistoryDetail entry={entry} />}
           </div>
         </div>
 
@@ -5422,7 +5424,19 @@ function WriteHistoryAction({
 
       {expandable && (
         <div className="t-tree-panel">
-          <div className="t-tree-panel-inner">{children}</div>
+          <div className="t-tree-panel-inner">
+            {textPanel ? (
+              <WriteHistoryTextPanel
+                text={textPanel.text}
+                emptyLabel={
+                  textPanel.kind === "thinking" ? "No thinking saved" : "No prompt saved"
+                }
+                copyLabel={textPanel.kind === "thinking" ? "thinking" : "prompt"}
+              />
+            ) : (
+              children
+            )}
+          </div>
         </div>
       )}
     </li>
@@ -5438,7 +5452,22 @@ function WriteHistoryGuide({ drawn }) {
   );
 }
 
-function WriteHistoryCopyButton({ text }) {
+//the prompt and the model's thinking are both long enough to need their own reading surface, so they
+//get a card with a scroll of its own rather than pushing the rest of the run off the screen
+function WriteHistoryTextPanel({ text, emptyLabel, copyLabel }) {
+  return (
+    <div className="mb-2.5 ml-[18px] rounded-2xl bg-white/[0.035] px-3.5 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.045)]">
+      <div className="flex items-start justify-between gap-3">
+        <div className="max-h-[280px] min-w-0 flex-1 overflow-y-auto whitespace-pre-wrap break-words text-pretty text-[13px] leading-5 text-neutral-300">
+          {text || <span className="text-neutral-600">{emptyLabel}</span>}
+        </div>
+        <WriteHistoryCopyButton text={text} label={copyLabel} />
+      </div>
+    </div>
+  );
+}
+
+function WriteHistoryCopyButton({ text, label = "prompt" }) {
   const [copied, setCopied] = useState(false);
   const timeoutRef = useRef(null);
 
@@ -5457,8 +5486,8 @@ function WriteHistoryCopyButton({ text }) {
       type="button"
       onClick={handleCopy}
       disabled={!text}
-      aria-label={copied ? "Prompt copied" : "Copy prompt"}
-      title={copied ? "Copied" : "Copy prompt"}
+      aria-label={copied ? "Copied" : `Copy ${label}`}
+      title={copied ? "Copied" : `Copy ${label}`}
       className={cx(
         "-mr-1.5 -mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-full text-neutral-500 hover:bg-white/[0.06] hover:text-neutral-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 disabled:pointer-events-none disabled:opacity-0",
         copied && "text-emerald-300 hover:text-emerald-300",
@@ -5490,51 +5519,13 @@ function WriteHistoryStats({ added, removed, isHide = false }) {
   );
 }
 
-function WriteHistoryDetail({ entry, expanded, onToggle, promptCard = false }) {
+//prompts and thoughts open into their own panel now, so what is left here is the short note a failed
+//or partial action leaves behind
+function WriteHistoryDetail({ entry }) {
   if (!entry.detail) return null;
 
-  const isPrompt = isPromptEntry(entry);
-  const isLongPrompt = isPrompt && entry.detail.length > 140;
-
-  if (!isLongPrompt) {
-    return (
-      <div
-        className={cx(
-          promptCard
-            ? "text-pretty text-sm leading-5 text-neutral-300"
-            : "text-pretty text-xs leading-5 text-neutral-500",
-        )}
-      >
-        {entry.detail}
-      </div>
-    );
-  }
-
   return (
-    <div className={promptCard ? "" : "mt-0.5"}>
-      <div
-        className={cx(
-          promptCard
-            ? "text-pretty text-sm leading-5 text-neutral-300"
-            : "text-xs leading-5 text-neutral-500",
-          expanded ? "whitespace-pre-wrap break-words" : promptCard ? "line-clamp-4" : "line-clamp-2",
-        )}
-      >
-        {/*the card is the only place the prompt appears now, so it clamps the real text by line
-           rather than handing over a character truncated preview of it*/}
-        {expanded || promptCard ? entry.detail : promptPreview(entry.detail)}
-      </div>
-      <button
-        type="button"
-        onClick={onToggle}
-        className={cx(
-          "-ml-2 mt-1 inline-flex min-h-10 items-center rounded-full px-2 text-[11px] font-medium leading-none text-neutral-500 hover:bg-white/[0.05] hover:text-neutral-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
-          CONTROL_MOTION,
-        )}
-      >
-        {expanded ? "Show less" : "Show more"}
-      </button>
-    </div>
+    <div className="text-pretty text-xs leading-5 text-neutral-500">{entry.detail}</div>
   );
 }
 

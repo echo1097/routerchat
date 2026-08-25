@@ -2764,6 +2764,8 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
         history_run_id = str(uuid.uuid4())
         model_label = display_model_name(payload.model)
         reasoning_started_at: float | None = None
+        #a run can think more than once, this marks how much of the reasoning already has a history row
+        reasoning_saved_chunks = 0
         content_started_at: float | None = None
         stream_completed = False
         received_done = False
@@ -2855,10 +2857,13 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                         if content:
                             if reasoning_started_at is not None:
                                 duration_ms = (time.perf_counter() - reasoning_started_at) * 1000
+                                thoughts = "".join(reasoning_text[reasoning_saved_chunks:]).strip()
+                                reasoning_saved_chunks = len(reasoning_text)
                                 yield emit(
                                     "history",
                                     save_history(
                                         f"{model_label} thought for {format_duration(duration_ms)}",
+                                        detail=thoughts,
                                         kind="thinking",
                                     ),
                                 )

@@ -2536,34 +2536,54 @@ function ContextWindowMeter({ info, placement = "above" }) {
   );
 }
 
-const ThinkingBlock = memo(function ThinkingBlock({ reasoning, streaming, durationMs }) {
+const AssistantStatusLine = memo(function AssistantStatusLine({
+  reasoning,
+  reasoningStreaming,
+  waiting,
+  durationMs,
+}) {
   const [open, setOpen] = useState(false);
 
-  if (!reasoning) return null;
+  const hasReasoning = Boolean(reasoning);
+  if (!hasReasoning && !waiting) return null;
 
-  const label =
-    !streaming && durationMs ? `Thought for ${formatThoughtDuration(durationMs)}` : "Thinking";
+  const label = !hasReasoning
+    ? "Working"
+    : reasoningStreaming || !durationMs
+      ? "Thinking"
+      : `Thought for ${formatThoughtDuration(durationMs)}`;
+
+  const shimmering = reasoningStreaming || (!hasReasoning && waiting);
 
   return (
     <div className="mb-4 max-w-3xl">
       <button
         type="button"
-        onClick={() => setOpen((value) => !value)}
+        onClick={hasReasoning ? () => setOpen((value) => !value) : undefined}
+        aria-expanded={hasReasoning ? open : undefined}
+        disabled={!hasReasoning}
         className={cx(
-          "inline-flex min-h-7 items-center gap-2 rounded-md py-0 pr-2 text-xs font-medium text-neutral-500 hover:text-neutral-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
+          "inline-flex min-h-7 items-center rounded-md py-0 pr-2 text-xs font-medium text-neutral-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
           CONTROL_MOTION,
+          hasReasoning ? "hover:text-neutral-300" : "cursor-default",
         )}
       >
-        <ChevronDown
-          size={15}
-          className={cx("transition-transform duration-150 ease-out", !open && "-rotate-90")}
-        />
-        <span className={streaming ? "t-shimmer" : undefined} data-text={label}>
-          {label}
+        <span
+          aria-hidden={!hasReasoning}
+          className={cx(
+            "inline-flex shrink-0 items-center justify-center overflow-hidden",
+            "transition-[width,opacity] duration-200 ease-out",
+            hasReasoning ? "w-[21px] opacity-100" : "w-0 opacity-0",
+          )}
+        >
+          <ChevronDown
+            size={15}
+            className={cx("transition-transform duration-150 ease-out", !open && "-rotate-90")}
+          />
         </span>
-        {streaming && <span className="h-1.5 w-1.5 rounded-full bg-accent" />}
+        <StatusLabel label={label} shimmering={shimmering} />
       </button>
-      {open && (
+      {hasReasoning && open && (
         <div className="mt-3 border-l border-white/10 pl-4 text-pretty text-sm leading-7 text-neutral-500">
           <ThinkingContent>{reasoning}</ThinkingContent>
         </div>
@@ -2571,6 +2591,21 @@ const ThinkingBlock = memo(function ThinkingBlock({ reasoning, streaming, durati
     </div>
   );
 });
+
+//the label blurs out and back in whenever the state changes, so working turns into thinking without a hard cut
+function StatusLabel({ label, shimmering }) {
+  const { shownText, textRef } = useTextSwap(label);
+
+  return (
+    <span
+      ref={textRef}
+      className={cx("t-text-swap", shimmering && "t-shimmer")}
+      data-text={shownText}
+    >
+      {shownText}
+    </span>
+  );
+}
 
 const MarkdownContent = memo(function MarkdownContent({ children, streaming, settledRef }) {
   //only the message that is actively streaming gets split into word spans, scrollback stays plain
@@ -2790,9 +2825,10 @@ const MessageItem = memo(function MessageItem({
       data-message-role={message.role}
       className="group max-w-none"
     >
-      <ThinkingBlock
+      <AssistantStatusLine
         reasoning={message.reasoning}
-        streaming={reasoningStreaming}
+        reasoningStreaming={reasoningStreaming}
+        waiting={!message.content}
         durationMs={reasoningDurationMs}
       />
       <div ref={bodyRef} className="max-w-3xl text-[15px] leading-7 text-neutral-100">
@@ -2800,12 +2836,7 @@ const MessageItem = memo(function MessageItem({
           <MarkdownContent streaming={revealing} settledRef={settledRef}>
             {visibleContent}
           </MarkdownContent>
-        ) : (
-          <div className="flex items-center gap-2 text-neutral-500">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-neutral-500" />
-            Working
-          </div>
-        )}
+        ) : null}
       </div>
       {message.content && !streaming && !revealing && (
         <div className={cx("mt-3 flex max-w-3xl justify-start gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100", FADE_MOTION)}>

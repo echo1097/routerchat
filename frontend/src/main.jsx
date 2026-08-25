@@ -5431,7 +5431,6 @@ function WriteHistoryAction({
                 emptyLabel={
                   textPanel.kind === "thinking" ? "No thinking saved" : "No prompt saved"
                 }
-                copyLabel={textPanel.kind === "thinking" ? "thinking" : "prompt"}
               />
             ) : (
               children
@@ -5452,54 +5451,109 @@ function WriteHistoryGuide({ drawn }) {
   );
 }
 
-//the prompt and the model's thinking are both long enough to need their own reading surface, so they
-//get a card with a scroll of its own rather than pushing the rest of the run off the screen
-function WriteHistoryTextPanel({ text, emptyLabel, copyLabel }) {
-  return (
-    <div className="mb-2.5 ml-[18px] rounded-2xl bg-white/[0.035] px-3.5 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.045)]">
-      <div className="flex items-start justify-between gap-3">
-        <div className="max-h-[280px] min-w-0 flex-1 overflow-y-auto whitespace-pre-wrap break-words text-pretty text-[13px] leading-5 text-neutral-300">
-          {text || <span className="text-neutral-600">{emptyLabel}</span>}
-        </div>
-        <WriteHistoryCopyButton text={text} label={copyLabel} />
-      </div>
-    </div>
-  );
-}
+//the prompt and the model's thinking read as plain text hanging off the row that named them, so they
+//get the same guide the tree uses rather than a card of their own
+//half the chip's fixed width, so it can be nudged away from the edges it would otherwise hang over
+const HISTORY_TIP_REACH = 32;
+//above this the chip clears the top of the block, below it there is no room and it flips under
+const HISTORY_TIP_CLEARANCE = 32;
+//a chip that rides the pointer is just noise while the pointer is going somewhere, so it waits for
+//the mouse to settle rather than trailing it across the paragraph
+const HISTORY_TIP_SETTLE_MS = 260;
 
-function WriteHistoryCopyButton({ text, label = "prompt" }) {
+function WriteHistoryTextPanel({ text, emptyLabel }) {
   const [copied, setCopied] = useState(false);
   const timeoutRef = useRef(null);
+  const wrapRef = useRef(null);
+  const settleRef = useRef(null);
 
-  useEffect(() => () => window.clearTimeout(timeoutRef.current), []);
+  useEffect(
+    () => () => {
+      window.clearTimeout(timeoutRef.current);
+      window.clearTimeout(settleRef.current);
+    },
+    [],
+  );
 
-  async function handleCopy() {
+  //written straight onto the node rather than through state, a re-render per mouse move to place a
+  //tooltip is a lot of work for something css can read off two custom properties
+  function trackCursor(event) {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+
+    const box = wrap.getBoundingClientRect();
+    const limit = Math.max(box.width - HISTORY_TIP_REACH, HISTORY_TIP_REACH);
+    //rounded because a chip sitting on a half pixel renders its text soft
+    const x = Math.round(Math.min(Math.max(event.clientX - box.left, HISTORY_TIP_REACH), limit));
+    const y = Math.round(event.clientY - box.top);
+
+    wrap.style.setProperty("--tip-x", `${x}px`);
+    wrap.style.setProperty("--tip-y", `${y}px`);
+    wrap.dataset.tipBelow = String(y < HISTORY_TIP_CLEARANCE);
+
+    wrap.dataset.tipIdle = "false";
+    window.clearTimeout(settleRef.current);
+    settleRef.current = window.setTimeout(() => {
+      wrap.dataset.tipIdle = "true";
+    }, HISTORY_TIP_SETTLE_MS);
+  }
+
+  function releaseCursor() {
+    window.clearTimeout(settleRef.current);
+    if (wrapRef.current) wrapRef.current.dataset.tipIdle = "false";
+  }
+
+  async function copyText() {
     if (!text) return;
+
+    //clicking anywhere in the block copies it, so a click that only finished a drag selection has to
+    //leave that selection alone rather than replacing it with the whole thing
+    if (!window.getSelection()?.isCollapsed) return;
+
     await navigator.clipboard.writeText(text);
     setCopied(true);
     window.clearTimeout(timeoutRef.current);
     timeoutRef.current = window.setTimeout(() => setCopied(false), 1600);
   }
 
+  const textClass =
+    "max-h-[320px] overflow-y-auto whitespace-pre-wrap break-words text-pretty text-[13px] leading-5";
+
   return (
-    <button
-      type="button"
-      onClick={handleCopy}
-      disabled={!text}
-      aria-label={copied ? "Copied" : `Copy ${label}`}
-      title={copied ? "Copied" : `Copy ${label}`}
-      className={cx(
-        "-mr-1.5 -mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-full text-neutral-500 hover:bg-white/[0.06] hover:text-neutral-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 disabled:pointer-events-none disabled:opacity-0",
-        copied && "text-emerald-300 hover:text-emerald-300",
-        CONTROL_MOTION,
-      )}
-    >
-      {copied ? (
-        <Check size={16} strokeWidth={2.2} aria-hidden="true" />
+    <div className="mb-2.5 flex">
+      <WriteHistoryGuide drawn />
+      {text ? (
+        <span
+          ref={wrapRef}
+          className="history-copy-wrap min-w-0 flex-1"
+          onMouseMove={trackCursor}
+          onMouseLeave={releaseCursor}
+        >
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={copyText}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                void copyText();
+              }
+            }}
+            className={cx(
+              textClass,
+              "history-copy-text cursor-pointer rounded-lg text-neutral-300 transition-colors duration-150 ease-out hover:text-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
+            )}
+          >
+            {text}
+          </div>
+          <span className="t-tt history-copy-tooltip" role="tooltip">
+            {copied ? "Copied" : "Copy"}
+          </span>
+        </span>
       ) : (
-        <Copy size={15} strokeWidth={1.9} aria-hidden="true" />
+        <div className={cx(textClass, "min-w-0 flex-1 text-neutral-600")}>{emptyLabel}</div>
       )}
-    </button>
+    </div>
   );
 }
 

@@ -388,7 +388,7 @@
 .brainstorm-composer-surface {
   width: min(820px, 100%);
   border-radius: 20px;
-  padding: 11px 14px 9px;
+  padding: 11px 14px 4.5px;
   background: #141414;
   pointer-events: auto;
 }
@@ -415,11 +415,11 @@
 
 .brainstorm-composer-controls {
   display: flex;
-  min-height: 42px;
+  min-height: 34px;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding-top: 6px;
+  padding-top: 3px;
 }
 
 .brainstorm-composer-left,
@@ -433,7 +433,7 @@
 .brainstorm-selection-pill,
 .brainstorm-model-button {
   display: inline-flex;
-  min-height: 40px;
+  min-height: 32px;
   align-items: center;
   gap: 6px;
   border: 0;
@@ -454,7 +454,7 @@
 
 .brainstorm-branch-trigger {
   display: inline-flex;
-  min-height: 40px;
+  min-height: 32px;
   align-items: center;
   gap: 6px;
   border: 0;
@@ -658,9 +658,9 @@
 
 .brainstorm-send-button {
   display: inline-flex;
-  width: 40px;
-  height: 40px;
-  flex: 0 0 40px;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
   align-items: center;
   justify-content: center;
   border: 0;

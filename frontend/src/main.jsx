@@ -4318,7 +4318,7 @@ function Composer({
               : "rounded-[24px]",
           )}
         >
-          <div className={cx(isEmptyVariant ? "px-6 pt-5 sm:px-7 sm:pt-6" : "px-4 pt-3")}>
+          <div className={cx(isEmptyVariant ? "px-[18px] pt-[15px] sm:px-[21px] sm:pt-[18px]" : "px-4 pt-3")}>
             <textarea
               ref={textareaRef}
               value={value}
@@ -4351,8 +4351,8 @@ function Composer({
             className={cx(
               "flex items-center gap-2",
               isEmptyVariant
-                ? "flex-wrap justify-between px-4 pb-3 pt-1.5 sm:flex-nowrap sm:px-5"
-                : "justify-between px-4 pb-2.5 pt-1.5",
+                ? "flex-wrap justify-between px-3 pb-[4.5px] pt-[3px] sm:flex-nowrap sm:px-[15px]"
+                : "justify-between px-4 pb-[5px] pt-[3px]",
             )}
             >
             <div className="flex min-w-0 items-center gap-1.5">
@@ -4368,7 +4368,7 @@ function Composer({
                     aria-expanded={contextMenuOpen}
                     aria-haspopup="menu"
                     className={cx(
-                      "inline-flex h-10 min-w-0 items-center gap-1.5 rounded-full text-xs font-medium text-neutral-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30 active:scale-[0.96]",
+                      "inline-flex h-8 min-w-0 items-center gap-1.5 rounded-full text-xs font-medium text-neutral-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30 active:scale-[0.96]",
                       isWritePromptBar ? "pl-0 pr-6" : "px-3",
                       isWritePromptBar ? "" : "bg-white/[0.07] shadow-[inset_0_1px_rgba(255,255,255,0.06)] hover:bg-white/[0.11]",
                       PROMPT_BAR_CONTROL_MOTION,
@@ -4416,7 +4416,8 @@ function Composer({
                   aria-expanded={modelMenuOpen}
                   aria-haspopup="menu"
                   className={cx(
-                    "inline-flex h-10 min-w-0 max-w-[220px] items-center gap-1.5 rounded-full text-xs font-medium text-neutral-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30 active:scale-[0.96] sm:max-w-[280px]",
+                    "inline-flex min-w-0 max-w-[220px] items-center gap-1.5 rounded-full text-xs font-medium text-neutral-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30 active:scale-[0.96] sm:max-w-[280px]",
+                    "h-8",
                     "pl-0 pr-3",
                     isWritePromptBar ? "" : "bg-transparent shadow-none hover:bg-transparent",
                     PROMPT_BAR_CONTROL_MOTION,
@@ -4466,7 +4467,8 @@ function Composer({
               data-tour="send-button"
               disabled={!isStreaming && (!value.trim() || disabled)}
               className={cx(
-                "group relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
+                "group relative inline-flex shrink-0 items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
+                "h-8 w-8",
                 PROMPT_BAR_CONTROL_MOTION,
                 isStreaming
                   ? "text-neutral-200"

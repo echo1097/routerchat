@@ -2401,20 +2401,194 @@ function historyRunGroups(entries) {
   return groups;
 }
 
-//the dot colour is the only thing separating one kind of action from another, so it carries the
-//whole distinction on its own
-const HISTORY_KIND_DOTS = {
-  write: "bg-neutral-300",
-  thinking: "bg-violet-400",
-  write_failed: "bg-amber-400",
-  lore_create: "bg-emerald-400",
-  lore_update: "bg-sky-400",
-  lore_hide: "bg-neutral-700",
-  lore_summary: "bg-neutral-500",
-};
+//the label is the only record of which model ran, so the name is read back off it rather than stored
+//twice. every pattern here is anchored on the fixed half of a label writing.py writes
+const HISTORY_MODEL_PATTERNS = [
+  /^(.+?) thought for /,
+  /^(.+?) wrote for /,
+  /^(.+?) applied \d/,
+  /^(.+?) could not /,
+  /^(.+?) added .+ to Lorebook$/,
+  /^(.+?) updated .+ in Lorebook$/,
+  /^(.+?) updated Timeline$/,
+  /^(.+?) excluded .+ from context$/,
+  /^(.+?) finished editing Lorebook after /,
+  /^(.+?) found no Lorebook changes after /,
+];
 
-function historyKindDot(kind) {
-  return HISTORY_KIND_DOTS[kind] || "bg-neutral-600";
+function historyModelName(entries) {
+  for (const entry of entries) {
+    const label = String(entry?.label || "");
+    for (const pattern of HISTORY_MODEL_PATTERNS) {
+      const match = label.match(pattern);
+      if (match) return match[1];
+    }
+  }
+  return "Model";
+}
+
+//timeline is one named entry the model keeps rewriting, so it stays on its own line instead of
+//disappearing into an "updated 4 entries" tally
+function historyEntryIsTimeline(entry) {
+  return / updated Timeline$/.test(String(entry?.label || ""));
+}
+
+const HISTORY_FOLDABLE_KINDS = new Set(["lore_create", "lore_update", "lore_hide"]);
+
+function historyFoldGroup(entry) {
+  if (!HISTORY_FOLDABLE_KINDS.has(entry?.kind)) return null;
+  if (historyEntryIsTimeline(entry)) return null;
+  return entry.kind;
+}
+
+const HISTORY_LORE_KINDS = new Set([
+  "lore_create",
+  "lore_update",
+  "lore_hide",
+  "lore_summary",
+]);
+
+//a lorebook pass writes one row per entry it touched plus a closing summary, which is a whole screen of
+//detail sitting at the same level as "wrote for 31 seconds". the pass collapses to its summary line and
+//everything it did hangs underneath
+function historyActivityRows(actions) {
+  const rows = [];
+  let pass = null;
+
+  actions.forEach((entry) => {
+    if (!HISTORY_LORE_KINDS.has(entry.kind)) {
+      pass = null;
+      rows.push({ id: entry.id, group: null, entries: [entry] });
+      return;
+    }
+
+    if (!pass) {
+      pass = { id: entry.id, group: "lore_pass", entries: [] };
+      rows.push(pass);
+    }
+    pass.entries.push(entry);
+
+    //the summary closes the pass, so a second lorebook run in the same prompt opens its own row
+    if (entry.kind === "lore_summary") pass = null;
+  });
+
+  return rows;
+}
+
+//inside a pass each kind folds into one countable line so the things worth reading at a glance survive,
+//how many entries went in and how many changed. the fold is by kind across the whole pass rather than
+//by neighbour, or a run that alternates between creating and updating splits into a row per switch
+function historyLoreRows(entries) {
+  const rows = [];
+  const rowsByGroup = new Map();
+
+  entries.forEach((entry) => {
+    if (entry.kind === "lore_summary") return;
+
+    //timeline is one named entry the model keeps rewriting, so it never joins a count
+    const group = historyFoldGroup(entry);
+    if (!group) {
+      rows.push({ id: entry.id, group: null, entries: [entry], lore: true });
+      return;
+    }
+
+    const existing = rowsByGroup.get(group);
+    if (existing) {
+      existing.entries.push(entry);
+      return;
+    }
+
+    //a kind takes its place in the list where it first showed up, so the pass still reads in order
+    const row = { id: entry.id, group, entries: [entry], lore: true };
+    rowsByGroup.set(group, row);
+    rows.push(row);
+  });
+
+  return rows;
+}
+
+//one level down from a folded row there is nothing left to fold, so each entry becomes a bare name
+function historyRowChildren(row) {
+  if (row.group === "lore_pass") return historyLoreRows(row.entries);
+  if (row.entries.length > 1) {
+    return row.entries.map((entry) => ({ id: entry.id, group: null, entries: [entry], name: true }));
+  }
+  return [];
+}
+
+//pulls the entry name back out of a lorebook label so a folded row can still list what it covered
+function historyEntryName(entry) {
+  const label = String(entry?.label || "");
+  const match =
+    label.match(/ added (.+) to Lorebook$/)
+    || label.match(/ updated (.+) in Lorebook$/)
+    || label.match(/ excluded (.+) from context$/);
+  return match ? match[1] : label;
+}
+
+//the closing line of a pass reads as its own sentence, this puts it in the same
+//"<model> <verb> for <duration>" shape as the thinking and writing lines beside it
+//a nested row already sits under a line that named the model, so it drops the subject and keeps the
+//verb. the anchors that find the name are what cut it back off the front of the label
+function historyLabelBody(label) {
+  const text = String(label || "");
+
+  for (const pattern of HISTORY_MODEL_PATTERNS) {
+    const match = text.match(pattern);
+    if (!match) continue;
+
+    const body = text.slice(match[1].length).trimStart();
+    return body ? body[0].toUpperCase() + body.slice(1) : text;
+  }
+
+  return text;
+}
+
+//the closing line of a pass reads as its own sentence, this puts it in the same
+//"<model> <verb> for <duration>" shape as the thinking and writing lines beside it
+function historyPassLabel(row) {
+  const summary = row.entries.find((entry) => entry.kind === "lore_summary");
+  const label = String(summary?.label || "");
+
+  const finished = label.match(/^(.+?) finished editing Lorebook after (.+)$/);
+  if (finished) return `${finished[1]} edited Lorebook for ${finished[2]}`;
+
+  //a pass that changed nothing already says so in its own words, and has nothing underneath it
+  if (label) return label;
+  return `${historyModelName(row.entries)} edited Lorebook`;
+}
+
+function historyRowLabel(row) {
+  if (row.group === "lore_pass") return historyPassLabel(row);
+  if (row.name) return historyEntryName(row.entries[0]);
+
+  if (row.entries.length === 1) {
+    const label = row.entries[0].label;
+    return row.lore ? historyLabelBody(label) : String(label || "");
+  }
+
+  //only a pass builds folded rows, so these are always nested and always drop the model
+  const count = row.entries.length;
+  const noun = count === 1 ? "entry" : "entries";
+
+  if (row.group === "lore_create") return `Added ${count} ${noun} to Lorebook`;
+  if (row.group === "lore_hide") return `Excluded ${count} ${noun} from context`;
+  return `Updated ${count} ${noun} in Lorebook`;
+}
+
+function historyRowWords(row) {
+  //the summary already carries the totals for the whole pass, so it stands in for its children
+  //rather than being counted on top of them
+  const summary = row.entries.find((entry) => entry.kind === "lore_summary");
+  const counted = summary ? [summary] : row.entries;
+
+  return counted.reduce(
+    (totals, entry) => ({
+      added: totals.added + (toFiniteNumber(entry.words_added) || 0),
+      removed: totals.removed + (toFiniteNumber(entry.words_removed) || 0),
+    }),
+    { added: 0, removed: 0 },
+  );
 }
 
 function historyWordTotals(entries) {
@@ -5041,6 +5215,7 @@ function WriteHistoryRunAccordion({
   onToggleEntry,
 }) {
   const actionCount = run.actions.length;
+  const activityRows = historyActivityRows(run.actions);
   const runCost = historyCostTotal(run.actions);
   const runWords = historyWordTotals(run.actions);
   const promptText = compactPrompt(run.prompt?.detail);
@@ -5103,18 +5278,12 @@ function WriteHistoryRunAccordion({
             Activity
           </div>
 
-          {run.actions.length > 0 ? (
-            <ol className="px-1">
-              {run.actions.map((entry, actionIndex) => (
-                <WriteHistoryAction
-                  key={entry.id}
-                  entry={entry}
-                  last={actionIndex === run.actions.length - 1}
-                  expanded={Boolean(expandedEntries[entry.id])}
-                  onToggle={() => onToggleEntry(entry.id)}
-                />
-              ))}
-            </ol>
+          {activityRows.length > 0 ? (
+            <WriteHistoryActivity
+              rows={activityRows}
+              expandedEntries={expandedEntries}
+              onToggleEntry={onToggleEntry}
+            />
           ) : (
             <div className="px-1 text-xs leading-5 text-neutral-600">
               No actions recorded for this prompt.
@@ -5126,28 +5295,146 @@ function WriteHistoryRunAccordion({
   );
 }
 
-function WriteHistoryAction({ entry, last, expanded, onToggle }) {
+const HISTORY_DEPTH_TEXT = [
+  "text-sm font-medium leading-5 text-neutral-300",
+  "text-[13px] font-medium leading-5 text-neutral-400",
+  "text-[13px] font-normal leading-5 text-neutral-500",
+];
+
+function WriteHistoryActivity({ rows, expandedEntries, onToggleEntry }) {
+  return (
+    <WriteHistoryRows
+      rows={rows}
+      guides={[]}
+      parentFinal
+      expandedEntries={expandedEntries}
+      onToggleEntry={onToggleEntry}
+    />
+  );
+}
+
+//every level is its own full width list, so a nested row lands on the same two grid tracks as a top
+//level one and the diff column stays a single edge no matter how deep the row sits
+function WriteHistoryRows({ rows, guides, parentFinal, expandedEntries, onToggleEntry }) {
+  return (
+    <ol className={guides.length === 0 ? "px-1" : undefined}>
+      {rows.map((row, index) => {
+        const lastSibling = index === rows.length - 1;
+        const children = historyRowChildren(row);
+        const expandable = children.length > 0;
+        const open = Boolean(expandedEntries[row.id]);
+        const expanded = expandable && open;
+
+        return (
+          <WriteHistoryAction
+            key={row.id}
+            row={row}
+            guides={guides}
+            expandable={expandable}
+            open={open}
+            //only the bottom row of everything on screen drops its gap, or the tree loses its rhythm
+            //wherever a branch happens to end
+            final={parentFinal && lastSibling && !expanded}
+            onToggle={() => onToggleEntry(row.id)}
+          >
+            {expandable && (
+              <WriteHistoryRows
+                rows={children}
+                //a guide is only drawn where its level still has rows to come
+                guides={[...guides, !lastSibling]}
+                parentFinal={parentFinal && lastSibling}
+                expandedEntries={expandedEntries}
+                onToggleEntry={onToggleEntry}
+              />
+            )}
+          </WriteHistoryAction>
+        );
+      })}
+    </ol>
+  );
+}
+
+function WriteHistoryAction({
+  row,
+  guides,
+  expandable,
+  open,
+  final,
+  onToggle,
+  children,
+}) {
+  //a row is either a branch or a leaf with detail, and each reads the same open flag for its own thing
+  const expanded = expandable && open;
+  const entry = row.entries[0];
+  const words = historyRowWords(row);
+  const depth = guides.length;
+
   const failed = entry.kind === "write_failed";
+  const textClass = HISTORY_DEPTH_TEXT[Math.min(depth, HISTORY_DEPTH_TEXT.length - 1)];
 
   return (
-    <li className="grid grid-cols-[18px_minmax(0,1fr)_auto] gap-x-3">
-      <span className="relative flex justify-center" aria-hidden="true">
-        {!last && <span className="absolute bottom-0 top-[16px] w-px bg-white/[0.07]" />}
-        <span className={cx("mt-[7px] h-2 w-2 rounded-full", historyKindDot(entry.kind))} />
-      </span>
-      <div className={cx("min-w-0", last ? "pb-0" : "pb-3.5")}>
-        <div
-          className={cx(
-            "text-pretty text-sm font-medium leading-5",
-            failed ? "text-amber-200" : "text-neutral-300",
-          )}
-        >
-          {entry.label}
+    <li className="t-tree" data-open={String(expanded)}>
+      <div className="t-tree-row grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4">
+        {/*the guides are flex siblings of the label rather than a background, so they stretch to
+           whatever height the row ends up at once its detail text wraps*/}
+        <div className="flex min-w-0">
+          {/*a guide means "these hang off the row above", which nothing at the top level does, so the
+             outermost column is dropped entirely and every level below costs one step*/}
+          {guides.slice(1).map((drawn, level) => (
+            <WriteHistoryGuide key={level} drawn={drawn} />
+          ))}
+          {depth > 0 && <WriteHistoryGuide drawn />}
+
+          <div className={cx("min-w-0 flex-1", final ? "pb-0" : "pb-2.5")}>
+            {expandable ? (
+              <button
+                type="button"
+                onClick={onToggle}
+                aria-expanded={expanded}
+                className={cx(
+                  "-ml-1.5 flex min-w-0 max-w-full items-center gap-1.5 rounded-lg px-1.5 text-left transition-colors duration-150 ease-out hover:bg-white/[0.05] hover:text-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
+                  textClass,
+                )}
+              >
+                <span className="truncate">{historyRowLabel(row)}</span>
+                <span className="t-tree-chevron shrink-0 text-neutral-600">
+                  <ChevronDown size={13} strokeWidth={2} aria-hidden="true" />
+                </span>
+              </button>
+            ) : (
+              <div className={cx("text-pretty", textClass, failed && "text-amber-200")}>
+                {historyRowLabel(row)}
+              </div>
+            )}
+
+            {!expandable && (
+              <WriteHistoryDetail entry={entry} expanded={open} onToggle={onToggle} />
+            )}
+          </div>
         </div>
-        <WriteHistoryDetail entry={entry} expanded={expanded} onToggle={onToggle} />
+
+        <WriteHistoryStats
+          added={words.added}
+          removed={words.removed}
+          isHide={entry.kind === "lore_hide"}
+        />
       </div>
-      <WriteHistoryStats entry={entry} />
+
+      {expandable && (
+        <div className="t-tree-panel">
+          <div className="t-tree-panel-inner">{children}</div>
+        </div>
+      )}
     </li>
+  );
+}
+
+//indentation carries the nesting on its own, so this is a plain depth guide rather than a drawn elbow
+function WriteHistoryGuide({ drawn }) {
+  return (
+    <span className="relative w-[18px] shrink-0" aria-hidden="true">
+      {drawn && <span className="absolute inset-y-0 left-[5px] w-[2px] bg-white/[0.09]" />}
+    </span>
   );
 }
 
@@ -5187,21 +5474,17 @@ function WriteHistoryCopyButton({ text }) {
   );
 }
 
-function WriteHistoryStats({ entry }) {
-  const wordsAdded = toFiniteNumber(entry.words_added) || 0;
-  const wordsRemoved = toFiniteNumber(entry.words_removed) || 0;
-  if (!wordsAdded && !wordsRemoved) return null;
+//a hide destroys nothing, it just drops the entry out of context, so it doesnt get to wear the deletion colour
+//cost lives on the run header and the modal totals, per row it was just noise beside the diff
+//self-start keeps this on the labels first line, without it the span stretches to the whole row and centers itself six pixels low
+function WriteHistoryStats({ added, removed, isHide = false }) {
+  if (!added && !removed) return null;
 
-  //a hide destroys nothing, it just drops the entry out of context, so it doesnt get to wear the deletion colour
-  const isHide = entry.kind === "lore_hide";
-
-  //cost lives on the run header and the modal totals, per row it was just noise beside the diff
-  //self-start keeps this on the labels first line, without it the span stretches to the whole row and centers itself six pixels low
   return (
     <span className="flex shrink-0 items-center gap-2 self-start text-[11px] font-medium leading-5 tabular-nums">
-      {wordsAdded > 0 && !isHide && <span className="text-emerald-300">+{wordsAdded}</span>}
-      {wordsRemoved > 0 && (
-        <span className={isHide ? "text-neutral-500" : "text-red-300"}>&minus;{wordsRemoved}</span>
+      {added > 0 && !isHide && <span className="text-emerald-300">+{added}</span>}
+      {removed > 0 && (
+        <span className={isHide ? "text-neutral-500" : "text-red-300"}>&minus;{removed}</span>
       )}
     </span>
   );

@@ -702,6 +702,44 @@ textarea::placeholder {
   transform: scaleY(-1);
 }
 
+/*same accordion, scoped with > instead of descendants because the history tree nests them. the shared
+  t-acc rules would reach past a closed row into an open ancestor and hold every nested panel open*/
+.t-tree-panel {
+  display: grid;
+  grid-template-rows: minmax(0, 0fr);
+  transition: grid-template-rows var(--acc-collapse) var(--acc-ease);
+}
+.t-tree[data-open="true"] > .t-tree-panel {
+  grid-template-rows: minmax(0, 1fr);
+  transition: grid-template-rows var(--acc-expand) var(--acc-ease);
+}
+.t-tree-panel-inner {
+  overflow: hidden;
+  opacity: 0;
+  filter: blur(2px);
+  transition:
+    opacity var(--acc-collapse) var(--acc-ease),
+    filter var(--acc-collapse) var(--acc-ease);
+}
+.t-tree[data-open="true"] > .t-tree-panel > .t-tree-panel-inner {
+  opacity: 1;
+  filter: blur(0);
+  transition:
+    opacity var(--acc-expand) var(--acc-ease),
+    filter var(--acc-expand) var(--acc-ease);
+}
+.t-tree-chevron {
+  display: inline-flex;
+  transform: scaleY(1);
+  transform-origin: center;
+  transition: transform var(--acc-chevron) var(--acc-ease);
+}
+.t-tree-chevron path { vector-effect: non-scaling-stroke; }
+/*the row is named so the flip stops at this row's own chevron rather than every one underneath it*/
+.t-tree[data-open="true"] > .t-tree-row .t-tree-chevron {
+  transform: scaleY(-1);
+}
+
 .t-toggle {
   transition: background var(--toggle-track) var(--toggle-ease);
 }
@@ -1795,6 +1833,9 @@ transparent bottom band still blurs the chapter text passing under it */
   .t-icon-swap .t-icon { transition: none !important; }
   .t-dropdown { transition: none !important; }
   .t-acc-panel, .t-acc-panel-inner, .t-acc-chevron {
+    transition: none !important;
+  }
+  .t-tree-panel, .t-tree-panel-inner, .t-tree-chevron {
     transition: none !important;
   }
   .prompt-nav-tick,

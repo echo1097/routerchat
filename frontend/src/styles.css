@@ -1560,6 +1560,8 @@ textarea::placeholder {
   top: 0.75rem;
   left: 0.25rem;
   color: #525252;
+  font-size: 17px;
+  line-height: 2rem;
   pointer-events: none;
   user-select: none;
 }

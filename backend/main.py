@@ -2027,8 +2027,9 @@ def update_chat(chat_id: str, payload: ChatPatchRequest) -> dict[str, Any]:
                 value = int(bool(value))
             assignments.append(f"{key} = ?")
             values.append(value)
-        assignments.append("updated_at = ?")
-        values.append(utc_now())
+
+        #settings, renames, pins and folder moves are housekeeping, so they leave updated_at alone
+        #and the chat keeps its place in the sidebar until someone actually talks in it
         values.append(chat_id)
         result = conn.execute(
             f"UPDATE chats SET {', '.join(assignments)} WHERE id = ?", values
@@ -2072,8 +2073,8 @@ async def name_chat(chat_id: str) -> dict[str, Any]:
 
     with get_db() as conn:
         conn.execute(
-            "UPDATE chats SET title = ?, updated_at = ? WHERE id = ? AND title = 'New chat'",
-            (title, utc_now(), chat_id),
+            "UPDATE chats SET title = ? WHERE id = ? AND title = 'New chat'",
+            (title, chat_id),
         )
 
     return get_chat(chat_id)

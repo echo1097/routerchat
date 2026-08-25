@@ -6303,6 +6303,9 @@ function Accordion({ id, title, open, onToggle, trailing, children }) {
   );
 }
 
+//the pill tween is 250ms in css, this leaves room for the tail before the flag expires
+const SLIDING_TAB_ANIMATION_MS = 320;
+
 function SlidingTabs({
   options,
   value,
@@ -6321,6 +6324,9 @@ function SlidingTabs({
   const fromValueRef = useRef(fromValue);
   const previousValueRef = useRef(value);
   const moveToActiveRef = useRef(null);
+  const barWidthRef = useRef(null);
+  const animatingRef = useRef(false);
+  const animationTimeoutRef = useRef(null);
 
   useEffect(() => {
     fromValueRef.current = fromValue;
@@ -6344,7 +6350,10 @@ function SlidingTabs({
       const tabLeft = tab.offsetLeft;
       const tabWidth = tab.offsetWidth;
 
+      window.clearTimeout(animationTimeoutRef.current);
+
       if (!animate) {
+        animatingRef.current = false;
         const previousTransition = pill.style.transition;
         pill.style.transition = "none";
         pill.style.transform = `translateX(${tabLeft}px)`;
@@ -6353,6 +6362,12 @@ function SlidingTabs({
         pill.style.transition = previousTransition;
         return;
       }
+
+      //a cancelled transition never fires transitionend, so the flag needs its own expiry
+      animatingRef.current = true;
+      animationTimeoutRef.current = window.setTimeout(() => {
+        animatingRef.current = false;
+      }, SLIDING_TAB_ANIMATION_MS);
 
       pill.style.transform = `translateX(${tabLeft}px)`;
       pill.style.width = `${tabWidth}px`;
@@ -6381,6 +6396,7 @@ function SlidingTabs({
       moveToActive(false);
     }
 
+    barWidthRef.current = bar.offsetWidth;
     measuredRef.current = true;
     previousValueRef.current = value;
     fromValueRef.current = null;
@@ -6392,14 +6408,28 @@ function SlidingTabs({
     return () => {
       if (frameId) cancelAnimationFrame(frameId);
     };
-  }, [options, value, fromValue]);
+  }, [options, value]);
 
   useEffect(() => {
     const bar = barRef.current;
     if (!bar) return undefined;
 
+    const pill = pillRef.current;
+
+    //observe() always delivers once with the current size, and that lands between the
+    //animation frame and the paint, so an unfiltered snap here would kill the slide on mount
     function handleResize() {
-      moveToActiveRef.current?.(false);
+      const barWidth = bar.offsetWidth;
+      if (barWidth === barWidthRef.current) return;
+
+      barWidthRef.current = barWidth;
+      moveToActiveRef.current?.(animatingRef.current);
+    }
+
+    function handleTransitionEnd(event) {
+      if (event.target !== pill) return;
+      window.clearTimeout(animationTimeoutRef.current);
+      animatingRef.current = false;
     }
 
     const resizeObserver =
@@ -6408,10 +6438,13 @@ function SlidingTabs({
         : new ResizeObserver(handleResize);
 
     resizeObserver?.observe(bar);
+    pill?.addEventListener("transitionend", handleTransitionEnd);
     window.addEventListener("resize", handleResize);
     return () => {
       resizeObserver?.disconnect();
+      pill?.removeEventListener("transitionend", handleTransitionEnd);
       window.removeEventListener("resize", handleResize);
+      window.clearTimeout(animationTimeoutRef.current);
     };
   }, []);
 
@@ -7003,6 +7036,12 @@ function App() {
     return route.page === "story" ? "write" : route.mode || "chat";
   });
   const [previousChatMode, setPreviousChatMode] = useState(null);
+
+  //the rails are separate components, so the outgoing mode has to survive until the new one mounts and reads it
+  useEffect(() => {
+    if (!previousChatMode || previousChatMode === chatMode) return;
+    setPreviousChatMode(null);
+  }, [chatMode, previousChatMode]);
   const [railCollapsed, setRailCollapsed] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingMessageId, setStreamingMessageId] = useState(null);
@@ -7021,7 +7060,6 @@ function App() {
   //held until the run settles so the retry offer never lands mid stream
   const pendingRepairRef = useRef(null);
   const generateStoryChapterRef = useRef(null);
-  const previousChatModeTimeoutRef = useRef(null);
   const routeRef = useRef(parseRoute());
   const initialRouteHandledRef = useRef(false);
   const appSettingsLoadedRef = useRef(false);
@@ -7201,7 +7239,6 @@ function App() {
       window.removeEventListener("pagehide", handlePageHide);
       persistPendingChapterDrafts();
       chapterSaveCoordinator.dispose({ abandon: true });
-      window.clearTimeout(previousChatModeTimeoutRef.current);
       window.clearTimeout(brainstormViewportTimeoutRef.current);
     };
   }, []);
@@ -8732,14 +8769,7 @@ function App() {
   function changeChatMode(nextMode) {
     if (rejectWriteNavigationDuringGeneration()) return;
     const mode = nextMode === "write" ? "write" : "chat";
-    if (mode !== chatMode) {
-      setPreviousChatMode(chatMode);
-      window.clearTimeout(previousChatModeTimeoutRef.current);
-      previousChatModeTimeoutRef.current = window.setTimeout(
-        () => setPreviousChatMode(null),
-        300,
-      );
-    }
+    if (mode !== chatMode) setPreviousChatMode(chatMode);
     void resetChat({ mode });
   }
 

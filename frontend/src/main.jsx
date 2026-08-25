@@ -2571,9 +2571,9 @@ const AssistantStatusLine = memo(function AssistantStatusLine({
         <span
           aria-hidden={!hasReasoning}
           className={cx(
-            "inline-flex shrink-0 items-center justify-center overflow-hidden",
+            "-ml-1 mr-1 inline-flex shrink-0 items-center justify-center overflow-hidden",
             "transition-[width,opacity] duration-200 ease-out",
-            hasReasoning ? "w-[21px] opacity-100" : "w-0 opacity-0",
+            hasReasoning ? "w-[15px] opacity-100" : "w-0 opacity-0",
           )}
         >
           <ChevronDown
@@ -2584,7 +2584,7 @@ const AssistantStatusLine = memo(function AssistantStatusLine({
         <StatusLabel label={label} shimmering={shimmering} />
       </button>
       {hasReasoning && open && (
-        <div className="mt-3 border-l border-white/10 pl-4 text-pretty text-sm leading-7 text-neutral-500">
+        <div className="mt-3 ml-[3px] border-l border-white/10 pl-[11px] text-pretty text-sm leading-7 text-neutral-500">
           <ThinkingContent>{reasoning}</ThinkingContent>
         </div>
       )}

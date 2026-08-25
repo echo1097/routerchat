@@ -70,3 +70,15 @@ export function requiresThinking(models, modelId) {
 export function effectiveThinkingEnabled(models, modelId, thinkingEnabled) {
   return Boolean(thinkingEnabled || requiresThinking(models, modelId));
 }
+
+const reasoningEffortLabels = {
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  max: "Max",
+};
+
+export function reasoningEffortLabel(models, modelId, effort) {
+  const resolvedEffort = resolveReasoningEffort(models, modelId, effort);
+  return reasoningEffortLabels[resolvedEffort] || "Thinking";
+}

@@ -54,6 +54,7 @@ import { createSaveCoordinator } from "./writing/saveCoordinator.js";
 import { createNavigationCoordinator } from "./writing/navigationCoordinator.js";
 import {
   effectiveThinkingEnabled,
+  reasoningEffortLabel,
   requiresThinking,
   resolveReasoningEffort,
   supportsReasoningEffort,
@@ -4227,6 +4228,9 @@ function Composer({
   const thinkingEnabled = effectiveThinkingEnabled(
     models, settings.model, settings.thinking_enabled,
   );
+  const thinkingStateLabel = thinkingEnabled
+    ? reasoningEffortLabel(models, settings.model, settings.reasoning_effort)
+    : "Instant";
   const textareaRef = useRef(null);
   const composerControlsRef = useRef(null);
   const tourUiRef = useRef(null);
@@ -4426,7 +4430,7 @@ function Composer({
                   <span className="truncate">{promptModelName(models, settings.model)}</span>
                   {canThink && (
                     <span className="hidden text-neutral-500 sm:inline">
-                      <span>{thinkingEnabled ? "Thinking" : "Instant"}</span>
+                      <span>{thinkingStateLabel}</span>
                     </span>
                   )}
                   <ChevronDown size={14} className={cx("thinking-toggle-chevron shrink-0 transition-transform duration-200", modelMenuOpen && "rotate-180")} />
@@ -10010,6 +10014,11 @@ function App() {
               models, settings.model, settings.thinking_enabled,
             )}
             reasoningRequired={requiresThinking(models, settings.model)}
+            thinkingStateLabel={
+              effectiveThinkingEnabled(models, settings.model, settings.thinking_enabled)
+                ? reasoningEffortLabel(models, settings.model, settings.reasoning_effort)
+                : "Instant"
+            }
             contextMeter={<ContextWindowMeter info={contextWindowInfo} />}
             onBack={() => {
               setStoryWorkspaceView("chapter");

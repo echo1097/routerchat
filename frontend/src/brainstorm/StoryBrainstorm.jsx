@@ -245,6 +245,7 @@ export default function StoryBrainstorm({
   disabled,
   modelLabel,
   thinkingEnabled,
+  thinkingStateLabel,
   reasoningRequired,
   contextMeter,
   onBack,
@@ -630,7 +631,7 @@ export default function StoryBrainstorm({
                 >
                   <span className="brainstorm-model-name">{modelLabel}</span>
                   <span className="brainstorm-thinking-state">
-                    <span>{thinkingEnabled ? "Thinking" : "Instant"}</span>
+                    <span>{thinkingStateLabel}</span>
                   </span>
                   <ChevronDown
                     size={14}

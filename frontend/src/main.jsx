@@ -5175,38 +5175,33 @@ function WriteHistoryModal({ open, entries, title, onClose }) {
 
         {eventCount > 0 && (
           <footer className="shrink-0 border-t border-white/[0.06] px-5 py-3.5 sm:px-6">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] leading-5 tabular-nums text-neutral-400">
+            {/*the dot between each total was 4px of glyph sitting between two 8px gaps, so dropping
+                it and widening the gap to 20px leaves the row spaced exactly where it was*/}
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-[13px] leading-5 tabular-nums text-neutral-400">
               <WriteHistoryTotal
                 value={formatInteger(runGroups.length)}
                 label={runGroups.length === 1 ? "prompt" : "prompts"}
               />
-              <WriteHistoryDivider />
               <WriteHistoryTotal
                 value={formatInteger(eventCount)}
                 label={eventCount === 1 ? "action" : "actions"}
               />
               {(totalWords.added > 0 || totalWords.removed > 0) && (
-                <>
-                  <WriteHistoryDivider />
-                  <span className="flex items-center">
-                    {totalWords.added > 0 && (
-                      <span className="text-emerald-300">+{formatInteger(totalWords.added)}</span>
-                    )}
-                    {totalWords.added > 0 && totalWords.removed > 0 && (
-                      <span className="px-1 text-neutral-700">/</span>
-                    )}
-                    {totalWords.removed > 0 && (
-                      <span className="text-red-300">&minus;{formatInteger(totalWords.removed)}</span>
-                    )}
-                    <span className="ml-1.5 text-neutral-500">words</span>
-                  </span>
-                </>
+                <span className="flex items-center">
+                  {totalWords.added > 0 && (
+                    <span className="text-emerald-300">+{formatInteger(totalWords.added)}</span>
+                  )}
+                  {totalWords.added > 0 && totalWords.removed > 0 && (
+                    <span className="px-1 text-neutral-700">/</span>
+                  )}
+                  {totalWords.removed > 0 && (
+                    <span className="text-red-300">&minus;{formatInteger(totalWords.removed)}</span>
+                  )}
+                  <span className="ml-1.5 text-neutral-500">words</span>
+                </span>
               )}
               {totalCost > 0 && (
-                <>
-                  <WriteHistoryDivider />
-                  <span className="text-neutral-200">{formatCost(totalCost)}</span>
-                </>
+                <span className="text-neutral-200">{formatCost(totalCost)}</span>
               )}
             </div>
           </footer>
@@ -5224,10 +5219,6 @@ function WriteHistoryTotal({ label, value }) {
       <span className="ml-1.5 text-neutral-500">{label}</span>
     </span>
   );
-}
-
-function WriteHistoryDivider() {
-  return <span className="text-neutral-700">&middot;</span>;
 }
 
 function WriteHistoryRunAccordion({

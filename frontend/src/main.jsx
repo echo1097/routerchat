@@ -52,6 +52,7 @@ import NotificationStack from "./notifications/NotificationStack.jsx";
 import { useNotifications } from "./notifications/useNotifications.js";
 import { useRafScroller } from "./streamScroll.js";
 import { useTextSwap } from "./textSwap.js";
+import { ThinkingStatus } from "./thinkingStates.jsx";
 import { createSaveCoordinator } from "./writing/saveCoordinator.js";
 import { createNavigationCoordinator } from "./writing/navigationCoordinator.js";
 import {
@@ -3490,6 +3491,17 @@ function editPreviewPhrase(operation, anchor) {
   }
 }
 
+const WRITE_STATUS_STATES = [
+  "Preparing",
+  "Working",
+  "Thinking",
+  "Writing",
+  "Fixing the edit",
+  "Editing Lorebook",
+  "Updating Lorebook",
+  "Reconciling",
+];
+
 function WriteOperationStatus({
   status,
   reasoning = "",
@@ -3497,7 +3509,6 @@ function WriteOperationStatus({
   reasoningDurationMs = null,
   editPreview = null,
 }) {
-  const { shownText: shownStatus, textRef: statusRef } = useTextSwap(status);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const dismissedRef = useRef(false); //once you close it yourself we stop reopening it on you
   const reasoningScrollRef = useRef(null);
@@ -3560,43 +3571,38 @@ function WriteOperationStatus({
   return (
     <span className="write-operation-wrap">
       <span className="write-operation-status" aria-live="polite">
-        {hasDetails ? (
-          <button
-            type="button"
-            onClick={() => setDetailsOpen((value) => {
-              if (value) dismissedRef.current = true;
-              return !value;
-            })}
-            className={cx("write-operation-thinking-toggle", CONTROL_MOTION)}
-            aria-label={detailsOpen ? "Collapse writing details" : "Expand writing details"}
-            aria-expanded={detailsOpen}
-            aria-controls={popoverId}
-          >
-            <span
-              ref={statusRef}
-              className="t-text-swap t-shimmer write-operation-label"
-              data-text={shownStatus}
-            >
-              {shownStatus}
-            </span>
-            <ChevronDown
-              size={14}
-              aria-hidden="true"
-              className={cx(
-                "write-operation-thinking-chevron transition-transform duration-[var(--dropdown-open-dur)] ease-[var(--dropdown-ease)]",
-                !detailsOpen && "-rotate-90",
-              )}
-            />
-          </button>
-        ) : (
-          <span
-            ref={statusRef}
-            className="t-text-swap t-shimmer write-operation-label"
-            data-text={shownStatus}
-          >
-            {shownStatus}
-          </span>
-        )}
+        <button
+          type="button"
+          onClick={hasDetails ? () => setDetailsOpen((value) => {
+            if (value) dismissedRef.current = true;
+            return !value;
+          }) : undefined}
+          disabled={!hasDetails}
+          className={cx(
+            "write-operation-thinking-toggle",
+            !hasDetails && "is-static",
+            CONTROL_MOTION,
+          )}
+          aria-label={detailsOpen ? "Collapse writing details" : "Expand writing details"}
+          aria-expanded={hasDetails ? detailsOpen : undefined}
+          aria-controls={hasDetails ? popoverId : undefined}
+        >
+          <ThinkingStatus
+            label={status}
+            states={WRITE_STATUS_STATES}
+            align="right"
+            className="write-operation-label"
+          />
+          <ChevronDown
+            size={14}
+            aria-hidden="true"
+            className={cx(
+              "write-operation-thinking-chevron transition-[transform,opacity] duration-[var(--dropdown-open-dur)] ease-[var(--dropdown-ease)]",
+              !detailsOpen && "-rotate-90",
+              !hasDetails && "opacity-0",
+            )}
+          />
+        </button>
       </span>
       {hasDetails && (
         <span
@@ -9729,7 +9735,7 @@ function App() {
       }
 
       run.status = "streaming";
-      setStoryGenerationStatus(repairContext ? "Fixing the edit" : "Writing");
+      setStoryGenerationStatus(repairContext ? "Fixing the edit" : "Working");
       await storyApi.generateChapter({
         storyId: run.storyId,
         chapterId: targetChapterId,

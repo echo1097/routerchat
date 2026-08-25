@@ -52,6 +52,11 @@
   --text-swap-translate-y: 4px;
   --text-swap-blur: 2px;
   --text-swap-ease: ease-in-out;
+  --think-swap: 150ms;
+  --think-gap: 50ms;
+  --think-distance: 8px;
+  --think-blur: 2px;
+  --think-ease: ease-in-out;
   --digit-dur: 500ms;
   --digit-distance: 8px;
   --digit-stagger: 70ms;
@@ -1275,6 +1280,60 @@ textarea::placeholder {
   transition: none;
 }
 
+.t-think {
+  position: relative;
+  display: inline-block;
+  text-align: left;
+}
+
+.t-think.is-right {
+  text-align: right;
+}
+
+.t-think.is-right .t-think-text {
+  left: auto;
+  right: 0;
+}
+
+.t-think-sizer {
+  display: grid;
+  visibility: hidden;
+}
+
+.t-think-sizer > span {
+  grid-area: 1 / 1;
+  white-space: nowrap;
+}
+
+.t-think-text {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: inline-block;
+  white-space: nowrap;
+  transform: translateY(0);
+  filter: blur(0);
+  opacity: 1;
+  transition:
+    transform var(--think-swap) var(--think-ease),
+    filter    var(--think-swap) var(--think-ease),
+    opacity   var(--think-swap) var(--think-ease);
+  will-change: transform, filter, opacity;
+}
+
+.t-think-text.is-exit {
+  transform: translateY(calc(var(--think-distance) * -1));
+  filter: blur(var(--think-blur));
+  opacity: 0;
+}
+
+.t-think-text.is-enter-start {
+  transform: translateY(var(--think-distance));
+  filter: blur(var(--think-blur));
+  opacity: 0;
+  transition: none;
+}
+
 @keyframes t-digit-pop-in {
   0%   {
     transform: translate(
@@ -1332,6 +1391,14 @@ textarea::placeholder {
   color: #a3a3a3;
   box-shadow: none;
   cursor: pointer;
+}
+
+.write-operation-thinking-toggle.is-static {
+  cursor: default;
+}
+
+.write-operation-thinking-toggle.is-static:hover {
+  color: #a3a3a3;
 }
 
 .write-operation-thinking-toggle:hover {
@@ -1742,6 +1809,11 @@ transparent bottom band still blurs the chapter text passing under it */
   }
   .t-shimmer::before { animation: none !important; }
   .t-text-swap { transition: none !important; }
+  .t-think-text {
+    transition: none !important;
+    transform: none !important;
+    filter: none !important;
+  }
   .t-digit-group .t-digit { animation: none !important; }
 
   .chat-sidebar,

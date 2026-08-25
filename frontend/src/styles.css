@@ -280,23 +280,17 @@ textarea::placeholder {
 }
 
 /*the copy target is the whole block of text rather than a button beside it, so the chip rides the
-  cursor. this deliberately skips t-tt-wrap, the shared hover rule would show the chip the moment the
-  pointer lands and the whole point here is that it waits for the pointer to settle*/
-.history-copy-wrap {
-  position: relative;
-  display: block;
-}
-
-/*the position lands on top/left where no transition is watching and the transform is left holding
-  nothing but the constant offset, so following the mouse is instant while the appear still eases.
-  a fixed even width keeps the centering off half pixels, which is what made the text look soft, and
-  it stops the chip resizing when the label swaps. the fallback sits inside the bottom edge for a
-  keyboard focus, which has no cursor to follow*/
+  cursor. it renders to the body and pins itself to the viewport because the accordion panel it would
+  otherwise sit inside clips anything past its own edges, and for a one line prompt that panel is
+  shorter than the chip. this also deliberately skips t-tt-wrap, whose hover rule would show the chip
+  the moment the pointer lands when the whole point here is that it waits for the pointer to settle*/
 .history-copy-tooltip {
-  top: var(--tip-y, 100%);
+  position: fixed;
+  top: 0;
   right: auto;
   bottom: auto;
-  left: var(--tip-x, 50%);
+  left: 0;
+  z-index: 90;
   width: 64px;
   padding: 5px 0;
   transform: translate(-50%, calc(-100% - 6px)) scale(var(--tt-scale));
@@ -311,23 +305,20 @@ textarea::placeholder {
   will-change: auto;
 }
 
-/*the panel around this clips anything reaching past its edges, so near the top of the block the chip
-  flips under the cursor rather than being cut in half*/
-.history-copy-wrap[data-tip-below="true"] .history-copy-tooltip {
+/*near the top of the viewport there is no room above the cursor, so the chip drops under it*/
+.history-copy-tooltip[data-tip-below="true"] {
   transform: translate(-50%, 14px) scale(var(--tt-scale));
   transform-origin: 50% 0;
 }
 
-.history-copy-wrap[data-tip-idle="true"]:hover .history-copy-tooltip,
-.history-copy-text:focus-visible + .history-copy-tooltip {
+.history-copy-tooltip[data-tip-idle="true"] {
   opacity: 1;
   transform: translate(-50%, calc(-100% - 6px)) scale(1);
   transition-duration: var(--tt-in-dur);
   transition-timing-function: var(--tt-in-ease);
 }
 
-.history-copy-wrap[data-tip-below="true"][data-tip-idle="true"]:hover .history-copy-tooltip,
-.history-copy-wrap[data-tip-below="true"] .history-copy-text:focus-visible + .history-copy-tooltip {
+.history-copy-tooltip[data-tip-below="true"][data-tip-idle="true"] {
   transform: translate(-50%, 14px) scale(1);
 }
 

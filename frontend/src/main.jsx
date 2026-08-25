@@ -5239,17 +5239,16 @@ function WriteHistoryRunAccordion({
       className="t-acc overflow-hidden rounded-[20px] bg-black/20 shadow-[var(--shadow-border)]"
       data-open={String(open)}
     >
+      {/*no CONTROL_MOTION here, the press scale it carries is a lot of movement for a row this wide
+          and the highlight it used to animate now lives on the title*/}
       <button
         type="button"
-        className={cx(
-          "t-acc-head flex w-full items-center justify-between gap-4 rounded-[20px] py-3 pl-3.5 pr-2.5 text-left hover:bg-white/[0.025] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/20 sm:pl-4 sm:pr-3",
-          CONTROL_MOTION,
-        )}
+        className="t-acc-head group flex w-full items-center justify-between gap-4 rounded-[20px] py-3 pl-3.5 pr-2.5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/20 sm:pl-4 sm:pr-3"
         aria-expanded={open}
         onClick={onToggle}
       >
         <span className="min-w-0">
-          <span className="block text-sm font-semibold leading-5 text-neutral-100">
+          <span className="-ml-1.5 inline-block rounded-lg px-1.5 text-sm font-semibold leading-5 text-neutral-100 transition-colors duration-150 ease-out group-hover:bg-white/[0.06]">
             Prompt {index + 1}
           </span>
           <span className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] font-medium leading-4 tabular-nums text-neutral-600">
@@ -5268,10 +5267,6 @@ function WriteHistoryRunAccordion({
 
       <div className="t-acc-panel min-h-0">
         <div className="t-acc-panel-inner min-h-0 px-3.5 pb-4 sm:px-4">
-          <div className="mb-2.5 px-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-600">
-            Activity
-          </div>
-
           {activityRows.length > 0 ? (
             <WriteHistoryActivity
               rows={activityRows}
@@ -5444,10 +5439,10 @@ function WriteHistoryGuide({ drawn }) {
 
 //the prompt and the model's thinking read as plain text hanging off the row that named them, so they
 //get the same guide the tree uses rather than a card of their own
-//half the chip's fixed width, so it can be nudged away from the edges it would otherwise hang over
+//half the chip's fixed width, so it can be nudged away from the viewport edges it would hang over
 const HISTORY_TIP_REACH = 32;
-//above this the chip clears the top of the block, below it there is no room and it flips under
-const HISTORY_TIP_CLEARANCE = 32;
+//above this the chip clears the top of the viewport, below it there is no room and it flips under
+const HISTORY_TIP_CLEARANCE = 40;
 //a chip that rides the pointer is just noise while the pointer is going somewhere, so it waits for
 //the mouse to settle rather than trailing it across the paragraph
 const HISTORY_TIP_SETTLE_MS = 260;
@@ -5455,7 +5450,8 @@ const HISTORY_TIP_SETTLE_MS = 260;
 function WriteHistoryTextPanel({ text, emptyLabel }) {
   const [copied, setCopied] = useState(false);
   const timeoutRef = useRef(null);
-  const wrapRef = useRef(null);
+  const textRef = useRef(null);
+  const tipRef = useRef(null);
   const settleRef = useRef(null);
 
   useEffect(
@@ -5466,33 +5462,51 @@ function WriteHistoryTextPanel({ text, emptyLabel }) {
     [],
   );
 
-  //written straight onto the node rather than through state, a re-render per mouse move to place a
-  //tooltip is a lot of work for something css can read off two custom properties
-  function trackCursor(event) {
-    const wrap = wrapRef.current;
-    if (!wrap) return;
+  //placed straight on the node rather than through state, a re-render per mouse move to move a
+  //tooltip is a lot of work for two inline styles and an attribute
+  function showTip(x, y) {
+    const tip = tipRef.current;
+    if (!tip) return;
 
-    const box = wrap.getBoundingClientRect();
-    const limit = Math.max(box.width - HISTORY_TIP_REACH, HISTORY_TIP_REACH);
+    const limit = Math.max(window.innerWidth - HISTORY_TIP_REACH, HISTORY_TIP_REACH);
     //rounded because a chip sitting on a half pixel renders its text soft
-    const x = Math.round(Math.min(Math.max(event.clientX - box.left, HISTORY_TIP_REACH), limit));
-    const y = Math.round(event.clientY - box.top);
+    tip.style.left = `${Math.round(Math.min(Math.max(x, HISTORY_TIP_REACH), limit))}px`;
+    tip.style.top = `${Math.round(y)}px`;
+    tip.dataset.tipBelow = String(y < HISTORY_TIP_CLEARANCE);
+  }
 
-    wrap.style.setProperty("--tip-x", `${x}px`);
-    wrap.style.setProperty("--tip-y", `${y}px`);
-    wrap.dataset.tipBelow = String(y < HISTORY_TIP_CLEARANCE);
+  function hideTip() {
+    window.clearTimeout(settleRef.current);
+    if (tipRef.current) tipRef.current.dataset.tipIdle = "false";
+  }
 
-    wrap.dataset.tipIdle = "false";
+  function trackCursor(event) {
+    showTip(event.clientX, event.clientY);
+    if (tipRef.current) tipRef.current.dataset.tipIdle = "false";
+
     window.clearTimeout(settleRef.current);
     settleRef.current = window.setTimeout(() => {
-      wrap.dataset.tipIdle = "true";
+      if (tipRef.current) tipRef.current.dataset.tipIdle = "true";
     }, HISTORY_TIP_SETTLE_MS);
   }
 
-  function releaseCursor() {
-    window.clearTimeout(settleRef.current);
-    if (wrapRef.current) wrapRef.current.dataset.tipIdle = "false";
+  //a keyboard focus has no cursor to follow, so the chip meets the text at its top edge instead
+  function showTipAtText() {
+    const box = textRef.current?.getBoundingClientRect();
+    if (!box) return;
+
+    showTip(box.left + Math.min(box.width / 2, 120), box.top);
+    if (tipRef.current) tipRef.current.dataset.tipIdle = "true";
   }
+
+  //the chip is pinned to the viewport while the text under it is not, so a scroll would leave it
+  //pointing at whatever slid into its place
+  useEffect(() => {
+    if (!text) return undefined;
+
+    window.addEventListener("scroll", hideTip, true);
+    return () => window.removeEventListener("scroll", hideTip, true);
+  }, [text]);
 
   async function copyText() {
     if (!text) return;
@@ -5514,16 +5528,16 @@ function WriteHistoryTextPanel({ text, emptyLabel }) {
     <div className="mb-2.5 flex">
       <WriteHistoryGuide drawn />
       {text ? (
-        <span
-          ref={wrapRef}
-          className="history-copy-wrap min-w-0 flex-1"
-          onMouseMove={trackCursor}
-          onMouseLeave={releaseCursor}
-        >
+        <span className="min-w-0 flex-1">
           <div
+            ref={textRef}
             role="button"
             tabIndex={0}
             onClick={copyText}
+            onMouseMove={trackCursor}
+            onMouseLeave={hideTip}
+            onFocus={showTipAtText}
+            onBlur={hideTip}
             onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
@@ -5532,14 +5546,17 @@ function WriteHistoryTextPanel({ text, emptyLabel }) {
             }}
             className={cx(
               textClass,
-              "history-copy-text cursor-pointer rounded-lg text-neutral-300 transition-colors duration-150 ease-out hover:text-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
+              "cursor-pointer rounded-lg text-neutral-300 transition-colors duration-150 ease-out hover:text-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
             )}
           >
             {text}
           </div>
-          <span className="t-tt history-copy-tooltip" role="tooltip">
-            {copied ? "Copied" : "Copy"}
-          </span>
+          {createPortal(
+            <span ref={tipRef} className="t-tt history-copy-tooltip" role="tooltip">
+              {copied ? "Copied" : "Copy"}
+            </span>,
+            document.body,
+          )}
         </span>
       ) : (
         <div className={cx(textClass, "min-w-0 flex-1 text-neutral-600")}>{emptyLabel}</div>

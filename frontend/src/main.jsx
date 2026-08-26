@@ -9849,6 +9849,14 @@ function App() {
 
   //the model stopped reasoning and is now streaming the actual lorebook json
   function markLorebookUpdating() {
+    const startedAt = lorebookReasoningStartedAtRef.current;
+    if (startedAt) {
+      setLorebookReasoning((current) => ({
+        ...current,
+        streaming: false,
+        durationMs: performance.now() - startedAt,
+      }));
+    }
     setLorebookPhase("updating");
   }
 

@@ -13,6 +13,7 @@ import React, {
 import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import { MARKDOWN_IMAGE_COMPONENT } from "./markdownImage.jsx";
 import { streamWordsPlugin, useStreamReveal } from "./streamingText.js";
@@ -89,6 +90,7 @@ const CHAT_FOLDERS_STORAGE_KEY = "routerchat.chatFolders";
 const OPENING_MESSAGE_STORAGE_KEY = "routerchat.lastOpeningMessage";
 const PENDING_CHAPTER_DRAFTS_STORAGE_KEY = "routerchat.pendingChapterDrafts";
 const FEEDBACK_FORM_URL = "https://forms.gle/gTth2TcXLYAArvGm6";
+const GITHUB_RELEASES_LATEST_URL = "https://api.github.com/repos/echo1097/routerchat/releases/latest";
 
 const newSettings = {
   model: DEFAULT_MODEL,
@@ -1487,19 +1489,165 @@ function SidebarSearchModal({
   );
 }
 
+function ChangelogModal({ open, onClose }) {
+  const [rendered, setRendered] = useState(open);
+  const [phase, setPhase] = useState(open ? "open" : "closed");
+  const [status, setStatus] = useState("idle");
+  const [release, setRelease] = useState(null);
+  const closeRef = useRef(null);
+
+  useEffect(() => {
+    if (open) {
+      setRendered(true);
+      setPhase("open");
+      requestAnimationFrame(() => closeRef.current?.focus());
+      return undefined;
+    }
+
+    if (!rendered) return undefined;
+
+    setPhase("closing");
+    const closeMs =
+      parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue("--modal-close-dur"),
+      ) || 150;
+    const timeoutId = window.setTimeout(() => {
+      setRendered(false);
+      setPhase("closed");
+    }, closeMs);
+    return () => window.clearTimeout(timeoutId);
+  }, [open, rendered]);
+
+  useEffect(() => {
+    if (!rendered) return undefined;
+
+    function handleKeyDown(event) {
+      if (event.key === "Escape") onClose();
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose, rendered]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    let cancelled = false;
+    setStatus("loading");
+
+    fetch(GITHUB_RELEASES_LATEST_URL, {
+      headers: { Accept: "application/vnd.github+json" },
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error(`GitHub returned ${response.status}`);
+        return response.json();
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setRelease(data);
+        setStatus("ready");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setStatus("error");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  if (!rendered) return null;
+
+  const isOpen = phase === "open";
+  const releaseBody = release?.body;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[80] grid place-items-center px-4 py-6">
+      <button
+        type="button"
+        aria-label="Close changelog"
+        className={cx(
+          "absolute inset-0 bg-black/60 backdrop-blur-sm transition-[opacity,backdrop-filter] duration-150 ease-out",
+          isOpen ? "opacity-100" : "opacity-0",
+        )}
+        onClick={onClose}
+      />
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-label="Changelog"
+        className={cx(
+          "t-modal relative z-10 flex max-h-[min(640px,calc(100dvh-2rem))] w-full max-w-[560px] flex-col overflow-hidden rounded-[26px] bg-[#191919] text-neutral-100 [box-shadow:var(--shadow-surface)]",
+          isOpen ? "is-open" : "is-closing",
+        )}
+      >
+        <button
+          ref={closeRef}
+          type="button"
+          onClick={onClose}
+          className={cx(
+            "absolute right-3 top-3 z-10 grid h-10 w-10 shrink-0 place-items-center rounded-full text-neutral-400 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 sm:right-4 sm:top-4",
+            CONTROL_MOTION,
+          )}
+          aria-label="Close changelog"
+        >
+          <X size={17} />
+        </button>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-6 pt-5 sm:px-6 sm:pt-6">
+          {status === "loading" && (
+            <p className="text-sm leading-5 text-neutral-500">Loading latest release…</p>
+          )}
+          {status === "error" && (
+            <p className="text-sm leading-5 text-neutral-500">
+              Couldn't load the changelog right now. Try again later.
+            </p>
+          )}
+          {status === "ready" && (
+            <div className="text-[13px] leading-6 text-neutral-300">
+              <MarkdownContent>
+                {releaseBody || "No description provided for this release."}
+              </MarkdownContent>
+            </div>
+          )}
+        </div>
+      </section>
+    </div>,
+    document.body,
+  );
+}
+
 function FeedbackLink() {
+  const [changelogOpen, setChangelogOpen] = useState(false);
+
   return (
-    <a
-      href={FEEDBACK_FORM_URL}
-      target="_blank"
-      rel="noreferrer"
-      className={cx(
-        "flex h-9 w-full items-center rounded-xl px-2 text-[13px] font-medium text-neutral-500 hover:bg-white/[0.045] hover:text-neutral-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
-        CONTROL_MOTION,
-      )}
-    >
-      Give feedback
-    </a>
+    <>
+      <div className="flex w-full items-center justify-center gap-2">
+        <button
+          type="button"
+          onClick={() => setChangelogOpen(true)}
+          className={cx(
+            "flex h-9 flex-1 items-center justify-center rounded-xl px-2 text-[13px] font-medium text-neutral-500 hover:bg-white/[0.045] hover:text-neutral-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
+            CONTROL_MOTION,
+          )}
+        >
+          Changelog
+        </button>
+        <a
+          href={FEEDBACK_FORM_URL}
+          target="_blank"
+          rel="noreferrer"
+          className={cx(
+            "flex h-9 flex-1 items-center justify-center rounded-xl px-2 text-[13px] font-medium text-neutral-500 hover:bg-white/[0.045] hover:text-neutral-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
+            CONTROL_MOTION,
+          )}
+        >
+          Feedback
+        </a>
+      </div>
+      <ChangelogModal open={changelogOpen} onClose={() => setChangelogOpen(false)} />
+    </>
   );
 }
 
@@ -2806,15 +2954,33 @@ function StatusLabel({ label, shimmering }) {
   );
 }
 
+const MARKDOWN_REMARK_PLUGINS = [remarkGfm];
+
 const MarkdownContent = memo(function MarkdownContent({ children, streaming, settledRef }) {
   //only the message that is actively streaming gets split into word spans, scrollback stays plain
   const rehypePlugins = streaming ? [streamWordsPlugin(settledRef)] : undefined;
 
   return (
     <ReactMarkdown
+      remarkPlugins={MARKDOWN_REMARK_PLUGINS}
       rehypePlugins={rehypePlugins}
       components={{
         ...MARKDOWN_IMAGE_COMPONENT,
+        h1: ({ node, ...props }) => (
+          <h1 className="mb-4 mt-6 text-balance text-2xl font-semibold leading-tight tracking-[-0.01em] text-neutral-100 first:mt-0" {...props} />
+        ),
+        h2: ({ node, ...props }) => (
+          <h2 className="mb-3 mt-6 text-balance text-xl font-semibold leading-tight tracking-[-0.01em] text-neutral-100 first:mt-0" {...props} />
+        ),
+        h3: ({ node, ...props }) => (
+          <h3 className="mb-2 mt-5 text-balance text-lg font-semibold leading-snug text-neutral-100 first:mt-0" {...props} />
+        ),
+        h4: ({ node, ...props }) => (
+          <h4 className="mb-2 mt-4 text-balance text-base font-semibold leading-snug text-neutral-100 first:mt-0" {...props} />
+        ),
+        strong: ({ node, ...props }) => (
+          <strong className="font-semibold text-neutral-100" {...props} />
+        ),
         p: ({ node, ...props }) => <p className="mb-4 text-pretty last:mb-0" {...props} />,
         a: ({ node, ...props }) => (
           <a

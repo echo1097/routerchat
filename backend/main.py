@@ -518,34 +518,6 @@ def init_db() -> None:
               FOREIGN KEY(chat_id) REFERENCES chats(id) ON DELETE CASCADE
             );
 
-            CREATE TABLE IF NOT EXISTS writing_threads (
-              id TEXT PRIMARY KEY,
-              title TEXT NOT NULL,
-              model TEXT NOT NULL,
-              system_prompt TEXT NOT NULL,
-              temperature REAL NOT NULL,
-              max_tokens INTEGER NOT NULL,
-              thinking_enabled INTEGER NOT NULL,
-              reasoning_effort TEXT NOT NULL DEFAULT 'medium',
-              temporary INTEGER NOT NULL DEFAULT 0,
-              created_at TEXT NOT NULL,
-              updated_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS writing_messages (
-              id TEXT PRIMARY KEY,
-              writing_thread_id TEXT NOT NULL,
-              role TEXT NOT NULL,
-              content TEXT NOT NULL,
-              reasoning TEXT,
-              model TEXT,
-              finish_reason TEXT,
-              error TEXT,
-              message_order INTEGER,
-              created_at TEXT NOT NULL,
-              FOREIGN KEY(writing_thread_id) REFERENCES writing_threads(id) ON DELETE CASCADE
-            );
-
             CREATE TABLE IF NOT EXISTS models_cache (
               id TEXT PRIMARY KEY,
               payload_json TEXT NOT NULL,
@@ -740,9 +712,6 @@ def init_db() -> None:
         ensure_message_order_column(conn)
         ensure_message_usage_columns(conn)
         ensure_chat_settings_columns(conn)
-        ensure_writing_message_order_column(conn)
-        ensure_writing_message_usage_columns(conn)
-        ensure_writing_thread_settings_columns(conn)
         ensure_story_settings_columns(conn)
         ensure_chapter_context_column(conn)
         ensure_chapter_revision_column(conn)
@@ -776,20 +745,6 @@ def ensure_chat_folder_column(conn: sqlite3.Connection) -> None:
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_chats_folder ON chats(folder_id, updated_at DESC)"
     )
-
-
-def ensure_writing_thread_settings_columns(conn: sqlite3.Connection) -> None:
-    existing_columns = {
-        row["name"] for row in conn.execute("PRAGMA table_info(writing_threads)").fetchall()
-    }
-    if "reasoning_effort" not in existing_columns:
-        conn.execute(
-            "ALTER TABLE writing_threads ADD COLUMN reasoning_effort TEXT NOT NULL DEFAULT 'medium'"
-        )
-    if "temporary" not in existing_columns:
-        conn.execute(
-            "ALTER TABLE writing_threads ADD COLUMN temporary INTEGER NOT NULL DEFAULT 0"
-        )
 
 
 def ensure_story_settings_columns(conn: sqlite3.Connection) -> None:
@@ -938,37 +893,6 @@ def ensure_message_order_column(conn: sqlite3.Connection) -> None:
             )
 
 
-def ensure_writing_message_order_column(conn: sqlite3.Connection) -> None:
-    existing_columns = {
-        row["name"] for row in conn.execute("PRAGMA table_info(writing_messages)").fetchall()
-    }
-    if "message_order" not in existing_columns:
-        conn.execute("ALTER TABLE writing_messages ADD COLUMN message_order INTEGER")
-
-    threadRows = conn.execute(
-        """
-        SELECT DISTINCT writing_thread_id FROM writing_messages
-        WHERE message_order IS NULL
-        ORDER BY writing_thread_id ASC
-        """
-    ).fetchall()
-    for threadRow in threadRows:
-        messageRows = conn.execute(
-            """
-            SELECT rowid FROM writing_messages
-            WHERE writing_thread_id = ? AND message_order IS NULL
-            ORDER BY created_at ASC, rowid ASC
-            """,
-            (threadRow["writing_thread_id"],),
-        ).fetchall()
-        nextOrder = next_writing_message_order(conn, threadRow["writing_thread_id"])
-        for offset, messageRow in enumerate(messageRows):
-            conn.execute(
-                "UPDATE writing_messages SET message_order = ? WHERE rowid = ?",
-                (nextOrder + offset, messageRow["rowid"]),
-            )
-
-
 def ensure_message_usage_columns(conn: sqlite3.Connection) -> None:
     existing_columns = {
         row["name"] for row in conn.execute("PRAGMA table_info(messages)").fetchall()
@@ -989,26 +913,6 @@ def ensure_message_usage_columns(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE messages ADD COLUMN {column} {column_type}")
 
 
-def ensure_writing_message_usage_columns(conn: sqlite3.Connection) -> None:
-    existing_columns = {
-        row["name"] for row in conn.execute("PRAGMA table_info(writing_messages)").fetchall()
-    }
-    usage_columns = {
-        "generation_id": "TEXT",
-        "prompt_tokens": "INTEGER",
-        "completion_tokens": "INTEGER",
-        "reasoning_tokens": "INTEGER",
-        "total_tokens": "INTEGER",
-        "cost": "REAL",
-        "provider_name": "TEXT",
-        "generation_time": "REAL",
-        "latency": "REAL",
-    }
-    for column, column_type in usage_columns.items():
-        if column not in existing_columns:
-            conn.execute(f"ALTER TABLE writing_messages ADD COLUMN {column} {column_type}")
-
-
 def next_message_order(conn: sqlite3.Connection, chat_id: str) -> int:
     row = conn.execute(
         """
@@ -1017,18 +921,6 @@ def next_message_order(conn: sqlite3.Connection, chat_id: str) -> int:
         WHERE chat_id = ?
         """,
         (chat_id,),
-    ).fetchone()
-    return int(row["next_order"])
-
-
-def next_writing_message_order(conn: sqlite3.Connection, thread_id: str) -> int:
-    row = conn.execute(
-        """
-        SELECT COALESCE(MAX(message_order), -1) + 1 AS next_order
-        FROM writing_messages
-        WHERE writing_thread_id = ?
-        """,
-        (thread_id,),
     ).fetchone()
     return int(row["next_order"])
 
@@ -1050,13 +942,6 @@ def on_startup() -> None:
             """
         )
         conn.execute("DELETE FROM chats WHERE temporary = 1")
-        conn.execute(
-            """
-            DELETE FROM writing_messages
-            WHERE writing_thread_id IN (SELECT id FROM writing_threads WHERE temporary = 1)
-            """
-        )
-        conn.execute("DELETE FROM writing_threads WHERE temporary = 1")
         temporaryStoryIds = [
             row["id"]
             for row in conn.execute("SELECT id FROM stories WHERE temporary = 1").fetchall()
@@ -1419,48 +1304,6 @@ def row_to_message(row: sqlite3.Row) -> dict[str, Any]:
     }
 
 
-def row_to_writing_thread(row: sqlite3.Row) -> dict[str, Any]:
-    return {
-        "id": row["id"],
-        "title": row["title"],
-        "model": row["model"],
-        "system_prompt": row["system_prompt"],
-        "temperature": row["temperature"],
-        "max_tokens": row["max_tokens"],
-        "thinking_enabled": effective_thinking_enabled(
-            row["model"], bool(row["thinking_enabled"])
-        ),
-        "reasoning_effort": row["reasoning_effort"],
-        "temporary": bool(row["temporary"]),
-        "created_at": row["created_at"],
-        "updated_at": row["updated_at"],
-    }
-
-
-def row_to_writing_message(row: sqlite3.Row) -> dict[str, Any]:
-    return {
-        "id": row["id"],
-        "writing_thread_id": row["writing_thread_id"],
-        "chat_id": row["writing_thread_id"],
-        "role": row["role"],
-        "content": row["content"],
-        "reasoning": row["reasoning"],
-        "model": row["model"],
-        "finish_reason": row["finish_reason"],
-        "error": row["error"],
-        "generation_id": row["generation_id"],
-        "prompt_tokens": row["prompt_tokens"],
-        "completion_tokens": row["completion_tokens"],
-        "reasoning_tokens": row["reasoning_tokens"],
-        "total_tokens": row["total_tokens"],
-        "cost": row["cost"],
-        "provider_name": row["provider_name"],
-        "generation_time": row["generation_time"],
-        "latency": row["latency"],
-        "created_at": row["created_at"],
-    }
-
-
 def coerce_bool_int(value: Any) -> int:
     return int(bool(value))
 
@@ -1509,14 +1352,6 @@ def resolved_reasoning_effort(model_id: str, value: ReasoningEffort) -> str:
 def chat_has_messages(conn: sqlite3.Connection, chat_id: str) -> bool:
     row = conn.execute(
         "SELECT 1 FROM messages WHERE chat_id = ? LIMIT 1", (chat_id,)
-    ).fetchone()
-    return row is not None
-
-
-def writing_thread_has_messages(conn: sqlite3.Connection, thread_id: str) -> bool:
-    row = conn.execute(
-        "SELECT 1 FROM writing_messages WHERE writing_thread_id = ? LIMIT 1",
-        (thread_id,),
     ).fetchone()
     return row is not None
 
@@ -2105,145 +1940,6 @@ def close_chat(chat_id: str) -> dict[str, Any]:
     return {"ok": True}
 
 
-@app.get("/api/writing")
-def list_writing_threads() -> dict[str, Any]:
-    with get_db() as conn:
-        rows = conn.execute(
-            """
-            SELECT * FROM writing_threads
-            WHERE temporary = 0
-            ORDER BY updated_at DESC, created_at DESC
-            """
-        ).fetchall()
-    return {"threads": [row_to_writing_thread(row) for row in rows]}
-
-
-@app.post("/api/writing")
-def create_writing_thread(payload: ChatCreateRequest) -> dict[str, Any]:
-    now = utc_now()
-    thread_id = str(uuid.uuid4())
-    model = payload.model or default_model_id()
-    with get_db() as conn:
-        conn.execute(
-            """
-            INSERT INTO writing_threads (
-              id, title, model, system_prompt, temperature, max_tokens,
-              thinking_enabled, reasoning_effort, temporary, created_at, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                thread_id,
-                payload.title or "New writing",
-                model,
-                writeSystemPrompt(payload),
-                payload.temperature,
-                payload.max_tokens,
-                int(payload.thinking_enabled),
-                payload.reasoning_effort,
-                int(payload.temporary),
-                now,
-                now,
-            ),
-        )
-        row = conn.execute(
-            "SELECT * FROM writing_threads WHERE id = ?", (thread_id,)
-        ).fetchone()
-    return {"thread": row_to_writing_thread(row)}
-
-
-@app.get("/api/writing/{thread_id}")
-def get_writing_thread(thread_id: str) -> dict[str, Any]:
-    with get_db() as conn:
-        thread = conn.execute(
-            "SELECT * FROM writing_threads WHERE id = ?", (thread_id,)
-        ).fetchone()
-        if not thread:
-            raise HTTPException(status_code=404, detail="Writing thread not found.")
-        messages = conn.execute(
-            f"""
-            SELECT * FROM writing_messages
-            WHERE writing_thread_id = ?
-            ORDER BY {message_order_clause()}
-            """,
-            (thread_id,),
-        ).fetchall()
-    return {
-        "thread": row_to_writing_thread(thread),
-        "messages": [row_to_writing_message(row) for row in messages],
-    }
-
-
-@app.patch("/api/writing/{thread_id}")
-def update_writing_thread(thread_id: str, payload: ChatPatchRequest) -> dict[str, Any]:
-    updates = patch_updates(payload)
-    if "write_system_prompt" in updates:
-        updates["system_prompt"] = writeSystemPrompt(payload)
-        updates.pop("write_system_prompt", None)
-    updates.pop("chat_system_prompt", None)
-    if not updates:
-        return get_writing_thread(thread_id)
-    assignments: list[str] = []
-    values: list[Any] = []
-    with get_db() as conn:
-        thread = conn.execute(
-            "SELECT * FROM writing_threads WHERE id = ?", (thread_id,)
-        ).fetchone()
-        if not thread:
-            raise HTTPException(status_code=404, detail="Writing thread not found.")
-        if (
-            "model" in updates
-            and updates["model"] != thread["model"]
-            and writing_thread_has_messages(conn, thread_id)
-        ):
-            raise HTTPException(
-                status_code=409,
-                detail=f"This writing thread is locked to {thread['model']}. Start a new writing thread to use another model.",
-            )
-        for key, value in updates.items():
-            if key == "thinking_enabled":
-                value = int(bool(value))
-            assignments.append(f"{key} = ?")
-            values.append(value)
-        assignments.append("updated_at = ?")
-        values.append(utc_now())
-        values.append(thread_id)
-        conn.execute(
-            f"UPDATE writing_threads SET {', '.join(assignments)} WHERE id = ?",
-            values,
-        )
-    return get_writing_thread(thread_id)
-
-
-@app.delete("/api/writing/{thread_id}")
-def delete_writing_thread(thread_id: str) -> dict[str, Any]:
-    with get_db() as conn:
-        conn.execute(
-            "DELETE FROM writing_messages WHERE writing_thread_id = ?", (thread_id,)
-        )
-        result = conn.execute("DELETE FROM writing_threads WHERE id = ?", (thread_id,))
-    if result.rowcount == 0:
-        raise HTTPException(status_code=404, detail="Writing thread not found.")
-    return {"ok": True}
-
-
-@app.post("/api/writing/{thread_id}/close")
-def close_writing_thread(thread_id: str) -> dict[str, Any]:
-    with get_db() as conn:
-        thread = conn.execute(
-            "SELECT temporary FROM writing_threads WHERE id = ?", (thread_id,)
-        ).fetchone()
-        if not thread:
-            return {"ok": True}
-        if not bool(thread["temporary"]):
-            return {"ok": True}
-        conn.execute(
-            "DELETE FROM writing_messages WHERE writing_thread_id = ?", (thread_id,)
-        )
-        conn.execute("DELETE FROM writing_threads WHERE id = ?", (thread_id,))
-    return {"ok": True}
-
-
 def refresh_chat_after_message_change(
     conn: sqlite3.Connection, chat_id: str, previous_first_user_content: str | None
 ) -> None:
@@ -2273,41 +1969,6 @@ def refresh_chat_after_message_change(
     conn.execute(
         "UPDATE chats SET title = ?, updated_at = ? WHERE id = ?",
         (title, utc_now(), chat_id),
-    )
-
-
-def refresh_writing_after_message_change(
-    conn: sqlite3.Connection, thread_id: str, previous_first_user_content: str | None
-) -> None:
-    thread = conn.execute(
-        "SELECT title FROM writing_threads WHERE id = ?", (thread_id,)
-    ).fetchone()
-    if thread is None:
-        return
-    previous_auto_title = (
-        chat_title_from_message(previous_first_user_content)
-        if previous_first_user_content
-        else "New writing"
-    )
-    if thread["title"] != previous_auto_title:
-        conn.execute(
-            "UPDATE writing_threads SET updated_at = ? WHERE id = ?",
-            (utc_now(), thread_id),
-        )
-        return
-    first_user = conn.execute(
-        """
-        SELECT content FROM writing_messages
-        WHERE writing_thread_id = ? AND role = 'user'
-        ORDER BY message_order ASC, created_at ASC, rowid ASC
-        LIMIT 1
-        """,
-        (thread_id,),
-    ).fetchone()
-    title = chat_title_from_message(first_user["content"]) if first_user else "New writing"
-    conn.execute(
-        "UPDATE writing_threads SET title = ?, updated_at = ? WHERE id = ?",
-        (title, utc_now(), thread_id),
     )
 
 
@@ -2377,72 +2038,6 @@ def delete_message(chat_id: str, message_id: str) -> dict[str, Any]:
     return get_chat(chat_id)
 
 
-@app.patch("/api/writing/{thread_id}/messages/{message_id}")
-def update_writing_message(
-    thread_id: str, message_id: str, payload: MessageUpdateRequest
-) -> dict[str, Any]:
-    content = payload.content.strip()
-    if not content:
-        raise HTTPException(status_code=400, detail="Message cannot be empty.")
-    with get_db() as conn:
-        message = conn.execute(
-            "SELECT * FROM writing_messages WHERE id = ? AND writing_thread_id = ?",
-            (message_id, thread_id),
-        ).fetchone()
-        if not message:
-            raise HTTPException(status_code=404, detail="Message not found.")
-        if message["role"] != "user":
-            raise HTTPException(status_code=400, detail="Only user prompts can be edited.")
-        previous_first_user = conn.execute(
-            """
-            SELECT content FROM writing_messages
-            WHERE writing_thread_id = ? AND role = 'user'
-            ORDER BY message_order ASC, created_at ASC, rowid ASC
-            LIMIT 1
-            """,
-            (thread_id,),
-        ).fetchone()
-        previous_first_user_content = previous_first_user["content"] if previous_first_user else None
-        conn.execute(
-            "UPDATE writing_messages SET content = ? WHERE id = ? AND writing_thread_id = ?",
-            (content, message_id, thread_id),
-        )
-        refresh_writing_after_message_change(conn, thread_id, previous_first_user_content)
-    return get_writing_thread(thread_id)
-
-
-@app.delete("/api/writing/{thread_id}/messages/{message_id}")
-def delete_writing_message(thread_id: str, message_id: str) -> dict[str, Any]:
-    with get_db() as conn:
-        message = conn.execute(
-            "SELECT * FROM writing_messages WHERE id = ? AND writing_thread_id = ?",
-            (message_id, thread_id),
-        ).fetchone()
-        if not message:
-            raise HTTPException(status_code=404, detail="Message not found.")
-        if message["role"] != "user":
-            raise HTTPException(status_code=400, detail="Only user prompts can be deleted.")
-        previous_first_user = conn.execute(
-            """
-            SELECT content FROM writing_messages
-            WHERE writing_thread_id = ? AND role = 'user'
-            ORDER BY message_order ASC, created_at ASC, rowid ASC
-            LIMIT 1
-            """,
-            (thread_id,),
-        ).fetchone()
-        previous_first_user_content = previous_first_user["content"] if previous_first_user else None
-        conn.execute(
-            """
-            DELETE FROM writing_messages
-            WHERE writing_thread_id = ? AND message_order >= ?
-            """,
-            (thread_id, message["message_order"]),
-        )
-        refresh_writing_after_message_change(conn, thread_id, previous_first_user_content)
-    return get_writing_thread(thread_id)
-
-
 def build_openrouter_messages(
     chat_id: str,
     system_prompt: str,
@@ -2460,33 +2055,6 @@ def build_openrouter_messages(
             ORDER BY message_order ASC, created_at ASC, rowid ASC
             """,
             (chat_id,),
-        ).fetchall()
-    for row in rows:
-        if regenerate_message_id and row["id"] == regenerate_message_id:
-            messages.append({"role": "user", "content": replacement_content or row["content"]})
-            break
-        if row["role"] in {"user", "assistant"}:
-            messages.append({"role": row["role"], "content": row["content"]})
-    return messages
-
-
-def build_openrouter_writing_messages(
-    thread_id: str,
-    system_prompt: str,
-    regenerate_message_id: str | None = None,
-    replacement_content: str | None = None,
-) -> list[dict[str, str]]:
-    messages: list[dict[str, str]] = []
-    if system_prompt.strip():
-        messages.append({"role": "system", "content": system_prompt.strip()})
-    with get_db() as conn:
-        rows = conn.execute(
-            """
-            SELECT id, role, content FROM writing_messages
-            WHERE writing_thread_id = ? AND error IS NULL
-            ORDER BY message_order ASC, created_at ASC, rowid ASC
-            """,
-            (thread_id,),
         ).fetchall()
     for row in rows:
         if regenerate_message_id and row["id"] == regenerate_message_id:
@@ -2718,27 +2286,16 @@ async def stream_openrouter_response(
     chat_id: str,
     payload: StreamMessageRequest,
     assistant_message_id: str,
-    *,
-    writing: bool = False,
 ) -> AsyncIterator[bytes]:
     api_key = read_openrouter_key()
     if not api_key:
         raise HTTPException(status_code=401, detail="Add an OpenRouter API key first.")
 
-    messages = (
-        build_openrouter_writing_messages(
-            chat_id,
-            writeSystemPrompt(payload),
-            payload.regenerate_message_id,
-            payload.message.strip(),
-        )
-        if writing
-        else build_openrouter_messages(
-            chat_id,
-            chatSystemPrompt(payload),
-            payload.regenerate_message_id,
-            payload.message.strip(),
-        )
+    messages = build_openrouter_messages(
+        chat_id,
+        chatSystemPrompt(payload),
+        payload.regenerate_message_id,
+        payload.message.strip(),
     )
     body: dict[str, Any] = {
         "model": openrouter_request_model(payload.model, payload.nitro_mode),
@@ -2852,84 +2409,6 @@ async def stream_openrouter_response(
 
         content = "".join(assistant_text)
         with get_db() as conn:
-            if writing:
-                if payload.regenerate_message_id:
-                    regenerate_message = conn.execute(
-                        """
-                        SELECT * FROM writing_messages
-                        WHERE id = ? AND writing_thread_id = ? AND role = 'user'
-                        """,
-                        (payload.regenerate_message_id, chat_id),
-                    ).fetchone()
-                    if not regenerate_message:
-                        return
-                    previous_first_user = conn.execute(
-                        """
-                        SELECT content FROM writing_messages
-                        WHERE writing_thread_id = ? AND role = 'user'
-                        ORDER BY message_order ASC, created_at ASC, rowid ASC
-                        LIMIT 1
-                        """,
-                        (chat_id,),
-                    ).fetchone()
-                    previous_first_user_content = (
-                        previous_first_user["content"] if previous_first_user else None
-                    )
-                    conn.execute(
-                        """
-                        DELETE FROM writing_messages
-                        WHERE writing_thread_id = ? AND message_order > ?
-                        """,
-                        (chat_id, regenerate_message["message_order"]),
-                    )
-                    conn.execute(
-                        """
-                        UPDATE writing_messages SET content = ?
-                        WHERE id = ? AND writing_thread_id = ?
-                        """,
-                        (payload.message.strip(), payload.regenerate_message_id, chat_id),
-                    )
-                    refresh_writing_after_message_change(
-                        conn, chat_id, previous_first_user_content
-                    )
-
-                conn.execute(
-                    """
-                    INSERT INTO writing_messages (
-                      id, writing_thread_id, role, content, reasoning, model, finish_reason,
-                      error, generation_id, prompt_tokens, completion_tokens,
-                      reasoning_tokens, total_tokens, cost, provider_name,
-                      generation_time, latency, message_order, created_at
-                    )
-                    VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        assistant_message_id,
-                        chat_id,
-                        content,
-                        "".join(reasoning_text) or None,
-                        payload.model,
-                        finish_reason,
-                        error_text,
-                        generation_id,
-                        usage.get("prompt_tokens") if usage else None,
-                        usage.get("completion_tokens") if usage else None,
-                        usage.get("reasoning_tokens") if usage else None,
-                        usage.get("total_tokens") if usage else None,
-                        usage.get("cost") if usage else None,
-                        usage.get("provider_name") if usage else None,
-                        usage.get("generation_time") if usage else None,
-                        usage.get("latency") if usage else None,
-                        next_writing_message_order(conn, chat_id),
-                        utc_now(),
-                    ),
-                )
-                conn.execute(
-                    "UPDATE writing_threads SET updated_at = ? WHERE id = ?",
-                    (utc_now(), chat_id),
-                )
-                return
-
             if payload.regenerate_message_id:
                 regenerate_message = conn.execute(
                     """
@@ -3092,107 +2571,6 @@ async def stream_message(
 
     return StreamingResponse(
         stream_openrouter_response(chat_id, payload, assistant_message_id),
-        media_type="application/x-ndjson; charset=utf-8",
-        headers={
-            "X-User-Message-Id": user_message_id,
-            "X-Assistant-Message-Id": assistant_message_id,
-        },
-    )
-
-
-@app.post("/api/writing/{thread_id}/messages/stream")
-async def stream_writing_message(
-    thread_id: str,
-    payload: StreamMessageRequest,
-) -> StreamingResponse:
-    if not read_openrouter_key():
-        raise HTTPException(status_code=401, detail="Add an OpenRouter API key first.")
-    message = payload.message.strip()
-    if not message:
-        raise HTTPException(status_code=400, detail="Message cannot be empty.")
-
-    now = utc_now()
-    user_message_id = payload.regenerate_message_id or str(uuid.uuid4())
-    assistant_message_id = str(uuid.uuid4())
-
-    with get_db() as conn:
-        thread = conn.execute(
-            "SELECT * FROM writing_threads WHERE id = ?", (thread_id,)
-        ).fetchone()
-        if not thread:
-            raise HTTPException(status_code=404, detail="Writing thread not found.")
-        has_messages = writing_thread_has_messages(conn, thread_id)
-        locked_model = thread["model"] if has_messages else payload.model
-        if has_messages and payload.model != locked_model:
-            raise HTTPException(
-                status_code=409,
-                detail=f"This writing thread is locked to {locked_model}. Start a new writing thread to use another model.",
-            )
-
-        if payload.regenerate_message_id:
-            regenerateMessage = conn.execute(
-                """
-                SELECT * FROM writing_messages
-                WHERE id = ? AND writing_thread_id = ?
-                """,
-                (payload.regenerate_message_id, thread_id),
-            ).fetchone()
-            if not regenerateMessage:
-                raise HTTPException(status_code=404, detail="Message not found.")
-            if regenerateMessage["role"] != "user":
-                raise HTTPException(
-                    status_code=400,
-                    detail="Only user prompts can be regenerated.",
-                )
-        else:
-            conn.execute(
-                """
-                INSERT INTO writing_messages (
-                  id, writing_thread_id, role, content, reasoning, model, finish_reason,
-                  error, message_order, created_at
-                )
-                VALUES (?, ?, 'user', ?, NULL, ?, NULL, NULL, ?, ?)
-                """,
-                (
-                    user_message_id,
-                    thread_id,
-                    message,
-                    payload.model,
-                    next_writing_message_order(conn, thread_id),
-                    now,
-                ),
-            )
-
-        title = thread["title"]
-        if title == "New writing":
-            title = chat_title_from_message(message)
-        conn.execute(
-            """
-            UPDATE writing_threads
-            SET title = ?, model = ?, system_prompt = ?, temperature = ?,
-                max_tokens = ?, thinking_enabled = ?, reasoning_effort = ?, updated_at = ?
-            WHERE id = ?
-            """,
-            (
-                title,
-                locked_model,
-                writeSystemPrompt(payload),
-                payload.temperature,
-                payload.max_tokens,
-                int(payload.thinking_enabled),
-                payload.reasoning_effort,
-                now,
-                thread_id,
-            ),
-        )
-
-    return StreamingResponse(
-        stream_openrouter_response(
-            thread_id,
-            payload,
-            assistant_message_id,
-            writing=True,
-        ),
         media_type="application/x-ndjson; charset=utf-8",
         headers={
             "X-User-Message-Id": user_message_id,

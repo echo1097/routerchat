@@ -24,6 +24,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from backend.changelog_status import ChangelogStatusDeps, create_changelog_status_router
 from backend.lorebook_generate import create_lorebook_generate_router
 from backend.lorebook_repair import create_lorebook_repair_router
 from backend.lorebook_update_stream import create_lorebook_update_stream_router
@@ -2600,7 +2601,14 @@ writingDeps = WritingDeps(
     openrouter_base_url=OPENROUTER_BASE_URL,
 )
 
+changelogStatusDeps = ChangelogStatusDeps(
+    read_app_setting=read_app_setting,
+    write_app_setting=write_app_setting,
+    app_version=APP_VERSION,
+)
+
 app.include_router(create_writing_router(writingDeps))
+app.include_router(create_changelog_status_router(changelogStatusDeps))
 app.include_router(create_lorebook_repair_router(writingDeps))
 app.include_router(create_lorebook_generate_router(writingDeps))
 app.include_router(create_lorebook_update_stream_router(writingDeps))

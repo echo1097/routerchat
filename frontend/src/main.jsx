@@ -1494,13 +1494,13 @@ function ChangelogModal({ open, onClose }) {
   const [phase, setPhase] = useState(open ? "open" : "closed");
   const [status, setStatus] = useState("idle");
   const [release, setRelease] = useState(null);
-  const closeRef = useRef(null);
+  const panelRef = useRef(null);
 
   useEffect(() => {
     if (open) {
       setRendered(true);
       setPhase("open");
-      requestAnimationFrame(() => closeRef.current?.focus());
+      requestAnimationFrame(() => panelRef.current?.focus());
       return undefined;
     }
 
@@ -1574,16 +1574,17 @@ function ChangelogModal({ open, onClose }) {
         onClick={onClose}
       />
       <section
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label="Changelog"
+        tabIndex={-1}
         className={cx(
-          "t-modal relative z-10 flex max-h-[min(640px,calc(100dvh-2rem))] w-full max-w-[560px] flex-col overflow-hidden rounded-[26px] bg-[#191919] text-neutral-100 [box-shadow:var(--shadow-surface)]",
+          "t-modal relative z-10 flex max-h-[min(640px,calc(100dvh-2rem))] w-full max-w-[560px] flex-col overflow-hidden rounded-[26px] bg-[#191919] text-neutral-100 outline-none [box-shadow:var(--shadow-surface)]",
           isOpen ? "is-open" : "is-closing",
         )}
       >
         <button
-          ref={closeRef}
           type="button"
           onClick={onClose}
           className={cx(
@@ -1618,8 +1619,23 @@ function ChangelogModal({ open, onClose }) {
   );
 }
 
+let changelogAutoCheckStarted = false;
+
 function FeedbackLink() {
   const [changelogOpen, setChangelogOpen] = useState(false);
+
+  useEffect(() => {
+    if (changelogAutoCheckStarted) return;
+    changelogAutoCheckStarted = true;
+
+    api("/api/changelog/status")
+      .then((status) => {
+        if (!status?.should_show) return;
+        setChangelogOpen(true);
+        return api("/api/changelog/seen", { method: "POST" });
+      })
+      .catch(() => {});
+  }, []);
 
   return (
     <>

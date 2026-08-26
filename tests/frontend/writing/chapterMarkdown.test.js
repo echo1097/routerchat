@@ -159,6 +159,45 @@ describe("chapter Markdown compatibility", () => {
     expect(exportedMarkdown).toBe("before\n\n---\n\nafter");
   });
 
+  it("makes a divider out of the dashes macOS smart substitution leaves behind", () => {
+    for (const typed of ["---", "\u2013-", "\u2014-", "-\u2013"]) {
+      const editor = createChapterEditor();
+
+      editor.update(() => {
+        importChapterMarkdown("before\n\nplaceholder\n\nafter");
+      }, { discrete: true });
+
+      editor.update(() => {
+        $getRoot().getChildren()[1].getFirstChild().setTextContent(typed);
+      }, { discrete: true });
+
+      let exportedMarkdown = "";
+      editor.getEditorState().read(() => {
+        expect($isSceneBreakNode($getRoot().getChildren()[1])).toBe(true);
+        exportedMarkdown = exportChapterMarkdown();
+      });
+
+      //the backend only recognises ASCII dividers, so a smart dash can never reach the saved file
+      expect(exportedMarkdown).toBe("before\n\n---\n\nafter");
+    }
+  });
+
+  it("leaves a lone em dash alone as prose punctuation", () => {
+    const editor = createChapterEditor();
+
+    editor.update(() => {
+      importChapterMarkdown("before\n\nplaceholder\n\nafter");
+    }, { discrete: true });
+
+    editor.update(() => {
+      $getRoot().getChildren()[1].getFirstChild().setTextContent("\u2014");
+    }, { discrete: true });
+
+    editor.getEditorState().read(() => {
+      expect($isSceneBreakNode($getRoot().getChildren()[1])).toBe(false);
+    });
+  });
+
   it("still escapes literal asterisks inside real prose", () => {
     const result = migrateMarkdown("a lone * in the middle of a sentence");
 

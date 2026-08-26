@@ -28,8 +28,34 @@ import {
 //mirrors is_scene_break in backend/writing.py, the two have to agree or a scene break stops being its own block
 const SCENE_BREAK_PATTERN = /^[*_-]{3,}$/;
 
+//macOS smart dashes rewrites the hyphens as you type them, so "---" can land in the editor as "\u2013-" or "\u2014-" and never look like a divider
+const SMART_DASH_EXPANSIONS = {
+  "\u2013": "--",
+  "\u2014": "---",
+};
+
+const CANONICAL_SCENE_BREAK = "---";
+
+function expandSmartDashes(text) {
+  return text.replace(/[\u2013\u2014]/g, (dash) => SMART_DASH_EXPANSIONS[dash]);
+}
+
 export function isSceneBreakLine(value) {
-  return SCENE_BREAK_PATTERN.test(String(value || "").trim());
+  const text = String(value || "").trim();
+
+  if (SCENE_BREAK_PATTERN.test(text)) return true;
+
+  //a lone em dash is real prose punctuation, so only treat smart dashes as a divider once the author has typed at least two characters
+  if (text.length < 2) return false;
+
+  return SCENE_BREAK_PATTERN.test(expandSmartDashes(text));
+}
+
+//the backend only recognises plain ASCII dividers, so anything the smart dash substitution touched has to be written back as "---" before it saves
+export function canonicalSceneBreakLine(value) {
+  const text = String(value || "").trim();
+
+  return /[\u2013\u2014]/.test(text) ? CANONICAL_SCENE_BREAK : text;
 }
 
 export class SceneBreakNode extends ParagraphNode {
@@ -107,7 +133,7 @@ const SCENE_BREAK = {
   export: (node) => {
     if (!$isParagraphNode(node)) return null;
     const text = node.getTextContent().trim();
-    return isSceneBreakLine(text) ? text : null;
+    return isSceneBreakLine(text) ? canonicalSceneBreakLine(text) : null;
   },
   replace: (parentNode, children, match) => {
     const sceneBreak = $createSceneBreakNode();

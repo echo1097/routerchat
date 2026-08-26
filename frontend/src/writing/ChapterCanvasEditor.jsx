@@ -14,6 +14,7 @@ import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import { HeadingNode, QuoteNode } from "@lexical/rich-text";
 import { CLEAR_HISTORY_COMMAND } from "lexical";
+import ChapterFormatToolbar from "./ChapterFormatToolbar.jsx";
 import {
   chapterMarkdownTransformers,
   exportChapterMarkdown,
@@ -108,6 +109,7 @@ export default function ChapterCanvasEditor({
   const sourceMarkdownRef = useRef(markdown);
   const initialImportErrorRef = useRef(null);
   const editorReadyRef = useRef(false);
+  const shellRef = useRef(null);
 
   const initialConfig = useMemo(
     () => ({
@@ -173,7 +175,7 @@ export default function ChapterCanvasEditor({
 
   return (
     <LexicalComposer initialConfig={initialConfig}>
-      <div className="chapter-editor-shell">
+      <div className="chapter-editor-shell" ref={shellRef}>
         <RichTextPlugin
           contentEditable={(
             <ContentEditable
@@ -193,6 +195,7 @@ export default function ChapterCanvasEditor({
         <LinkPlugin attributes={{ rel: "noreferrer", target: "_blank" }} />
         <MarkdownShortcutPlugin transformers={chapterMarkdownTransformers} />
         <SceneBreakPlugin />
+        <ChapterFormatToolbar anchorRef={shellRef} readOnly={readOnly} />
         <OnChangePlugin
           ignoreHistoryMergeTagChange={false}
           ignoreSelectionChange

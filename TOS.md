@@ -30,10 +30,10 @@ RouterChat runs on your computer. It contains no telemetry, no analytics, and no
 
 * **OpenRouter.** While you use RouterChat, the only connection carrying your prompts is to the OpenRouter API, to list models and to send the requests you initiate. Your prompts and their responses travel to OpenRouter and to whichever upstream provider serves the model you selected, and are handled under those parties' terms and privacy policies.
 * **Flaticon's content delivery network.** The RouterChat interface loads its icon fonts from `cdn-uicons.flaticon.com` when the page opens. That request tells Flaticon and its network provider your IP address and browser details, the same as visiting any website would. It carries none of your prompts, chats, settings, or keys, and it happens whether or not you have entered an API key.
-* **GitHub.** The installer and updater download the RouterChat package, the `uv` tool used to build the private environment, and the private Python runtime itself, all from GitHub releases. They also fetch the update script and its checksums from the RouterChat distribution site. This happens only when you run them.
+* **GitHub.** The installer and updater download the RouterChat package, the `uv` tool used to build the private environment, and the private Python runtime itself, all from GitHub releases. They also fetch the update script and its checksums from the RouterChat distribution site. This happens only when you run them. Separately, the first time you open RouterChat after it has been updated to a new version, the app automatically fetches that version's release notes from GitHub to show you the changelog.
 * **Python package sources.** The installer downloads the third-party packages pinned in `requirements.lock` from the public Python package index, verifying each against the hashes in that file.
 
-Updates are never automatic. RouterChat does not check for new versions on its own and does not contact the author or the project in the background. Nothing is transmitted unless you start an action that requires it.
+Updates are never automatic. RouterChat does not check for new versions on its own and does not contact the author or the project in the background, aside from the one-time changelog fetch described above. Nothing else is transmitted unless you start an action that requires it.
 
 ## 4. Your Responsibilities
 

@@ -3877,10 +3877,15 @@ const WRITE_STATUS_STATES = [
   "Thinking",
   "Writing",
   "Fixing the edit",
-  "Editing Lorebook",
   "Updating Lorebook",
   "Reconciling",
 ];
+
+const LOREBOOK_PHASE_LABELS = {
+  working: "Working",
+  thinking: "Thinking",
+  updating: "Updating Lorebook",
+};
 
 function WriteOperationStatus({
   status,
@@ -7597,6 +7602,8 @@ function App() {
   //the lorebook thinks in its own pass, so it gets its own reasoning rather than sharing the chapter's
   const [lorebookReasoning, setLorebookReasoning] = useState({ text: "", streaming: false, durationMs: null });
   const [lorebookThinking, setLorebookThinking] = useState(false);
+  //"working" until the model's first token lands, then "thinking" while it reasons, then "updating" while it streams the json
+  const [lorebookPhase, setLorebookPhase] = useState("");
   const [writeEditPreview, setWriteEditPreview] = useState(null);
   const [latestStoryGeneration, setLatestStoryGeneration] = useState(null);
   const [writeGenerationMode, setWriteGenerationMode] = useState("edit");
@@ -9825,6 +9832,7 @@ function App() {
     lorebookReasoningStartedAtRef.current = null;
     setLorebookReasoning({ text: "", streaming: false, durationMs: null });
     setLorebookThinking(true);
+    setLorebookPhase("working");
   }
 
   function appendLorebookReasoning(chunk) {
@@ -9836,13 +9844,19 @@ function App() {
       streaming: true,
       durationMs: null,
     }));
+    setLorebookPhase("thinking");
   }
 
-  //the thinking is over the moment the run ends, there is no content phase here to close it out like the chapter has
+  //the model stopped reasoning and is now streaming the actual lorebook json
+  function markLorebookUpdating() {
+    setLorebookPhase("updating");
+  }
+
   function finishLorebookThinking() {
     const startedAt = lorebookReasoningStartedAtRef.current;
     lorebookReasoningStartedAtRef.current = null;
     setLorebookThinking(false);
+    setLorebookPhase("");
     setLorebookReasoning((current) => ({
       ...current,
       streaming: false,
@@ -9863,6 +9877,7 @@ function App() {
         chapterId: activeChapterId,
         onEvent: (event) => {
           if (event.type === "reasoning") appendLorebookReasoning(event.value);
+          if (event.type === "content") markLorebookUpdating();
         },
       });
 
@@ -10356,12 +10371,18 @@ function App() {
             return;
           }
           if (event.type === "lorebook_start") {
-            setStoryGenerationStatus("Editing Lorebook");
+            setStoryGenerationStatus("Working");
             startLorebookThinking();
             return;
           }
           if (event.type === "lorebook_reasoning") {
+            setStoryGenerationStatus("Thinking");
             appendLorebookReasoning(event.value);
+            return;
+          }
+          if (event.type === "lorebook_content") {
+            setStoryGenerationStatus("Updating Lorebook");
+            markLorebookUpdating();
             return;
           }
           if (event.type === "lorebook") {
@@ -10626,7 +10647,7 @@ function App() {
             generationStatus={storyGenerationStatus}
             canvasStreaming={canvasStreaming}
             smoothStreaming={smoothStreaming}
-            lorebookStatus={lorebookUpdating ? "Updating Lorebook" : ""}
+            lorebookStatus={lorebookUpdating ? LOREBOOK_PHASE_LABELS[lorebookPhase] || "Working" : ""}
             writeReasoning={writeReasoning}
             lorebookReasoning={lorebookReasoning}
             lorebookThinking={lorebookThinking}

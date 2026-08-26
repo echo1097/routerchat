@@ -2139,7 +2139,8 @@ LOREBOOK_UPDATE_SYSTEM_PROMPT = (
 
 
 #used to be one blocking post, now it streams so write mode can show the thinking while it works.
-#yields {"type": "reasoning"} chunks as they land and then exactly one {"type": "result"} at the end
+#yields {"type": "reasoning"} chunks as they land, one {"type": "content"} the moment json generation
+#starts, and exactly one {"type": "result"} at the end
 async def run_lorebook_update(
     deps: WritingDeps,
     story_id: str,
@@ -2203,6 +2204,7 @@ async def run_lorebook_update(
     lorebook_generation_id: str | None = None
     generated_text: list[str] = []
     finish_reason: str | None = None
+    content_started = False
     try:
         async with httpx.AsyncClient(timeout=OPENROUTER_TIMEOUT) as client:
             async with client.stream(
@@ -2244,6 +2246,9 @@ async def run_lorebook_update(
                             yield {"type": "reasoning", "value": str(reasoning)}
                         content = delta.get("content")
                         if content:
+                            if not content_started:
+                                content_started = True
+                                yield {"type": "content"}
                             generated_text.append(str(content))
 
         raw_output = "".join(generated_text)
@@ -3160,6 +3165,9 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                     ):
                         if lorebook_event["type"] == "reasoning":
                             yield emit("lorebook_reasoning", lorebook_event["value"])
+                            continue
+                        if lorebook_event["type"] == "content":
+                            yield emit("lorebook_content", None)
                             continue
                         lorebook_result = lorebook_event["value"]
 

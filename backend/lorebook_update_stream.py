@@ -38,6 +38,9 @@ def create_lorebook_update_stream_router(deps: WritingDeps) -> APIRouter:
             if event["type"] == "reasoning":
                 yield deps.stream_event("reasoning", event["value"])
                 continue
+            if event["type"] == "content":
+                yield deps.stream_event("content", None)
+                continue
             result = event["value"]
 
         durationMs = (time.perf_counter() - startedAt) * 1000

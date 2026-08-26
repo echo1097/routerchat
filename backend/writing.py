@@ -3621,8 +3621,9 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                 value = str(value).strip() or "New story"
             assignments.append(f"{key} = ?")
             values.append(value)
-        assignments.append("updated_at = ?")
-        values.append(deps.utc_now())
+
+        #settings, renames and title edits are housekeeping, so they leave updated_at alone
+        #and the story keeps its place in the sidebar until someone actually writes in it
         values.append(story_id)
         with deps.get_db() as conn:
             story = conn.execute("SELECT id FROM stories WHERE id = ?", (story_id,)).fetchone()

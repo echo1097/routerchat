@@ -13,6 +13,14 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from backend.attachments import (
+    attachment_content_parts,
+    claim_attachments,
+    delete_attachments_for_story,
+    has_pdf_attachment,
+    pdf_parser_plugins,
+)
+
 
 DEFAULT_MAX_TOKENS = 30000
 OPENROUTER_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=10.0)
@@ -1837,7 +1845,8 @@ def build_story_messages(
     generation_mode: str = "new",
     blocks: list[dict[str, Any]] | None = None,
     repair_context: dict[str, Any] | None = None,
-) -> list[dict[str, str]]:
+    attachment_parts: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
     lorebook_text = "\n".join(
         lorebook_context_line(row)
         for row in lorebook_rows
@@ -1860,7 +1869,7 @@ def build_story_messages(
     if lorebook_text:
         context_parts.append(f"lorebook:\n{lorebook_text}")
 
-    messages: list[dict[str, str]] = []
+    messages: list[dict[str, Any]] = []
     if system_prompt.strip():
         messages.append({"role": "system", "content": system_prompt.strip()})
     if generation_mode == "edit":
@@ -1903,7 +1912,14 @@ def build_story_messages(
             }
         )
     messages.append({"role": "user", "content": "\n\n".join(context_parts)})
-    messages.append({"role": "user", "content": prompt})
+
+    if attachment_parts:
+        promptContent = list(attachment_parts)
+        if prompt.strip():
+            promptContent.append({"type": "text", "text": prompt})
+        messages.append({"role": "user", "content": promptContent})
+    else:
+        messages.append({"role": "user", "content": prompt})
 
     #a repair sees its own failed output plus a block map rebuilt from the chapter as it stands now, which is the part it got wrong last time
     if generation_mode == "edit" and repair_context:
@@ -2727,6 +2743,11 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
             repair_context = repair_context.model_dump()
         is_repair = bool(repair_context)
 
+        attachmentIds = list(getattr(payload, "attachment_ids", []) or [])
+        with deps.get_db() as conn:
+            attachmentParts = attachment_content_parts(conn, attachmentIds)
+            needsPdfParser = has_pdf_attachment(conn, attachmentIds)
+
         messages = build_story_messages(
             story,
             chapter,
@@ -2736,6 +2757,7 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
             generation_mode,
             starting_blocks,
             repair_context,
+            attachmentParts,
         )
         body: dict[str, Any] = {
             "model": deps.openrouter_request_model(payload.model, payload.nitro_mode),
@@ -2747,6 +2769,8 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
         providerOptions = deps.openrouter_provider_options()
         if providerOptions:
             body["provider"] = providerOptions
+        if needsPdfParser:
+            body["plugins"] = pdf_parser_plugins()
 
         effectiveThinkingEnabled = deps.effective_thinking_enabled(
             payload.model, payload.thinking_enabled
@@ -3643,6 +3667,7 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
     @router.delete("/api/stories/{story_id}")
     def delete_story(story_id: str) -> dict[str, Any]:
         with deps.get_db() as conn:
+            delete_attachments_for_story(conn, story_id)
             conn.execute("DELETE FROM brainstorm_generations WHERE story_id = ?", (story_id,))
             conn.execute("DELETE FROM brainstorm_edges WHERE story_id = ?", (story_id,))
             conn.execute("DELETE FROM brainstorm_nodes WHERE story_id = ?", (story_id,))
@@ -4589,7 +4614,8 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
     ) -> StreamingResponse:
         if not deps.read_openrouter_key():
             raise HTTPException(status_code=401, detail="Add an OpenRouter API key first.")
-        if not payload.message.strip():
+        attachmentIds = list(payload.attachment_ids or [])
+        if not payload.message.strip() and not attachmentIds:
             raise HTTPException(status_code=400, detail="Message cannot be empty.")
 
         with deps.get_db() as conn:
@@ -4636,6 +4662,7 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                     story_id,
                 ),
             )
+            claim_attachments(conn, attachmentIds, story_id=story_id)
 
         return StreamingResponse(
             stream_story_generation(

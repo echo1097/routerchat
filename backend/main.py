@@ -24,6 +24,19 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from backend.attachments import (
+    AttachmentsDeps,
+    attachments_by_message,
+    chat_has_pdf_attachment,
+    claim_attachments,
+    create_attachments_router,
+    delete_attachments_for_chat,
+    delete_attachments_for_missing_messages,
+    delete_attachments_for_story,
+    delete_orphaned_attachments,
+    pdf_parser_plugins,
+    user_content_with_attachments,
+)
 from backend.changelog_status import ChangelogStatusDeps, create_changelog_status_router
 from backend.lorebook_generate import create_lorebook_generate_router
 from backend.lorebook_repair import create_lorebook_repair_router
@@ -366,7 +379,7 @@ class ChapterRepairContext(BaseModel):
 
 
 class StreamMessageRequest(BaseModel):
-    message: str = Field(min_length=1)
+    message: str = Field(default="")
     model: str
     temperature: float = 0.7
     max_tokens: int = DEFAULT_MAX_TOKENS
@@ -383,6 +396,7 @@ class StreamMessageRequest(BaseModel):
     selected_idea_ids: list[str] = Field(default_factory=list)
     brainstorm_idea_count: int = Field(default=3, ge=1, le=8)
     repair_context: ChapterRepairContext | None = None
+    attachment_ids: list[str] = Field(default_factory=list)
 
 
 class MessageUpdateRequest(BaseModel):
@@ -518,6 +532,28 @@ def init_db() -> None:
               created_at TEXT NOT NULL,
               FOREIGN KEY(chat_id) REFERENCES chats(id) ON DELETE CASCADE
             );
+
+            CREATE TABLE IF NOT EXISTS attachments (
+              id TEXT PRIMARY KEY,
+              chat_id TEXT,
+              message_id TEXT,
+              story_id TEXT,
+              filename TEXT NOT NULL,
+              mime TEXT NOT NULL,
+              kind TEXT NOT NULL,
+              size_bytes INTEGER NOT NULL,
+              stored_path TEXT NOT NULL,
+              created_at TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS attachments_chat_idx
+              ON attachments(chat_id);
+
+            CREATE INDEX IF NOT EXISTS attachments_message_idx
+              ON attachments(message_id);
+
+            CREATE INDEX IF NOT EXISTS attachments_story_idx
+              ON attachments(story_id);
 
             CREATE TABLE IF NOT EXISTS models_cache (
               id TEXT PRIMARY KEY,
@@ -943,11 +979,13 @@ def on_startup() -> None:
             """
         )
         conn.execute("DELETE FROM chats WHERE temporary = 1")
+        delete_orphaned_attachments(conn)
         temporaryStoryIds = [
             row["id"]
             for row in conn.execute("SELECT id FROM stories WHERE temporary = 1").fetchall()
         ]
         for storyId in temporaryStoryIds:
+            delete_attachments_for_story(conn, storyId)
             conn.execute("DELETE FROM brainstorm_generations WHERE story_id = ?", (storyId,))
             conn.execute("DELETE FROM brainstorm_edges WHERE story_id = ?", (storyId,))
             conn.execute("DELETE FROM brainstorm_nodes WHERE story_id = ?", (storyId,))
@@ -1631,6 +1669,7 @@ def delete_folder(folder_id: str, delete_chats: bool = False) -> dict[str, Any]:
                 ).fetchall()
             ]
             for chat_id in chat_ids:
+                delete_attachments_for_chat(conn, chat_id)
                 conn.execute("DELETE FROM messages WHERE chat_id = ?", (chat_id,))
                 conn.execute("DELETE FROM chats WHERE id = ?", (chat_id,))
         else:
@@ -1825,7 +1864,18 @@ def get_chat(chat_id: str) -> dict[str, Any]:
             f"SELECT * FROM messages WHERE chat_id = ? ORDER BY {message_order_clause()}",
             (chat_id,),
         ).fetchall()
-    return {"chat": row_to_chat(chat), "messages": [row_to_message(row) for row in messages]}
+        attachmentsByMessage = attachments_by_message(conn, chat_id)
+
+    return {
+        "chat": row_to_chat(chat),
+        "messages": [
+            {
+                **row_to_message(row),
+                "attachments": attachmentsByMessage.get(row["id"], []),
+            }
+            for row in messages
+        ],
+    }
 
 
 @app.patch("/api/chats/{chat_id}")
@@ -1919,6 +1969,7 @@ async def name_chat(chat_id: str) -> dict[str, Any]:
 @app.delete("/api/chats/{chat_id}")
 def delete_chat(chat_id: str) -> dict[str, Any]:
     with get_db() as conn:
+        delete_attachments_for_chat(conn, chat_id)
         conn.execute("DELETE FROM messages WHERE chat_id = ?", (chat_id,))
         result = conn.execute("DELETE FROM chats WHERE id = ?", (chat_id,))
     if result.rowcount == 0:
@@ -1936,6 +1987,7 @@ def close_chat(chat_id: str) -> dict[str, Any]:
             return {"ok": True}
         if not bool(chat["temporary"]):
             return {"ok": True}
+        delete_attachments_for_chat(conn, chat_id)
         conn.execute("DELETE FROM messages WHERE chat_id = ?", (chat_id,))
         conn.execute("DELETE FROM chats WHERE id = ?", (chat_id,))
     return {"ok": True}
@@ -2035,6 +2087,7 @@ def delete_message(chat_id: str, message_id: str) -> dict[str, Any]:
             """,
             (chat_id, message["message_order"]),
         )
+        delete_attachments_for_missing_messages(conn)
         refresh_chat_after_message_change(conn, chat_id, previous_first_user_content)
     return get_chat(chat_id)
 
@@ -2044,8 +2097,8 @@ def build_openrouter_messages(
     system_prompt: str,
     regenerate_message_id: str | None = None,
     replacement_content: str | None = None,
-) -> list[dict[str, str]]:
-    messages: list[dict[str, str]] = []
+) -> list[dict[str, Any]]:
+    messages: list[dict[str, Any]] = []
     if system_prompt.strip():
         messages.append({"role": "system", "content": system_prompt.strip()})
     with get_db() as conn:
@@ -2057,12 +2110,27 @@ def build_openrouter_messages(
             """,
             (chat_id,),
         ).fetchall()
-    for row in rows:
-        if regenerate_message_id and row["id"] == regenerate_message_id:
-            messages.append({"role": "user", "content": replacement_content or row["content"]})
-            break
-        if row["role"] in {"user", "assistant"}:
-            messages.append({"role": row["role"], "content": row["content"]})
+        attachmentsByMessage = attachments_by_message(conn, chat_id)
+
+        for row in rows:
+            isRegenerated = bool(regenerate_message_id) and row["id"] == regenerate_message_id
+            if not isRegenerated and row["role"] not in {"user", "assistant"}:
+                continue
+
+            content = replacement_content or row["content"] if isRegenerated else row["content"]
+            role = "user" if isRegenerated else row["role"]
+            attachmentIds = [
+                attachment["id"] for attachment in attachmentsByMessage.get(row["id"], [])
+            ]
+
+            if role == "user" and attachmentIds:
+                content = user_content_with_attachments(conn, attachmentIds, content)
+
+            messages.append({"role": role, "content": content})
+
+            if isRegenerated:
+                break
+
     return messages
 
 
@@ -2309,6 +2377,11 @@ async def stream_openrouter_response(
     if providerOptions:
         body["provider"] = providerOptions
 
+    with get_db() as conn:
+        needsPdfParser = chat_has_pdf_attachment(conn, chat_id)
+    if needsPdfParser:
+        body["plugins"] = pdf_parser_plugins()
+
     supportsReasoning = model_supports_reasoning(payload.model)
     effectiveThinkingEnabled = effective_thinking_enabled(
         payload.model, payload.thinking_enabled
@@ -2439,6 +2512,7 @@ async def stream_openrouter_response(
                     """,
                     (chat_id, regenerate_message["message_order"]),
                 )
+                delete_attachments_for_missing_messages(conn)
                 conn.execute(
                     """
                     UPDATE messages SET content = ? WHERE id = ? AND chat_id = ?
@@ -2493,7 +2567,8 @@ async def stream_message(
     if not read_openrouter_key():
         raise HTTPException(status_code=401, detail="Add an OpenRouter API key first.")
     message = payload.message.strip()
-    if not message:
+    attachmentIds = payload.attachment_ids
+    if not message and not attachmentIds:
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
 
     now = utc_now()
@@ -2527,6 +2602,12 @@ async def stream_message(
                     status_code=400,
                     detail="Only user prompts can be regenerated.",
                 )
+            claim_attachments(
+                conn,
+                attachmentIds,
+                chat_id=chat_id,
+                message_id=user_message_id,
+            )
         else:
             conn.execute(
                 """
@@ -2544,6 +2625,12 @@ async def stream_message(
                     next_message_order(conn, chat_id),
                     now,
                 ),
+            )
+            claim_attachments(
+                conn,
+                attachmentIds,
+                chat_id=chat_id,
+                message_id=user_message_id,
             )
 
         title = chat["title"]
@@ -2601,12 +2688,19 @@ writingDeps = WritingDeps(
     openrouter_base_url=OPENROUTER_BASE_URL,
 )
 
+attachmentsDeps = AttachmentsDeps(
+    get_db=get_db,
+    utc_now=utc_now,
+    data_dir=lambda: DATA_DIR,
+)
+
 changelogStatusDeps = ChangelogStatusDeps(
     read_app_setting=read_app_setting,
     write_app_setting=write_app_setting,
     app_version=APP_VERSION,
 )
 
+app.include_router(create_attachments_router(attachmentsDeps))
 app.include_router(create_writing_router(writingDeps))
 app.include_router(create_changelog_status_router(changelogStatusDeps))
 app.include_router(create_lorebook_repair_router(writingDeps))

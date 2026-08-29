@@ -82,3 +82,21 @@ export function reasoningEffortLabel(models, modelId, effort) {
   const resolvedEffort = resolveReasoningEffort(models, modelId, effort);
   return reasoningEffortLabels[resolvedEffort] || "Thinking";
 }
+
+export function supportsImageInput(models, modelId) {
+  const architecture = modelMetadata(models, modelId)?.architecture;
+  if (!architecture) return false;
+
+  const inputModalities = architecture.input_modalities;
+  if (Array.isArray(inputModalities)) {
+    return inputModalities.includes("image");
+  }
+
+  const modality = architecture.modality;
+  if (typeof modality === "string" && modality.includes("->")) {
+    const [inputs] = modality.split("->");
+    return inputs.split("+").includes("image");
+  }
+
+  return false;
+}

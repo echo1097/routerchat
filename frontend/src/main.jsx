@@ -61,9 +61,14 @@ import {
   reasoningEffortLabel,
   requiresThinking,
   resolveReasoningEffort,
+  supportsImageInput,
   supportsReasoningEffort,
   supportsThinking,
 } from "./modelReasoning.js";
+import AttachButton from "./attachments/AttachButton.jsx";
+import AttachmentChips from "./attachments/AttachmentChips.jsx";
+import { MAX_FILES_PER_MESSAGE } from "./attachments/attachmentsApi.js";
+import { useAttachments } from "./attachments/useAttachments.js";
 
 const ChapterCanvasEditor = lazy(() => import("./writing/ChapterCanvasEditor.jsx"));
 import {
@@ -467,6 +472,7 @@ const storyApi = {
     chapterRevision,
     generationRunId,
     repairContext,
+    attachmentIds = [],
     onEvent,
     signal,
   }) {
@@ -484,6 +490,7 @@ const storyApi = {
           generation_run_id: generationRunId,
           repair_context: repairContext || null,
           message: prompt,
+          attachment_ids: attachmentIds,
         }),
       },
     );
@@ -3040,6 +3047,7 @@ const MessageItem = memo(function MessageItem({
   onDeleteUserMessage,
 }) {
   const isUser = message.role === "user";
+  const messageAttachments = message.attachments || [];
   const articleRef = useRef(null);
   const bodyRef = useRef(null);
   const settledRef = useRef(0);
@@ -3126,11 +3134,15 @@ const MessageItem = memo(function MessageItem({
               : "max-w-[78%] items-end sm:max-w-[68%]",
           )}
         >
+          {!editing && messageAttachments.length > 0 && (
+            <AttachmentChips attachments={messageAttachments} compact />
+          )}
           <div
             className={cx(
               editing
                 ? "prompt-edit-surface w-full rounded-[28px] px-5 pb-5 pt-4"
                 : "chat-user-prompt whitespace-pre-wrap rounded-[22px] bg-neutral-200 px-4 py-3 text-pretty text-sm leading-6 text-neutral-950",
+              !editing && !(message.content || "").trim() && "hidden",
             )}
           >
             {editing ? (
@@ -4676,8 +4688,14 @@ function Composer({
   systemPrompt = "",
   onSaveSystemPrompt,
   tourUi = null,
+  attachments = [],
+  attachmentsUploading = false,
+  onAttachFiles,
+  onRemoveAttachment,
 }) {
   const canThink = supportsThinking(models, settings.model) || forceShowThinking;
+  const canAttach = Boolean(onAttachFiles);
+  const canSeeImages = supportsImageInput(models, settings.model);
   const reasoningRequired = requiresThinking(models, settings.model);
   const thinkingEnabled = effectiveThinkingEnabled(
     models, settings.model, settings.thinking_enabled,
@@ -4803,6 +4821,15 @@ function Composer({
                   : "max-h-[126px] min-h-6 text-sm leading-6 placeholder:text-neutral-600",
               )}
             />
+            {canAttach && (
+              <AttachmentChips
+                attachments={attachments}
+                uploading={attachmentsUploading}
+                onRemove={onRemoveAttachment}
+                compact={!isEmptyVariant}
+                className={isEmptyVariant ? "mt-3" : "mt-2.5"}
+              />
+            )}
           </div>
           <div
             ref={composerControlsRef}
@@ -4814,6 +4841,14 @@ function Composer({
             )}
             >
             <div className="flex min-w-0 items-center gap-1.5">
+              {canAttach && (
+                <AttachButton
+                  onFilesPicked={onAttachFiles}
+                  allowImages={canSeeImages}
+                  disabled={disabled || attachments.length >= MAX_FILES_PER_MESSAGE}
+                  modelName={promptModelName(models, settings.model)}
+                />
+              )}
               {writeGenerationMode && (
                 <div className="relative">
                   <button
@@ -4923,7 +4958,7 @@ function Composer({
             <button
               type="submit"
               data-tour="send-button"
-              disabled={!isStreaming && (!value.trim() || disabled)}
+              disabled={!isStreaming && ((!value.trim() && attachments.length === 0) || disabled)}
               className={cx(
                 "group relative inline-flex shrink-0 items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
                 "h-8 w-8",
@@ -7655,6 +7690,10 @@ function App() {
   const tour = useTour();
   const writeTour = useTour(WRITE_TOUR_STEPS);
   const { notifications, setStatus, showToast } = useNotifications();
+  const promptAttachments = useAttachments({
+    allowImages: supportsImageInput(models, settings.model),
+    onError: showToast,
+  });
   const [tourForceThinking, setTourForceThinking] = useState(false);
   const [tourSampleChatActive, setTourSampleChatActive] = useState(false);
   const abortRef = useRef(null);
@@ -9143,7 +9182,9 @@ function App() {
   }
 
   async function sendMessage(text = prompt.trim(), regenerateMessageId = null) {
-    if (isStreaming || !text) return;
+    const sentAttachmentIds = regenerateMessageId ? [] : promptAttachments.attachmentIds();
+    const sentAttachments = regenerateMessageId ? [] : promptAttachments.attachments;
+    if (isStreaming || (!text && sentAttachmentIds.length === 0)) return;
     setIsStreaming(true);
     setStatus("");
     abortRef.current = new AbortController();
@@ -9166,6 +9207,7 @@ function App() {
         chat_id: conversationId,
         role: "user",
         content: text,
+        attachments: sentAttachments,
         created_at: new Date().toISOString(),
       };
 
@@ -9193,6 +9235,7 @@ function App() {
           : [...current, assistantMessage],
       );
       setPrompt("");
+      promptAttachments.releaseAttachments();
 
       const response = await fetch(`/api/chats/${conversationId}/messages/stream`, {
         method: "POST",
@@ -9203,6 +9246,7 @@ function App() {
           chat_system_prompt: settings.system_prompt,
           message: text,
           regenerate_message_id: regenerateMessageId,
+          attachment_ids: sentAttachmentIds,
         }),
       });
 
@@ -10204,8 +10248,10 @@ function App() {
     );
   }
 
-  async function generateStoryChapter(text = prompt.trim(), repairContext = null) {
-    if (isStreaming || hasActiveWriteGeneration() || lorebookUpdating || !text || !activeStoryId || !activeChapterId) return;
+  async function generateStoryChapter(text = prompt.trim(), repairContext = null, repairAttachmentIds = null) {
+    const sentAttachmentIds = repairAttachmentIds || promptAttachments.attachmentIds();
+    const hasPrompt = Boolean(text) || sentAttachmentIds.length > 0;
+    if (isStreaming || hasActiveWriteGeneration() || lorebookUpdating || !hasPrompt || !activeStoryId || !activeChapterId) return;
     const selectedGenerationMode = repairContext ? "edit" : writeGenerationMode;
     const abortController = new AbortController();
     const run = {
@@ -10254,6 +10300,7 @@ function App() {
         ? "new"
         : selectedGenerationMode;
       setPrompt("");
+      if (!repairContext) promptAttachments.releaseAttachments();
       if (selectedGenerationMode === "new") {
         const chapter = await storyApi.createChapter(run.storyId, {
           title: `Chapter ${chapters.length + 1}`,
@@ -10286,6 +10333,7 @@ function App() {
         chapterRevision: targetChapterRevision,
         generationRunId: run.runId,
         repairContext,
+        attachmentIds: sentAttachmentIds,
         signal: abortController.signal,
         onEvent: (event) => {
           if (!chapterGenerationEventMatchesRun(event, run)) return;
@@ -10369,6 +10417,7 @@ function App() {
               if (result.repairable) {
                 pendingRepairRef.current = {
                   prompt: text,
+                  attachmentIds: sentAttachmentIds,
                   context: chapterRepairContext(result, generatedText, appliedCount),
                   appliedCount,
                   skippedCount: skipped.length,
@@ -10414,6 +10463,7 @@ function App() {
               if (chapterGenerationErrorIsRepairable(errorValue)) {
                 pendingRepairRef.current = {
                   prompt: text,
+                  attachmentIds: sentAttachmentIds,
                   context: chapterRepairContext(errorValue, generatedText, 0),
                   appliedCount: 0,
                   skippedCount: 0,
@@ -10506,7 +10556,11 @@ function App() {
           + `Retry with the error sent back to the model? ${costNote}`,
       //through the ref, otherwise this closure still sees the isStreaming that was true when the dialog was built and the retry quietly does nothing
       onConfirm: () => {
-        void generateStoryChapterRef.current?.(pendingRepair.prompt, pendingRepair.context);
+        void generateStoryChapterRef.current?.(
+          pendingRepair.prompt,
+          pendingRepair.context,
+          pendingRepair.attachmentIds || [],
+        );
       },
     });
   }
@@ -10737,6 +10791,10 @@ function App() {
               openingMessage={landingMessage}
               variant="empty"
               forceShowThinking={tourForceThinking}
+              attachments={promptAttachments.attachments}
+              attachmentsUploading={promptAttachments.uploading}
+              onAttachFiles={promptAttachments.addFiles}
+              onRemoveAttachment={promptAttachments.removeAttachment}
             />
           )
         ) : (
@@ -10770,6 +10828,10 @@ function App() {
             onSaveSystemPrompt={isWritingMode ? saveStorySystemPrompt : null}
             forceShowThinking={Boolean(writeTour.currentStep?.forceThinkingVisible)}
             tourUi={writeTour.currentStep?.composerUi || null}
+            attachments={promptAttachments.attachments}
+            attachmentsUploading={promptAttachments.uploading}
+            onAttachFiles={promptAttachments.addFiles}
+            onRemoveAttachment={promptAttachments.removeAttachment}
           />
         ))}
       </main>

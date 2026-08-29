@@ -67,6 +67,7 @@ import {
 } from "./modelReasoning.js";
 import AttachButton from "./attachments/AttachButton.jsx";
 import AttachmentChips from "./attachments/AttachmentChips.jsx";
+import { useFileDrop } from "./attachments/useFileDrop.js";
 import { MAX_FILES_PER_MESSAGE } from "./attachments/attachmentsApi.js";
 import { useAttachments } from "./attachments/useAttachments.js";
 
@@ -4692,6 +4693,7 @@ function Composer({
   attachmentsUploading = false,
   onAttachFiles,
   onRemoveAttachment,
+  dragActive = false,
 }) {
   const canThink = supportsThinking(models, settings.model) || forceShowThinking;
   const canAttach = Boolean(onAttachFiles);
@@ -4788,7 +4790,7 @@ function Composer({
         )}
         <div
           className={cx(
-            "bg-[#141414]",
+            "relative bg-[#141414]",
             isEmptyVariant
               ? "rounded-[30px]"
               : "rounded-[24px]",
@@ -4998,6 +5000,20 @@ function Composer({
             </button>
             </div>
           </div>
+          {canAttach && dragActive && (
+            <div
+              className={cx(
+                "attachment-drop-overlay pointer-events-none absolute inset-0 z-20 grid place-items-center",
+                "border border-dashed border-white/25 bg-[#141414]/95",
+                isEmptyVariant ? "rounded-[30px]" : "rounded-[24px]",
+              )}
+            >
+              <span className="flex items-center gap-2 text-sm font-medium text-neutral-300">
+                <Plus size={16} strokeWidth={2.25} />
+                {canSeeImages ? "Drop files to attach" : "Drop documents to attach"}
+              </span>
+            </div>
+          )}
         </div>
       </div>
       <WriteHistoryModal
@@ -10571,6 +10587,12 @@ function App() {
   const showLandingComposer = isWritingMode ? isEmptyWriting : isEmptyChat;
   const showComposer =
     !(isWritingMode && ["lorebook", "characters", "brainstorm"].includes(storyWorkspaceView) && !showLandingComposer);
+  const composerAcceptsFiles =
+    showComposer && !(isWritingMode && showLandingComposer) && keyStatus.has_key;
+  const filesDraggedOverApp = useFileDrop({
+    enabled: composerAcceptsFiles,
+    onFiles: promptAttachments.addFiles,
+  });
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#080808] text-ink">
@@ -10795,6 +10817,7 @@ function App() {
               attachmentsUploading={promptAttachments.uploading}
               onAttachFiles={promptAttachments.addFiles}
               onRemoveAttachment={promptAttachments.removeAttachment}
+              dragActive={filesDraggedOverApp}
             />
           )
         ) : (
@@ -10832,6 +10855,7 @@ function App() {
             attachmentsUploading={promptAttachments.uploading}
             onAttachFiles={promptAttachments.addFiles}
             onRemoveAttachment={promptAttachments.removeAttachment}
+            dragActive={filesDraggedOverApp}
           />
         ))}
       </main>

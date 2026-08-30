@@ -1473,7 +1473,7 @@ def parse_brainstorm_ideas(raw_output: str) -> list[dict[str, str]]:
         raise ValueError("Brainstorm output must contain an ideas array.")
 
     ideas: list[dict[str, str]] = []
-    for raw_idea in raw_ideas[:5]:
+    for raw_idea in raw_ideas:
         if not isinstance(raw_idea, dict):
             continue
         title = str(raw_idea.get("title") or "").strip()

@@ -4893,20 +4893,21 @@ function Composer({
                   type="button"
                   onClick={onToggleWebSearch}
                   aria-pressed={webSearchEnabled}
+                  aria-label="Web search"
                   title={
                     webSearchEnabled
                       ? "Web search is on, OpenRouter bills each search"
                       : "Search the web before answering"
                   }
                   className={cx(
-                    "inline-flex h-8 shrink-0 items-center rounded-full pl-2 pr-3 text-xs font-medium focus:outline-none",
+                    "grid h-8 w-8 shrink-0 place-items-center rounded-full focus:outline-none",
                     webSearchEnabled
                       ? "text-white"
                       : "text-neutral-500 hover:text-neutral-300",
                     PROMPT_BAR_CONTROL_MOTION,
                   )}
                 >
-                  Web search
+                  <MaskIcon src="/icons/web.png" size={14.5} />
                 </button>
               )}
               </div>

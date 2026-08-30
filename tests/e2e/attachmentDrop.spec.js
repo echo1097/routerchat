@@ -1,7 +1,5 @@
 import { test, expect } from "@playwright/test";
 
-//files dropped anywhere in the app land on the prompt bar, internal drags never light it up
-
 const MODEL = {
   id: "test/model",
   name: "Test model",
@@ -103,7 +101,6 @@ test("dragging a file over the app invites a drop on the prompt bar", async ({ p
   await expect(overlay).toBeVisible();
   await expect(overlay).toContainText("Drop files to attach");
 
-  //leaving the window puts it away again
   await dispatchDrag(page, ["dragleave"], { withFile: true });
   await expect(overlay).toBeHidden();
 });

@@ -24,6 +24,16 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from backend.websearch import (
+    WEB_SEARCH_MAX_RESULTS,
+    WebSearchDeps,
+    create_web_search_router,
+    deserialize_sources,
+    merge_sources,
+    normalize_sources,
+    serialize_sources,
+    web_search_plugin,
+)
 from backend.attachments import (
     AttachmentsDeps,
     attachments_by_message,
@@ -328,6 +338,7 @@ class ChatCreateRequest(BaseModel):
     max_tokens: int = DEFAULT_MAX_TOKENS
     thinking_enabled: bool = False
     reasoning_effort: ReasoningEffort = "medium"
+    web_search_enabled: bool = False
     nitro_mode: bool = False
     temporary: bool = False
     folder_id: str | None = None
@@ -351,6 +362,7 @@ class ChatPatchRequest(BaseModel):
     max_tokens: int | None = None
     thinking_enabled: bool | None = None
     reasoning_effort: ReasoningEffort | None = None
+    web_search_enabled: bool | None = None
     pinned: bool | None = None
     folder_id: str | None = None
 
@@ -388,6 +400,7 @@ class StreamMessageRequest(BaseModel):
     write_system_prompt: str | None = None
     thinking_enabled: bool = False
     reasoning_effort: ReasoningEffort = "medium"
+    web_search_enabled: bool = False
     nitro_mode: bool = False
     regenerate_message_id: str | None = None
     write_generation_mode: str | None = None
@@ -506,6 +519,7 @@ def init_db() -> None:
               max_tokens INTEGER NOT NULL,
               thinking_enabled INTEGER NOT NULL,
               reasoning_effort TEXT NOT NULL DEFAULT 'medium',
+              web_search_enabled INTEGER NOT NULL DEFAULT 0,
               temporary INTEGER NOT NULL DEFAULT 0,
               pinned INTEGER NOT NULL DEFAULT 0,
               created_at TEXT NOT NULL,
@@ -525,12 +539,20 @@ def init_db() -> None:
               role TEXT NOT NULL,
               content TEXT NOT NULL,
               reasoning TEXT,
+              sources TEXT,
               model TEXT,
               finish_reason TEXT,
               error TEXT,
               message_order INTEGER,
               created_at TEXT NOT NULL,
               FOREIGN KEY(chat_id) REFERENCES chats(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS favicons (
+              domain TEXT PRIMARY KEY,
+              mime TEXT,
+              image BLOB,
+              fetched_at TEXT NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS attachments (
@@ -752,6 +774,7 @@ def init_db() -> None:
         ensure_story_settings_columns(conn)
         ensure_chapter_context_column(conn)
         ensure_chapter_revision_column(conn)
+        ensure_message_source_column(conn)
         ensure_brainstorm_generation_columns(conn)
         ensure_chapter_history_columns(conn)
         ensure_lorebook_run_usage_columns(conn)
@@ -770,6 +793,18 @@ def ensure_chat_settings_columns(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE chats ADD COLUMN temporary INTEGER NOT NULL DEFAULT 0")
     if "pinned" not in existing_columns:
         conn.execute("ALTER TABLE chats ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0")
+    if "web_search_enabled" not in existing_columns:
+        conn.execute(
+            "ALTER TABLE chats ADD COLUMN web_search_enabled INTEGER NOT NULL DEFAULT 0"
+        )
+
+
+def ensure_message_source_column(conn: sqlite3.Connection) -> None:
+    existing_columns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(messages)").fetchall()
+    }
+    if "sources" not in existing_columns:
+        conn.execute("ALTER TABLE messages ADD COLUMN sources TEXT")
 
 
 def ensure_chat_folder_column(conn: sqlite3.Connection) -> None:
@@ -1303,6 +1338,7 @@ def row_to_chat(row: sqlite3.Row) -> dict[str, Any]:
             row["model"], bool(row["thinking_enabled"])
         ),
         "reasoning_effort": row["reasoning_effort"],
+        "web_search_enabled": bool(row["web_search_enabled"]),
         "temporary": bool(row["temporary"]),
         "pinned": bool(row["pinned"]),
         "folder_id": row["folder_id"] if "folder_id" in row.keys() else None,
@@ -1327,6 +1363,7 @@ def row_to_message(row: sqlite3.Row) -> dict[str, Any]:
         "role": row["role"],
         "content": row["content"],
         "reasoning": row["reasoning"],
+        "sources": deserialize_sources(row["sources"]),
         "model": row["model"],
         "finish_reason": row["finish_reason"],
         "error": row["error"],
@@ -1706,9 +1743,10 @@ def create_chat(payload: ChatCreateRequest) -> dict[str, Any]:
             """
             INSERT INTO chats (
               id, title, model, system_prompt, temperature, max_tokens,
-              thinking_enabled, reasoning_effort, temporary, folder_id, created_at, updated_at
+              thinking_enabled, reasoning_effort, web_search_enabled, temporary,
+              folder_id, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 chat_id,
@@ -1719,6 +1757,7 @@ def create_chat(payload: ChatCreateRequest) -> dict[str, Any]:
                 payload.max_tokens,
                 int(payload.thinking_enabled),
                 payload.reasoning_effort,
+                int(payload.web_search_enabled),
                 int(payload.temporary),
                 folder_id,
                 now,
@@ -1780,9 +1819,10 @@ def import_chats(payload: ChatImportRequest) -> dict[str, Any]:
                 """
                 INSERT INTO chats (
                   id, title, model, system_prompt, temperature, max_tokens,
-                  thinking_enabled, reasoning_effort, pinned, created_at, updated_at
+                  thinking_enabled, reasoning_effort, web_search_enabled, pinned,
+                  created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     chat_id,
@@ -1793,6 +1833,7 @@ def import_chats(payload: ChatImportRequest) -> dict[str, Any]:
                     int_or_none(item.get("max_tokens")) or DEFAULT_MAX_TOKENS,
                     coerce_bool_int(item.get("thinking_enabled")),
                     coerce_reasoning_effort(item.get("reasoning_effort")),
+                    coerce_bool_int(item.get("web_search_enabled")),
                     coerce_bool_int(item.get("pinned")),
                     str(item.get("created_at") or now),
                     str(item.get("updated_at") or now),
@@ -1816,12 +1857,12 @@ def import_chats(payload: ChatImportRequest) -> dict[str, Any]:
             conn.execute(
                 """
                 INSERT INTO messages (
-                  id, chat_id, role, content, reasoning, model, finish_reason,
+                  id, chat_id, role, content, reasoning, sources, model, finish_reason,
                   error, generation_id, prompt_tokens, completion_tokens,
                   reasoning_tokens, total_tokens, cost, provider_name,
                   generation_time, latency, message_order, created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     message_id,
@@ -1829,6 +1870,7 @@ def import_chats(payload: ChatImportRequest) -> dict[str, Any]:
                     str(item.get("role") or "user"),
                     str(item.get("content") or ""),
                     item.get("reasoning"),
+                    serialize_sources(normalize_sources(item.get("sources"))),
                     item.get("model"),
                     item.get("finish_reason"),
                     item.get("error"),
@@ -1909,7 +1951,7 @@ def update_chat(chat_id: str, payload: ChatPatchRequest) -> dict[str, Any]:
             updates["folder_id"] = nextFolderId
 
         for key, value in updates.items():
-            if key in {"thinking_enabled", "pinned"}:
+            if key in {"thinking_enabled", "web_search_enabled", "pinned"}:
                 value = int(bool(value))
             assignments.append(f"{key} = ?")
             values.append(value)
@@ -2379,8 +2421,14 @@ async def stream_openrouter_response(
 
     with get_db() as conn:
         needsPdfParser = chat_has_pdf_attachment(conn, chat_id)
+
+    plugins: list[dict[str, Any]] = []
     if needsPdfParser:
-        body["plugins"] = pdf_parser_plugins()
+        plugins.extend(pdf_parser_plugins())
+    if payload.web_search_enabled:
+        plugins.append(web_search_plugin())
+    if plugins:
+        body["plugins"] = plugins
 
     supportsReasoning = model_supports_reasoning(payload.model)
     effectiveThinkingEnabled = effective_thinking_enabled(
@@ -2399,6 +2447,7 @@ async def stream_openrouter_response(
 
     assistant_text: list[str] = []
     reasoning_text: list[str] = []
+    sources: list[dict[str, str]] = []
     finish_reason: str | None = None
     error_text: str | None = None
     generation_id: str | None = None
@@ -2449,6 +2498,15 @@ async def stream_openrouter_response(
                     if finish_reason:
                         stream_completed = True
                     delta = choice.get("delta") or {}
+                    message = choice.get("message") or {}
+                    incomingSources = normalize_sources(
+                        delta.get("annotations") or message.get("annotations")
+                    )
+                    if incomingSources:
+                        merged = merge_sources(sources, incomingSources)
+                        if merged != sources:
+                            sources = merged
+                            yield stream_event("sources", sources)
                     reasoning = delta.get("reasoning") or delta.get("reasoning_content")
                     if reasoning and effectiveThinkingEnabled:
                         value = str(reasoning)
@@ -2526,18 +2584,19 @@ async def stream_openrouter_response(
             conn.execute(
                 """
                 INSERT INTO messages (
-                  id, chat_id, role, content, reasoning, model, finish_reason,
+                  id, chat_id, role, content, reasoning, sources, model, finish_reason,
                   error, generation_id, prompt_tokens, completion_tokens,
                   reasoning_tokens, total_tokens, cost, provider_name,
                   generation_time, latency, message_order, created_at
                 )
-                VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     assistant_message_id,
                     chat_id,
                     content,
                     "".join(reasoning_text) or None,
+                    serialize_sources(sources),
                     payload.model,
                     finish_reason,
                     error_text,
@@ -2641,7 +2700,8 @@ async def stream_message(
             """
             UPDATE chats
             SET title = ?, model = ?, system_prompt = ?, temperature = ?,
-                max_tokens = ?, thinking_enabled = ?, reasoning_effort = ?, updated_at = ?
+                max_tokens = ?, thinking_enabled = ?, reasoning_effort = ?,
+                web_search_enabled = ?, updated_at = ?
             WHERE id = ?
             """,
             (
@@ -2652,6 +2712,7 @@ async def stream_message(
                 payload.max_tokens,
                 int(payload.thinking_enabled),
                 payload.reasoning_effort,
+                int(payload.web_search_enabled),
                 now,
                 chat_id,
             ),
@@ -2687,6 +2748,9 @@ writingDeps = WritingDeps(
     stream_message_request=StreamMessageRequest,
     openrouter_base_url=OPENROUTER_BASE_URL,
 )
+
+webSearchDeps = WebSearchDeps(get_db=get_db, utc_now=utc_now)
+app.include_router(create_web_search_router(webSearchDeps))
 
 attachmentsDeps = AttachmentsDeps(
     get_db=get_db,

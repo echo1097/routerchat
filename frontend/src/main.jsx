@@ -68,6 +68,7 @@ import {
 import AttachButton from "./attachments/AttachButton.jsx";
 import AttachmentChips from "./attachments/AttachmentChips.jsx";
 import { useFileDrop } from "./attachments/useFileDrop.js";
+import SourcePills from "./websearch/SourcePills.jsx";
 import { MAX_FILES_PER_MESSAGE } from "./attachments/attachmentsApi.js";
 import { useAttachments } from "./attachments/useAttachments.js";
 
@@ -105,6 +106,7 @@ const newSettings = {
   system_prompt: "",
   thinking_enabled: false,
   reasoning_effort: "medium",
+  web_search_enabled: false,
   nitro_mode: false,
   lorebook_auto: false,
 };
@@ -2912,19 +2914,22 @@ const AssistantStatusLine = memo(function AssistantStatusLine({
   reasoningStreaming,
   waiting,
   durationMs,
+  searching = false,
 }) {
   const [open, setOpen] = useState(false);
 
   const hasReasoning = Boolean(reasoning);
-  if (!hasReasoning && !waiting) return null;
+  if (!hasReasoning && !waiting && !searching) return null;
 
-  const label = !hasReasoning
-    ? "Working"
-    : reasoningStreaming || !durationMs
-      ? "Thinking"
-      : `Thought for ${formatThoughtDuration(durationMs)}`;
+  const label = searching
+    ? "Searching"
+    : !hasReasoning
+      ? "Working"
+      : reasoningStreaming || !durationMs
+        ? "Thinking"
+        : `Thought for ${formatThoughtDuration(durationMs)}`;
 
-  const shimmering = reasoningStreaming || (!hasReasoning && waiting);
+  const shimmering = searching || reasoningStreaming || (!hasReasoning && waiting);
 
   return (
     <div className="mb-4 max-w-3xl">
@@ -3042,6 +3047,7 @@ const MessageItem = memo(function MessageItem({
   smoothStreaming,
   reasoningStreaming,
   reasoningDurationMs,
+  searching,
   onCopy,
   onRegenerate,
   onEditUserMessage,
@@ -3049,6 +3055,7 @@ const MessageItem = memo(function MessageItem({
 }) {
   const isUser = message.role === "user";
   const messageAttachments = message.attachments || [];
+  const messageSources = message.sources || [];
   const articleRef = useRef(null);
   const bodyRef = useRef(null);
   const settledRef = useRef(0);
@@ -3230,7 +3237,11 @@ const MessageItem = memo(function MessageItem({
         reasoningStreaming={reasoningStreaming}
         waiting={!message.content}
         durationMs={reasoningDurationMs}
+        searching={searching}
       />
+      {!message.content && (
+        <SourcePills sources={messageSources} className="mb-4 max-w-3xl" />
+      )}
       <div ref={bodyRef} className="max-w-3xl text-[15px] leading-7 text-neutral-100">
         {message.content ? (
           <MarkdownContent streaming={revealing} settledRef={settledRef}>
@@ -3238,6 +3249,9 @@ const MessageItem = memo(function MessageItem({
           </MarkdownContent>
         ) : null}
       </div>
+      {message.content && (
+        <SourcePills sources={messageSources} className="mt-4 max-w-3xl" />
+      )}
       {message.content && !streaming && !revealing && (
         <div className={cx("mt-3 flex max-w-3xl justify-start gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100", FADE_MOTION)}>
           <AssistantActionButton label="Copy" onClick={() => onCopy(message)}>
@@ -3325,6 +3339,7 @@ function MessageList({
   smoothStreaming,
   reasoningStreamingMessageId,
   reasoningDurations,
+  searchingMessageId,
   streamRef,
   onScroll,
   onWheel,
@@ -3356,6 +3371,7 @@ function MessageList({
               smoothStreaming={smoothStreaming}
               reasoningStreaming={message.id === reasoningStreamingMessageId}
               reasoningDurationMs={reasoningDurations[message.id]}
+              searching={message.id === searchingMessageId}
               onCopy={onCopy}
               onRegenerate={onRegenerate}
               onEditUserMessage={onEditUserMessage}
@@ -4694,10 +4710,13 @@ function Composer({
   onAttachFiles,
   onRemoveAttachment,
   dragActive = false,
+  webSearchEnabled = false,
+  onToggleWebSearch = null,
 }) {
   const canThink = supportsThinking(models, settings.model) || forceShowThinking;
   const canAttach = Boolean(onAttachFiles);
   const canSeeImages = supportsImageInput(models, settings.model);
+  const canWebSearch = Boolean(onToggleWebSearch) && !writeGenerationMode;
   const reasoningRequired = requiresThinking(models, settings.model);
   const thinkingEnabled = effectiveThinkingEnabled(
     models, settings.model, settings.thinking_enabled,
@@ -4843,6 +4862,7 @@ function Composer({
             )}
             >
             <div className="flex min-w-0 items-center gap-1.5">
+              <div className="flex items-center gap-0.5">
               {canAttach && (
                 <AttachButton
                   onFilesPicked={onAttachFiles}
@@ -4851,6 +4871,28 @@ function Composer({
                   modelName={promptModelName(models, settings.model)}
                 />
               )}
+              {canWebSearch && (
+                <button
+                  type="button"
+                  onClick={onToggleWebSearch}
+                  aria-pressed={webSearchEnabled}
+                  title={
+                    webSearchEnabled
+                      ? "Web search is on, OpenRouter bills each search"
+                      : "Search the web before answering"
+                  }
+                  className={cx(
+                    "inline-flex h-8 shrink-0 items-center rounded-full pl-2 pr-3 text-xs font-medium focus:outline-none",
+                    webSearchEnabled
+                      ? "text-white"
+                      : "text-neutral-500 hover:text-neutral-300",
+                    PROMPT_BAR_CONTROL_MOTION,
+                  )}
+                >
+                  Web search
+                </button>
+              )}
+              </div>
               {writeGenerationMode && (
                 <div className="relative">
                   <button
@@ -7699,6 +7741,7 @@ function App() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingMessageId, setStreamingMessageId] = useState(null);
   const [reasoningStreamingMessageId, setReasoningStreamingMessageId] = useState(null);
+  const [searchingMessageId, setSearchingMessageId] = useState(null);
   const [reasoningDurations, setReasoningDurations] = useState({});
   const [confirmDialog, setConfirmDialog] = useState(null);
   const [newStoryDialogOpen, setNewStoryDialogOpen] = useState(false);
@@ -8010,6 +8053,7 @@ function App() {
       system_prompt: story.system_prompt || "",
       thinking_enabled: Boolean(story.thinking_enabled),
       reasoning_effort: story.reasoning_effort || "medium",
+      web_search_enabled: false,
       nitro_mode: nitroMode,
       lorebook_auto: Boolean(story.lorebook_auto),
     });
@@ -8460,6 +8504,7 @@ function App() {
         models, chat.model, Boolean(chat.thinking_enabled),
       ),
       reasoning_effort: chat.reasoning_effort || "medium",
+      web_search_enabled: Boolean(chat.web_search_enabled),
       nitro_mode: nitroMode,
       lorebook_auto: false, //chats have no lorebook, this just keeps the object shape steady across modes
     });
@@ -9151,6 +9196,10 @@ function App() {
       );
     }
 
+    function clearSearching() {
+      setSearchingMessageId((current) => (current === assistantId ? null : current));
+    }
+
     try {
       while (true) {
         const { value, done } = await reader.read();
@@ -9177,12 +9226,25 @@ function App() {
             );
             continue;
           }
+          if (event.type === "sources") {
+            const foundSources = event.value || [];
+            setMessageList((current) =>
+              current.map((message) =>
+                message.id === assistantId
+                  ? { ...message, sources: foundSources }
+                  : message,
+              ),
+            );
+            continue;
+          }
           if (event.type === "reasoning") {
+            clearSearching();
             startReasoningTimer();
             setReasoningStreamingMessageId(assistantId);
             queueSmoothText("reasoning", String(event.value || ""));
             continue;
           }
+          clearSearching();
           clearReasoningStreaming();
           queueSmoothText("content", String(event.value || ""));
         }
@@ -9193,6 +9255,7 @@ function App() {
       }
     } finally {
       flushNow();
+      clearSearching();
       clearReasoningStreaming();
     }
   }
@@ -9240,6 +9303,7 @@ function App() {
 
       startFollowing();
       setStreamingMessageId(assistantId);
+      setSearchingMessageId(settings.web_search_enabled ? assistantId : null);
       setReasoningDurations((current) => {
         const next = { ...current };
         delete next[assistantId];
@@ -9311,6 +9375,7 @@ function App() {
       setIsStreaming(false);
       setStreamingMessageId(null);
       setReasoningStreamingMessageId(null);
+      setSearchingMessageId(null);
       if (currentAssistantId) {
         delete reasoningStartedAtRef.current[currentAssistantId];
       }
@@ -9392,6 +9457,14 @@ function App() {
           setStatus(error.message);
         }
       },
+    });
+  }
+
+  function toggleWebSearch() {
+    setSettings((current) => {
+      const next = { ...current, web_search_enabled: !current.web_search_enabled };
+      if (activeConversationId) persistSettings(next);
+      return next;
     });
   }
 
@@ -10770,6 +10843,7 @@ function App() {
               streamingMessageId={streamingMessageId}
               smoothStreaming={smoothStreaming}
               reasoningStreamingMessageId={reasoningStreamingMessageId}
+              searchingMessageId={searchingMessageId}
               reasoningDurations={reasoningDurations}
               streamRef={streamRef}
               onScroll={markUserScroll}
@@ -10818,6 +10892,8 @@ function App() {
               onAttachFiles={promptAttachments.addFiles}
               onRemoveAttachment={promptAttachments.removeAttachment}
               dragActive={filesDraggedOverApp}
+              webSearchEnabled={settings.web_search_enabled}
+              onToggleWebSearch={toggleWebSearch}
             />
           )
         ) : (
@@ -10856,6 +10932,8 @@ function App() {
             onAttachFiles={promptAttachments.addFiles}
             onRemoveAttachment={promptAttachments.removeAttachment}
             dragActive={filesDraggedOverApp}
+            webSearchEnabled={settings.web_search_enabled}
+            onToggleWebSearch={toggleWebSearch}
           />
         ))}
       </main>

@@ -162,6 +162,13 @@ async function installControlledStream(page) {
   });
 }
 
+async function finishStream(page) {
+  await page.evaluate(() => {
+    window.__chatStream.controller.close();
+    window.__chatStream = null;
+  });
+}
+
 async function pushEvent(page, event) {
   await page.evaluate((payload) => {
     window.__chatStream.controller.enqueue(
@@ -176,9 +183,31 @@ const CITED = [
   { url: "https://en.wikipedia.org/wiki/Chrome", title: "Chrome", domain: "en.wikipedia.org" },
 ];
 
-test("shows Searching, then the sites it found, then the answer", async ({ page }) => {
+function answeredWithSources(content) {
+  return [
+    {
+      id: "message-1",
+      chat_id: "chat-1",
+      role: "user",
+      content: "what happened today",
+      created_at: "2026-01-01T00:00:01Z",
+    },
+    {
+      id: "message-2",
+      chat_id: "chat-1",
+      role: "assistant",
+      content,
+      reasoning: "",
+      sources: CITED,
+      created_at: "2026-01-01T00:00:02Z",
+    },
+  ];
+}
+
+test("shows Searching, then the answer, and only then the source row", async ({ page }) => {
+  const serverMessages = [];
   await installControlledStream(page);
-  await installChatApi(page, []);
+  await installChatApi(page, [], serverMessages);
   await page.goto("/chat/chat-1");
 
   await page.getByRole("button", { name: "Web search" }).click();
@@ -186,8 +215,17 @@ test("shows Searching, then the sites it found, then the answer", async ({ page 
   await expect.poll(() => page.evaluate(() => Boolean(window.__chatStream))).toBe(true);
 
   await expect(page.getByText("Searching")).toBeVisible();
-
   await pushEvent(page, { type: "sources", value: CITED });
+  await expect(page.locator(".source-pill")).toHaveCount(0);
+
+  await pushEvent(page, { type: "content", value: "here is what I found" });
+  await expect(page.getByText("Searching")).toBeHidden();
+  await expect(page.locator('[data-message-role="assistant"]').last())
+    .toContainText("here is what I found");
+  await expect(page.locator(".source-pill")).toHaveCount(0);
+
+  serverMessages.push(...answeredWithSources("here is what I found"));
+  await finishStream(page);
 
   const pills = page.locator(".source-pill");
   await expect(pills).toHaveCount(2);
@@ -197,11 +235,35 @@ test("shows Searching, then the sites it found, then the answer", async ({ page 
     "src",
     "/api/favicon?domain=support.google.com",
   );
+});
 
-  await pushEvent(page, { type: "content", value: "here is what I found" });
-  await expect(page.getByText("Searching")).toBeHidden();
-  await expect(page.locator('[data-message-role="assistant"]').last())
-    .toContainText("here is what I found");
+test("turns an in body citation into a pill and drops its brackets", async ({ page }) => {
+  const serverMessages = [];
+  await installControlledStream(page);
+  await installChatApi(page, [], serverMessages);
+  await page.goto("/chat/chat-1");
+
+  await page.getByRole("button", { name: "Web search" }).click();
+  await askSomething(page);
+  await expect.poll(() => page.evaluate(() => Boolean(window.__chatStream))).toBe(true);
+
+  const answer = "Markets closed higher ([reuters.com](https://www.reuters.com/markets/x)) today.";
+  await pushEvent(page, { type: "content", value: answer });
+  serverMessages.push(...answeredWithSources(answer));
+  await finishStream(page);
+
+  const assistant = page.locator('[data-message-role="assistant"]').last();
+  const citation = assistant.locator(".citation-pill");
+  await expect(citation).toHaveCount(1);
+  await expect(citation).toContainText("reuters.com");
+  await expect(citation).toHaveAttribute("href", "https://www.reuters.com/markets/x");
+  await expect(citation.locator("img")).toHaveAttribute(
+    "src",
+    "/api/favicon?domain=reuters.com",
+  );
+
+  await expect(assistant).toContainText("Markets closed higher");
+  await expect(assistant).not.toContainText("(reuters.com)");
 });
 
 test("keeps the sources under the answer after a reload", async ({ page }) => {
@@ -247,4 +309,14 @@ test("no pills and no Searching step when web search is off", async ({ page }) =
   await expect(page.getByText("Working")).toBeVisible();
   await expect(page.getByText("Searching")).toBeHidden();
   await expect(page.locator(".source-pill")).toHaveCount(0);
+});
+
+test("an ordinary prose link stays a plain link", async ({ page }) => {
+  const answer = "See [the full report](https://www.reuters.com/markets/x) for detail.";
+  await installChatApi(page, [], answeredWithSources(answer));
+  await page.goto("/chat/chat-1");
+
+  const assistant = page.locator('[data-message-role="assistant"]').last();
+  await expect(assistant.getByRole("link", { name: "the full report" })).toBeVisible();
+  await expect(assistant.locator(".citation-pill")).toHaveCount(0);
 });

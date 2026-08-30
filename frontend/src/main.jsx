@@ -68,7 +68,8 @@ import {
 import AttachButton from "./attachments/AttachButton.jsx";
 import AttachmentChips from "./attachments/AttachmentChips.jsx";
 import { useFileDrop } from "./attachments/useFileDrop.js";
-import SourcePills from "./websearch/SourcePills.jsx";
+import SourcePills, { InlineCitation } from "./websearch/SourcePills.jsx";
+import { isCitationLink, remarkCitationPills } from "./websearch/citations.js";
 import { MAX_FILES_PER_MESSAGE } from "./attachments/attachmentsApi.js";
 import { useAttachments } from "./attachments/useAttachments.js";
 
@@ -2983,7 +2984,15 @@ function StatusLabel({ label, shimmering }) {
   );
 }
 
-const MARKDOWN_REMARK_PLUGINS = [remarkGfm];
+const MARKDOWN_REMARK_PLUGINS = [remarkGfm, remarkCitationPills];
+
+function markdownLinkText(children) {
+  if (typeof children === "string") return children;
+  if (Array.isArray(children)) return children.map(markdownLinkText).join("");
+  if (children?.props?.children) return markdownLinkText(children.props.children);
+
+  return "";
+}
 
 const MarkdownContent = memo(function MarkdownContent({ children, streaming, settledRef }) {
   //only the message that is actively streaming gets split into word spans, scrollback stays plain
@@ -3011,14 +3020,21 @@ const MarkdownContent = memo(function MarkdownContent({ children, streaming, set
           <strong className="font-semibold text-neutral-100" {...props} />
         ),
         p: ({ node, ...props }) => <p className="mb-4 text-pretty last:mb-0" {...props} />,
-        a: ({ node, ...props }) => (
-          <a
-            className="text-accent underline decoration-accent/30 underline-offset-4 transition-[color,text-decoration-color] duration-150 ease-out hover:decoration-accent/70"
-            target="_blank"
-            rel="noreferrer"
-            {...props}
-          />
-        ),
+        a: ({ node, ...props }) => {
+          const label = markdownLinkText(props.children);
+          if (isCitationLink(props.href, label)) {
+            return <InlineCitation href={props.href} label={label} />;
+          }
+
+          return (
+            <a
+              className="text-accent underline decoration-accent/30 underline-offset-4 transition-[color,text-decoration-color] duration-150 ease-out hover:decoration-accent/70"
+              target="_blank"
+              rel="noreferrer"
+              {...props}
+            />
+          );
+        },
         code: ({ inline, ...props }) =>
           inline ? (
             <code className="rounded-md bg-white/[0.07] px-1.5 py-0.5 text-[0.92em] text-neutral-100" {...props} />
@@ -3239,9 +3255,6 @@ const MessageItem = memo(function MessageItem({
         durationMs={reasoningDurationMs}
         searching={searching}
       />
-      {!message.content && (
-        <SourcePills sources={messageSources} className="mb-4 max-w-3xl" />
-      )}
       <div ref={bodyRef} className="max-w-3xl text-[15px] leading-7 text-neutral-100">
         {message.content ? (
           <MarkdownContent streaming={revealing} settledRef={settledRef}>
@@ -3249,7 +3262,7 @@ const MessageItem = memo(function MessageItem({
           </MarkdownContent>
         ) : null}
       </div>
-      {message.content && (
+      {message.content && !streaming && !revealing && (
         <SourcePills sources={messageSources} className="mt-4 max-w-3xl" />
       )}
       {message.content && !streaming && !revealing && (

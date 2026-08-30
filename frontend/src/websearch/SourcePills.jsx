@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 
 import { cx, CONTROL_MOTION } from "../uiShared.js";
+import { linkHostname } from "./citations.js";
 
 export function faviconUrl(domain) {
   return `/api/favicon?domain=${encodeURIComponent(domain)}`;
@@ -32,13 +33,20 @@ export function groupSourcesByDomain(sources) {
   return groups;
 }
 
-function SourceIcon({ domain }) {
+function SourceIcon({ domain, size = "h-4 w-4", hideWhenMissing = false }) {
   const [failed, setFailed] = useState(false);
   const label = siteLabel(domain);
 
+  if (failed && hideWhenMissing) return null;
+
   if (failed) {
     return (
-      <span className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-white/10 text-[9px] font-semibold uppercase text-neutral-300">
+      <span
+        className={cx(
+          "grid shrink-0 place-items-center rounded-full bg-white/10 text-[9px] font-semibold uppercase text-neutral-300",
+          size,
+        )}
+      >
         {label.slice(0, 1)}
       </span>
     );
@@ -50,8 +58,30 @@ function SourceIcon({ domain }) {
       alt=""
       loading="lazy"
       onError={() => setFailed(true)}
-      className="h-4 w-4 shrink-0 rounded-full bg-white/10 object-contain"
+      className={cx("shrink-0 rounded-full bg-white/10 object-contain", size)}
     />
+  );
+}
+
+export function InlineCitation({ href, label }) {
+  const domain = linkHostname(href) || label;
+
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer noopener"
+      title={href}
+      className={cx(
+        "citation-pill mx-[1px] inline-flex max-w-[200px] translate-y-[-1px] items-center gap-1 rounded-full",
+        "bg-white/[0.07] py-[1px] pl-[3px] pr-[7px] align-middle text-[0.78em] font-medium leading-[1.5]",
+        "text-neutral-300 no-underline hover:text-white",
+        CONTROL_MOTION,
+      )}
+    >
+      <SourceIcon domain={domain} size="h-[13px] w-[13px]" hideWhenMissing />
+      <span className="truncate">{siteLabel(domain)}</span>
+    </a>
   );
 }
 

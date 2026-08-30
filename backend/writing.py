@@ -1846,21 +1846,33 @@ def build_story_messages(
     blocks: list[dict[str, Any]] | None = None,
     repair_context: dict[str, Any] | None = None,
     attachment_parts: list[dict[str, Any]] | None = None,
+    previous_chapters: list[sqlite3.Row] | None = None,
 ) -> list[dict[str, Any]]:
     lorebook_text = "\n".join(
         lorebook_context_line(row)
         for row in lorebook_rows
         if not bool(row["disabled"]) and row["description"].strip()
     )
+    visiblePrevious = [row for row in (previous_chapters or []) if not bool(row["disabled"])]
+    previousText = "\n\n".join(
+        f"chapter {index + 1}: {row['title']}\n{row['content'] or 'empty chapter'}"
+        for index, row in enumerate(visiblePrevious)
+    )
+
     context_parts = [
         f"story title: {story['title']}",
         f"author: {story['author'] or 'unknown'}",
         f"language: {story['language'] or 'English'}",
         f"synopsis: {story['synopsis'] or 'none yet'}",
+    ]
+    if previousText:
+        context_parts.append(f"previous chapters:\n{previousText}")
+
+    context_parts.extend([
         f"chapter title: {chapter['title']}",
         f"chapter revision: {chapter['revision']}",
         f"current chapter draft:\n{chapter['content'] or 'empty chapter'}",
-    ]
+    ])
     if generation_mode == "edit":
         context_parts.append(
             "chapter block map:\n"
@@ -2717,6 +2729,7 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
         chapter: sqlite3.Row,
         lorebook_rows: list[sqlite3.Row],
         base_revision: int,
+        previous_chapters: list[sqlite3.Row] | None = None,
     ) -> AsyncIterator[bytes]:
         event_metadata = {
             "runId": getattr(payload, "generation_run_id", None),
@@ -2758,6 +2771,7 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
             starting_blocks,
             repair_context,
             attachmentParts,
+            previous_chapters,
         )
         body: dict[str, Any] = {
             "model": deps.openrouter_request_model(payload.model, payload.nitro_mode),
@@ -4644,6 +4658,16 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                 "SELECT * FROM lorebook_entries WHERE story_id = ? ORDER BY updated_at DESC",
                 (story_id,),
             ).fetchall()
+            orderedChapters = conn.execute(
+                "SELECT * FROM chapters WHERE story_id = ? ORDER BY order_index ASC, created_at ASC",
+                (story_id,),
+            ).fetchall()
+            previousChapters: list[sqlite3.Row] = []
+            for row in orderedChapters:
+                if row["id"] == chapter_id:
+                    break
+                previousChapters.append(row)
+
             conn.execute(
                 """
                 UPDATE stories
@@ -4673,6 +4697,7 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                 chapter,
                 lorebook_rows,
                 base_revision,
+                previousChapters,
             ),
             media_type="application/x-ndjson; charset=utf-8",
         )

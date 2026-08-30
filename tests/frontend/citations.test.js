@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   isCitationLink,
   linkHostname,
+  normalizeCitationUrl,
   stripCitationParens,
+  uncitedSources,
 } from "../../frontend/src/websearch/citations.js";
 
 function text(value) {
@@ -106,5 +108,50 @@ describe("tidying the parentheses around citations", () => {
     stripCitationParens(tree);
     expect(tree.children[0].children[0].value).toBe("");
     expect(tree.children[0].children[2].value).toBe("");
+  });
+});
+
+describe("keeping only the sources the answer never cited", () => {
+  const sources = [
+    { url: "https://www.reuters.com/markets/x", domain: "reuters.com" },
+    { url: "https://en.wikipedia.org/wiki/Chrome", domain: "en.wikipedia.org" },
+  ];
+
+  it("drops a source the body already links to", () => {
+    const body = "Markets rose ([reuters.com](https://www.reuters.com/markets/x)) today.";
+    expect(uncitedSources(body, sources).map((source) => source.domain))
+      .toEqual(["en.wikipedia.org"]);
+  });
+
+  it("returns nothing when every source is cited", () => {
+    const body = [
+      "One ([reuters.com](https://www.reuters.com/markets/x))",
+      "two ([en.wikipedia.org](https://en.wikipedia.org/wiki/Chrome)).",
+    ].join(" and ");
+    expect(uncitedSources(body, sources)).toEqual([]);
+  });
+
+  it("keeps everything when the model cited nothing", () => {
+    expect(uncitedSources("A plain answer with no links.", sources)).toHaveLength(2);
+  });
+
+  it("matches a citation that differs only by www or a trailing slash", () => {
+    const body = "See [reuters.com](https://reuters.com/markets/x/).";
+    expect(uncitedSources(body, sources).map((source) => source.domain))
+      .toEqual(["en.wikipedia.org"]);
+  });
+
+  it("treats another page on a cited site as still uncited", () => {
+    const body = "See [reuters.com](https://www.reuters.com/markets/other).";
+    expect(uncitedSources(body, sources)).toHaveLength(2);
+  });
+
+  it("copes with a message that has no sources or no content", () => {
+    expect(uncitedSources("anything", undefined)).toEqual([]);
+    expect(uncitedSources(null, sources)).toHaveLength(2);
+  });
+
+  it("normalizes a url it cannot parse without throwing", () => {
+    expect(normalizeCitationUrl("not a url/")).toBe("not a url");
   });
 });

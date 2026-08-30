@@ -311,6 +311,38 @@ test("no pills and no Searching step when web search is off", async ({ page }) =
   await expect(page.locator(".source-pill")).toHaveCount(0);
 });
 
+test("the bottom row drops the sources the answer already cited", async ({ page }) => {
+  const answer = [
+    "Markets rose ([support.google.com](https://support.google.com/chrome/a))",
+    "and held ([support.google.com](https://support.google.com/chrome/b)).",
+  ].join(" ");
+
+  await installChatApi(page, [], answeredWithSources(answer));
+  await page.goto("/chat/chat-1");
+
+  const assistant = page.locator('[data-message-role="assistant"]').last();
+  await expect(assistant.locator(".citation-pill")).toHaveCount(2);
+
+  const pills = assistant.locator(".source-pill");
+  await expect(pills).toHaveCount(1);
+  await expect(pills).toContainText("en.wikipedia.org");
+});
+
+test("no bottom row at all once every source is cited in the body", async ({ page }) => {
+  const answer = [
+    "One ([support.google.com](https://support.google.com/chrome/a)),",
+    "two ([support.google.com](https://support.google.com/chrome/b)),",
+    "three ([en.wikipedia.org](https://en.wikipedia.org/wiki/Chrome)).",
+  ].join(" ");
+
+  await installChatApi(page, [], answeredWithSources(answer));
+  await page.goto("/chat/chat-1");
+
+  const assistant = page.locator('[data-message-role="assistant"]').last();
+  await expect(assistant.locator(".citation-pill")).toHaveCount(3);
+  await expect(assistant.locator(".source-pill")).toHaveCount(0);
+});
+
 test("an ordinary prose link stays a plain link", async ({ page }) => {
   const answer = "See [the full report](https://www.reuters.com/markets/x) for detail.";
   await installChatApi(page, [], answeredWithSources(answer));

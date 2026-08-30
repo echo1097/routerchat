@@ -75,3 +75,29 @@ export function stripCitationParens(node) {
 export function remarkCitationPills() {
   return (tree) => stripCitationParens(tree);
 }
+
+const URL_IN_TEXT = /https?:\/\/[^\s<>()\[\]"'`]+/gi;
+
+export function normalizeCitationUrl(url) {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
+    const path = parsed.pathname.replace(/\/+$/, "");
+    return `${host}${path}${parsed.search}`;
+  } catch {
+    return String(url || "").trim().toLowerCase().replace(/\/+$/, "");
+  }
+}
+
+export function citedUrls(content) {
+  const found = String(content || "").match(URL_IN_TEXT) || [];
+  return new Set(found.map(normalizeCitationUrl));
+}
+
+export function uncitedSources(content, sources) {
+  const cited = citedUrls(content);
+
+  return (sources || []).filter(
+    (source) => !cited.has(normalizeCitationUrl(source.url)),
+  );
+}

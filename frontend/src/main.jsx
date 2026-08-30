@@ -69,7 +69,11 @@ import AttachButton from "./attachments/AttachButton.jsx";
 import AttachmentChips from "./attachments/AttachmentChips.jsx";
 import { useFileDrop } from "./attachments/useFileDrop.js";
 import SourcePills, { InlineCitation } from "./websearch/SourcePills.jsx";
-import { isCitationLink, remarkCitationPills } from "./websearch/citations.js";
+import {
+  isCitationLink,
+  remarkCitationPills,
+  uncitedSources,
+} from "./websearch/citations.js";
 import { MAX_FILES_PER_MESSAGE } from "./attachments/attachmentsApi.js";
 import { useAttachments } from "./attachments/useAttachments.js";
 
@@ -3071,7 +3075,7 @@ const MessageItem = memo(function MessageItem({
 }) {
   const isUser = message.role === "user";
   const messageAttachments = message.attachments || [];
-  const messageSources = message.sources || [];
+  const messageSources = uncitedSources(message.content, message.sources);
   const articleRef = useRef(null);
   const bodyRef = useRef(null);
   const settledRef = useRef(0);

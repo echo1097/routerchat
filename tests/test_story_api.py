@@ -10,22 +10,33 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 import backend.main as main
+from backend.brainstorm import (
+    brainstorm_response_format,
+    build_brainstorm_messages,
+    next_brainstorm_root_position,
+    parse_brainstorm_ideas,
+)
+from backend.lorebook import (
+    lorebook_history_label,
+    lorebook_update_response_format,
+    normalize_timeline_description,
+)
 from backend.local_access import create_secret_file
 from backend.writing import (
-    build_brainstorm_messages,
     build_story_messages,
     chapter_blocks,
     chapter_edit_response_format,
     effective_generation_mode,
-    lorebook_history_label,
-    next_brainstorm_root_position,
-    normalize_timeline_description,
-    parse_brainstorm_ideas,
 )
 
 
 #the lorebook update streams now, so the fakes hand back an sse style response instead of one json blob
-def fakeLorebookStream(content, reasoning=""):
+def fakeLorebookStream(
+    content,
+    reasoning="",
+    complete=True,
+    finishReason=None,
+):
     class FakeLorebookStreamResponse:
         status_code = 200
         headers = {}
@@ -40,7 +51,10 @@ def fakeLorebookStream(content, reasoning=""):
             if reasoning:
                 yield f"data: {json.dumps({'choices': [{'delta': {'reasoning': reasoning}}]})}"
             yield f"data: {json.dumps({'choices': [{'delta': {'content': content}}]})}"
-            yield "data: [DONE]"
+            if finishReason:
+                yield f"data: {json.dumps({'choices': [{'delta': {}, 'finish_reason': finishReason}]})}"
+            if complete:
+                yield "data: [DONE]"
 
     return FakeLorebookStreamResponse()
 
@@ -232,7 +246,22 @@ class StoryApiTest(unittest.TestCase):
         reusedPosition = next_brainstorm_root_position(secondNodes, secondEdges, 3)
         self.assertEqual(reusedPosition, (0.0, 180.0))
 
-    def streamChapterGeneration(self, story, chapter, output, revision=None, mode="edit", runId="run-test", complete=True, lorebookUpdates=None, repairContext=None, finishReason=None, lorebookReasoning=""):
+    def streamChapterGeneration(
+        self,
+        story,
+        chapter,
+        output,
+        revision=None,
+        mode="edit",
+        runId="run-test",
+        complete=True,
+        lorebookUpdates=None,
+        repairContext=None,
+        finishReason=None,
+        lorebookReasoning="",
+        lorebookComplete=True,
+        lorebookFinishReason=None,
+    ):
         chunks = output if isinstance(output, list) else [output]
         requestBody = {}
         lorebookCalls = []
@@ -292,12 +321,19 @@ class StoryApiTest(unittest.TestCase):
                 #the lorebook pass streams too now, and it only ever runs after the chapter one, so order tells them apart
                 if requestBody:
                     lorebookCalls.append(body)
-                    return fakeLorebookStream(lorebookContent, lorebookReasoning)
+                    return fakeLorebookStream(
+                        lorebookContent,
+                        lorebookReasoning,
+                        complete=lorebookComplete,
+                        finishReason=lorebookFinishReason,
+                    )
                 requestBody.update(body)
                 return FakeResponse()
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
             "backend.writing.httpx.AsyncClient", FakeClient
+        ), patch(
+            "backend.lorebook.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
                 f"/api/stories/{story['id']}/chapters/{chapter['id']}/generate/stream",
@@ -355,13 +391,115 @@ class StoryApiTest(unittest.TestCase):
                 return fakeLorebookStream(content)
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.writing.httpx.AsyncClient", FakeClient
+            "backend.lorebook.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
                 f"/api/stories/{story['id']}/lorebook/update",
                 json={"chapter_id": chapter["id"]},
             )
         return response, calls
+
+    def callLorebookUpdateWithStreamState(
+        self,
+        story,
+        chapter,
+        rawOutput,
+        *,
+        complete,
+        finishReason=None,
+        streaming=False,
+    ):
+        requestBody = {}
+
+        class FakeClient:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_):
+                return False
+
+            def stream(self, *_args, **kwargs):
+                requestBody.update(kwargs.get("json") or {})
+                return fakeLorebookStream(
+                    rawOutput,
+                    complete=complete,
+                    finishReason=finishReason,
+                )
+
+        endpoint = "update/stream" if streaming else "update"
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
+            "backend.lorebook.httpx.AsyncClient", FakeClient
+        ):
+            response = self.client.post(
+                f"/api/stories/{story['id']}/lorebook/{endpoint}",
+                json={"chapter_id": chapter["id"]},
+            )
+        return response, requestBody
+
+    def callBrainstormWithStreamState(
+        self,
+        story,
+        rawOutput,
+        *,
+        ideaCount=3,
+        complete=True,
+        finishReason="stop",
+        supportedParameters=None,
+    ):
+        modelId = "test/brainstorm-guards"
+        main.cache_models([main.normalize_model({
+            "id": modelId,
+            "supported_parameters": list(supportedParameters or []),
+        })])
+        requestBody = {}
+
+        class FakeResponse:
+            status_code = 200
+            headers = {}
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_):
+                return False
+
+            async def aiter_lines(self):
+                yield f"data: {json.dumps({'choices': [{'delta': {'content': rawOutput}}]})}"
+                if finishReason:
+                    yield f"data: {json.dumps({'choices': [{'delta': {}, 'finish_reason': finishReason}]})}"
+                if complete:
+                    yield "data: [DONE]"
+
+        class FakeClient:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_):
+                return False
+
+            def stream(self, *_args, **kwargs):
+                requestBody.update(kwargs.get("json") or {})
+                return FakeResponse()
+
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
+            "backend.brainstorm.httpx.AsyncClient", FakeClient
+        ):
+            response = self.client.post(
+                f"/api/stories/{story['id']}/brainstorm/generate/stream",
+                json={
+                    "message": "give me paths",
+                    "model": modelId,
+                    "brainstorm_idea_count": ideaCount,
+                    "selected_idea_ids": [],
+                },
+            )
+        return response, requestBody
 
     def callTimelineRepair(
         self,
@@ -417,7 +555,7 @@ class StoryApiTest(unittest.TestCase):
                 return FakeResponse()
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.writing.httpx.AsyncClient", FakeClient
+            "backend.lorebook.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
                 f"/api/stories/{story['id']}/lorebook/timeline/repair/stream",
@@ -582,6 +720,158 @@ class StoryApiTest(unittest.TestCase):
         self.assertIn("exactly one chapter summary", payload["error"])
         self.assertEqual(payload["applied"], [])
         self.assertIsNone(self.lorebookRow(story, "Mara"))
+
+    def test_lorebook_update_structured_output_follows_model_capability(self):
+        supportedModel = "test/lorebook-structured"
+        unsupportedModel = "test/lorebook-plain"
+        main.cache_models([
+            main.normalize_model({
+                "id": supportedModel,
+                "supported_parameters": ["structured_outputs"],
+            }),
+            main.normalize_model({
+                "id": unsupportedModel,
+                "supported_parameters": [],
+            }),
+        ])
+        story, chapter = self.storyWithChapter("Lorebook Schema", "Mara opens the gate.")
+
+        self.client.patch(
+            f"/api/stories/{story['id']}",
+            json={"model": supportedModel},
+        )
+        _, supportedCalls = self.callLorebookUpdate(story, chapter, updates=[])
+        self.assertEqual(
+            supportedCalls[0]["response_format"],
+            lorebook_update_response_format(),
+        )
+
+        self.client.patch(
+            f"/api/stories/{story['id']}",
+            json={"model": unsupportedModel},
+        )
+        _, unsupportedCalls = self.callLorebookUpdate(story, chapter, updates=[])
+        self.assertNotIn("response_format", unsupportedCalls[0])
+
+    def test_lorebook_update_rejects_truncated_and_incomplete_streams_without_changes(self):
+        cases = [
+            (
+                "truncated",
+                "length",
+                "The lorebook update hit the model token limit before it finished.",
+            ),
+            (
+                "incomplete",
+                "stop",
+                "The lorebook update ended before the provider completed the stream.",
+            ),
+        ]
+
+        for label, finishReason, expectedError in cases:
+            with self.subTest(label=label):
+                story, chapter = self.storyWithChapter(
+                    f"Lorebook {label}",
+                    "Mara opens the red gate.",
+                )
+                rawOutput = json.dumps({
+                    "updates": [
+                        {
+                            "action": "create",
+                            "name": "Mara",
+                            "category": "character",
+                            "description": "opens the red gate",
+                        },
+                        {
+                            "action": "create",
+                            "name": chapter["title"],
+                            "category": "synopsis",
+                            "description": "Mara opens the red gate.",
+                        },
+                    ]
+                })
+                response, _ = self.callLorebookUpdateWithStreamState(
+                    story,
+                    chapter,
+                    rawOutput,
+                    complete=False,
+                    finishReason=finishReason,
+                )
+
+                payload = response.json()
+                self.assertEqual(payload["error"], expectedError)
+                self.assertEqual(payload["applied"], [])
+                self.assertIsNone(self.lorebookRow(story, "Mara"))
+                with main.get_db() as conn:
+                    run = conn.execute(
+                        "SELECT * FROM lorebook_update_runs WHERE story_id = ?",
+                        (story["id"],),
+                    ).fetchone()
+                self.assertEqual(run["error"], expectedError)
+                self.assertEqual(json.loads(run["applied_updates_json"]), [])
+
+    def test_streaming_and_automatic_lorebook_updates_keep_incomplete_output_atomic(self):
+        story, chapter = self.storyWithChapter(
+            "Incomplete streamed lore",
+            "Mara opens the red gate.",
+        )
+        rawOutput = json.dumps({
+            "updates": [
+                {
+                    "action": "create",
+                    "name": "Mara",
+                    "category": "character",
+                    "description": "opens the red gate",
+                },
+                {
+                    "action": "create",
+                    "name": chapter["title"],
+                    "category": "synopsis",
+                    "description": "Mara opens the red gate.",
+                },
+            ]
+        })
+        streamResponse, _ = self.callLorebookUpdateWithStreamState(
+            story,
+            chapter,
+            rawOutput,
+            complete=False,
+            finishReason="stop",
+            streaming=True,
+        )
+        events = [json.loads(line) for line in streamResponse.text.splitlines() if line]
+        completed = next(event["value"] for event in events if event["type"] == "complete")
+        self.assertIn("ended before the provider completed", completed["error"])
+        self.assertIsNone(self.lorebookRow(story, "Mara"))
+
+        autoStory, autoChapter = self.storyWithChapter("Incomplete auto lore", "")
+        self.client.patch(
+            f"/api/stories/{autoStory['id']}",
+            json={"lorebook_auto": True},
+        )
+        chapterResponse, _ = self.streamChapterGeneration(
+            autoStory,
+            autoChapter,
+            "Rafe lights the bone lantern.",
+            mode="new",
+            lorebookUpdates=[
+                {
+                    "action": "create",
+                    "name": "Bone lantern",
+                    "category": "item",
+                    "description": "lit by Rafe",
+                }
+            ],
+            lorebookComplete=False,
+            lorebookFinishReason="stop",
+        )
+        chapterEvents = [
+            json.loads(line) for line in chapterResponse.text.splitlines() if line
+        ]
+        lorebookResult = next(
+            event["value"] for event in chapterEvents if event["type"] == "lorebook"
+        )
+        self.assertIn("ended before the provider completed", lorebookResult["error"])
+        self.assertIsNone(self.lorebookRow(autoStory, "Bone lantern"))
 
     def test_chapter_summaries_use_links_across_duplicate_titles_rename_hide_and_delete(self):
         story, firstChapter = self.storyWithChapter("Linked Summaries", "Mara opens the gate.")
@@ -1344,7 +1634,7 @@ class StoryApiTest(unittest.TestCase):
                 return fakeLorebookStream(content, "weighing whether the lantern matters")
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.writing.httpx.AsyncClient", FakeClient
+            "backend.lorebook.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
                 f"/api/stories/{story['id']}/lorebook/update/stream",
@@ -2533,7 +2823,7 @@ class StoryApiTest(unittest.TestCase):
         self.assertEqual(persisted["content"], "the manual continuation")
         self.assertEqual(persisted["revision"], 1)
 
-    def test_story_routes_are_registered_from_writing_module(self):
+    def test_story_routes_are_registered_from_feature_modules(self):
         def collectRoutes(routes):
             collectedRoutes = []
             for route in routes:
@@ -2550,15 +2840,16 @@ class StoryApiTest(unittest.TestCase):
         ]
         routeModules = {route.endpoint.__module__ for route in storyRoutes}
 
-        #the lorebook split its own modules off, the point of this test is still that nothing leaks back into main
+        #story features own their routes, main only wires the pieces together
         self.assertTrue(storyRoutes)
         self.assertEqual(
             routeModules,
             {
                 "backend.writing",
+                "backend.brainstorm",
+                "backend.lorebook",
                 "backend.lorebook_repair",
                 "backend.lorebook_generate",
-                "backend.lorebook_update_stream",
             },
         )
 
@@ -3003,11 +3294,105 @@ class StoryApiTest(unittest.TestCase):
         self.assertEqual(len(singleIdea), 1)
         with self.assertRaises(ValueError):
             parse_brainstorm_ideas('{"ideas": []}')
+        with self.assertRaisesRegex(ValueError, "must be an object"):
+            parse_brainstorm_ideas('{"ideas": ["not an idea"]}')
+        with self.assertRaisesRegex(ValueError, "must include a title and content"):
+            parse_brainstorm_ideas('{"ideas": [{"title": "missing content"}]}')
+
+    def test_brainstorm_schema_requires_the_exact_requested_count(self):
+        schema = brainstorm_response_format(7)["json_schema"]["schema"]
+        ideas = schema["properties"]["ideas"]
+
+        self.assertEqual(ideas["minItems"], 7)
+        self.assertEqual(ideas["maxItems"], 7)
+        self.assertFalse(schema["additionalProperties"])
+        self.assertFalse(ideas["items"]["additionalProperties"])
+        self.assertEqual(ideas["items"]["required"], ["title", "content"])
+
+    def test_brainstorm_rejects_truncated_and_incomplete_streams_without_ideas(self):
+        output = json.dumps({
+            "ideas": [
+                {"title": "one", "content": "first path"},
+                {"title": "two", "content": "second path"},
+                {"title": "three", "content": "third path"},
+            ]
+        })
+        cases = [
+            (
+                "truncated",
+                "length",
+                "Brainstorm generation hit the model token limit before it finished.",
+            ),
+            (
+                "incomplete",
+                "stop",
+                "Brainstorm generation ended before the provider completed the stream.",
+            ),
+        ]
+
+        for label, finishReason, expectedError in cases:
+            with self.subTest(label=label):
+                story = self.client.post(
+                    "/api/stories",
+                    json={"title": f"Brainstorm {label}"},
+                ).json()["story"]
+                response, _ = self.callBrainstormWithStreamState(
+                    story,
+                    output,
+                    complete=False,
+                    finishReason=finishReason,
+                )
+                events = [json.loads(line) for line in response.text.splitlines() if line]
+                self.assertEqual(events[-1], {"type": "error", "value": expectedError})
+
+                graph = self.client.get(f"/api/stories/{story['id']}/brainstorm").json()
+                self.assertEqual(len(graph["nodes"]), 1)
+                self.assertEqual(graph["nodes"][0]["status"], "failed")
+                self.assertEqual(graph["edges"], [])
+                with main.get_db() as conn:
+                    run = conn.execute(
+                        "SELECT * FROM brainstorm_generations WHERE story_id = ?",
+                        (story["id"],),
+                    ).fetchone()
+                self.assertEqual(run["finish_reason"], finishReason)
+                self.assertEqual(run["error"], expectedError)
+
+    def test_brainstorm_plain_model_rejects_extra_ideas_instead_of_slicing(self):
+        story = self.client.post(
+            "/api/stories",
+            json={"title": "Too many ideas"},
+        ).json()["story"]
+        output = json.dumps({
+            "ideas": [
+                {"title": str(index), "content": f"path {index}"}
+                for index in range(4)
+            ]
+        })
+        response, requestBody = self.callBrainstormWithStreamState(
+            story,
+            output,
+            ideaCount=3,
+            supportedParameters=[],
+        )
+
+        self.assertNotIn("response_format", requestBody)
+        events = [json.loads(line) for line in response.text.splitlines() if line]
+        self.assertEqual(
+            events[-1],
+            {
+                "type": "error",
+                "value": "Brainstorm output returned 4 ideas instead of 3.",
+            },
+        )
+        graph = self.client.get(f"/api/stories/{story['id']}/brainstorm").json()
+        self.assertEqual(len(graph["nodes"]), 1)
+        self.assertEqual(graph["nodes"][0]["status"], "failed")
+        self.assertEqual(graph["edges"], [])
 
     def test_brainstorm_generation_saves_complete_branch_atomically(self):
         main.cache_models([main.normalize_model({
             "id": "test/model",
-            "supported_parameters": ["reasoning"],
+            "supported_parameters": ["reasoning", "structured_outputs"],
             "reasoning": {"mandatory": True},
         })])
         story = self.client.post("/api/stories", json={"title": "Stream Story"}).json()["story"]
@@ -3056,7 +3441,7 @@ class StoryApiTest(unittest.TestCase):
                 return FakeResponse()
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.writing.httpx.AsyncClient", FakeClient
+            "backend.brainstorm.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
                 f"/api/stories/{story['id']}/brainstorm/generate/stream",
@@ -3073,6 +3458,7 @@ class StoryApiTest(unittest.TestCase):
             requestBody["reasoning"],
             {"enabled": True, "exclude": False, "effort": "medium"},
         )
+        self.assertEqual(requestBody["response_format"], brainstorm_response_format(3))
         events = [json.loads(line) for line in response.text.splitlines() if line]
         self.assertEqual(
             [event["type"] for event in events],
@@ -3110,7 +3496,7 @@ class StoryApiTest(unittest.TestCase):
             node for node in graph["nodes"] if node["node_type"] == "idea"
         )
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.writing.httpx.AsyncClient", FakeClient
+            "backend.brainstorm.httpx.AsyncClient", FakeClient
         ):
             branchResponse = self.client.post(
                 f"/api/stories/{story['id']}/brainstorm/generate/stream",
@@ -3164,7 +3550,7 @@ class StoryApiTest(unittest.TestCase):
                 return FakeResponse()
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.writing.httpx.AsyncClient", FakeClient
+            "backend.brainstorm.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
                 f"/api/stories/{story['id']}/brainstorm/generate/stream",

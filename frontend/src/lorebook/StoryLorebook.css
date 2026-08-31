@@ -924,9 +924,97 @@ punching a gap at the top and bottom of the scroll pane */
   color: #5a5a5a;
 }
 
-.lorebook-generate-modal select {
+.lorebook-chapter-menu {
+  position: relative;
+}
+
+.lorebook-chapter-menu-trigger {
+  display: flex;
+  width: 100%;
   min-height: 52px;
-  padding-left: 14px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 0;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.24);
+  padding: 0 14px;
+  color: #f5f5f5;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  box-shadow: var(--shadow-border);
+  cursor: pointer;
+}
+
+.lorebook-chapter-menu-trigger:hover,
+.lorebook-chapter-menu-trigger[aria-expanded="true"] {
+  background: rgba(0, 0, 0, 0.32);
+  box-shadow: var(--shadow-border-hover);
+}
+
+.lorebook-chapter-menu-trigger > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lorebook-chapter-menu-chevron {
+  flex: none;
+  color: #737373;
+  transition: transform 180ms ease-out;
+}
+
+.lorebook-chapter-menu-chevron.is-open {
+  transform: rotate(180deg);
+}
+
+.lorebook-chapter-menu-options {
+  width: 100%;
+  max-height: 240px;
+  margin-top: 8px;
+  overflow-y: auto;
+  border-radius: 16px;
+  background: #292929;
+  padding: 6px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.42);
+}
+
+.lorebook-chapter-menu-options button {
+  display: flex;
+  width: 100%;
+  min-height: 42px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  padding: 9px 12px;
+  color: #d4d4d4;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.lorebook-chapter-menu-options button:hover,
+.lorebook-chapter-menu-options button:focus-visible,
+.lorebook-chapter-menu-options button[aria-selected="true"] {
+  background: rgba(255, 255, 255, 0.08);
+  color: #f5f5f5;
+  outline: 0;
+}
+
+.lorebook-chapter-menu-options button > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lorebook-chapter-menu-options svg {
+  flex: none;
 }
 
 .lorebook-generate-empty {

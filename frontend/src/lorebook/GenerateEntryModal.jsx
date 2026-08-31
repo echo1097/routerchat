@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X } from "lucide-react";
+import { Check, ChevronDown, X } from "lucide-react";
 import ThinkingContent from "../ThinkingContent.jsx";
 import { useRafScroller } from "../streamScroll.js";
 import { useTextSwap } from "../textSwap.js";
@@ -57,8 +57,12 @@ export default function GenerateEntryModal({
   const [streamedText, setStreamedText] = useState("");
   const [error, setError] = useState("");
   const [bodyHeight, setBodyHeight] = useState(null);
+  const [chapterMenuOpen, setChapterMenuOpen] = useState(false);
   const bodyInnerRef = useRef(null);
   const reasoningRef = useRef(null);
+  const chapterMenuRef = useRef(null);
+  const chapterTriggerRef = useRef(null);
+  const chapterOptionRefs = useRef(new Map());
   const {
     markUserScroll: markReasoningScroll,
     markWheelIntent: markReasoningWheelIntent,
@@ -76,6 +80,7 @@ export default function GenerateEntryModal({
     () => chapters.filter((chapter) => !chapter.disabled && String(chapter.content || "").trim()),
     [chapters],
   );
+  const selectedChapter = eligibleChapters.find((chapter) => chapter.id === selectedChapterId);
 
   useEffect(() => {
     if (open) {
@@ -108,6 +113,7 @@ export default function GenerateEntryModal({
     setReasoning("");
     setStreamedText("");
     setError("");
+    setChapterMenuOpen(false);
     if (isSynopsis) {
       const activeEligible = eligibleChapters.some((chapter) => chapter.id === activeChapterId);
       setSelectedChapterId(activeEligible ? activeChapterId : eligibleChapters[0]?.id || "");
@@ -147,12 +153,68 @@ export default function GenerateEntryModal({
       if (event.key !== "Escape") return;
 
       event.preventDefault();
+      if (chapterMenuOpen) {
+        setChapterMenuOpen(false);
+        chapterTriggerRef.current?.focus();
+        return;
+      }
       onClose();
     }
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isRunning, onClose, open]);
+  }, [chapterMenuOpen, isRunning, onClose, open]);
+
+  useEffect(() => {
+    if (!chapterMenuOpen) return undefined;
+
+    function closeChapterMenu(event) {
+      if (!chapterMenuRef.current?.contains(event.target)) setChapterMenuOpen(false);
+    }
+
+    document.addEventListener("pointerdown", closeChapterMenu);
+    return () => document.removeEventListener("pointerdown", closeChapterMenu);
+  }, [chapterMenuOpen]);
+
+  function focusChapterOption(index) {
+    const chapter = eligibleChapters[index];
+    if (chapter) chapterOptionRefs.current.get(chapter.id)?.focus();
+  }
+
+  function handleChapterTriggerKeyDown(event) {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+
+    event.preventDefault();
+    setChapterMenuOpen(true);
+    const selectedIndex = Math.max(
+      0,
+      eligibleChapters.findIndex((chapter) => chapter.id === selectedChapterId),
+    );
+    const targetIndex = event.key === "ArrowUp" || event.key === "End"
+      ? eligibleChapters.length - 1
+      : event.key === "Home"
+        ? 0
+        : selectedIndex;
+    requestAnimationFrame(() => focusChapterOption(targetIndex));
+  }
+
+  function handleChapterOptionKeyDown(event, index) {
+    let targetIndex = null;
+    if (event.key === "ArrowDown") targetIndex = (index + 1) % eligibleChapters.length;
+    if (event.key === "ArrowUp") targetIndex = (index - 1 + eligibleChapters.length) % eligibleChapters.length;
+    if (event.key === "Home") targetIndex = 0;
+    if (event.key === "End") targetIndex = eligibleChapters.length - 1;
+    if (targetIndex === null) return;
+
+    event.preventDefault();
+    focusChapterOption(targetIndex);
+  }
+
+  function selectChapter(chapterId) {
+    setSelectedChapterId(chapterId);
+    setChapterMenuOpen(false);
+    chapterTriggerRef.current?.focus();
+  }
 
   async function runGeneration() {
     if (isRunning || (isSynopsis ? !selectedChapterId : !brief.trim())) return;
@@ -267,25 +329,65 @@ export default function GenerateEntryModal({
           <div ref={bodyInnerRef} className="lorebook-repair-modal-body-inner">
             {stage === "prompt" && (
               isSynopsis ? (
-                <label className="lorebook-generate-field">
-                  <span>Chapter</span>
+                <div className="lorebook-generate-field">
                   {eligibleChapters.length ? (
-                    <select
-                      id={descriptionId}
-                      value={selectedChapterId}
-                      autoFocus
-                      onChange={(event) => setSelectedChapterId(event.target.value)}
-                    >
-                      {eligibleChapters.map((chapter) => (
-                        <option key={chapter.id} value={chapter.id}>{chapter.title}</option>
-                      ))}
-                    </select>
+                    <div className="lorebook-chapter-menu" ref={chapterMenuRef}>
+                      <button
+                        ref={chapterTriggerRef}
+                        type="button"
+                        id={descriptionId}
+                        className={cx("lorebook-chapter-menu-trigger", CONTROL_MOTION)}
+                        autoFocus
+                        aria-label="Select chapter"
+                        aria-haspopup="listbox"
+                        aria-expanded={chapterMenuOpen}
+                        aria-controls="lorebook-chapter-options"
+                        onClick={() => setChapterMenuOpen((menuOpen) => !menuOpen)}
+                        onKeyDown={handleChapterTriggerKeyDown}
+                      >
+                        <span>{selectedChapter?.title || "Select a chapter"}</span>
+                        <ChevronDown
+                          size={18}
+                          aria-hidden="true"
+                          className={cx("lorebook-chapter-menu-chevron", chapterMenuOpen && "is-open")}
+                        />
+                      </button>
+                      {chapterMenuOpen && (
+                        <div
+                          id="lorebook-chapter-options"
+                          className="lorebook-chapter-menu-options"
+                          role="listbox"
+                          aria-label="Chapters"
+                        >
+                          {eligibleChapters.map((chapter, index) => {
+                            const selected = chapter.id === selectedChapterId;
+                            return (
+                              <button
+                                key={chapter.id}
+                                ref={(node) => {
+                                  if (node) chapterOptionRefs.current.set(chapter.id, node);
+                                  else chapterOptionRefs.current.delete(chapter.id);
+                                }}
+                                type="button"
+                                role="option"
+                                aria-selected={selected}
+                                onClick={() => selectChapter(chapter.id)}
+                                onKeyDown={(event) => handleChapterOptionKeyDown(event, index)}
+                              >
+                                <span>{chapter.title}</span>
+                                {selected && <Check size={16} aria-hidden="true" />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   ) : (
                     <div id={descriptionId} className="lorebook-generate-empty">
                       Write something in a visible chapter before generating its summary.
                     </div>
                   )}
-                </label>
+                </div>
               ) : (
                 <label className="lorebook-generate-field">
                   <span className="sr-only">What should this {lowerLabel} be?</span>

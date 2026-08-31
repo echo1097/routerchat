@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from backend.writing import (
     OPENROUTER_TIMEOUT,
+    SUMMARY_INSTRUCTION,
     WritingDeps,
     normalize_lorebook_category,
     parse_lorebook_json,
@@ -21,12 +22,11 @@ GENERATE_CATEGORIES = ["character", "location", "item", "event", "note", "synops
 
 #the shared half of the prompt, every category gets this plus its own paragraph below
 GENERATE_BASE_PROMPT = (
-    "You are drafting a single lorebook entry for a story. The author gives you a short brief in "
-    "author_brief and you turn it into one finished entry.\n"
+    "You are drafting a single lorebook entry for a story. Use author_brief when it is present.\n"
     "Write a dense factual continuity note, not prose, and do not copy the story's writing style. "
     "Stay consistent with story and existing_entries: never contradict what is already there, and "
-    "never write a duplicate of an entry that already exists. Invent whatever the brief leaves "
-    "open, but keep every invention consistent with the story's setting and tone.\n"
+    "never write a duplicate of an entry that already exists. Outside chapter summaries, invent "
+    "whatever the brief leaves open while staying consistent with the story's setting and tone.\n"
     "The name is what the story calls this entry, short and without an article or a description "
     "tacked on. The aliases array is only for nicknames, shortened names, titles used as names, or "
     "alternate names, never jobs, roles, species, traits, or relationships, and it can be empty. "
@@ -68,10 +68,8 @@ GENERATE_CATEGORY_PROMPTS = {
         "the story can follow it. Return an empty aliases array and an empty notes field."
     ),
     "synopsis": (
-        "You are writing a chapter summary. The description walks through what happens in the "
-        "chapter from start to finish in order, plainly and completely, including the outcome. Do "
-        "not tease or withhold anything, this is a recap and not a blurb. Name the entry after the "
-        "chapter it summarizes. Return an empty aliases array and an empty notes field."
+        f"You are writing a chapter summary from chapter, which is the only source of truth. "
+        f"{SUMMARY_INSTRUCTION} Return an empty aliases array and an empty notes field."
     ),
 }
 
@@ -79,6 +77,7 @@ GENERATE_CATEGORY_PROMPTS = {
 class GenerateEntryRequest(BaseModel):
     category: str = "character"
     brief: str = ""
+    chapter_id: str | None = None
 
 
 def lorebook_generate_response_format() -> dict[str, Any]:
@@ -124,6 +123,7 @@ def parse_generated_entry(raw_output: str, category: str) -> dict[str, Any]:
         "description": description,
         "aliases": aliases,
         "notes": notes,
+        "metadata": {},
     }
 
 
@@ -135,15 +135,15 @@ def create_lorebook_generate_router(deps: WritingDeps) -> APIRouter:
         category: str,
         brief: str,
         existing_entries: list[Any],
+        chapter: Any | None = None,
     ) -> AsyncIterator[bytes]:
         startedAt = time.perf_counter()
         apiKey = deps.read_openrouter_key()
         if not apiKey:
             raise HTTPException(status_code=401, detail="Add an OpenRouter API key first.")
 
-        prompt = {
+        prompt: dict[str, Any] = {
             "entry_category": category,
-            "author_brief": brief,
             "story": {
                 "title": story["title"],
                 "author": story["author"],
@@ -160,6 +160,14 @@ def create_lorebook_generate_router(deps: WritingDeps) -> APIRouter:
                 for row in existing_entries
             ],
         }
+        if brief:
+            prompt["author_brief"] = brief
+        if chapter is not None:
+            prompt["chapter"] = {
+                "id": chapter["id"],
+                "title": chapter["title"],
+                "content": chapter["content"] or "",
+            }
 
         authorInstructions = str(story["system_prompt"] or "").strip()
         if authorInstructions:
@@ -299,6 +307,10 @@ def create_lorebook_generate_router(deps: WritingDeps) -> APIRouter:
                 )
                 return
 
+            if category == "synopsis" and chapter is not None:
+                entry["name"] = str(chapter["title"])
+                entry["metadata"] = {"chapter_id": str(chapter["id"])}
+
             #nothing is saved here, the draft goes back to the editor and the author decides
             durationMs = (time.perf_counter() - startedAt) * 1000
             yield deps.stream_event("complete", {"entry": entry, "duration_ms": durationMs})
@@ -321,18 +333,33 @@ def create_lorebook_generate_router(deps: WritingDeps) -> APIRouter:
         if not deps.read_openrouter_key():
             raise HTTPException(status_code=401, detail="Add an OpenRouter API key first.")
 
-        brief = str(payload.brief or "").strip()
-        if not brief:
-            raise HTTPException(status_code=422, detail="Describe what the entry should be first.")
-
         category = normalize_lorebook_category(payload.category)
         if category not in GENERATE_CATEGORIES:
             raise HTTPException(status_code=422, detail="That entry type cannot be generated.")
+        brief = str(payload.brief or "").strip()
+        if category != "synopsis" and not brief:
+            raise HTTPException(status_code=422, detail="Describe what the entry should be first.")
 
         with deps.get_db() as conn:
             story = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
             if not story:
                 raise HTTPException(status_code=404, detail="Story not found.")
+            chapter = None
+            if category == "synopsis":
+                chapterId = str(payload.chapter_id or "").strip()
+                if not chapterId:
+                    raise HTTPException(status_code=422, detail="Choose a chapter to summarize.")
+                chapter = conn.execute(
+                    """
+                    SELECT * FROM chapters
+                    WHERE id = ? AND story_id = ? AND disabled = 0
+                    """,
+                    (chapterId, story_id),
+                ).fetchone()
+                if not chapter:
+                    raise HTTPException(status_code=404, detail="Chapter not found or hidden from context.")
+                if not str(chapter["content"] or "").strip():
+                    raise HTTPException(status_code=422, detail="Write something in this chapter first.")
             existingEntries = conn.execute(
                 """
                 SELECT * FROM lorebook_entries
@@ -343,7 +370,7 @@ def create_lorebook_generate_router(deps: WritingDeps) -> APIRouter:
             ).fetchall()
 
         return StreamingResponse(
-            stream_entry_generation(story, category, brief, existingEntries),
+            stream_entry_generation(story, category, brief, existingEntries, chapter),
             media_type="application/x-ndjson; charset=utf-8",
             headers={"Cache-Control": "no-store"},
         )

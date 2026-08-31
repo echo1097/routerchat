@@ -236,7 +236,27 @@ class StoryApiTest(unittest.TestCase):
         chunks = output if isinstance(output, list) else [output]
         requestBody = {}
         lorebookCalls = []
-        lorebookContent = json.dumps({"updates": lorebookUpdates or []})
+        nextLorebookUpdates = list(lorebookUpdates or [])
+        if lorebookUpdates is not None:
+            summaryDescription = f"summary for {chapter['title']}"
+            self.client.post(
+                f"/api/stories/{story['id']}/lorebook",
+                json={
+                    "name": chapter["title"],
+                    "category": "synopsis",
+                    "description": summaryDescription,
+                    "metadata": {"chapter_id": chapter["id"]},
+                },
+            )
+            nextLorebookUpdates.append(
+                {
+                    "action": "update",
+                    "name": chapter["title"],
+                    "category": "synopsis",
+                    "description": summaryDescription,
+                }
+            )
+        lorebookContent = json.dumps({"updates": nextLorebookUpdates})
 
         class FakeResponse:
             status_code = 200
@@ -296,7 +316,29 @@ class StoryApiTest(unittest.TestCase):
 
     def callLorebookUpdate(self, story, chapter, updates=None, rawOutput=None):
         calls = []
-        content = rawOutput if rawOutput is not None else json.dumps({"updates": updates or []})
+        if rawOutput is None:
+            summaryDescription = f"summary for {chapter.get('title', 'Chapter')}"
+            self.client.post(
+                f"/api/stories/{story['id']}/lorebook",
+                json={
+                    "name": chapter.get("title", "Chapter"),
+                    "category": "synopsis",
+                    "description": summaryDescription,
+                    "metadata": {"chapter_id": chapter["id"]},
+                },
+            )
+            nextUpdates = [
+                *(updates or []),
+                {
+                    "action": "update",
+                    "name": chapter.get("title", "Chapter"),
+                    "category": "synopsis",
+                    "description": summaryDescription,
+                },
+            ]
+            content = json.dumps({"updates": nextUpdates})
+        else:
+            content = rawOutput
 
         class FakeClient:
             def __init__(self, *_args, **_kwargs):
@@ -383,6 +425,87 @@ class StoryApiTest(unittest.TestCase):
             )
         return response, requestBody
 
+    def callLorebookGenerate(self, story, payload, rawOutput):
+        requestBody = {}
+
+        class FakeResponse:
+            status_code = 200
+            headers = {}
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_):
+                return False
+
+            async def aiter_lines(self):
+                chunk = {"choices": [{"delta": {"content": rawOutput}, "finish_reason": "stop"}]}
+                yield f"data: {json.dumps(chunk)}"
+                yield "data: [DONE]"
+
+        class FakeClient:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_):
+                return False
+
+            def stream(self, *_args, **kwargs):
+                requestBody.update(kwargs.get("json") or {})
+                return FakeResponse()
+
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
+            "backend.lorebook_generate.httpx.AsyncClient", FakeClient
+        ):
+            response = self.client.post(
+                f"/api/stories/{story['id']}/lorebook/generate/stream",
+                json=payload,
+            )
+        return response, requestBody
+
+    def callLorebookRepair(self, story, rawOutput):
+        requestBody = {}
+
+        class FakeResponse:
+            status_code = 200
+            headers = {}
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_):
+                return False
+
+            async def aiter_lines(self):
+                chunk = {"choices": [{"delta": {"content": rawOutput}, "finish_reason": "stop"}]}
+                yield f"data: {json.dumps(chunk)}"
+                yield "data: [DONE]"
+
+        class FakeClient:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_):
+                return False
+
+            def stream(self, *_args, **kwargs):
+                requestBody.update(kwargs.get("json") or {})
+                return FakeResponse()
+
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
+            "backend.lorebook_repair.httpx.AsyncClient", FakeClient
+        ):
+            response = self.client.post(
+                f"/api/stories/{story['id']}/lorebook/repair/stream"
+            )
+        return response, requestBody
+
     def storyWithChapter(self, title, content):
         story = self.client.post("/api/stories", json={"title": title}).json()["story"]
         chapter = self.client.post(
@@ -436,6 +559,288 @@ class StoryApiTest(unittest.TestCase):
         self.assertIsNotNone(run)
         self.assertIsNone(run["generation_id"])
         self.assertEqual(historyCount, len(payload["history"]))
+
+    def test_lorebook_update_requires_one_summary_before_applying_any_changes(self):
+        story, chapter = self.storyWithChapter("Summary Guard", "Mara opens the red gate.")
+
+        response, _ = self.callLorebookUpdate(
+            story,
+            chapter,
+            rawOutput=json.dumps({
+                "updates": [
+                    {
+                        "action": "create",
+                        "name": "Mara",
+                        "category": "character",
+                        "description": "opens the red gate",
+                    }
+                ]
+            }),
+        )
+
+        payload = response.json()
+        self.assertIn("exactly one chapter summary", payload["error"])
+        self.assertEqual(payload["applied"], [])
+        self.assertIsNone(self.lorebookRow(story, "Mara"))
+
+    def test_chapter_summaries_use_links_across_duplicate_titles_rename_hide_and_delete(self):
+        story, firstChapter = self.storyWithChapter("Linked Summaries", "Mara opens the gate.")
+        secondChapter = self.client.post(
+            f"/api/stories/{story['id']}/chapters",
+            json={"title": firstChapter["title"], "content": "Rafe closes the gate."},
+        ).json()["chapter"]
+
+        for chapter, description in [
+            (firstChapter, "Mara opens the gate."),
+            (secondChapter, "Rafe closes the gate."),
+        ]:
+            response, _ = self.callLorebookUpdate(
+                story,
+                chapter,
+                rawOutput=json.dumps({
+                    "updates": [
+                        {
+                            "action": "create",
+                            "name": "model picked the wrong name",
+                            "category": "synopsis",
+                            "description": description,
+                        }
+                    ]
+                }),
+            )
+            self.assertIsNone(response.json()["error"])
+
+        summaries = [
+            entry
+            for entry in self.client.get(f"/api/stories/{story['id']}/lorebook").json()["entries"]
+            if entry["category"] == "synopsis"
+        ]
+        self.assertEqual(len(summaries), 2)
+        self.assertEqual(
+            {entry["metadata"]["chapter_id"] for entry in summaries},
+            {firstChapter["id"], secondChapter["id"]},
+        )
+
+        renamed = self.client.patch(
+            f"/api/stories/{story['id']}/chapters/{firstChapter['id']}",
+            json={"title": "The Red Gate", "revision": firstChapter["revision"]},
+        ).json()["chapter"]
+        firstSummary = next(
+            entry for entry in summaries if entry["metadata"]["chapter_id"] == firstChapter["id"]
+        )
+        renamedSummary = self.client.get(
+            f"/api/stories/{story['id']}/lorebook"
+        ).json()["entries"]
+        renamedSummary = next(entry for entry in renamedSummary if entry["id"] == firstSummary["id"])
+        self.assertEqual(renamedSummary["name"], renamed["title"])
+
+        hidden = self.client.patch(
+            f"/api/stories/{story['id']}/chapters/{firstChapter['id']}",
+            json={"disabled": True, "revision": renamed["revision"]},
+        ).json()["chapter"]
+        stillVisible = self.client.get(
+            f"/api/stories/{story['id']}/lorebook"
+        ).json()["entries"]
+        self.assertFalse(next(entry for entry in stillVisible if entry["id"] == firstSummary["id"])["disabled"])
+
+        self.client.delete(f"/api/stories/{story['id']}/chapters/{hidden['id']}")
+        remaining = self.client.get(f"/api/stories/{story['id']}/lorebook").json()["entries"]
+        self.assertNotIn(firstSummary["id"], [entry["id"] for entry in remaining])
+        self.assertEqual(
+            [entry["metadata"]["chapter_id"] for entry in remaining if entry["category"] == "synopsis"],
+            [secondChapter["id"]],
+        )
+
+    def test_lorebook_update_claims_one_legacy_summary_by_chapter_title(self):
+        story, chapter = self.storyWithChapter("Legacy Summary", "Mara crosses the bridge.")
+        legacy = self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={
+                "name": chapter["title"],
+                "category": "synopsis",
+                "description": "old recap",
+            },
+        ).json()["entry"]
+
+        response, _ = self.callLorebookUpdate(
+            story,
+            chapter,
+            rawOutput=json.dumps({
+                "updates": [
+                    {
+                        "action": "create",
+                        "name": chapter["title"],
+                        "category": "synopsis",
+                        "description": "Mara crosses the bridge.",
+                    }
+                ]
+            }),
+        )
+
+        self.assertIsNone(response.json()["error"])
+        saved = self.client.get(f"/api/stories/{story['id']}/lorebook").json()["entries"]
+        self.assertEqual(len(saved), 1)
+        self.assertEqual(saved[0]["id"], legacy["id"])
+        self.assertEqual(saved[0]["metadata"], {"chapter_id": chapter["id"]})
+
+    def test_standalone_summary_generation_uses_the_selected_visible_chapter(self):
+        story, chapter = self.storyWithChapter(
+            "Generated Summary",
+            "Mara finds the key and opens the observatory.",
+        )
+        rawOutput = json.dumps({
+            "name": "wrong model name",
+            "description": "Mara finds a key and opens the observatory.",
+            "aliases": [],
+            "notes": "",
+        })
+
+        response, requestBody = self.callLorebookGenerate(
+            story,
+            {"category": "synopsis", "chapter_id": chapter["id"]},
+            rawOutput,
+        )
+
+        events = [json.loads(line) for line in response.text.splitlines() if line]
+        completed = next(event["value"] for event in events if event["type"] == "complete")
+        self.assertEqual(completed["entry"]["name"], chapter["title"])
+        self.assertEqual(completed["entry"]["metadata"], {"chapter_id": chapter["id"]})
+        prompt = json.loads(requestBody["messages"][-1]["content"])
+        self.assertEqual(prompt["chapter"]["id"], chapter["id"])
+        self.assertEqual(prompt["chapter"]["title"], chapter["title"])
+        self.assertEqual(prompt["chapter"]["content"], chapter["content"])
+        self.assertNotIn("author_brief", prompt)
+
+    def test_standalone_summary_generation_rejects_unavailable_chapters(self):
+        story, chapter = self.storyWithChapter("Summary Validation", "visible prose")
+        blankChapter = self.client.post(
+            f"/api/stories/{story['id']}/chapters",
+            json={"title": "Blank", "content": ""},
+        ).json()["chapter"]
+        hiddenChapter = self.client.post(
+            f"/api/stories/{story['id']}/chapters",
+            json={"title": "Hidden", "content": "secret prose"},
+        ).json()["chapter"]
+        hiddenChapter = self.client.patch(
+            f"/api/stories/{story['id']}/chapters/{hiddenChapter['id']}",
+            json={"disabled": True, "revision": hiddenChapter["revision"]},
+        ).json()["chapter"]
+        otherStory, otherChapter = self.storyWithChapter("Other Story", "other prose")
+        rawOutput = json.dumps({
+            "name": "unused",
+            "description": "unused",
+            "aliases": [],
+            "notes": "",
+        })
+
+        for payload, status in [
+            ({"category": "synopsis"}, 422),
+            ({"category": "synopsis", "chapter_id": blankChapter["id"]}, 422),
+            ({"category": "synopsis", "chapter_id": hiddenChapter["id"]}, 404),
+            ({"category": "synopsis", "chapter_id": otherChapter["id"]}, 404),
+            ({"category": "character", "brief": ""}, 422),
+        ]:
+            response, _ = self.callLorebookGenerate(story, payload, rawOutput)
+            self.assertEqual(response.status_code, status)
+
+        self.assertNotEqual(story["id"], otherStory["id"])
+        self.assertTrue(chapter["content"])
+
+    def test_lorebook_rebuild_regenerates_visible_summaries_and_preserves_hidden_ones(self):
+        story, visibleChapter = self.storyWithChapter("Summary Rebuild", "Mara opens the gate.")
+        blankChapter = self.client.post(
+            f"/api/stories/{story['id']}/chapters",
+            json={"title": "Blank", "content": ""},
+        ).json()["chapter"]
+        hiddenChapter = self.client.post(
+            f"/api/stories/{story['id']}/chapters",
+            json={"title": "Hidden", "content": "Rafe waits outside."},
+        ).json()["chapter"]
+        hiddenChapter = self.client.patch(
+            f"/api/stories/{story['id']}/chapters/{hiddenChapter['id']}",
+            json={"disabled": True, "revision": hiddenChapter["revision"]},
+        ).json()["chapter"]
+
+        hiddenSummary = self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={
+                "name": hiddenChapter["title"],
+                "category": "synopsis",
+                "description": "Rafe waits outside.",
+                "metadata": {"chapter_id": hiddenChapter["id"]},
+            },
+        ).json()["entry"]
+        blankSummary = self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={
+                "name": blankChapter["title"],
+                "category": "synopsis",
+                "description": "stale blank summary",
+                "metadata": {"chapter_id": blankChapter["id"]},
+            },
+        ).json()["entry"]
+        rawOutput = json.dumps({
+            "entries": [
+                {
+                    "name": "Timeline",
+                    "category": "timeline",
+                    "description": "- Mara opens the gate",
+                    "aliases": [],
+                }
+            ],
+            "summaries": {
+                visibleChapter["id"]: {
+                    "name": "wrong model name",
+                    "description": "Mara opens the gate.",
+                }
+            },
+        })
+
+        response, requestBody = self.callLorebookRepair(story, rawOutput)
+
+        events = [json.loads(line) for line in response.text.splitlines() if line]
+        self.assertEqual(events[-1]["type"], "complete")
+        prompt = json.loads(requestBody["messages"][-1]["content"])
+        self.assertEqual([chapter["id"] for chapter in prompt["visible_chapters"]], [visibleChapter["id"]])
+        saved = events[-1]["value"]["entries"]
+        self.assertIn(hiddenSummary["id"], [entry["id"] for entry in saved])
+        self.assertNotIn(blankSummary["id"], [entry["id"] for entry in saved])
+        visibleSummary = next(
+            entry
+            for entry in saved
+            if entry["metadata"].get("chapter_id") == visibleChapter["id"]
+        )
+        self.assertEqual(visibleSummary["name"], visibleChapter["title"])
+
+    def test_invalid_rebuild_summaries_preserve_the_existing_lorebook(self):
+        story, chapter = self.storyWithChapter("Safe Summary Rebuild", "Mara waits.")
+        existing = self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={"name": "Mara", "category": "character", "description": "waits"},
+        ).json()["entry"]
+        rawOutput = json.dumps({
+            "entries": [
+                {
+                    "name": "Timeline",
+                    "category": "timeline",
+                    "description": "- Mara waits",
+                    "aliases": [],
+                }
+            ],
+            "summaries": {},
+        })
+
+        response, _ = self.callLorebookRepair(story, rawOutput)
+
+        events = [json.loads(line) for line in response.text.splitlines() if line]
+        self.assertEqual(events[-1]["type"], "error")
+        self.assertEqual(events[-1]["value"]["code"], "lorebook_repair_invalid")
+        savedIds = [
+            entry["id"]
+            for entry in self.client.get(f"/api/stories/{story['id']}/lorebook").json()["entries"]
+        ]
+        self.assertIn(existing["id"], savedIds)
+        self.assertTrue(chapter["content"])
 
     def test_timeline_repair_streams_reasoning_and_rebuilds_from_visible_story(self):
         modelId = "test/timeline-repair"
@@ -915,7 +1320,13 @@ class StoryApiTest(unittest.TestCase):
                     "name": "Bone lantern",
                     "category": "item",
                     "description": "carried by Rafe",
-                }
+                },
+                {
+                    "action": "create",
+                    "name": chapter["title"],
+                    "category": "synopsis",
+                    "description": "Rafe carries a bone lantern.",
+                },
             ]
         })
 
@@ -951,7 +1362,10 @@ class StoryApiTest(unittest.TestCase):
 
         completed = next(event["value"] for event in events if event["type"] == "complete")
         self.assertIsNone(completed["error"])
-        self.assertEqual([entry["name"] for entry in completed["applied"]], ["Bone lantern"])
+        self.assertEqual(
+            [entry["name"] for entry in completed["applied"]],
+            ["Bone lantern", chapter["title"]],
+        )
         self.assertIn("Bone lantern", [entry["name"] for entry in completed["entries"]])
 
     def test_auto_lorebook_update_streams_its_thinking_through_the_chapter_run(self):
@@ -1191,7 +1605,7 @@ class StoryApiTest(unittest.TestCase):
 
         payload = response.json()
         self.assertEqual(payload["applied"], [])
-        self.assertEqual(payload["entries"], [])
+        self.assertEqual([entry["category"] for entry in payload["entries"]], ["synopsis"])
 
         #a run that changes nothing still belongs in the log
         labels = [entry["label"] for entry in payload["history"]]

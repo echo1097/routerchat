@@ -33,6 +33,10 @@ LOREBOOK_CATEGORIES = {
     "synopsis",
     "timeline",
 }
+SUMMARY_INSTRUCTION = (
+    "Always create or update one synopsis named exactly after the chapter. Make it as short as "
+    "possible without leaving out key events, outcomes, or continuity details."
+)
 
 
 class StoryCreateRequest(BaseModel):
@@ -494,9 +498,78 @@ def sanitize_lorebook_metadata(category: str, metadata: Any) -> dict[str, Any]:
     if category == "character":
         blocked_keys = {"age", "physicalAppearance", "personality", "background"}
         return {key: value for key, value in metadata.items() if key not in blocked_keys}
-    if category in {"note", "synopsis"}:
+    if category == "synopsis":
+        chapterId = str(metadata.get("chapter_id") or "").strip()
+        return {"chapter_id": chapterId} if chapterId else {}
+    if category == "note":
         return {}
     return metadata
+
+
+def lorebook_summary_chapter_id(row: sqlite3.Row) -> str:
+    if normalize_lorebook_category(row["category"]) != "synopsis":
+        return ""
+    return str(json_dict(row["metadata_json"]).get("chapter_id") or "").strip()
+
+
+def find_enabled_chapter_summary(
+    conn: sqlite3.Connection,
+    story_id: str,
+    chapter_id: str,
+    chapter_title: str,
+) -> sqlite3.Row | None:
+    rows = conn.execute(
+        """
+        SELECT * FROM lorebook_entries
+        WHERE story_id = ? AND category = 'synopsis' AND disabled = 0
+        ORDER BY updated_at DESC, created_at DESC
+        """,
+        (story_id,),
+    ).fetchall()
+
+    linked = [row for row in rows if lorebook_summary_chapter_id(row) == chapter_id]
+    if linked:
+        return linked[0]
+
+    #old summaries shipped without a chapter id, so claim one only when the title match is clear
+    legacy = [
+        row
+        for row in rows
+        if not lorebook_summary_chapter_id(row)
+        and str(row["name"] or "").casefold() == chapter_title.casefold()
+    ]
+    return legacy[0] if len(legacy) == 1 else None
+
+
+def normalize_required_summary_update(
+    updates: list[Any], chapter: sqlite3.Row
+) -> list[dict[str, Any]]:
+    validUpdates = [update for update in updates if isinstance(update, dict)]
+    summaries = [
+        update
+        for update in validUpdates
+        if normalize_lorebook_category(update.get("category")) == "synopsis"
+    ]
+    if len(summaries) != 1:
+        raise ValueError("The lorebook update must contain exactly one chapter summary.")
+
+    summary = summaries[0]
+    description = str(summary.get("description") or "").strip()
+    if not description or str(summary.get("action") or "create").lower() == "delete":
+        raise ValueError("The lorebook update returned an invalid chapter summary.")
+
+    normalizedSummary = {
+        **summary,
+        "action": "update",
+        "name": str(chapter["title"] or "New chapter").strip() or "New chapter",
+        "category": "synopsis",
+        "description": description,
+        "aliases": [],
+        "tags": [],
+        "metadata": {"chapter_id": str(chapter["id"])},
+    }
+    ordinaryUpdates = [update for update in validUpdates if update is not summary]
+    return [*ordinaryUpdates, normalizedSummary]
 
 
 def strip_json_fence(value: str) -> str:
@@ -1991,7 +2064,7 @@ def apply_lorebook_updates(
         tags = update.get("tags") if isinstance(update.get("tags"), list) else []
         metadata = sanitize_lorebook_metadata(category, update.get("metadata"))
 
-        #disabled = 0 on both lookups, a hidden entry has to be invisible to the write path too, not just to the context the model reads
+        #disabled = 0 on every lookup, a hidden entry has to stay untouched by automatic updates
         if category == "timeline":
             existing = conn.execute(
                 """
@@ -2001,6 +2074,13 @@ def apply_lorebook_updates(
                 """,
                 (story_id,),
             ).fetchone()
+        elif category == "synopsis" and metadata.get("chapter_id"):
+            existing = find_enabled_chapter_summary(
+                conn,
+                story_id,
+                str(metadata["chapter_id"]),
+                name,
+            )
         else:
             existing = conn.execute(
                 """
@@ -2061,18 +2141,20 @@ def apply_lorebook_updates(
             afterSnapshot = lorebook_entry_snapshot(
                 category, next_description, next_aliases, next_tags, next_metadata
             )
+            nameChanged = str(existing["name"]) != name
             #an update that changes nothing is not an edit, dont write it and dont claim it in the history
-            if beforeSnapshot == afterSnapshot:
+            if beforeSnapshot == afterSnapshot and not nameChanged:
                 continue
 
             conn.execute(
                 """
                 UPDATE lorebook_entries
-                SET category = ?, description = ?, aliases_json = ?, tags_json = ?,
+                SET name = ?, category = ?, description = ?, aliases_json = ?, tags_json = ?,
                     metadata_json = ?, updated_at = ?
                 WHERE id = ?
                 """,
                 (
+                    name,
                     category,
                     next_description,
                     json.dumps(next_aliases),
@@ -2154,6 +2236,8 @@ LOREBOOK_UPDATE_SYSTEM_PROMPT = (
     "aliases must be empty. Put character details like age, detailed physical "
     "appearance, personality, and background into description instead of "
     "metadata fields. "
+    f"{SUMMARY_INSTRUCTION} Return exactly one synopsis update for chapter, even when an existing "
+    "summary needs no factual changes. "
     "For story chronology, create or update exactly one timeline entry named "
     "\"Timeline\" with category \"timeline\". Its description must be a "
     "chronological Markdown bullet list. Merge new events into the existing "
@@ -2201,7 +2285,7 @@ async def run_lorebook_update(
     )
     prompt = {
         "story": row_to_story(story),
-        "chapter": {"title": chapter["title"]},
+        "chapter": {"id": chapter["id"], "title": chapter["title"]},
         "existing_lorebook": current_lore,
         "new_prose": source_text,
     }
@@ -2288,6 +2372,7 @@ async def run_lorebook_update(
             updates = parsed.get("updates") if isinstance(parsed, dict) else []
             if not isinstance(updates, list):
                 updates = []
+            updates = normalize_required_summary_update(updates, chapter)
             with deps.get_db() as conn:
                 applied = apply_lorebook_updates(conn, story_id, updates, deps.utc_now())
     except Exception as exc:  # noqa: BLE001
@@ -3799,7 +3884,7 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
         content_changed = "content" in updates
         with deps.get_db() as conn:
             chapter = conn.execute(
-                "SELECT id FROM chapters WHERE id = ? AND story_id = ?",
+                "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
                 (chapter_id, story_id),
             ).fetchone()
             if not chapter:
@@ -3842,6 +3927,18 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                     "UPDATE stories SET updated_at = ? WHERE id = ?",
                     (now, story_id),
                 )
+            if "title" in updates:
+                summaryRows = conn.execute(
+                    "SELECT * FROM lorebook_entries WHERE story_id = ? AND category = 'synopsis'",
+                    (story_id,),
+                ).fetchall()
+                for summaryRow in summaryRows:
+                    if lorebook_summary_chapter_id(summaryRow) != chapter_id:
+                        continue
+                    conn.execute(
+                        "UPDATE lorebook_entries SET name = ?, updated_at = ? WHERE id = ?",
+                        (updates["title"], now, summaryRow["id"]),
+                    )
             row = conn.execute(
                 "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
                 (chapter_id, story_id),
@@ -3865,6 +3962,18 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                 "DELETE FROM chapters WHERE id = ? AND story_id = ?",
                 (chapter_id, story_id),
             )
+            if result.rowcount:
+                summaryRows = conn.execute(
+                    "SELECT * FROM lorebook_entries WHERE story_id = ? AND category = 'synopsis'",
+                    (story_id,),
+                ).fetchall()
+                linkedIds = [
+                    row["id"]
+                    for row in summaryRows
+                    if lorebook_summary_chapter_id(row) == chapter_id
+                ]
+                for entryId in linkedIds:
+                    conn.execute("DELETE FROM lorebook_entries WHERE id = ?", (entryId,))
         if result.rowcount == 0:
             raise HTTPException(status_code=404, detail="Chapter not found.")
         return {"ok": True}
@@ -3977,10 +4086,52 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
         now = deps.utc_now()
         entry_id = str(uuid.uuid4())
         category = normalize_lorebook_category(payload.category)
+        metadata = sanitize_lorebook_metadata(category, payload.metadata)
+        entryName = payload.name.strip()
         with deps.get_db() as conn:
             story = conn.execute("SELECT id FROM stories WHERE id = ?", (story_id,)).fetchone()
             if not story:
                 raise HTTPException(status_code=404, detail="Story not found.")
+            existingSummary = None
+            if category == "synopsis" and metadata.get("chapter_id"):
+                chapter = conn.execute(
+                    "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
+                    (metadata["chapter_id"], story_id),
+                ).fetchone()
+                if not chapter:
+                    raise HTTPException(status_code=422, detail="The summary chapter was not found.")
+                entryName = str(chapter["title"])
+                existingSummary = find_enabled_chapter_summary(
+                    conn,
+                    story_id,
+                    str(chapter["id"]),
+                    entryName,
+                )
+
+            if existingSummary:
+                entry_id = str(existingSummary["id"])
+                conn.execute(
+                    """
+                    UPDATE lorebook_entries
+                    SET name = ?, description = ?, aliases_json = '[]', tags_json = '[]',
+                        metadata_json = ?, disabled = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        entryName,
+                        payload.description,
+                        json.dumps(metadata),
+                        int(payload.disabled),
+                        now,
+                        entry_id,
+                    ),
+                )
+                row = conn.execute(
+                    "SELECT * FROM lorebook_entries WHERE id = ?",
+                    (entry_id,),
+                ).fetchone()
+                return {"entry": row_to_lorebook_entry(row)}
+
             conn.execute(
                 """
                 INSERT INTO lorebook_entries (
@@ -3992,16 +4143,16 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                 (
                     entry_id,
                     story_id,
-                    payload.name.strip(),
+                    entryName,
                     category,
                     (
                         normalize_timeline_description(payload.description)
                         if category == "timeline"
                         else payload.description
                     ),
-                    json.dumps(sanitize_lorebook_aliases(category, payload.aliases, payload.name.strip())),
+                    json.dumps(sanitize_lorebook_aliases(category, payload.aliases, entryName)),
                     json.dumps(payload.tags),
-                    json.dumps(sanitize_lorebook_metadata(category, payload.metadata)),
+                    json.dumps(metadata),
                     int(payload.disabled),
                     now,
                     now,
@@ -4018,11 +4169,26 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
         category = normalize_lorebook_category(payload.category)
         with deps.get_db() as conn:
             entry = conn.execute(
-                "SELECT id FROM lorebook_entries WHERE id = ? AND story_id = ?",
+                "SELECT * FROM lorebook_entries WHERE id = ? AND story_id = ?",
                 (entry_id, story_id),
             ).fetchone()
             if not entry:
                 raise HTTPException(status_code=404, detail="Lorebook entry not found.")
+            metadata = sanitize_lorebook_metadata(category, payload.metadata)
+            entryName = payload.name.strip()
+            if category == "synopsis":
+                chapterId = str(metadata.get("chapter_id") or "").strip()
+                if not chapterId and normalize_lorebook_category(entry["category"]) == "synopsis":
+                    chapterId = lorebook_summary_chapter_id(entry)
+                    metadata = {"chapter_id": chapterId} if chapterId else {}
+                if chapterId:
+                    chapter = conn.execute(
+                        "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
+                        (chapterId, story_id),
+                    ).fetchone()
+                    if not chapter:
+                        raise HTTPException(status_code=422, detail="The summary chapter was not found.")
+                    entryName = str(chapter["title"])
             conn.execute(
                 """
                 UPDATE lorebook_entries
@@ -4031,16 +4197,16 @@ def create_writing_router(deps: WritingDeps) -> APIRouter:
                 WHERE id = ? AND story_id = ?
                 """,
                 (
-                    payload.name.strip(),
+                    entryName,
                     category,
                     (
                         normalize_timeline_description(payload.description)
                         if category == "timeline"
                         else payload.description
                     ),
-                    json.dumps(sanitize_lorebook_aliases(category, payload.aliases, payload.name.strip())),
+                    json.dumps(sanitize_lorebook_aliases(category, payload.aliases, entryName)),
                     json.dumps(payload.tags),
-                    json.dumps(sanitize_lorebook_metadata(category, payload.metadata)),
+                    json.dumps(metadata),
                     int(payload.disabled),
                     now,
                     entry_id,

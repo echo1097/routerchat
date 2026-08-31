@@ -11,7 +11,9 @@ from fastapi.responses import StreamingResponse
 
 from backend.writing import (
     OPENROUTER_TIMEOUT,
+    SUMMARY_INSTRUCTION,
     WritingDeps,
+    lorebook_summary_chapter_id,
     normalize_lorebook_category,
     normalize_timeline_description,
     parse_lorebook_json,
@@ -20,7 +22,6 @@ from backend.writing import (
 )
 
 
-#synopsis is deliberately missing, chapter summaries get dropped by a repair and never rebuilt
 REPAIR_CATEGORIES = ["character", "location", "item", "event", "note", "timeline"]
 
 REPAIR_SYSTEM_PROMPT = (
@@ -36,8 +37,8 @@ REPAIR_SYSTEM_PROMPT = (
     "you leave out is gone, so do not return a partial list or a list of changes. Write one "
     "entry per durable subject that matters for continuity. Merge duplicates into a single "
     "entry under the name the story uses most.\n"
-    "Categories: character, location, item, event, note, timeline. Do not write chapter "
-    "summaries or per-chapter recap entries. Include exactly one entry named \"Timeline\" with "
+    "Categories for entries: character, location, item, event, note, timeline. Include exactly "
+    "one entry named \"Timeline\" with "
     "category \"timeline\" whose description is a chronological Markdown bullet list, one "
     "concise factual event per bullet, earliest to latest, covering every durable event needed "
     "to follow the story.\n"
@@ -47,16 +48,32 @@ REPAIR_SYSTEM_PROMPT = (
     "used as names, or alternate names the story actually uses for that entry, never jobs, "
     "roles, species, traits, or relationships, and it must be empty for note entries. Never "
     "invent facts that are not in the chapters.\n"
+    f"{SUMMARY_INSTRUCTION} Return exactly one item in summaries for every chapter in "
+    "visible_chapters, keyed by that chapter's id.\n"
     "When author_instructions is present it holds the story author's own instructions for this "
     "story. Follow the parts of it that apply to lorebook entries, such as entry length, level "
     "of detail, naming conventions, and language. Ignore the parts about writing prose or "
     "chapter structure, and never let it override the rules above or the JSON shape below.\n"
     "Return strict JSON only in this shape: {\"entries\":[{\"name\":\"\",\"category\":\"\","
-    "\"description\":\"\",\"aliases\":[]}]}."
+    "\"description\":\"\",\"aliases\":[]}],\"summaries\":{\"chapter-id\":{"
+    "\"name\":\"\",\"description\":\"\"}}}."
 )
 
 
-def lorebook_repair_response_format() -> dict[str, Any]:
+def lorebook_repair_response_format(summary_chapters: list[sqlite3.Row]) -> dict[str, Any]:
+    summaryProperties = {
+        str(chapter["id"]): {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "name": {"type": "string", "minLength": 1},
+                "description": {"type": "string", "minLength": 1},
+            },
+            "required": ["name", "description"],
+        }
+        for chapter in summary_chapters
+    }
+
     return {
         "type": "json_schema",
         "json_schema": {
@@ -81,14 +98,23 @@ def lorebook_repair_response_format() -> dict[str, Any]:
                             "required": ["name", "category", "description", "aliases"],
                         },
                     },
+                    "summaries": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": summaryProperties,
+                        "required": list(summaryProperties),
+                    },
                 },
-                "required": ["entries"],
+                "required": ["entries", "summaries"],
             },
         },
     }
 
 
-def parse_lorebook_repair(raw_output: str) -> list[dict[str, Any]]:
+def parse_lorebook_repair(
+    raw_output: str,
+    summary_chapters: list[sqlite3.Row],
+) -> list[dict[str, Any]]:
     parsed = parse_lorebook_json(raw_output)
     rawEntries = parsed.get("entries")
     if not isinstance(rawEntries, list):
@@ -106,7 +132,6 @@ def parse_lorebook_repair(raw_output: str) -> list[dict[str, Any]]:
         category = normalize_lorebook_category(rawEntry.get("category"))
         description = str(rawEntry.get("description") or "").strip()
 
-        #summaries were dropped on purpose, so a model that writes them anyway gets ignored
         if category == "synopsis":
             continue
         if category == "timeline":
@@ -136,6 +161,33 @@ def parse_lorebook_repair(raw_output: str) -> list[dict[str, Any]]:
 
     if not entries:
         raise ValueError("The model returned an empty lorebook.")
+
+    rawSummaries = parsed.get("summaries")
+    if not isinstance(rawSummaries, dict):
+        raise ValueError("The rebuilt lorebook was missing its chapter summaries.")
+
+    chapterById = {str(chapter["id"]): chapter for chapter in summary_chapters}
+    summariesById: dict[str, dict[str, Any]] = {}
+    for chapterId, rawSummary in rawSummaries.items():
+        if not isinstance(rawSummary, dict):
+            raise ValueError("The rebuilt lorebook returned invalid chapter summaries.")
+        chapterId = str(chapterId).strip()
+        description = str(rawSummary.get("description") or "").strip()
+        if chapterId not in chapterById or not description or chapterId in summariesById:
+            raise ValueError("The rebuilt lorebook returned invalid chapter summaries.")
+        chapter = chapterById[chapterId]
+        summariesById[chapterId] = {
+            "name": str(chapter["title"]),
+            "category": "synopsis",
+            "description": description,
+            "aliases": [],
+            "metadata": {"chapter_id": chapterId},
+        }
+
+    if set(summariesById) != set(chapterById):
+        raise ValueError("The rebuilt lorebook must contain one summary for every visible chapter.")
+
+    entries.extend(summariesById[chapterId] for chapterId in chapterById)
     return entries
 
 
@@ -152,6 +204,7 @@ def create_lorebook_repair_router(deps: WritingDeps) -> APIRouter:
         story: sqlite3.Row,
         visible_chapters: list[sqlite3.Row],
         visible_lorebook: list[sqlite3.Row],
+        preserved_summaries: list[sqlite3.Row],
     ) -> AsyncIterator[bytes]:
         startedAt = time.perf_counter()
         apiKey = deps.read_openrouter_key()
@@ -159,6 +212,10 @@ def create_lorebook_repair_router(deps: WritingDeps) -> APIRouter:
             raise HTTPException(status_code=401, detail="Add an OpenRouter API key first.")
 
         lorebookSignature = visible_lorebook_signature(visible_lorebook)
+        summaryChapters = [
+            chapter for chapter in visible_chapters if str(chapter["content"] or "").strip()
+        ]
+        preservedIds = {str(row["id"]) for row in preserved_summaries}
         prompt = {
             "story": {
                 "title": story["title"],
@@ -173,13 +230,15 @@ def create_lorebook_repair_router(deps: WritingDeps) -> APIRouter:
                     "description": row["description"] or "",
                 }
                 for row in visible_lorebook
+                if str(row["id"]) not in preservedIds
             ],
             "visible_chapters": [
                 {
+                    "id": chapter["id"],
                     "title": chapter["title"],
                     "content": chapter["content"] or "",
                 }
-                for chapter in visible_chapters
+                for chapter in summaryChapters
             ],
         }
 
@@ -210,7 +269,7 @@ def create_lorebook_repair_router(deps: WritingDeps) -> APIRouter:
         if reasoningConfig:
             body["reasoning"] = reasoningConfig
         if deps.model_supports_structured_output(story["model"]):
-            body["response_format"] = lorebook_repair_response_format()
+            body["response_format"] = lorebook_repair_response_format(summaryChapters)
 
         generatedText: list[str] = []
         finishReason: str | None = None
@@ -307,7 +366,7 @@ def create_lorebook_repair_router(deps: WritingDeps) -> APIRouter:
                 return
 
             try:
-                nextEntries = parse_lorebook_repair("".join(generatedText))
+                nextEntries = parse_lorebook_repair("".join(generatedText), summaryChapters)
             except ValueError as exc:
                 yield deps.stream_event(
                     "error",
@@ -337,11 +396,14 @@ def create_lorebook_repair_router(deps: WritingDeps) -> APIRouter:
                     )
                     return
 
-                #hidden entries are somebody's deliberate opt out, a repair does not get to touch them
-                conn.execute(
-                    "DELETE FROM lorebook_entries WHERE story_id = ? AND disabled = 0",
-                    (story_id,),
-                )
+                #hidden lorebook rows and enabled summaries for hidden chapters both survive rebuild
+                for currentRow in currentRows:
+                    if str(currentRow["id"]) in preservedIds:
+                        continue
+                    conn.execute(
+                        "DELETE FROM lorebook_entries WHERE id = ?",
+                        (currentRow["id"],),
+                    )
                 for entry in nextEntries:
                     conn.execute(
                         """
@@ -349,7 +411,7 @@ def create_lorebook_repair_router(deps: WritingDeps) -> APIRouter:
                           id, story_id, name, category, description, aliases_json,
                           tags_json, metadata_json, disabled, created_at, updated_at
                         )
-                        VALUES (?, ?, ?, ?, ?, ?, '[]', '{}', 0, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, '[]', ?, 0, ?, ?)
                         """,
                         (
                             str(uuid.uuid4()),
@@ -358,6 +420,7 @@ def create_lorebook_repair_router(deps: WritingDeps) -> APIRouter:
                             entry["category"],
                             entry["description"],
                             json.dumps(entry["aliases"]),
+                            json.dumps(entry.get("metadata") or {}),
                             now,
                             now,
                         ),
@@ -377,8 +440,8 @@ def create_lorebook_repair_router(deps: WritingDeps) -> APIRouter:
                 "complete",
                 {
                     "entries": [row_to_lorebook_entry(row) for row in savedRows],
-                    "entry_count": len(nextEntries),
-                    "removed_count": len(visible_lorebook),
+                    "entry_count": len(nextEntries) + len(preserved_summaries),
+                    "removed_count": len(visible_lorebook) - len(preserved_summaries),
                     "duration_ms": durationMs,
                 },
             )
@@ -411,6 +474,13 @@ def create_lorebook_repair_router(deps: WritingDeps) -> APIRouter:
                 """,
                 (story_id,),
             ).fetchall()
+            hiddenChapterIds = {
+                str(row["id"])
+                for row in conn.execute(
+                    "SELECT id FROM chapters WHERE story_id = ? AND disabled = 1",
+                    (story_id,),
+                ).fetchall()
+            }
             visibleLorebook = conn.execute(
                 """
                 SELECT * FROM lorebook_entries
@@ -419,6 +489,11 @@ def create_lorebook_repair_router(deps: WritingDeps) -> APIRouter:
                 """,
                 (story_id,),
             ).fetchall()
+            preservedSummaries = [
+                row
+                for row in visibleLorebook
+                if lorebook_summary_chapter_id(row) in hiddenChapterIds
+            ]
 
         if not any(str(chapter["content"] or "").strip() for chapter in visibleChapters):
             raise HTTPException(
@@ -427,7 +502,13 @@ def create_lorebook_repair_router(deps: WritingDeps) -> APIRouter:
             )
 
         return StreamingResponse(
-            stream_lorebook_repair(story_id, story, visibleChapters, visibleLorebook),
+            stream_lorebook_repair(
+                story_id,
+                story,
+                visibleChapters,
+                visibleLorebook,
+                preservedSummaries,
+            ),
             media_type="application/x-ndjson; charset=utf-8",
             headers={"Cache-Control": "no-store"},
         )

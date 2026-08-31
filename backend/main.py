@@ -48,11 +48,18 @@ from backend.attachments import (
     user_content_with_attachments,
 )
 from backend.changelog_status import ChangelogStatusDeps, create_changelog_status_router
+from backend.brainstorm import BrainstormDeps, create_brainstorm_router
+from backend.lorebook import LorebookDeps, create_lorebook_router
 from backend.lorebook_generate import create_lorebook_generate_router
 from backend.lorebook_repair import create_lorebook_repair_router
-from backend.lorebook_update_stream import create_lorebook_update_stream_router
 from backend.local_access import read_secret_file, validate_base_url
-from backend.writing import WritingDeps, create_writing_router
+from backend.writing import (
+    WritingDeps,
+    create_writing_router,
+    insert_chapter_history_entry,
+    row_to_story,
+    word_diff_counts,
+)
 
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -2749,6 +2756,44 @@ writingDeps = WritingDeps(
     openrouter_base_url=OPENROUTER_BASE_URL,
 )
 
+lorebookDeps = LorebookDeps(
+    get_db=get_db,
+    utc_now=utc_now,
+    read_openrouter_key=read_openrouter_key,
+    headers_for_key=headers_for_key,
+    openrouter_request_model=openrouter_request_model,
+    openrouter_provider_options=openrouter_provider_options,
+    effective_thinking_enabled=effective_thinking_enabled,
+    enabled_reasoning_config=enabled_reasoning_config,
+    model_supports_structured_output=model_supports_structured_output,
+    openrouter_error_message=openrouter_error_message,
+    normalize_usage=normalize_usage,
+    fetch_generation_usage=fetch_generation_usage,
+    stream_event=stream_event,
+    row_to_story=row_to_story,
+    insert_chapter_history_entry=insert_chapter_history_entry,
+    word_diff_counts=word_diff_counts,
+    openrouter_base_url=OPENROUTER_BASE_URL,
+)
+
+brainstormDeps = BrainstormDeps(
+    get_db=get_db,
+    utc_now=utc_now,
+    read_openrouter_key=read_openrouter_key,
+    headers_for_key=headers_for_key,
+    openrouter_request_model=openrouter_request_model,
+    openrouter_provider_options=openrouter_provider_options,
+    effective_thinking_enabled=effective_thinking_enabled,
+    enabled_reasoning_config=enabled_reasoning_config,
+    model_supports_structured_output=model_supports_structured_output,
+    openrouter_error_message=openrouter_error_message,
+    normalize_usage=normalize_usage,
+    fetch_generation_usage=fetch_generation_usage,
+    stream_event=stream_event,
+    stream_message_request=StreamMessageRequest,
+    openrouter_base_url=OPENROUTER_BASE_URL,
+)
+
 webSearchDeps = WebSearchDeps(get_db=get_db, utc_now=utc_now)
 app.include_router(create_web_search_router(webSearchDeps))
 
@@ -2765,10 +2810,11 @@ changelogStatusDeps = ChangelogStatusDeps(
 )
 
 app.include_router(create_attachments_router(attachmentsDeps))
-app.include_router(create_writing_router(writingDeps))
+app.include_router(create_writing_router(writingDeps, lorebookDeps))
 app.include_router(create_changelog_status_router(changelogStatusDeps))
-app.include_router(create_lorebook_repair_router(writingDeps))
-app.include_router(create_lorebook_generate_router(writingDeps))
-app.include_router(create_lorebook_update_stream_router(writingDeps))
+app.include_router(create_lorebook_router(lorebookDeps))
+app.include_router(create_lorebook_repair_router(lorebookDeps))
+app.include_router(create_lorebook_generate_router(lorebookDeps))
+app.include_router(create_brainstorm_router(brainstormDeps))
 
 configure_static_files(app, STATIC_DIR)

@@ -8,10 +8,10 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from backend.writing import (
+from backend.lorebook import (
+    LorebookDeps,
     OPENROUTER_TIMEOUT,
     SUMMARY_INSTRUCTION,
-    WritingDeps,
     normalize_lorebook_category,
     parse_lorebook_json,
     sanitize_lorebook_aliases,
@@ -127,7 +127,7 @@ def parse_generated_entry(raw_output: str, category: str) -> dict[str, Any]:
     }
 
 
-def create_lorebook_generate_router(deps: WritingDeps) -> APIRouter:
+def create_lorebook_generate_router(deps: LorebookDeps) -> APIRouter:
     router = APIRouter()
 
     async def stream_entry_generation(

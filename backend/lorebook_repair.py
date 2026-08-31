@@ -9,10 +9,10 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
-from backend.writing import (
+from backend.lorebook import (
+    LorebookDeps,
     OPENROUTER_TIMEOUT,
     SUMMARY_INSTRUCTION,
-    WritingDeps,
     lorebook_summary_chapter_id,
     normalize_lorebook_category,
     normalize_timeline_description,
@@ -196,7 +196,7 @@ def visible_lorebook_signature(rows: list[sqlite3.Row]) -> list[tuple[str, str]]
     return sorted((str(row["id"]), str(row["updated_at"])) for row in rows)
 
 
-def create_lorebook_repair_router(deps: WritingDeps) -> APIRouter:
+def create_lorebook_repair_router(deps: LorebookDeps) -> APIRouter:
     router = APIRouter()
 
     async def stream_lorebook_repair(

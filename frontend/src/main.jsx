@@ -4217,6 +4217,8 @@ function StoryWorkspace({
     return (
       <StoryLorebook
         story={activeStory}
+        chapters={chapters}
+        activeChapterId={activeChapterId}
         entries={lorebookEntries}
         onBack={onBackToChapter}
         initialCategory={workspaceView === "characters" ? "character" : "all"}
@@ -10103,13 +10105,23 @@ function App() {
     }
   }
 
-  async function generateLorebookEntry(category, brief, onEvent) {
+  async function generateLorebookEntry(category, brief, onEvent, chapterId = null) {
     if (!activeStoryId || isStreaming || lorebookUpdating) {
       throw new Error("Finish the current writing task first.");
     }
 
+    if (category === "synopsis" && chapterId) {
+      await flushChapterSave(activeStoryId, chapterId);
+    }
+
     //nothing is saved here, the draft goes back to the editor and the author decides
-    return generateLorebookEntryStream({ storyId: activeStoryId, category, brief, onEvent });
+    return generateLorebookEntryStream({
+      storyId: activeStoryId,
+      category,
+      brief,
+      chapterId,
+      onEvent,
+    });
   }
 
   function updateChapterCanvasContent(content) {

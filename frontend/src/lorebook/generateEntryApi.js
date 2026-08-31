@@ -24,13 +24,13 @@ async function streamError(response) {
 }
 
 //same ndjson shape as every other write stream: status, reasoning, usage, then one complete or error
-export async function generateLorebookEntry({ storyId, category, brief, onEvent }) {
+export async function generateLorebookEntry({ storyId, category, brief, chapterId, onEvent }) {
   const response = await fetch(
     `/api/stories/${encodeURIComponent(storyId)}/lorebook/generate/stream`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ category, brief }),
+      body: JSON.stringify({ category, brief, chapter_id: chapterId || null }),
     },
   );
   if (!response.ok || !response.body) {

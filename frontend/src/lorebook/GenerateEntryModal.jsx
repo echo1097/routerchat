@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import ThinkingContent from "../ThinkingContent.jsx";
@@ -35,13 +35,14 @@ const BRIEF_PLACEHOLDERS = {
   item: "Describe the item",
   event: "Describe the event",
   note: "Describe the note",
-  synopsis: "Describe the chapter",
 };
 
 export default function GenerateEntryModal({
   open,
   category,
   categoryLabel,
+  chapters = [],
+  activeChapterId = null,
   onClose,
   onGenerate,
   onApply,
@@ -51,6 +52,7 @@ export default function GenerateEntryModal({
   const [stage, setStage] = useState("prompt");
   const [phase, setPhase] = useState("thinking");
   const [brief, setBrief] = useState("");
+  const [selectedChapterId, setSelectedChapterId] = useState("");
   const [reasoning, setReasoning] = useState("");
   const [streamedText, setStreamedText] = useState("");
   const [error, setError] = useState("");
@@ -69,6 +71,11 @@ export default function GenerateEntryModal({
   const isRunning = stage === "running";
   const titleId = "lorebook-generate-title";
   const descriptionId = "lorebook-generate-description";
+  const isSynopsis = category === "synopsis";
+  const eligibleChapters = useMemo(
+    () => chapters.filter((chapter) => !chapter.disabled && String(chapter.content || "").trim()),
+    [chapters],
+  );
 
   useEffect(() => {
     if (open) {
@@ -101,7 +108,11 @@ export default function GenerateEntryModal({
     setReasoning("");
     setStreamedText("");
     setError("");
-  }, [open]);
+    if (isSynopsis) {
+      const activeEligible = eligibleChapters.some((chapter) => chapter.id === activeChapterId);
+      setSelectedChapterId(activeEligible ? activeChapterId : eligibleChapters[0]?.id || "");
+    }
+  }, [activeChapterId, eligibleChapters, isSynopsis, open]);
 
   //the body owns the size change between stages, so pin it to whatever the current stage measures
   useLayoutEffect(() => {
@@ -144,7 +155,7 @@ export default function GenerateEntryModal({
   }, [isRunning, onClose, open]);
 
   async function runGeneration() {
-    if (isRunning || !brief.trim()) return;
+    if (isRunning || (isSynopsis ? !selectedChapterId : !brief.trim())) return;
 
     setStage("running");
     setPhase("thinking");
@@ -153,7 +164,7 @@ export default function GenerateEntryModal({
     setError("");
 
     try {
-      const result = await onGenerate(brief.trim(), (event) => {
+      const result = await onGenerate(isSynopsis ? "" : brief.trim(), (event) => {
         //the first status says whether this model thinks at all, so a thinking-off run opens on Writing
         if (event.type === "status") {
           if (event.value === "thinking" || event.value === "writing") setPhase(event.value);
@@ -165,7 +176,7 @@ export default function GenerateEntryModal({
         }
         if (event.type !== "reasoning" || !event.value) return;
         setReasoning((currentReasoning) => `${currentReasoning}${event.value}`);
-      });
+      }, isSynopsis ? selectedChapterId : null);
 
       onApply(result.entry);
       setBrief("");
@@ -255,19 +266,41 @@ export default function GenerateEntryModal({
         >
           <div ref={bodyInnerRef} className="lorebook-repair-modal-body-inner">
             {stage === "prompt" && (
-              <label className="lorebook-generate-field">
-                <span className="sr-only">What should this {lowerLabel} be?</span>
-                <textarea
-                  id={descriptionId}
-                  value={brief}
-                  autoFocus
-                  onChange={(event) => setBrief(event.target.value)}
-                  onKeyDown={handleBriefKeyDown}
-                  placeholder={BRIEF_PLACEHOLDERS[category] || BRIEF_PLACEHOLDERS.note}
-                  spellCheck="true"
-                  data-1p-ignore="true"
-                />
-              </label>
+              isSynopsis ? (
+                <label className="lorebook-generate-field">
+                  <span>Chapter</span>
+                  {eligibleChapters.length ? (
+                    <select
+                      id={descriptionId}
+                      value={selectedChapterId}
+                      autoFocus
+                      onChange={(event) => setSelectedChapterId(event.target.value)}
+                    >
+                      {eligibleChapters.map((chapter) => (
+                        <option key={chapter.id} value={chapter.id}>{chapter.title}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div id={descriptionId} className="lorebook-generate-empty">
+                      Write something in a visible chapter before generating its summary.
+                    </div>
+                  )}
+                </label>
+              ) : (
+                <label className="lorebook-generate-field">
+                  <span className="sr-only">What should this {lowerLabel} be?</span>
+                  <textarea
+                    id={descriptionId}
+                    value={brief}
+                    autoFocus
+                    onChange={(event) => setBrief(event.target.value)}
+                    onKeyDown={handleBriefKeyDown}
+                    placeholder={BRIEF_PLACEHOLDERS[category] || BRIEF_PLACEHOLDERS.note}
+                    spellCheck="true"
+                    data-1p-ignore="true"
+                  />
+                </label>
+              )
             )}
 
             {isRunning && (
@@ -325,7 +358,7 @@ export default function GenerateEntryModal({
                     type="button"
                     className={cx("lorebook-primary-button", CONTROL_MOTION)}
                     onClick={() => (stage === "error" ? setStage("prompt") : runGeneration())}
-                    disabled={stage === "prompt" && !brief.trim()}
+                    disabled={stage === "prompt" && (isSynopsis ? !selectedChapterId : !brief.trim())}
                   >
                     {stage === "error" ? "Back to prompt" : "Generate"}
                   </button>

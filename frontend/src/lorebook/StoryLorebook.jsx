@@ -46,6 +46,7 @@ const EMPTY_DRAFT = {
   description: "",
   aliasesText: "",
   notes: "",
+  metadata: {},
 };
 
 function normalizeCategory(category) {
@@ -93,6 +94,7 @@ function draftFromEntry(entry) {
     description: entry.description || "",
     aliasesText: (entry.aliases || []).join(", "),
     notes: entry.metadata?.notes || "",
+    metadata: entry.metadata || {},
   };
 }
 
@@ -104,9 +106,12 @@ function draftHasText(draft) {
 function entryFromDraft(draft, existingEntry) {
   const category = normalizeCategory(draft.category);
   const aliases = ["note", "synopsis"].includes(category) ? [] : normalizeArray(draft.aliasesText);
-  const metadata = draft.notes.trim() && !["character", "note", "synopsis"].includes(category)
-    ? { notes: draft.notes.trim() }
-    : {};
+  const chapterId = String(draft.metadata?.chapter_id || "").trim();
+  const metadata = category === "synopsis"
+    ? (chapterId ? { chapter_id: chapterId } : {})
+    : draft.notes.trim() && !["character", "note"].includes(category)
+      ? { notes: draft.notes.trim() }
+      : {};
 
   return {
     id: existingEntry?.id || crypto.randomUUID(),
@@ -194,6 +199,8 @@ function useSlidingTabs(activeCategory, tabCount, active = true) {
 
 export default function StoryLorebook({
   story,
+  chapters = [],
+  activeChapterId = null,
   entries,
   onBack,
   initialCategory = "all",
@@ -332,6 +339,25 @@ export default function StoryLorebook({
   /* a generated entry lands in the draft rather than the lorebook, so the author still reads it over
   and presses Create entry themselves */
   function applyGeneratedEntry(generatedEntry) {
+    const generatedChapterId = String(generatedEntry.metadata?.chapter_id || "").trim();
+    let linkedEntry = generatedChapterId
+      ? localEntries.find((entry) => (
+        !entry.disabled
+        && entry.category === "synopsis"
+        && String(entry.metadata?.chapter_id || "") === generatedChapterId
+      ))
+      : null;
+    if (!linkedEntry && generatedChapterId) {
+      const legacyMatches = localEntries.filter((entry) => (
+        !entry.disabled
+        && entry.category === "synopsis"
+        && !String(entry.metadata?.chapter_id || "")
+        && entry.name.toLowerCase() === String(generatedEntry.name || "").toLowerCase()
+      ));
+      linkedEntry = legacyMatches.length === 1 ? legacyMatches[0] : null;
+    }
+
+    setEditingEntryId(linkedEntry?.id || null);
     setEditorError("");
     setDraft((currentDraft) => ({
       ...currentDraft,
@@ -340,6 +366,7 @@ export default function StoryLorebook({
       description: generatedEntry.description || "",
       aliasesText: (generatedEntry.aliases || []).join(", "),
       notes: generatedEntry.notes || "",
+      metadata: generatedEntry.metadata || {},
     }));
   }
 
@@ -612,6 +639,8 @@ export default function StoryLorebook({
         deleting={Boolean(editingEntryId) && deletingEntryId === editingEntryId}
         onGenerateEntry={onGenerateEntry}
         onApplyGenerated={applyGeneratedEntry}
+        chapters={chapters}
+        activeChapterId={activeChapterId}
         locked={locked}
       />
     </>
@@ -830,6 +859,8 @@ function LorebookEditorModal({
   onDelete,
   onGenerateEntry,
   onApplyGenerated,
+  chapters,
+  activeChapterId,
   locked,
 }) {
   const [rendered, setRendered] = useState(open);
@@ -1113,7 +1144,11 @@ function LorebookEditorModal({
         category={draft.category}
         categoryLabel={categoryLabel}
         onClose={() => setGenerateOpen(false)}
-        onGenerate={(brief, onEvent) => onGenerateEntry(draft.category, brief, onEvent)}
+        chapters={chapters}
+        activeChapterId={activeChapterId}
+        onGenerate={(brief, onEvent, chapterId) => (
+          onGenerateEntry(draft.category, brief, onEvent, chapterId)
+        )}
         onApply={onApplyGenerated}
       />
     </div>,

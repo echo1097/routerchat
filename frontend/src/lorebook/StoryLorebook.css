@@ -924,6 +924,22 @@ punching a gap at the top and bottom of the scroll pane */
   color: #5a5a5a;
 }
 
+.lorebook-generate-modal select {
+  min-height: 52px;
+  padding-left: 14px;
+}
+
+.lorebook-generate-empty {
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.24);
+  padding: 14px;
+  color: #737373;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.6;
+  box-shadow: var(--shadow-border);
+}
+
 /* the same pane the thinking used, handed over to the entry once the writing starts */
 .lorebook-generate-preview p {
   margin: 0 0 10px;

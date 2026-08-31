@@ -166,6 +166,7 @@ export async function installWriteApi(page, options = {}) {
           chapter("chapter-2", "Second", options.secondContent ?? "saved second"),
         ]
       : [chapter("chapter-1", "Opening", openingContent)],
+    lorebook: clone(options.lorebook || []),
     brainstormNodes: clone(options.brainstormNodes || []),
     brainstormEdges: clone(options.brainstormEdges || []),
     brainstormViewport: clone(options.brainstormViewport || { x: 0, y: 0, zoom: 1 }),
@@ -190,7 +191,7 @@ export async function installWriteApi(page, options = {}) {
     return {
       story: clone(state.story),
       chapters: clone(state.chapters),
-      lorebook: [],
+      lorebook: clone(state.lorebook),
       latest_generation: null,
     };
   }
@@ -267,7 +268,9 @@ export async function installWriteApi(page, options = {}) {
     }
     if (method === "GET" && path === "/api/stories/story-1") return response(route, storyBundle());
     if (method === "GET" && path === "/api/stories/story-1/chapters") return response(route, { chapters: clone(state.chapters) });
-    if (method === "GET" && path === "/api/stories/story-1/lorebook") return response(route, { entries: [] });
+    if (method === "GET" && path === "/api/stories/story-1/lorebook") {
+      return response(route, { entries: clone(state.lorebook) });
+    }
     if (method === "GET" && path === "/api/stories/story-1/brainstorm") {
       return response(route, {
         nodes: clone(state.brainstormNodes),

@@ -1095,6 +1095,108 @@ test("creates an entry immediately after the generated draft closes", async ({ p
   await expect(page.getByRole("dialog", { name: "Create lorebook entry" })).toBeHidden();
 });
 
+test("generates a linked summary from the selected visible chapter and edits the existing entry", async ({ page }) => {
+  const linkedSummary = {
+    id: "summary-second",
+    story_id: "story-1",
+    name: "Second",
+    category: "synopsis",
+    description: "The old second chapter summary.",
+    aliases: [],
+    tags: [],
+    metadata: { chapter_id: "chapter-2" },
+    disabled: false,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+  };
+  const api = await installWriteApi(page, {
+    twoChapters: true,
+    lorebook: [linkedSummary],
+  });
+  api.state.chapters.push(
+    {
+      id: "chapter-blank",
+      story_id: "story-1",
+      title: "Blank",
+      content: "",
+      revision: 0,
+      word_count: 0,
+      disabled: false,
+      history: [],
+    },
+    {
+      id: "chapter-hidden",
+      story_id: "story-1",
+      title: "Hidden",
+      content: "secret prose",
+      revision: 0,
+      word_count: 2,
+      disabled: true,
+      history: [],
+    },
+  );
+
+  await page.route("**/api/stories/story-1/lorebook/generate/stream", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/x-ndjson",
+    body: `${JSON.stringify({
+      type: "complete",
+      value: {
+        entry: {
+          name: "Second",
+          category: "synopsis",
+          description: "The second chapter reaches its outcome.",
+          aliases: [],
+          notes: "",
+          metadata: { chapter_id: "chapter-2" },
+        },
+      },
+    })}\n`,
+  }));
+  await page.route("**/api/stories/story-1/lorebook/summary-second", async (route) => {
+    const entry = route.request().postDataJSON();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ entry: { ...linkedSummary, ...entry } }),
+    });
+  });
+
+  await api.open();
+  await page.getByRole("button", { name: /Writing tools/ }).click();
+  await page.getByRole("menu").getByText("Lorebook", { exact: true }).click();
+  await page.getByRole("tab", { name: /Chapter Summaries/ }).click();
+  await page.getByRole("button", { name: "New entry" }).click();
+  await page.getByRole("button", { name: "Generate entry", exact: true }).click();
+
+  const picker = page.getByRole("combobox", { name: "Chapter" });
+  await expect(picker.getByRole("option")).toHaveText(["Opening", "Second"]);
+  await expect(picker).toHaveValue("chapter-1");
+  await picker.selectOption("chapter-2");
+  await expect(page.getByRole("textbox", { name: /What should this chapter summary be/ })).toHaveCount(0);
+
+  const generateRequest = page.waitForRequest((request) => (
+    request.method() === "POST" && request.url().endsWith("/api/stories/story-1/lorebook/generate/stream")
+  ));
+  await page.getByRole("button", { name: "Generate", exact: true }).click();
+  expect((await generateRequest).postDataJSON()).toEqual({
+    category: "synopsis",
+    brief: "",
+    chapter_id: "chapter-2",
+  });
+
+  const updateRequest = page.waitForRequest((request) => (
+    request.method() === "PATCH" && request.url().endsWith("/api/stories/story-1/lorebook/summary-second")
+  ));
+  await page.getByRole("button", { name: "Save entry", exact: true }).click();
+  expect((await updateRequest).postDataJSON()).toMatchObject({
+    name: "Second",
+    category: "synopsis",
+    description: "The second chapter reaches its outcome.",
+    metadata: { chapter_id: "chapter-2" },
+  });
+});
+
 test("switches from generating to creating when the author writes an entry", async ({ page }) => {
   const api = await installWriteApi(page);
 

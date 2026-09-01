@@ -698,6 +698,267 @@ class StoryApiTest(unittest.TestCase):
         self.assertIsNone(run["generation_id"])
         self.assertEqual(historyCount, len(payload["history"]))
 
+    def test_targeted_lorebook_update_changes_only_requested_text_and_lists(self):
+        story, chapter = self.storyWithChapter(
+            "Targeted Lore",
+            "Kael's hair had turned black before he reached the south gate.",
+        )
+        kael = self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={
+                "name": "Kael",
+                "category": "character",
+                "description": "Kael has red hair. He guards the north gate.",
+                "aliases": ["The Knight"],
+                "tags": ["northwatch"],
+            },
+        ).json()["entry"]
+        summary = self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={
+                "name": chapter["title"],
+                "category": "synopsis",
+                "description": "Kael begins his journey.",
+                "metadata": {"chapter_id": chapter["id"]},
+            },
+        ).json()["entry"]
+        timeline = self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={
+                "name": "Timeline",
+                "category": "timeline",
+                "description": "- Kael guards the north gate\n- Dawn arrives",
+            },
+        ).json()["entry"]
+
+        rawOutput = json.dumps({
+            "updates": [
+                {
+                    "action": "edit",
+                    "entryId": kael["id"],
+                    "entryRevision": kael["revision"],
+                    "operations": [
+                        {
+                            "operation": "replaceText",
+                            "field": "description",
+                            "oldText": "red hair",
+                            "newText": "black hair",
+                        },
+                        {
+                            "operation": "addItems",
+                            "field": "aliases",
+                            "values": ["The Grey"],
+                        },
+                        {
+                            "operation": "removeItems",
+                            "field": "tags",
+                            "values": ["northwatch"],
+                        },
+                    ],
+                },
+                {
+                    "action": "edit",
+                    "entryId": summary["id"],
+                    "entryRevision": summary["revision"],
+                    "operations": [
+                        {
+                            "operation": "replaceText",
+                            "field": "description",
+                            "oldText": "begins his journey",
+                            "newText": "leaves through the south gate",
+                        }
+                    ],
+                },
+                {
+                    "action": "edit",
+                    "entryId": timeline["id"],
+                    "entryRevision": timeline["revision"],
+                    "operations": [
+                        {
+                            "operation": "replaceText",
+                            "field": "description",
+                            "oldText": "- Kael guards the north gate",
+                            "newText": "- Kael leaves through the south gate",
+                        }
+                    ],
+                },
+            ]
+        })
+        response, calls = self.callLorebookUpdate(story, chapter, rawOutput=rawOutput)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["skipped"], [])
+        entries = {entry["name"]: entry for entry in payload["entries"]}
+        self.assertEqual(
+            entries["Kael"]["description"],
+            "Kael has black hair. He guards the north gate.",
+        )
+        self.assertEqual(entries["Kael"]["aliases"], ["The Knight", "The Grey"])
+        self.assertEqual(entries["Kael"]["tags"], [])
+        self.assertEqual(entries["Kael"]["revision"], kael["revision"] + 1)
+        self.assertEqual(
+            entries[chapter["title"]]["description"],
+            "Kael leaves through the south gate.",
+        )
+        self.assertEqual(entries[chapter["title"]]["revision"], summary["revision"] + 1)
+        self.assertEqual(entries[chapter["title"]]["metadata"], {"chapter_id": chapter["id"]})
+        self.assertEqual(
+            entries["Timeline"]["description"],
+            "- Kael leaves through the south gate\n- Dawn arrives",
+        )
+        modelContext = json.loads(calls[0]["messages"][1]["content"])["existing_lorebook"]
+        kaelContext = next(entry for entry in modelContext if entry["entryId"] == kael["id"])
+        self.assertEqual(kaelContext["entryRevision"], kael["revision"])
+
+    def test_targeted_lorebook_update_applies_valid_operations_and_records_bad_ones(self):
+        story, chapter = self.storyWithChapter("Partial Lore", "Kael returned at dusk.")
+        kael = self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={
+                "name": "Kael",
+                "category": "character",
+                "description": "red cloak, red boots",
+            },
+        ).json()["entry"]
+        summary = self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={
+                "name": chapter["title"],
+                "category": "synopsis",
+                "description": "Kael returned.",
+                "metadata": {"chapter_id": chapter["id"]},
+            },
+        ).json()["entry"]
+        timeline = self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={"name": "Timeline", "category": "timeline", "description": "- Kael left"},
+        ).json()["entry"]
+        rawOutput = json.dumps({
+            "updates": [
+                {
+                    "action": "edit",
+                    "entryId": kael["id"],
+                    "entryRevision": kael["revision"],
+                    "operations": [
+                        {
+                            "operation": "replaceText",
+                            "field": "description",
+                            "oldText": "red",
+                            "newText": "black",
+                        },
+                        {
+                            "operation": "appendText",
+                            "field": "description",
+                            "newText": "He returned at dusk.",
+                        },
+                    ],
+                },
+                {"action": "keep", "entryId": summary["id"], "entryRevision": summary["revision"]},
+                {"action": "keep", "entryId": timeline["id"], "entryRevision": timeline["revision"]},
+            ]
+        })
+        response, _ = self.callLorebookUpdate(story, chapter, rawOutput=rawOutput)
+
+        payload = response.json()
+        self.assertEqual(len(payload["applied"]), 1)
+        self.assertEqual(len(payload["skipped"]), 1)
+        self.assertEqual(payload["skipped"][0]["operationIndex"], 0)
+        kaelAfter = next(entry for entry in payload["entries"] if entry["id"] == kael["id"])
+        self.assertEqual(kaelAfter["description"], "red cloak, red boots\n\nHe returned at dusk.")
+        self.assertIn("1 targeted lorebook edit was skipped", payload["history"][-1]["detail"])
+        with main.get_db() as conn:
+            run = conn.execute(
+                "SELECT rejected_updates_json FROM lorebook_update_runs WHERE story_id = ?",
+                (story["id"],),
+            ).fetchone()
+        self.assertEqual(len(json.loads(run["rejected_updates_json"])), 1)
+
+    def test_targeted_lorebook_update_skips_a_stale_revision(self):
+        story, chapter = self.storyWithChapter("Stale Lore", "Kael changed again.")
+        kael = self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={"name": "Kael", "category": "character", "description": "old fact"},
+        ).json()["entry"]
+        summary = self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={
+                "name": chapter["title"],
+                "category": "synopsis",
+                "description": "Kael changed.",
+                "metadata": {"chapter_id": chapter["id"]},
+            },
+        ).json()["entry"]
+        timeline = self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={"name": "Timeline", "category": "timeline", "description": "- Kael changed"},
+        ).json()["entry"]
+        rawOutput = json.dumps({
+            "updates": [
+                {
+                    "action": "edit",
+                    "entryId": kael["id"],
+                    "entryRevision": kael["revision"] + 1,
+                    "operations": [{
+                        "operation": "replaceText",
+                        "field": "description",
+                        "oldText": "old fact",
+                        "newText": "new fact",
+                    }],
+                },
+                {"action": "keep", "entryId": summary["id"], "entryRevision": summary["revision"]},
+                {"action": "keep", "entryId": timeline["id"], "entryRevision": timeline["revision"]},
+            ]
+        })
+        response, _ = self.callLorebookUpdate(story, chapter, rawOutput=rawOutput)
+
+        payload = response.json()
+        self.assertEqual(payload["applied"], [])
+        self.assertEqual(payload["skipped"][0]["code"], "lorebook_revision_conflict")
+        self.assertEqual(self.lorebookRow(story, "Kael")["description"], "old fact")
+
+    def test_targeted_lorebook_update_creates_and_excludes_entries(self):
+        story, chapter = self.storyWithChapter("Create and Exclude", "The wall fell.")
+        wall = self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={"name": "Old wall", "category": "location", "description": "still standing"},
+        ).json()["entry"]
+        summary = self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={
+                "name": chapter["title"],
+                "category": "synopsis",
+                "description": "The wall fell.",
+                "metadata": {"chapter_id": chapter["id"]},
+            },
+        ).json()["entry"]
+        timeline = self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={"name": "Timeline", "category": "timeline", "description": "- The wall fell"},
+        ).json()["entry"]
+        rawOutput = json.dumps({
+            "updates": [
+                {
+                    "action": "create",
+                    "name": "Wall stone",
+                    "category": "item",
+                    "description": "A stone recovered from the fallen wall.",
+                    "aliases": [],
+                    "tags": ["relic"],
+                    "metadata": {},
+                },
+                {"action": "exclude", "entryId": wall["id"], "entryRevision": wall["revision"]},
+                {"action": "keep", "entryId": summary["id"], "entryRevision": summary["revision"]},
+                {"action": "keep", "entryId": timeline["id"], "entryRevision": timeline["revision"]},
+            ]
+        })
+        response, _ = self.callLorebookUpdate(story, chapter, rawOutput=rawOutput)
+
+        payload = response.json()
+        self.assertEqual(payload["skipped"], [])
+        self.assertIn("Wall stone", [entry["name"] for entry in payload["entries"]])
+        self.assertEqual(self.lorebookRow(story, "Old wall")["disabled"], 1)
+
     def test_lorebook_update_requires_one_summary_before_applying_any_changes(self):
         story, chapter = self.storyWithChapter("Summary Guard", "Mara opens the red gate.")
 
@@ -2156,6 +2417,46 @@ class StoryApiTest(unittest.TestCase):
         bundle = self.client.get(f"/api/stories/{story['id']}").json()
         self.assertEqual(bundle["chapters"][0]["revision"], 2)
         self.assertEqual(bundle["chapters"][0]["title"], "Renamed")
+
+    def test_lorebook_revisions_use_compare_and_swap(self):
+        story = self.client.post("/api/stories", json={"title": "Lore Revision"}).json()["story"]
+        entry = self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={"name": "Mara", "category": "character", "description": "old fact"},
+        ).json()["entry"]
+        self.assertEqual(entry["revision"], 0)
+
+        saved = self.client.patch(
+            f"/api/stories/{story['id']}/lorebook/{entry['id']}",
+            json={**entry, "description": "new fact", "revision": 0},
+        )
+        self.assertEqual(saved.status_code, 200)
+        self.assertEqual(saved.json()["entry"]["revision"], 1)
+
+        stale = self.client.patch(
+            f"/api/stories/{story['id']}/lorebook/{entry['id']}",
+            json={**entry, "description": "stale fact", "revision": 0},
+        )
+        self.assertEqual(stale.status_code, 409)
+        self.assertEqual(stale.json()["detail"]["code"], "lorebook_revision_conflict")
+        self.assertEqual(stale.json()["detail"]["entry"]["description"], "new fact")
+
+    def test_lorebook_revision_migration_is_idempotent(self):
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            """
+            CREATE TABLE lorebook_entries (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL
+            )
+            """
+        )
+        main.ensure_lorebook_revision_column(conn)
+        main.ensure_lorebook_revision_column(conn)
+        columns = [row["name"] for row in conn.execute("PRAGMA table_info(lorebook_entries)")]
+        self.assertEqual(columns.count("revision"), 1)
+        conn.close()
 
     def test_content_save_requires_a_revision_and_updates_the_story_timestamp(self):
         story = self.client.post("/api/stories", json={"title": "Save Contract"}).json()["story"]
@@ -3668,6 +3969,10 @@ class StoryApiTest(unittest.TestCase):
         now = "2026-02-03T04:05:06+00:00"
         with main.get_db() as conn:
             conn.execute(
+                "UPDATE lorebook_entries SET revision = 7 WHERE id = ?",
+                (lorebook["id"],),
+            )
+            conn.execute(
                 """
                 INSERT INTO chapter_history_entries (
                   id, story_id, chapter_id, run_id, label, detail, entry_order,
@@ -3737,6 +4042,7 @@ class StoryApiTest(unittest.TestCase):
         self.assertNotIn("temporary", archive["story"])
         self.assertEqual(archive["chapters"][0]["content"], "one two three")
         self.assertEqual(archive["lorebook"][0]["id"], lorebook["id"])
+        self.assertEqual(archive["lorebook"][0]["revision"], 7)
         self.assertEqual(archive["chapter_history"][0]["words_added"], 3)
         self.assertNotIn("cost", archive["chapter_history"][0])
         self.assertNotIn("reasoning", archive["brainstorm"]["nodes"][0])
@@ -3758,6 +4064,7 @@ class StoryApiTest(unittest.TestCase):
         self.assertEqual(importedBundle["chapters"][0]["history"][0]["detail"], "Make it stormier")
         self.assertIsNone(importedBundle["chapters"][0]["history"][0]["cost"])
         self.assertEqual(importedBundle["lorebook"][0]["name"], "Mara")
+        self.assertEqual(importedBundle["lorebook"][0]["revision"], 7)
 
         importedGraph = self.client.get(
             f"/api/stories/{imported['story_id']}/brainstorm"

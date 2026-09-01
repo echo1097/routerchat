@@ -1169,10 +1169,12 @@ test("generates a linked summary from the selected visible chapter and edits the
   await page.getByRole("button", { name: "New entry" }).click();
   await page.getByRole("button", { name: "Generate entry", exact: true }).click();
 
-  const picker = page.getByRole("combobox", { name: "Chapter" });
-  await expect(picker.getByRole("option")).toHaveText(["Opening", "Second"]);
-  await expect(picker).toHaveValue("chapter-1");
-  await picker.selectOption("chapter-2");
+  const picker = page.getByRole("button", { name: "Select chapter" });
+  await expect(picker).toContainText("Opening");
+  await picker.click();
+  await expect(page.getByRole("option")).toHaveText(["Opening", "Second"]);
+  await page.getByRole("option", { name: "Second" }).click();
+  await expect(picker).toContainText("Second");
   await expect(page.getByRole("textbox", { name: /What should this chapter summary be/ })).toHaveCount(0);
 
   const generateRequest = page.waitForRequest((request) => (

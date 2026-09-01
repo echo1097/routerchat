@@ -644,6 +644,7 @@ def init_db() -> None:
               aliases_json TEXT NOT NULL,
               tags_json TEXT NOT NULL,
               metadata_json TEXT NOT NULL,
+              revision INTEGER NOT NULL DEFAULT 0,
               disabled INTEGER NOT NULL DEFAULT 0,
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL,
@@ -681,6 +682,7 @@ def init_db() -> None:
               openrouter_generation_id TEXT,
               raw_output TEXT NOT NULL,
               applied_updates_json TEXT NOT NULL,
+              rejected_updates_json TEXT NOT NULL DEFAULT '[]',
               cost REAL,
               error TEXT,
               created_at TEXT NOT NULL,
@@ -781,6 +783,7 @@ def init_db() -> None:
         ensure_story_settings_columns(conn)
         ensure_chapter_context_column(conn)
         ensure_chapter_revision_column(conn)
+        ensure_lorebook_revision_column(conn)
         ensure_message_source_column(conn)
         ensure_brainstorm_generation_columns(conn)
         ensure_chapter_history_columns(conn)
@@ -851,6 +854,16 @@ def ensure_chapter_revision_column(conn: sqlite3.Connection) -> None:
     if "revision" not in existingColumns:
         conn.execute(
             "ALTER TABLE chapters ADD COLUMN revision INTEGER NOT NULL DEFAULT 0"
+        )
+
+
+def ensure_lorebook_revision_column(conn: sqlite3.Connection) -> None:
+    existingColumns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(lorebook_entries)").fetchall()
+    }
+    if "revision" not in existingColumns:
+        conn.execute(
+            "ALTER TABLE lorebook_entries ADD COLUMN revision INTEGER NOT NULL DEFAULT 0"
         )
 
 
@@ -929,6 +942,10 @@ def ensure_lorebook_run_usage_columns(conn: sqlite3.Connection) -> None:
         )
     if "cost" not in existingColumns:
         conn.execute("ALTER TABLE lorebook_update_runs ADD COLUMN cost REAL")
+    if "rejected_updates_json" not in existingColumns:
+        conn.execute(
+            "ALTER TABLE lorebook_update_runs ADD COLUMN rejected_updates_json TEXT NOT NULL DEFAULT '[]'"
+        )
 
 
 def clean_lorebook_categories(conn: sqlite3.Connection) -> None:

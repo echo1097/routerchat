@@ -1967,17 +1967,19 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
 
                     lorebook_duration_ms = (time.perf_counter() - lorebook_started_at) * 1000
                     #a skipped run never reached the model, so there is no activity to record
-                    if not lorebook_result.get("skipped"):
+                    if not lorebook_result.get("skipped_run"):
                         for action in lorebook_run_history_actions(
                             model_label,
                             lorebook_result.get("applied") or [],
                             lorebook_duration_ms,
                             lorebook_result.get("cost"),
+                            lorebook_result.get("skipped") or [],
                         ):
                             yield emit(
                                 "history",
                                 save_history(
                                     action["label"],
+                                    detail=action.get("detail") or "",
                                     kind=action["kind"],
                                     words_added=action["words_added"],
                                     words_removed=action["words_removed"],
@@ -2228,9 +2230,9 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                     """
                     INSERT INTO lorebook_entries (
                       id, story_id, name, category, description, aliases_json,
-                      tags_json, metadata_json, disabled, created_at, updated_at
+                      tags_json, metadata_json, revision, disabled, created_at, updated_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         str(uuid.uuid4()),
@@ -2241,6 +2243,7 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                         json.dumps(sanitize_lorebook_aliases(category, entry.aliases, name)),
                         json.dumps(entry.tags),
                         json.dumps(sanitize_lorebook_metadata(category, entry.metadata)),
+                        entry.revision,
                         int(entry.disabled),
                         entry.created_at or now,
                         entry.updated_at or now,

@@ -10046,8 +10046,11 @@ function App() {
       (result.history || []).forEach(appendWriteHistoryEntry);
 
       const appliedUpdates = Array.isArray(result.applied) ? result.applied : [];
+      const skippedUpdates = Array.isArray(result.skipped) ? result.skipped : [];
       if (result.error) {
         setStatus("Lorebook update failed");
+      } else if (skippedUpdates.length) {
+        showToast("Lorebook updated; some edits were skipped");
       } else {
         showToast(appliedUpdates.length ? "Lorebook updated" : "Nothing new to save");
       }
@@ -10563,6 +10566,10 @@ function App() {
           }
           if (event.type === "lorebook") {
             finishLorebookThinking();
+            const skippedUpdates = Array.isArray(event.value?.skipped) ? event.value.skipped : [];
+            if (skippedUpdates.length) {
+              showToast("Lorebook updated; some edits were skipped");
+            }
             //a run that changed nothing stays quiet, the history line already covers it
             void storyApi.listLorebook(run.storyId).then(setLorebookEntries).catch((error) => {
               setStatus(error.message);

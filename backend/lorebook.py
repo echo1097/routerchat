@@ -100,6 +100,7 @@ class LorebookEntryRequest(BaseModel):
     tags: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
     disabled: bool = False
+    revision: int | None = Field(default=None, ge=0)
 
 
 class LorebookUpdateRequest(BaseModel):
@@ -118,6 +119,7 @@ class StoryArchiveLorebookEntry(BaseModel):
     aliases: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    revision: int = Field(default=0, ge=0)
     disabled: bool = False
     created_at: str = ""
     updated_at: str = ""
@@ -148,6 +150,7 @@ def lorebook_run_history_actions(
     applied: list[dict[str, Any]],
     duration_ms: float,
     cost: float | None = None,
+    skipped: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     #a quiet run is still a run, so both endings get a line instead of pretending nothing happened
     actions = [
@@ -157,6 +160,7 @@ def lorebook_run_history_actions(
             "words_added": update.get("wordsAdded"),
             "words_removed": update.get("wordsRemoved"),
             "cost": None,
+            "detail": "",
         }
         for update in applied
     ]
@@ -179,6 +183,11 @@ def lorebook_run_history_actions(
             "words_added": totalAdded,
             "words_removed": totalRemoved,
             "cost": cost,
+            "detail": (
+                f"{len(skipped)} targeted lorebook {'edit was' if len(skipped) == 1 else 'edits were'} skipped."
+                if skipped
+                else ""
+            ),
         }
     )
     return actions
@@ -322,7 +331,7 @@ def rename_linked_chapter_summaries(
         if lorebook_summary_chapter_id(summaryRow) != chapterId:
             continue
         conn.execute(
-            "UPDATE lorebook_entries SET name = ?, updated_at = ? WHERE id = ?",
+            "UPDATE lorebook_entries SET name = ?, revision = revision + 1, updated_at = ? WHERE id = ?",
             (chapterTitle, now, summaryRow["id"]),
         )
 
@@ -375,9 +384,104 @@ def find_enabled_chapter_summary(
 
 
 def normalize_required_summary_update(
-    updates: list[Any], chapter: sqlite3.Row
+    updates: list[Any],
+    chapter: sqlite3.Row,
+    lorebook_rows: list[sqlite3.Row] | None = None,
 ) -> list[dict[str, Any]]:
     validUpdates = [update for update in updates if isinstance(update, dict)]
+    targeted = any(
+        str(update.get("action") or "").lower() in {"edit", "exclude", "keep"}
+        for update in validUpdates
+    )
+    if targeted:
+        rowsById = {str(row["id"]): row for row in (lorebook_rows or [])}
+
+        def updateCategory(update: dict[str, Any]) -> str:
+            if str(update.get("action") or "").lower() == "create":
+                return normalize_lorebook_category(update.get("category"))
+            row = rowsById.get(str(update.get("entryId") or ""))
+            return normalize_lorebook_category(row["category"]) if row else ""
+
+        summaries = [update for update in validUpdates if updateCategory(update) == "synopsis"]
+        if len(summaries) != 1:
+            raise ValueError("The lorebook update must contain exactly one chapter summary decision.")
+        summary = summaries[0]
+        summaryAction = str(summary.get("action") or "").lower()
+        if summaryAction == "exclude":
+            raise ValueError("The active chapter summary cannot be excluded.")
+        if summaryAction == "create":
+            description = str(summary.get("description") or "").strip()
+            if not description:
+                raise ValueError("The lorebook update returned an invalid chapter summary.")
+            summary = {
+                **summary,
+                "name": str(chapter["title"] or "New chapter").strip() or "New chapter",
+                "category": "synopsis",
+                "aliases": [],
+                "tags": [],
+                "metadata": {"chapter_id": str(chapter["id"])},
+            }
+        else:
+            summaryRow = rowsById.get(str(summary.get("entryId") or ""))
+            if not summaryRow:
+                raise ValueError("The chapter summary target was not found.")
+            linkedChapterId = lorebook_summary_chapter_id(summaryRow)
+            legacyTitleMatch = (
+                not linkedChapterId
+                and str(summaryRow["name"] or "").casefold()
+                == str(chapter["title"] or "").casefold()
+            )
+            if linkedChapterId != str(chapter["id"]) and not legacyTitleMatch:
+                raise ValueError("The lorebook update targeted the wrong chapter summary.")
+            for operation in summary.get("operations") or []:
+                if isinstance(operation, dict) and operation.get("operation") == "setField":
+                    raise ValueError("Chapter summary identity cannot be changed by lorebook edits.")
+            summary = {
+                **summary,
+                "_summaryChapterId": str(chapter["id"]),
+                "_summaryName": str(chapter["title"] or "New chapter").strip() or "New chapter",
+            }
+
+        timelines = [update for update in validUpdates if updateCategory(update) == "timeline"]
+        if len(timelines) != 1:
+            raise ValueError("The lorebook update must contain exactly one Timeline decision.")
+        timeline = timelines[0]
+        timelineAction = str(timeline.get("action") or "").lower()
+        if timelineAction == "exclude":
+            raise ValueError("Timeline cannot be excluded.")
+        if timelineAction == "create":
+            timeline = {
+                **timeline,
+                "name": "Timeline",
+                "category": "timeline",
+                "description": normalize_timeline_description(
+                    str(timeline.get("description") or "")
+                ),
+                "aliases": ["Timeline"],
+                "tags": [],
+                "metadata": {},
+            }
+            if not timeline["description"]:
+                raise ValueError("The lorebook update returned an invalid Timeline.")
+        else:
+            for operation in timeline.get("operations") or []:
+                if (
+                    isinstance(operation, dict)
+                    and operation.get("operation") == "setField"
+                    and operation.get("field") in {"name", "category"}
+                ):
+                    raise ValueError("Timeline identity cannot be changed by lorebook edits.")
+
+        normalized: list[dict[str, Any]] = []
+        for update in validUpdates:
+            if update is summaries[0]:
+                normalized.append(summary)
+            elif update is timelines[0]:
+                normalized.append(timeline)
+            else:
+                normalized.append(update)
+        return normalized
+
     summaries = [
         update
         for update in validUpdates
@@ -513,6 +617,7 @@ def row_to_lorebook_entry(row: sqlite3.Row) -> dict[str, Any]:
         "aliases": sanitize_lorebook_aliases(category, json_list(row["aliases_json"]), row["name"]),
         "tags": json_list(row["tags_json"]),
         "metadata": sanitize_lorebook_metadata(category, json_dict(row["metadata_json"])),
+        "revision": row["revision"],
         "disabled": bool(row["disabled"]),
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
@@ -524,7 +629,7 @@ def lorebook_context_line(row: sqlite3.Row) -> str:
     description = str(row["description"] or "").replace("\n", "\n  ")
     return f"- {row['name']} ({row['category']}): {description}"
 
-def apply_lorebook_updates(
+def apply_legacy_lorebook_updates(
     deps: LorebookDeps,
     conn: sqlite3.Connection,
     story_id: str,
@@ -582,7 +687,7 @@ def apply_lorebook_updates(
             if not existing or category == "timeline" or name.casefold() == "timeline":
                 continue
             conn.execute(
-                "UPDATE lorebook_entries SET disabled = 1, updated_at = ? WHERE id = ?",
+                "UPDATE lorebook_entries SET disabled = 1, revision = revision + 1, updated_at = ? WHERE id = ?",
                 (now, existing["id"]),
             )
             wordsAdded, wordsRemoved = deps.word_diff_counts(
@@ -634,11 +739,11 @@ def apply_lorebook_updates(
             if beforeSnapshot == afterSnapshot and not nameChanged:
                 continue
 
-            conn.execute(
+            result = conn.execute(
                 """
                 UPDATE lorebook_entries
                 SET name = ?, category = ?, description = ?, aliases_json = ?, tags_json = ?,
-                    metadata_json = ?, updated_at = ?
+                    metadata_json = ?, revision = revision + 1, updated_at = ?
                 WHERE id = ?
                 """,
                 (
@@ -704,41 +809,569 @@ def apply_lorebook_updates(
     return applied
 
 
+def skipped_lorebook_update(
+    index: int,
+    code: str,
+    message: str,
+    update: Any,
+    operation_index: int | None = None,
+) -> dict[str, Any]:
+    item = {
+        "index": index,
+        "code": code,
+        "message": message,
+        "entryId": str(update.get("entryId") or "") if isinstance(update, dict) else "",
+    }
+    if operation_index is not None:
+        item["operationIndex"] = operation_index
+    return item
+
+
+def append_lorebook_text(description: str, new_text: str, category: str) -> str:
+    addition = str(new_text or "").strip()
+    if not addition:
+        raise ValueError("appendText newText cannot be empty")
+    if not description.strip():
+        return addition
+    separator = "\n" if category == "timeline" else "\n\n"
+    return description.rstrip() + separator + addition
+
+
+def apply_lorebook_edit_operations(
+    entry: sqlite3.Row,
+    operations: Any,
+    update_index: int,
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[str]]:
+    nextEntry = {
+        "name": str(entry["name"]),
+        "category": normalize_lorebook_category(entry["category"]),
+        "description": str(entry["description"] or ""),
+        "aliases": json_list(entry["aliases_json"]),
+        "tags": json_list(entry["tags_json"]),
+        "metadata": json_dict(entry["metadata_json"]),
+    }
+    skipped: list[dict[str, Any]] = []
+    appliedOperations: list[str] = []
+    if not isinstance(operations, list) or not operations:
+        return nextEntry, [skipped_lorebook_update(
+            update_index,
+            "lorebook_edit_invalid_operations",
+            "edit operations must contain at least one operation",
+            {"entryId": entry["id"]},
+        )], appliedOperations
+
+    replacementSpans: dict[int, tuple[int, int, str]] = {}
+    replacementErrors: dict[int, str] = {}
+    claimedSpans: list[tuple[int, int]] = []
+    originalDescription = nextEntry["description"]
+    for operationIndex, operation in enumerate(operations):
+        if not isinstance(operation, dict) or operation.get("operation") != "replaceText":
+            continue
+        if operation.get("field") != "description":
+            replacementErrors[operationIndex] = "replaceText only supports the description field"
+            continue
+        oldText = str(operation.get("oldText") or "")
+        if not oldText:
+            replacementErrors[operationIndex] = "replaceText oldText cannot be empty"
+            continue
+        matches = [match.start() for match in re.finditer(re.escape(oldText), originalDescription)]
+        if not matches:
+            replacementErrors[operationIndex] = "replaceText oldText was not found in the entry"
+            continue
+        if len(matches) != 1:
+            replacementErrors[operationIndex] = "replaceText oldText matched more than once"
+            continue
+        span = (matches[0], matches[0] + len(oldText))
+        if any(span[0] < claimedEnd and claimedStart < span[1] for claimedStart, claimedEnd in claimedSpans):
+            replacementErrors[operationIndex] = "replaceText overlaps another replacement"
+            continue
+        claimedSpans.append(span)
+        replacementSpans[operationIndex] = (
+            span[0], span[1], str(operation.get("newText") or "")
+        )
+
+    for start, end, newText in sorted(replacementSpans.values(), reverse=True):
+        nextEntry["description"] = (
+            nextEntry["description"][:start] + newText + nextEntry["description"][end:]
+        )
+
+    for operationIndex, operation in enumerate(operations):
+        if not isinstance(operation, dict):
+            skipped.append(skipped_lorebook_update(
+                update_index,
+                "lorebook_edit_invalid_operation",
+                "operation must be an object",
+                {"entryId": entry["id"]},
+                operationIndex,
+            ))
+            continue
+
+        operationType = str(operation.get("operation") or "")
+        try:
+            if operationType == "replaceText":
+                if operationIndex in replacementErrors:
+                    raise ValueError(replacementErrors[operationIndex])
+                if operationIndex not in replacementSpans:
+                    raise ValueError("replaceText could not be resolved")
+            elif operationType == "appendText":
+                if operation.get("field") != "description":
+                    raise ValueError("appendText only supports the description field")
+                nextEntry["description"] = append_lorebook_text(
+                    nextEntry["description"],
+                    str(operation.get("newText") or ""),
+                    nextEntry["category"],
+                )
+            elif operationType == "setField":
+                field = str(operation.get("field") or "")
+                value = str(operation.get("value") or "").strip()
+                if field == "name":
+                    if not value:
+                        raise ValueError("entry name cannot be empty")
+                    nextEntry["name"] = value
+                elif field == "category":
+                    normalizedCategory = normalize_lorebook_category(value)
+                    if value.strip().lower() not in LOREBOOK_CATEGORIES:
+                        raise ValueError("setField category is not supported")
+                    if (
+                        normalizedCategory in {"synopsis", "timeline"}
+                        and normalizedCategory != normalize_lorebook_category(entry["category"])
+                    ):
+                        raise ValueError("setField cannot turn a normal entry into a synopsis or Timeline")
+                    nextEntry["category"] = normalizedCategory
+                else:
+                    raise ValueError("setField only supports name or category")
+            elif operationType in {"addItems", "removeItems"}:
+                field = str(operation.get("field") or "")
+                if field not in {"aliases", "tags"}:
+                    raise ValueError("list operations only support aliases or tags")
+                values = operation.get("values")
+                if not isinstance(values, list) or not values:
+                    raise ValueError("list operation values cannot be empty")
+                cleanValues = [str(value).strip() for value in values if str(value).strip()]
+                if not cleanValues:
+                    raise ValueError("list operation values cannot be empty")
+                currentValues = [str(value) for value in nextEntry[field]]
+                if operationType == "addItems":
+                    known = {value.casefold() for value in currentValues}
+                    for value in cleanValues:
+                        normalizedValue = value.casefold()
+                        if normalizedValue in known:
+                            continue
+                        currentValues.append(value)
+                        known.add(normalizedValue)
+                else:
+                    removed = {value.casefold() for value in cleanValues}
+                    currentValues = [
+                        value for value in currentValues if value.casefold() not in removed
+                    ]
+                nextEntry[field] = currentValues
+            else:
+                raise ValueError(f"unsupported lorebook edit operation: {operationType or 'missing'}")
+        except ValueError as exc:
+            skipped.append(skipped_lorebook_update(
+                update_index,
+                "lorebook_edit_invalid_operation",
+                str(exc),
+                {"entryId": entry["id"]},
+                operationIndex,
+            ))
+            continue
+
+        appliedOperations.append(operationType)
+
+    nextEntry["aliases"] = sanitize_lorebook_aliases(
+        nextEntry["category"], nextEntry["aliases"], nextEntry["name"]
+    )
+    nextEntry["metadata"] = sanitize_lorebook_metadata(
+        nextEntry["category"], nextEntry["metadata"]
+    )
+    if nextEntry["category"] == "timeline":
+        nextEntry["name"] = "Timeline"
+        nextEntry["description"] = normalize_timeline_description(nextEntry["description"])
+    return nextEntry, skipped, appliedOperations
+
+
+def apply_targeted_lorebook_update(
+    deps: LorebookDeps,
+    conn: sqlite3.Connection,
+    story_id: str,
+    update: dict[str, Any],
+    update_index: int,
+    now: str,
+    claimed_entry_ids: set[str],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    action = str(update.get("action") or "").lower()
+    if action == "create":
+        name = str(update.get("name") or "").strip()
+        category = normalize_lorebook_category(update.get("category"))
+        description = str(update.get("description") or "").strip()
+        if not name or not description:
+            return [], [skipped_lorebook_update(
+                update_index, "lorebook_create_invalid", "new entries need a name and description", update
+            )]
+        existing = conn.execute(
+            """
+            SELECT id FROM lorebook_entries
+            WHERE story_id = ? AND disabled = 0
+              AND (lower(name) = lower(?) OR (? = 'timeline' AND category = 'timeline'))
+            LIMIT 1
+            """,
+            (story_id, name, category),
+        ).fetchone()
+        if existing:
+            return [], [skipped_lorebook_update(
+                update_index,
+                "lorebook_create_exists",
+                "an enabled entry with that identity already exists; edit it by entryId",
+                update,
+            )]
+        if category == "timeline":
+            name = "Timeline"
+            description = normalize_timeline_description(description)
+        aliases = sanitize_lorebook_aliases(category, update.get("aliases"), name)
+        tags = update.get("tags") if isinstance(update.get("tags"), list) else []
+        metadata = sanitize_lorebook_metadata(category, update.get("metadata"))
+        entryId = str(uuid.uuid4())
+        conn.execute(
+            """
+            INSERT INTO lorebook_entries (
+              id, story_id, name, category, description, aliases_json,
+              tags_json, metadata_json, revision, disabled, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)
+            """,
+            (
+                entryId, story_id, name, category, description,
+                json.dumps(aliases), json.dumps(tags), json.dumps(metadata), now, now,
+            ),
+        )
+        wordsAdded, wordsRemoved = deps.word_diff_counts(
+            "", lorebook_entry_snapshot(category, description, aliases, tags, metadata)
+        )
+        return [{
+            "action": "create",
+            "id": entryId,
+            "name": name,
+            "wordsAdded": wordsAdded,
+            "wordsRemoved": wordsRemoved,
+        }], []
+
+    entryId = str(update.get("entryId") or "").strip()
+    entryRevision = update.get("entryRevision")
+    if not entryId or not isinstance(entryRevision, int):
+        return [], [skipped_lorebook_update(
+            update_index,
+            "lorebook_target_invalid",
+            "existing entries require entryId and entryRevision",
+            update,
+        )]
+    if entryId in claimed_entry_ids:
+        return [], [skipped_lorebook_update(
+            update_index,
+            "lorebook_target_repeated",
+            "the same entry cannot be targeted by more than one update",
+            update,
+        )]
+    claimed_entry_ids.add(entryId)
+    entry = conn.execute(
+        "SELECT * FROM lorebook_entries WHERE id = ? AND story_id = ? AND disabled = 0",
+        (entryId, story_id),
+    ).fetchone()
+    if not entry:
+        return [], [skipped_lorebook_update(
+            update_index,
+            "lorebook_target_missing",
+            "the entry was missing, hidden, or belonged to another story",
+            update,
+        )]
+    if entry["revision"] != entryRevision:
+        return [], [skipped_lorebook_update(
+            update_index,
+            "lorebook_revision_conflict",
+            "the entry changed after the model read it",
+            update,
+        )]
+    if action == "keep":
+        return [], []
+    if action == "exclude":
+        if normalize_lorebook_category(entry["category"]) == "timeline":
+            return [], [skipped_lorebook_update(
+                update_index,
+                "lorebook_timeline_required",
+                "Timeline cannot be excluded",
+                update,
+            )]
+        result = conn.execute(
+            """
+            UPDATE lorebook_entries
+            SET disabled = 1, revision = revision + 1, updated_at = ?
+            WHERE id = ? AND story_id = ? AND revision = ?
+            """,
+            (now, entryId, story_id, entryRevision),
+        )
+        if result.rowcount != 1:
+            return [], [skipped_lorebook_update(
+                update_index,
+                "lorebook_revision_conflict",
+                "the entry changed before it could be excluded",
+                update,
+            )]
+        wordsAdded, wordsRemoved = deps.word_diff_counts(lorebook_row_snapshot(entry), "")
+        return [{
+            "action": "delete",
+            "id": entryId,
+            "name": entry["name"],
+            "wordsAdded": wordsAdded,
+            "wordsRemoved": wordsRemoved,
+        }], []
+    if action != "edit":
+        return [], [skipped_lorebook_update(
+            update_index,
+            "lorebook_action_invalid",
+            f"unsupported lorebook action: {action or 'missing'}",
+            update,
+        )]
+
+    nextEntry, skipped, appliedOperations = apply_lorebook_edit_operations(
+        entry, update.get("operations"), update_index
+    )
+    if not appliedOperations:
+        return [], skipped
+    summaryChapterId = str(update.get("_summaryChapterId") or "").strip()
+    if summaryChapterId:
+        nextEntry["name"] = str(update.get("_summaryName") or entry["name"])
+        nextEntry["category"] = "synopsis"
+        nextEntry["aliases"] = []
+        nextEntry["tags"] = []
+        nextEntry["metadata"] = {"chapter_id": summaryChapterId}
+    if nextEntry["category"] == "timeline" and normalize_lorebook_category(entry["category"]) != "timeline":
+        existingTimeline = conn.execute(
+            "SELECT id FROM lorebook_entries WHERE story_id = ? AND category = 'timeline' AND disabled = 0",
+            (story_id,),
+        ).fetchone()
+        if existingTimeline:
+            skipped.append(skipped_lorebook_update(
+                update_index,
+                "lorebook_timeline_exists",
+                "the story already has an enabled Timeline entry",
+                update,
+            ))
+            return [], skipped
+
+    identityConflict = conn.execute(
+        """
+        SELECT id FROM lorebook_entries
+        WHERE story_id = ? AND id != ? AND disabled = 0
+          AND (lower(name) = lower(?) OR (? = 'timeline' AND category = 'timeline'))
+        LIMIT 1
+        """,
+        (story_id, entryId, nextEntry["name"], nextEntry["category"]),
+    ).fetchone()
+    if identityConflict:
+        skipped.append(skipped_lorebook_update(
+            update_index,
+            "lorebook_identity_conflict",
+            "another enabled entry already uses that identity",
+            update,
+        ))
+        return [], skipped
+
+    beforeSnapshot = lorebook_row_snapshot(entry)
+    afterSnapshot = lorebook_entry_snapshot(
+        nextEntry["category"], nextEntry["description"], nextEntry["aliases"],
+        nextEntry["tags"], nextEntry["metadata"],
+    )
+    if beforeSnapshot == afterSnapshot and str(entry["name"]) == nextEntry["name"]:
+        return [], skipped
+    result = conn.execute(
+        """
+        UPDATE lorebook_entries
+        SET name = ?, category = ?, description = ?, aliases_json = ?, tags_json = ?,
+            metadata_json = ?, revision = revision + 1, updated_at = ?
+        WHERE id = ? AND story_id = ? AND revision = ? AND disabled = 0
+        """,
+        (
+            nextEntry["name"], nextEntry["category"], nextEntry["description"],
+            json.dumps(nextEntry["aliases"]), json.dumps(nextEntry["tags"]),
+            json.dumps(nextEntry["metadata"]), now, entryId, story_id, entryRevision,
+        ),
+    )
+    if result.rowcount != 1:
+        skipped.append(skipped_lorebook_update(
+            update_index,
+            "lorebook_revision_conflict",
+            "the entry changed before the edit could be saved",
+            update,
+        ))
+        return [], skipped
+    wordsAdded, wordsRemoved = deps.word_diff_counts(beforeSnapshot, afterSnapshot)
+    return [{
+        "action": "update",
+        "id": entryId,
+        "name": nextEntry["name"],
+        "operations": appliedOperations,
+        "wordsAdded": wordsAdded,
+        "wordsRemoved": wordsRemoved,
+    }], skipped
+
+
+def apply_lorebook_updates(
+    deps: LorebookDeps,
+    conn: sqlite3.Connection,
+    story_id: str,
+    updates: list[dict[str, Any]],
+    now: str,
+) -> dict[str, list[dict[str, Any]]]:
+    targeted = any(
+        str(update.get("action") or "").lower() in {"edit", "exclude", "keep"}
+        for update in updates
+        if isinstance(update, dict)
+    )
+    if not targeted:
+        return {
+            "applied": apply_legacy_lorebook_updates(deps, conn, story_id, updates, now),
+            "skipped": [],
+        }
+
+    applied: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    claimedEntryIds: set[str] = set()
+    for updateIndex, update in enumerate(updates):
+        if not isinstance(update, dict):
+            skipped.append(skipped_lorebook_update(
+                updateIndex, "lorebook_update_invalid", "update must be an object", update
+            ))
+            continue
+        nextApplied, nextSkipped = apply_targeted_lorebook_update(
+            deps, conn, story_id, update, updateIndex, now, claimedEntryIds
+        )
+        applied.extend(nextApplied)
+        skipped.extend(nextSkipped)
+    return {"applied": applied, "skipped": skipped}
+
+
 LOREBOOK_UPDATE_SYSTEM_PROMPT = (
-    "Extract important durable lore from new prose. Return strict JSON only: "
-    "{\"updates\":[{\"action\":\"create|update|delete\",\"name\":\"\","
-    "\"category\":\"character|location|item|event|note|synopsis|timeline\","
-    "\"description\":\"\",\"aliases\":[],\"tags\":[],\"metadata\":{}}]}. "
-    "Use action \"update\" for any name already present in existing_lorebook, and "
-    "when the prose contradicts a stored detail, correct that entry so it matches "
-    "the prose. "
-    "If a previously-stored fact is no longer supported by the prose, note it for "
-    "removal with action \"delete\". Only remove an entry when the prose actively "
-    "contradicts it or explicitly retires it. Never remove an entry merely because "
-    "this prose does not mention it. Most entries in existing_lorebook describe "
-    "earlier parts of the story and must be left alone. "
-    "The aliases array is only for nicknames, shortened names, titles used as "
-    "names, or alternate names explicitly used in the story to refer to this "
-    "entry. Do not put jobs, roles, species, traits, descriptions, "
-    "relationships, or categories in aliases. For note and synopsis entries, "
-    "aliases must be empty. Put character details like age, detailed physical "
-    "appearance, personality, and background into description instead of "
-    "metadata fields. "
-    f"{SUMMARY_INSTRUCTION} Return exactly one synopsis update for chapter, even when an existing "
-    "summary needs no factual changes. "
-    "For story chronology, create or update exactly one timeline entry named "
-    "\"Timeline\" with category \"timeline\". Its description must be a "
-    "chronological Markdown bullet list. Merge new events into the existing "
-    "timeline instead of duplicating bullets. Keep each entry concise and "
-    "information-dense. Do not copy prose style from the story. Prefer short "
-    "factual summaries over long paragraphs. Preserve important concrete "
-    "details, but omit transient action, mood, and wording that does not "
-    "matter for continuity. Timeline bullets should be brief, one event per "
-    "bullet. Add only new durable events or necessary corrections."
+    "Extract important durable lore from new prose. Return one strict JSON object with an updates "
+    "array and no explanation. Existing entries are identified only by entryId and entryRevision. "
+    "Never recreate or restate a complete existing entry. Use action edit with small operations: "
+    "replaceText changes one exact unique excerpt in description, appendText adds genuinely new "
+    "description text, setField corrects name or category, and addItems or removeItems changes "
+    "aliases or tags. Copy replaceText oldText exactly from existing_lorebook. Use action create "
+    "only for a genuinely new entry. Use exclude only when prose actively contradicts or retires "
+    "an entry; absence from this chapter is not a reason to exclude it. Use keep when the required "
+    "chapter summary or Timeline needs no change. "
+    "Aliases are only nicknames, shortened names, titles used as names, or alternate names used in "
+    "the story. Never use aliases for jobs, roles, species, traits, relationships, or categories. "
+    "Character age, appearance, personality, and background belong in description. Notes and "
+    "synopses have no aliases. "
+    f"{SUMMARY_INSTRUCTION} Return exactly one create, edit, or keep decision for the active "
+    "chapter synopsis. Existing summaries must be targeted by their entryId. "
+    "Return exactly one create, edit, or keep decision for Timeline. Timeline description is a "
+    "chronological Markdown bullet list; use targeted replacements or append one brief event per "
+    "bullet. Keep entries concise and factual, preserve concrete continuity details, and omit "
+    "transient action, mood, or copied prose style."
 )
 
 
+def lorebook_edit_operation_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "oneOf": [
+            {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "operation": {"const": "replaceText"},
+                    "field": {"const": "description"},
+                    "oldText": {"type": "string", "minLength": 1},
+                    "newText": {"type": "string"},
+                },
+                "required": ["operation", "field", "oldText", "newText"],
+            },
+            {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "operation": {"const": "appendText"},
+                    "field": {"const": "description"},
+                    "newText": {"type": "string", "minLength": 1},
+                },
+                "required": ["operation", "field", "newText"],
+            },
+            {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "operation": {"const": "setField"},
+                    "field": {"type": "string", "enum": ["name", "category"]},
+                    "value": {"type": "string", "minLength": 1},
+                },
+                "required": ["operation", "field", "value"],
+            },
+            {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "operation": {"type": "string", "enum": ["addItems", "removeItems"]},
+                    "field": {"type": "string", "enum": ["aliases", "tags"]},
+                    "values": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {"type": "string", "minLength": 1},
+                    },
+                },
+                "required": ["operation", "field", "values"],
+            },
+        ],
+    }
+
+
 def lorebook_update_response_format() -> dict[str, Any]:
+    createUpdate = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "action": {"const": "create"},
+            "name": {"type": "string", "minLength": 1},
+            "category": {"type": "string", "enum": sorted(LOREBOOK_CATEGORIES)},
+            "description": {"type": "string", "minLength": 1},
+            "aliases": {"type": "array", "items": {"type": "string"}},
+            "tags": {"type": "array", "items": {"type": "string"}},
+            "metadata": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {},
+            },
+        },
+        "required": [
+            "action", "name", "category", "description", "aliases", "tags", "metadata",
+        ],
+    }
+    editUpdate = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "action": {"const": "edit"},
+            "entryId": {"type": "string", "minLength": 1},
+            "entryRevision": {"type": "integer", "minimum": 0},
+            "operations": {
+                "type": "array",
+                "minItems": 1,
+                "items": lorebook_edit_operation_schema(),
+            },
+        },
+        "required": ["action", "entryId", "entryRevision", "operations"],
+    }
+    existingDecision = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "action": {"type": "string", "enum": ["exclude", "keep"]},
+            "entryId": {"type": "string", "minLength": 1},
+            "entryRevision": {"type": "integer", "minimum": 0},
+        },
+        "required": ["action", "entryId", "entryRevision"],
+    }
     return {
         "type": "json_schema",
         "json_schema": {
@@ -753,41 +1386,7 @@ def lorebook_update_response_format() -> dict[str, Any]:
                         "minItems": 1,
                         "items": {
                             "type": "object",
-                            "additionalProperties": False,
-                            "properties": {
-                                "action": {
-                                    "type": "string",
-                                    "enum": ["create", "update", "delete"],
-                                },
-                                "name": {"type": "string", "minLength": 1},
-                                "category": {
-                                    "type": "string",
-                                    "enum": sorted(LOREBOOK_CATEGORIES),
-                                },
-                                "description": {"type": "string"},
-                                "aliases": {
-                                    "type": "array",
-                                    "items": {"type": "string"},
-                                },
-                                "tags": {
-                                    "type": "array",
-                                    "items": {"type": "string"},
-                                },
-                                "metadata": {
-                                    "type": "object",
-                                    "additionalProperties": False,
-                                    "properties": {},
-                                },
-                            },
-                            "required": [
-                                "action",
-                                "name",
-                                "category",
-                                "description",
-                                "aliases",
-                                "tags",
-                                "metadata",
-                            ],
+                            "oneOf": [createUpdate, editUpdate, existingDecision],
                         },
                     },
                 },
@@ -811,7 +1410,10 @@ async def run_lorebook_update(
 ) -> AsyncIterator[dict[str, Any]]:
     api_key = deps.read_openrouter_key()
     if not api_key or not source_text.strip():
-        yield {"type": "result", "value": {"applied": [], "skipped": True}}
+        yield {
+            "type": "result",
+            "value": {"applied": [], "skipped": [], "skipped_run": True},
+        }
         return
 
     with deps.get_db() as conn:
@@ -825,11 +1427,24 @@ async def run_lorebook_update(
             (story_id,),
         ).fetchall()
 
-    current_lore = "\n".join(
-        lorebook_context_line(row)
+    current_lore = [
+        {
+            "entryId": row["id"],
+            "entryRevision": row["revision"],
+            "name": row["name"],
+            "category": normalize_lorebook_category(row["category"]),
+            "description": row["description"] or "",
+            "aliases": sanitize_lorebook_aliases(
+                normalize_lorebook_category(row["category"]),
+                json_list(row["aliases_json"]),
+                row["name"],
+            ),
+            "tags": json_list(row["tags_json"]),
+            "chapterId": lorebook_summary_chapter_id(row) or None,
+        }
         for row in lorebook
         if not bool(row["disabled"])
-    )
+    ]
     prompt = {
         "story": deps.row_to_story(story),
         "chapter": {"id": chapter["id"], "title": chapter["title"]},
@@ -861,6 +1476,7 @@ async def run_lorebook_update(
     raw_output = ""
     error_text: str | None = None
     applied: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
     usage: dict[str, Any] | None = None
     lorebook_generation_id: str | None = None
     generated_text: list[str] = []
@@ -924,11 +1540,13 @@ async def run_lorebook_update(
             updates = parsed.get("updates") if isinstance(parsed, dict) else []
             if not isinstance(updates, list):
                 updates = []
-            updates = normalize_required_summary_update(updates, chapter)
+            updates = normalize_required_summary_update(updates, chapter, lorebook)
             with deps.get_db() as conn:
-                applied = apply_lorebook_updates(
+                applyResult = apply_lorebook_updates(
                     deps, conn, story_id, updates, deps.utc_now()
                 )
+                applied = applyResult["applied"]
+                skipped = applyResult["skipped"]
     except Exception as exc:  # noqa: BLE001
         error_text = str(exc)
 
@@ -946,9 +1564,9 @@ async def run_lorebook_update(
             """
             INSERT INTO lorebook_update_runs (
               id, story_id, chapter_id, generation_id, openrouter_generation_id,
-              raw_output, applied_updates_json, cost, error, created_at
+              raw_output, applied_updates_json, rejected_updates_json, cost, error, created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 str(uuid.uuid4()),
@@ -958,6 +1576,7 @@ async def run_lorebook_update(
                 lorebook_generation_id,
                 raw_output or "",
                 json.dumps(applied),
+                json.dumps(skipped),
                 (usage or {}).get("cost"),
                 error_text,
                 deps.utc_now(),
@@ -966,7 +1585,13 @@ async def run_lorebook_update(
 
     yield {
         "type": "result",
-        "value": {"applied": applied, "error": error_text, "cost": (usage or {}).get("cost")},
+        "value": {
+            "applied": applied,
+            "skipped": skipped,
+            "skipped_run": False,
+            "error": error_text,
+            "cost": (usage or {}).get("cost"),
+        },
     }
 
 
@@ -980,8 +1605,9 @@ def finalize_lorebook_update(
     duration_ms: float,
 ) -> dict[str, Any]:
     applied = result.get("applied") or []
+    skipped = result.get("skipped") or []
     actions = lorebook_run_history_actions(
-        display_model_name(story["model"]), applied, duration_ms, result.get("cost")
+        display_model_name(story["model"]), applied, duration_ms, result.get("cost"), skipped
     )
     history_run_id = str(uuid.uuid4())
     history_entries: list[dict[str, Any]] = []
@@ -995,7 +1621,7 @@ def finalize_lorebook_update(
                     chapter_id=chapter_id,
                     run_id=history_run_id,
                     label=action["label"],
-                    detail="",
+                    detail=action.get("detail") or "",
                     now=deps.utc_now(),
                     kind=action["kind"],
                     words_added=action["words_added"],
@@ -1016,7 +1642,8 @@ def finalize_lorebook_update(
     return {
         "applied": applied,
         "error": result.get("error"),
-        "skipped": bool(result.get("skipped")),
+        "skipped": skipped,
+        "skipped_run": bool(result.get("skipped_run")),
         "entries": [row_to_lorebook_entry(row) for row in rows],
         "history": history_entries,
     }
@@ -1250,7 +1877,8 @@ def create_lorebook_router(deps: LorebookDeps) -> APIRouter:
                     conn.execute(
                         """
                         UPDATE lorebook_entries
-                        SET name = 'Timeline', category = 'timeline', description = ?, updated_at = ?
+                        SET name = 'Timeline', category = 'timeline', description = ?,
+                            revision = revision + 1, updated_at = ?
                         WHERE id = ? AND story_id = ?
                         """,
                         (nextTimeline, now, currentRow["id"], story_id),
@@ -1436,7 +2064,7 @@ def create_lorebook_router(deps: LorebookDeps) -> APIRouter:
                     """
                     UPDATE lorebook_entries
                     SET name = ?, description = ?, aliases_json = '[]', tags_json = '[]',
-                        metadata_json = ?, disabled = ?, updated_at = ?
+                        metadata_json = ?, disabled = ?, revision = revision + 1, updated_at = ?
                     WHERE id = ?
                     """,
                     (
@@ -1489,6 +2117,7 @@ def create_lorebook_router(deps: LorebookDeps) -> APIRouter:
     ) -> dict[str, Any]:
         now = deps.utc_now()
         category = normalize_lorebook_category(payload.category)
+        baseRevision = payload.revision
         with deps.get_db() as conn:
             entry = conn.execute(
                 "SELECT * FROM lorebook_entries WHERE id = ? AND story_id = ?",
@@ -1511,12 +2140,13 @@ def create_lorebook_router(deps: LorebookDeps) -> APIRouter:
                     if not chapter:
                         raise HTTPException(status_code=422, detail="The summary chapter was not found.")
                     entryName = str(chapter["title"])
-            conn.execute(
+            result = conn.execute(
                 """
                 UPDATE lorebook_entries
                 SET name = ?, category = ?, description = ?, aliases_json = ?,
-                    tags_json = ?, metadata_json = ?, disabled = ?, updated_at = ?
-                WHERE id = ? AND story_id = ?
+                    tags_json = ?, metadata_json = ?, disabled = ?,
+                    revision = revision + 1, updated_at = ?
+                WHERE id = ? AND story_id = ? AND (? IS NULL OR revision = ?)
                 """,
                 (
                     entryName,
@@ -1533,8 +2163,23 @@ def create_lorebook_router(deps: LorebookDeps) -> APIRouter:
                     now,
                     entry_id,
                     story_id,
+                    baseRevision,
+                    baseRevision,
                 ),
             )
+            if result.rowcount != 1:
+                current = conn.execute(
+                    "SELECT * FROM lorebook_entries WHERE id = ? AND story_id = ?",
+                    (entry_id, story_id),
+                ).fetchone()
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "lorebook_revision_conflict",
+                        "message": "Lorebook entry changed on the server.",
+                        "entry": row_to_lorebook_entry(current),
+                    },
+                )
             row = conn.execute("SELECT * FROM lorebook_entries WHERE id = ?", (entry_id,)).fetchone()
         return {"entry": row_to_lorebook_entry(row)}
 

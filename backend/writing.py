@@ -155,6 +155,7 @@ CHAPTER_EDIT_OPERATIONS = {
 }
 CHAPTER_EDIT_INVALID_JSON = "chapter_edit_invalid_json"
 CHAPTER_EDIT_INVALID_OPERATION = "chapter_edit_invalid_operation"
+CHAPTER_EDIT_INVALID_FORMAT = "chapter_edit_invalid_format"
 CHAPTER_EDIT_REVISION_MISMATCH = "chapter_edit_revision_mismatch"
 CHAPTER_EDIT_TARGET_MISMATCH = "chapter_edit_target_mismatch"
 CHAPTER_EDIT_CONFLICTING_EDITS = "chapter_edit_conflicting_edits"
@@ -361,7 +362,15 @@ def chapter_edit_operation_schema() -> dict[str, Any]:
         "operation": {"type": "string"},
         "blockId": {"type": "string", "minLength": 1},
         "anchorText": {"type": "string", "minLength": 1},
-        "newText": {"type": "string", "minLength": 1},
+        "newText": {
+            "type": "string",
+            "minLength": 1,
+            "description": (
+                "Chapter Markdown with normal spaces between words and a blank line between "
+                "prose paragraphs. Encode paragraph breaks as \\n\\n in JSON and never flatten "
+                "multiple paragraphs into one line."
+            ),
+        },
     }
 
     def variant(operationType: str, requiredFields: list[str]) -> dict[str, Any]:
@@ -634,6 +643,116 @@ def clean_insert_text(value: Any) -> str:
     return str(value or "").strip()
 
 
+MISSING_SENTENCE_SPACE_PATTERN = re.compile(r"[.!?][\u2019\u201d\"')\]]?[A-Z]")
+UNBROKEN_PROSE_WORD_LIMIT = 300
+AUTO_PARAGRAPH_TARGET_WORDS = 110
+SENTENCE_END_PATTERN = re.compile(r"[.!?](?:[\"\u2019\u201d')\]]+)?(?=\s+)")
+MARKDOWN_LINE_PATTERN = re.compile(
+    r"^(?:#{1,6}\s|>|[-+*]\s|\d+[.)]\s|```|~~~|[*_-]{3,}\s*$)"
+)
+
+
+def paragraphize_unbroken_prose(text: str) -> str:
+    if "\n" in text or len(text.split()) <= UNBROKEN_PROSE_WORD_LIMIT:
+        return text
+
+    paragraphs: list[str] = []
+    paragraphStart = 0
+    for match in SENTENCE_END_PATTERN.finditer(text):
+        candidate = text[paragraphStart:match.end()].strip()
+        if len(candidate.split()) < AUTO_PARAGRAPH_TARGET_WORDS:
+            continue
+
+        paragraphs.append(candidate)
+        paragraphStart = match.end()
+
+    remainder = text[paragraphStart:].strip()
+    if remainder:
+        paragraphs.append(remainder)
+
+    #a giant run-on sentence has no safe boundary, so leave it for the format guard to reject
+    return "\n\n".join(paragraphs) if len(paragraphs) > 1 else text
+
+
+def normalize_chapter_edit_text(value: Any) -> str:
+    text = str(value or "").replace("\r\n", "\n").replace("\r", "\n")
+    text = paragraphize_unbroken_prose(text)
+    lines = [line.rstrip() for line in text.split("\n")]
+
+    normalizedLines: list[str] = []
+    inFence = False
+    for line in lines:
+        stripped = line.lstrip()
+        isFence = stripped.startswith("```") or stripped.startswith("~~~")
+
+        if normalizedLines and line and normalizedLines[-1]:
+            previous = normalizedLines[-1].lstrip()
+            previousIsMarkdown = bool(MARKDOWN_LINE_PATTERN.match(previous))
+            currentIsMarkdown = bool(MARKDOWN_LINE_PATTERN.match(stripped))
+            #models commonly use one newline between prose paragraphs, markdown needs two to keep them separate
+            if not inFence and not previousIsMarkdown and not currentIsMarkdown:
+                normalizedLines.append("")
+
+        normalizedLines.append(line)
+        if isFence:
+            inFence = not inFence
+
+    compactLines: list[str] = []
+    inFence = False
+    blankCount = 0
+    for line in normalizedLines:
+        stripped = line.lstrip()
+        isFence = stripped.startswith("```") or stripped.startswith("~~~")
+        if not line and not inFence:
+            blankCount += 1
+            if blankCount > 1:
+                continue
+        else:
+            blankCount = 0
+
+        compactLines.append(line)
+        if isFence:
+            inFence = not inFence
+
+    return "\n".join(compactLines).strip()
+
+
+def chapter_edit_prose_for_validation(text: str) -> str:
+    proseLines: list[str] = []
+    inFence = False
+    for line in text.split("\n"):
+        stripped = line.lstrip()
+        isFence = stripped.startswith("```") or stripped.startswith("~~~")
+        if isFence:
+            inFence = not inFence
+            continue
+        if not inFence and not MARKDOWN_LINE_PATTERN.match(stripped):
+            proseLines.append(line)
+
+    return "\n".join(proseLines)
+
+
+def validate_chapter_edit_text(value: Any) -> str:
+    normalized = normalize_chapter_edit_text(value)
+    if not normalized:
+        raise ChapterEditError(
+            CHAPTER_EDIT_INVALID_OPERATION,
+            "newText must be a non-empty string",
+        )
+    prose = chapter_edit_prose_for_validation(normalized)
+    if MISSING_SENTENCE_SPACE_PATTERN.search(prose):
+        raise ChapterEditError(
+            CHAPTER_EDIT_INVALID_FORMAT,
+            "newText contains sentences joined without a space",
+        )
+    if "\n" not in prose and len(prose.split()) > UNBROKEN_PROSE_WORD_LIMIT:
+        raise ChapterEditError(
+            CHAPTER_EDIT_INVALID_FORMAT,
+            "newText is a long block of prose with no paragraph breaks",
+        )
+    return normalized
+
+
 #models shorten these constantly and losing a whole generation over a field nickname is a stupid way to die
 CHAPTER_EDIT_FIELD_ALIASES = {
     "anchor": "anchorText",
@@ -729,11 +848,12 @@ def validate_chapter_operation(
             )
 
     newText = operation.get("newText")
-    if not isinstance(newText, str) or not newText.strip():
+    if not isinstance(newText, str):
         raise ChapterEditError(
             CHAPTER_EDIT_INVALID_OPERATION,
             "newText must be a non-empty string",
         )
+    operation["newText"] = validate_chapter_edit_text(newText)
 
     if operationType == "appendToChapter":
         return operation
@@ -948,6 +1068,7 @@ def validate_chapter_edit_batch_partial(
 REPAIRABLE_EDIT_CODES = {
     CHAPTER_EDIT_INVALID_JSON,
     CHAPTER_EDIT_INVALID_OPERATION,
+    CHAPTER_EDIT_INVALID_FORMAT,
     CHAPTER_EDIT_TARGET_MISMATCH,
     CHAPTER_EDIT_CONFLICTING_EDITS,
     CHAPTER_EDIT_TRUNCATED,
@@ -1333,7 +1454,7 @@ def build_story_messages(
                 "role": "system",
                 "content": (
                     "You are editing the active chapter. Return only one JSON object with no "
-                    "markdown, explanation, or wrapper text, shaped as {\"chapterRevision\": N, "
+                    "Markdown fence, explanation, or wrapper text, shaped as {\"chapterRevision\": N, "
                     "\"edits\": [ ... ]}. The chapterRevision must exactly match the chapter "
                     "revision in the context and is stated once, not per edit. "
                     "Emit one entry in edits for every place you are changing. Never widen an "
@@ -1344,6 +1465,13 @@ def build_story_messages(
                     "insertAfterBlock, and appendToChapter. Every edit includes operation and "
                     "non-empty newText. Targeted single-block operations include blockId and "
                     "anchorText, copied exactly from that block's anchorText in the block map. "
+                    "newText is chapter Markdown, not wrapper Markdown. Preserve normal spaces "
+                    "between every word and sentence. Separate every prose paragraph with a blank "
+                    "line, encoded inside the JSON string as \\n\\n. Never compress several "
+                    "paragraphs into one line or join the end of one sentence directly to the "
+                    "start of the next. If the prose contains multiple paragraphs, newText must "
+                    "contain a \\n\\n break between every one. Check newText for paragraph breaks and "
+                    "normal spacing before returning the JSON. "
                     "replaceBlockRange replaces an inclusive contiguous range and includes "
                     "startBlockId, startAnchorText, endBlockId, and endAnchorText; "
                     "use it only when every block in that range is genuinely being rewritten. "
@@ -1401,8 +1529,9 @@ def repair_instructions(repair_context: dict[str, Any]) -> str:
         parts.append("What went wrong:\n" + "\n".join(f"- {error}" for error in errors))
     if failed:
         parts.append(
-            "These are the edits that failed. The prose in newText is fine, it is the targeting "
-            "that was wrong, so reuse the text and re-anchor it against the block map above:\n"
+            "These are the edits that failed. If an error mentions targeting, reuse the prose and "
+            "re-anchor it against the block map. If it mentions formatting, correct newText so "
+            "paragraphs use blank lines and words and sentences have normal spaces:\n"
             + json.dumps(failed, ensure_ascii=False, indent=2)
         )
     parts.append(

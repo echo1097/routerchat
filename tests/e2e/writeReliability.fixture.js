@@ -546,6 +546,24 @@ export async function installWriteApi(page, options = {}) {
         );
       }, value);
     },
+    async pushGenerationContent(value) {
+      await page.evaluate((nextValue) => {
+        const reasoningStream = window.__writeReasoningStream;
+        if (!reasoningStream) throw new Error("generation stream is not ready");
+
+        const event = {
+          type: "content",
+          runId: reasoningStream.requestBody.generation_run_id,
+          storyId: "story-1",
+          chapterId: "chapter-1",
+          revision: reasoningStream.requestBody.chapter_revision,
+          value: nextValue,
+        };
+        reasoningStream.controller.enqueue(
+          new TextEncoder().encode(`${JSON.stringify(event)}\n`),
+        );
+      }, value);
+    },
     async closeReasoningStream() {
       await page.evaluate(() => {
         window.__writeReasoningStream?.controller.close();

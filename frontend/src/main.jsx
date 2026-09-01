@@ -3942,8 +3942,11 @@ function WriteOperationStatus({
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const dismissedRef = useRef(false); //once you close it yourself we stop reopening it on you
+  const toggleRef = useRef(null);
+  const popoverRef = useRef(null);
   const reasoningScrollRef = useRef(null);
   const editScrollRef = useRef(null);
+  const [popoverPosition, setPopoverPosition] = useState(null);
   const popoverId = useId();
   const {
     markUserScroll: markReasoningScroll,
@@ -3976,6 +3979,29 @@ function WriteOperationStatus({
 
   const hasDetails = hasReasoning || hasEditPreview;
 
+  const positionPopover = useCallback(() => {
+    const toggle = toggleRef.current;
+    if (!detailsOpen || !toggle) return;
+
+    const margin = 16;
+    const gap = 8;
+    const maxWidth = 480;
+    const rect = toggle.getBoundingClientRect();
+    const width = Math.min(maxWidth, window.innerWidth - margin * 2);
+    const left = Math.min(
+      Math.max(rect.right - width, margin),
+      window.innerWidth - width - margin,
+    );
+    const top = Math.max(rect.bottom + gap, margin);
+
+    setPopoverPosition({
+      top,
+      left,
+      width,
+      maxHeight: Math.max(160, window.innerHeight - top - margin),
+    });
+  }, [detailsOpen]);
+
   //the whole point of the edit preview is that you can watch it, so open the panel yourself the first time
   //prose shows up, otherwise an edit run looks exactly like the old mute status label it was meant to replace
   useEffect(() => {
@@ -3989,6 +4015,26 @@ function WriteOperationStatus({
     startEditFollowing();
   }, [detailsOpen, startReasoningFollowing, startEditFollowing]);
 
+  useLayoutEffect(() => {
+    if (!detailsOpen) {
+      setPopoverPosition(null);
+      return undefined;
+    }
+
+    positionPopover();
+    function repositionForScroll(event) {
+      if (popoverRef.current?.contains(event.target)) return;
+      positionPopover();
+    }
+    window.addEventListener("resize", positionPopover);
+    window.addEventListener("scroll", repositionForScroll, true);
+
+    return () => {
+      window.removeEventListener("resize", positionPopover);
+      window.removeEventListener("scroll", repositionForScroll, true);
+    };
+  }, [detailsOpen, positionPopover]);
+
   useEffect(() => {
     if (!detailsOpen) return;
     scrollReasoningToBottom();
@@ -3999,107 +4045,115 @@ function WriteOperationStatus({
     scrollEditToBottom();
   }, [editPreview, detailsOpen, scrollEditToBottom]);
 
+  const detailsPopover = hasDetails && detailsOpen && popoverPosition
+    ? createPortal(
+      <span
+        id={popoverId}
+        ref={popoverRef}
+        role="region"
+        aria-label="Writing details"
+        className="t-dropdown write-thinking-popover is-open"
+        data-origin="top-right"
+        style={popoverPosition}
+      >
+        {hasReasoning && (
+          <>
+            <span className="write-thinking-popover-header">
+              <span className="write-thinking-popover-heading">
+                <span
+                  className={cx("write-thinking-popover-title", reasoningStreaming && "t-shimmer")}
+                  data-text={reasoningLabel}
+                >
+                  {reasoningLabel}
+                </span>
+              </span>
+            </span>
+            <span
+              ref={reasoningScrollRef}
+              onScroll={markReasoningScroll}
+              onWheel={markReasoningWheelIntent}
+              onTouchStart={markReasoningTouchStart}
+              onTouchMove={markReasoningTouchMove}
+              className="write-thinking-popover-content"
+              data-testid="write-thinking-scroll"
+            >
+              <ThinkingContent>{reasoning}</ThinkingContent>
+            </span>
+          </>
+        )}
+        {hasReasoning && hasEditPreview && <span className="write-thinking-popover-divider" />}
+        {hasEditPreview && (
+          <>
+            <span className="write-thinking-popover-header">
+              <span className="write-thinking-popover-heading">
+                <span
+                  className={cx("write-thinking-popover-title", editStreaming && "t-shimmer")}
+                  data-text={editLabel}
+                >
+                  {editLabel}
+                </span>
+                <span className="write-thinking-popover-subtitle">{editPhrase}</span>
+              </span>
+            </span>
+            <span
+              ref={editScrollRef}
+              onScroll={markEditScroll}
+              onWheel={markEditWheelIntent}
+              onTouchStart={markEditTouchStart}
+              onTouchMove={markEditTouchMove}
+              className="write-thinking-popover-content"
+              data-testid="write-edit-preview-scroll"
+            >
+              <ThinkingContent>{editPreview.newText}</ThinkingContent>
+            </span>
+          </>
+        )}
+      </span>,
+      document.body,
+    )
+    : null;
+
   return (
-    <span className="write-operation-wrap">
-      <span className="write-operation-status" aria-live="polite">
-        <button
-          type="button"
-          onClick={hasDetails ? () => setDetailsOpen((value) => {
-            if (value) dismissedRef.current = true;
-            return !value;
-          }) : undefined}
-          disabled={!hasDetails}
-          className={cx(
-            "write-operation-thinking-toggle",
-            !hasDetails && "is-static",
-            CONTROL_MOTION,
-          )}
-          aria-label={detailsOpen ? "Collapse writing details" : "Expand writing details"}
-          aria-expanded={hasDetails ? detailsOpen : undefined}
-          aria-controls={hasDetails ? popoverId : undefined}
-        >
-          <ThinkingStatus
-            label={status}
-            states={WRITE_STATUS_STATES}
-            align="right"
-            className="write-operation-label"
-          />
-          <ChevronDown
-            size={14}
-            aria-hidden="true"
+    <>
+      <span className="write-operation-wrap">
+        <span className="write-operation-status" aria-live="polite">
+          <button
+            ref={toggleRef}
+            type="button"
+            onClick={hasDetails ? () => setDetailsOpen((value) => {
+              if (value) dismissedRef.current = true;
+              return !value;
+            }) : undefined}
+            disabled={!hasDetails}
             className={cx(
-              "write-operation-thinking-chevron transition-[transform,opacity] duration-[var(--dropdown-open-dur)] ease-[var(--dropdown-ease)]",
-              !detailsOpen && "-rotate-90",
-              !hasDetails && "opacity-0",
+              "write-operation-thinking-toggle",
+              !hasDetails && "is-static",
+              CONTROL_MOTION,
             )}
-          />
-        </button>
-      </span>
-      {hasDetails && (
-        <span
-          id={popoverId}
-          role="region"
-          aria-label="Writing details"
-          aria-hidden={!detailsOpen}
-          inert={detailsOpen ? undefined : ""}
-          className={cx("t-dropdown write-thinking-popover", detailsOpen && "is-open")}
-          data-origin="top-right"
-        >
-          {hasReasoning && (
-            <>
-              <span className="write-thinking-popover-header">
-                <span className="write-thinking-popover-heading">
-                  <span
-                    className={cx("write-thinking-popover-title", reasoningStreaming && "t-shimmer")}
-                    data-text={reasoningLabel}
-                  >
-                    {reasoningLabel}
-                  </span>
-                </span>
-              </span>
-              <span
-                ref={reasoningScrollRef}
-                onScroll={markReasoningScroll}
-                onWheel={markReasoningWheelIntent}
-                onTouchStart={markReasoningTouchStart}
-                onTouchMove={markReasoningTouchMove}
-                className="write-thinking-popover-content"
-                data-testid="write-thinking-scroll"
-              >
-                <ThinkingContent>{reasoning}</ThinkingContent>
-              </span>
-            </>
-          )}
-          {hasReasoning && hasEditPreview && <span className="write-thinking-popover-divider" />}
-          {hasEditPreview && (
-            <>
-              <span className="write-thinking-popover-header">
-                <span className="write-thinking-popover-heading">
-                  <span
-                    className={cx("write-thinking-popover-title", editStreaming && "t-shimmer")}
-                    data-text={editLabel}
-                  >
-                    {editLabel}
-                  </span>
-                  <span className="write-thinking-popover-subtitle">{editPhrase}</span>
-                </span>
-              </span>
-              <span
-                ref={editScrollRef}
-                onScroll={markEditScroll}
-                onWheel={markEditWheelIntent}
-                onTouchStart={markEditTouchStart}
-                onTouchMove={markEditTouchMove}
-                className="write-thinking-popover-content"
-                data-testid="write-edit-preview-scroll"
-              >
-                <ThinkingContent>{editPreview.newText}</ThinkingContent>
-              </span>
-            </>
-          )}
+            aria-label={detailsOpen ? "Collapse writing details" : "Expand writing details"}
+            aria-expanded={hasDetails ? detailsOpen : undefined}
+            aria-controls={hasDetails ? popoverId : undefined}
+          >
+            <ThinkingStatus
+              label={status}
+              states={WRITE_STATUS_STATES}
+              align="right"
+              className="write-operation-label"
+            />
+            <ChevronDown
+              size={14}
+              aria-hidden="true"
+              className={cx(
+                "write-operation-thinking-chevron transition-[transform,opacity] duration-[var(--dropdown-open-dur)] ease-[var(--dropdown-ease)]",
+                !detailsOpen && "-rotate-90",
+                !hasDetails && "opacity-0",
+              )}
+            />
+          </button>
         </span>
-      )}
-    </span>
+      </span>
+      {detailsPopover}
+    </>
   );
 }
 

@@ -1462,10 +1462,25 @@ test("thinking dropdown follows new reasoning until the reader scrolls away", as
     return metrics.maxScroll - metrics.scrollTop;
   }).toBeLessThan(2);
 
+  const editPreview = Array.from(
+    { length: 48 },
+    (_, index) => `edit sentence ${index + 1} adds enough text to make the second panel scroll too.`,
+  ).join(" ");
+  const editFragment = (
+    '{"chapterRevision":0,"edits":[{"operation":"replaceBlock","blockId":"p_001",'
+    + `"anchorText":"saved opening","newText":${JSON.stringify(editPreview).slice(0, -1)}`
+  );
+  await api.pushGenerationContent(editFragment);
+  await expect(page.getByTestId("write-edit-preview-scroll")).toBeVisible();
+
   await page.setViewportSize({ width: 390, height: 700 });
-  const popoverBox = await page.getByRole("region", { name: "Writing details" }).boundingBox();
+  const details = page.getByRole("region", { name: "Writing details" });
+  const popoverBox = await details.boundingBox();
   expect(popoverBox?.x).toBeGreaterThanOrEqual(15);
   expect((popoverBox?.x || 0) + (popoverBox?.width || 0)).toBeLessThanOrEqual(375);
+  expect(popoverBox?.y).toBeGreaterThanOrEqual(15);
+  expect((popoverBox?.y || 0) + (popoverBox?.height || 0)).toBeLessThanOrEqual(685);
+  await expect.poll(() => details.evaluate((node) => node.scrollHeight > node.clientHeight)).toBe(true);
 
   await api.closeReasoningStream();
 });

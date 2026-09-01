@@ -2836,6 +2836,63 @@ class StoryApiTest(unittest.TestCase):
         self.assertEqual(generation["generated_text"], rawOutput)
         self.assertTrue(generation["error"].startswith("chapter_edit_invalid_operation"))
 
+    def test_malformed_edit_prose_is_not_saved_and_can_be_repaired(self):
+        story = self.client.post("/api/stories", json={"title": "Malformed Edit"}).json()["story"]
+        chapter = self.client.post(
+            f"/api/stories/{story['id']}/chapters",
+            json={"title": "Opening", "content": "The room was quiet."},
+        ).json()["chapter"]
+        rawOutput = json.dumps({
+            "chapterRevision": chapter["revision"],
+            "edits": [{
+                "operation": "replaceBlock",
+                "blockId": "p_001",
+                "anchorText": "The room was quiet.",
+                "newText": "The room went dark.She reached for the lamp.",
+            }],
+        })
+
+        response, _ = self.streamChapterGeneration(story, chapter, rawOutput)
+
+        events = [json.loads(line) for line in response.text.splitlines() if line]
+        self.assertNotIn("chapter_updated", [event["type"] for event in events])
+        errorEvent = next(event for event in events if event["type"] == "error")
+        self.assertEqual(errorEvent["value"]["code"], "chapter_edit_invalid_format")
+        self.assertTrue(errorEvent["value"]["repairable"])
+
+        persisted = self.client.get(f"/api/stories/{story['id']}").json()["chapters"][0]
+        self.assertEqual(persisted["content"], "The room was quiet.")
+        self.assertEqual(persisted["revision"], 0)
+
+    def test_long_unbroken_edit_prose_is_split_into_paragraphs_before_saving(self):
+        story = self.client.post("/api/stories", json={"title": "Paragraph Backup"}).json()["story"]
+        chapter = self.client.post(
+            f"/api/stories/{story['id']}/chapters",
+            json={"title": "Opening", "content": "The room was quiet."},
+        ).json()["chapter"]
+        prose = " ".join(
+            f"Sentence {index} carries enough ordinary words to resemble generated prose."
+            for index in range(40)
+        )
+        rawOutput = json.dumps({
+            "chapterRevision": chapter["revision"],
+            "edits": [{
+                "operation": "replaceBlock",
+                "blockId": "p_001",
+                "anchorText": "The room was quiet.",
+                "newText": prose,
+            }],
+        })
+
+        response, _ = self.streamChapterGeneration(story, chapter, rawOutput)
+
+        events = [json.loads(line) for line in response.text.splitlines() if line]
+        updateEvent = next(event for event in events if event["type"] == "chapter_updated")
+        savedContent = updateEvent["value"]["chapter"]["content"]
+        self.assertIn("\n\n", savedContent)
+        self.assertEqual(savedContent.replace("\n\n", " "), prose)
+        self.assertEqual(updateEvent["value"]["chapter"]["revision"], 1)
+
     def test_incomplete_stream_saves_partial_chapter_text_in_new_mode(self):
         #a dropped connection still has good prose in it in append mode, so it gets kept instead of thrown away
         story = self.client.post("/api/stories", json={"title": "Incomplete Stream"}).json()["story"]

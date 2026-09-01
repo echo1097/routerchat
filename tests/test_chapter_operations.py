@@ -3,6 +3,7 @@ import unittest
 
 from backend.writing import (
     CHAPTER_EDIT_CONFLICTING_EDITS,
+    CHAPTER_EDIT_INVALID_FORMAT,
     CHAPTER_EDIT_INVALID_JSON,
     CHAPTER_EDIT_INVALID_OPERATION,
     CHAPTER_EDIT_REVISION_MISMATCH,
@@ -122,6 +123,102 @@ class ChapterEditBatchTest(unittest.TestCase):
             result["content"],
             "one alpha\n\ninserted line\n\ntwo bravo\n\nthree charlie\n\nfour EDITED",
         )
+
+    def test_single_newlines_in_generated_prose_become_paragraph_breaks(self):
+        result = apply_chapter_edits(
+            self.content,
+            self.batch(self.edit(1, "first new paragraph\nsecond new paragraph")),
+            baseRevision=7,
+        )
+
+        self.assertIn(
+            "first new paragraph\n\nsecond new paragraph",
+            result["content"],
+        )
+        self.assertEqual(
+            result["edits"][0]["appliedText"],
+            "first new paragraph\n\nsecond new paragraph",
+        )
+
+    def test_generated_prose_normalizes_line_endings_and_extra_blank_lines(self):
+        result = apply_chapter_edits(
+            self.content,
+            self.batch(self.edit(1, "first paragraph  \r\n\r\n\r\nsecond paragraph")),
+            baseRevision=7,
+        )
+
+        self.assertIn("first paragraph\n\nsecond paragraph", result["content"])
+
+    def test_markdown_list_lines_stay_in_one_list(self):
+        result = apply_chapter_edits(
+            self.content,
+            self.batch(self.edit(1, "- first item\n- second item")),
+            baseRevision=7,
+        )
+
+        self.assertIn("- first item\n- second item", result["content"])
+
+    def test_code_fence_whitespace_is_left_alone(self):
+        code = "```text\nFirst.Second\n\n\nlast line\n```"
+        result = apply_chapter_edits(
+            self.content,
+            self.batch(self.edit(1, code)),
+            baseRevision=7,
+        )
+
+        self.assertIn(code, result["content"])
+
+    def test_sentences_joined_without_a_space_are_rejected(self):
+        malformed = self.edit(1, "The door closed.She heard the lock turn.")
+
+        self.assertErrorCode(
+            lambda: apply_chapter_edits(
+                self.content,
+                self.batch(malformed),
+                baseRevision=7,
+            ),
+            CHAPTER_EDIT_INVALID_FORMAT,
+        )
+
+    def test_a_long_unbroken_response_gets_paragraph_breaks(self):
+        sentences = [
+            f"Sentence {index} carries enough ordinary words to resemble generated prose."
+            for index in range(40)
+        ]
+        result = apply_chapter_edits(
+            self.content,
+            self.batch(self.edit(1, " ".join(sentences))),
+            baseRevision=7,
+        )
+
+        appliedText = result["edits"][0]["appliedText"]
+        self.assertIn("\n\n", appliedText)
+        self.assertEqual(appliedText.replace("\n\n", " "), " ".join(sentences))
+
+    def test_a_long_run_on_sentence_is_still_rejected(self):
+        malformed = self.edit(1, " ".join(["word"] * 301))
+
+        self.assertErrorCode(
+            lambda: apply_chapter_edits(self.content, self.batch(malformed), baseRevision=7),
+            CHAPTER_EDIT_INVALID_FORMAT,
+        )
+
+    def test_partial_mode_keeps_valid_edits_and_reports_malformed_prose(self):
+        result = apply_chapter_edits(
+            self.content,
+            self.batch(
+                self.edit(0, "one rewritten"),
+                self.edit(2, "This broke.Then it got worse."),
+            ),
+            baseRevision=7,
+            partial=True,
+        )
+
+        self.assertEqual(
+            result["content"],
+            "one rewritten\n\ntwo bravo\n\nthree charlie\n\nfour delta",
+        )
+        self.assertEqual(result["rejected"][0]["code"], CHAPTER_EDIT_INVALID_FORMAT)
 
     def test_two_edits_on_the_same_block_are_rejected(self):
         self.assertErrorCode(

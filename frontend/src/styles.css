@@ -1506,13 +1506,12 @@ textarea::placeholder {
 }
 
 .write-thinking-popover {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
+  position: fixed;
   z-index: 45;
   display: block;
-  width: min(480px, calc(100vw - 32px));
   max-width: calc(100vw - 32px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   resize: none;
   padding: 6px;
   border-radius: 18px;

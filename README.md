@@ -40,13 +40,8 @@ To remove RouterChat, run **Uninstall RouterChat** from `~/Applications/RouterCh
 - **Writing Mode** — A dedicated longform writing workspace. Create stories, organize them into chapters and make a lorebook for characters and world details.
 
 ## Roadmap
-- Chat Mode improvements
-    - Support for video and image models
-    - Web search
-- Writing Mode improvements
-    - (None planned aside from Ui improvements and small tweaks, if you have ideas fill out [this form](https://forms.gle/oLGhkQ74KJC157Q8A))
-- Memory
-    - Chat mode
+
+This project is gradually spinning down, will continue to work on updates around UI, bug fixes, and improving stability for the time being. **RouterChat is still in development** 
 
 ## Features added
 - One-click installer
@@ -66,6 +61,7 @@ To remove RouterChat, run **Uninstall RouterChat** from `~/Applications/RouterCh
     - More detailed diffs
 
 - Chat Mode improvements
+    - Web search
     - Attachments (files)
     - Folders/Projects
     - Generate chat names instead of just being first message

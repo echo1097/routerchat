@@ -847,6 +847,7 @@ test("remembers each chapter canvas position during the current app session", as
     twoChapters: true,
   });
   await api.open();
+  await expect(page.getByText("opening paragraph 1 keeps")).toBeVisible();
 
   const canvas = page.locator('[data-tour="write-chapter-canvas"]');
   await canvas.evaluate((node) => {
@@ -864,6 +865,7 @@ test("remembers each chapter canvas position during the current app session", as
 
   await page.getByRole("button", { name: "Second", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Second" })).toBeVisible();
+  await expect(page.getByText("second paragraph 1 keeps")).toBeVisible();
   await canvas.evaluate((node) => {
     node.scrollTop = Math.round((node.scrollHeight - node.clientHeight) * 0.68);
   });

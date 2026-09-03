@@ -4948,9 +4948,6 @@ function SystemPromptModal({ open, value, onSave, onClose }) {
                 {saveStateLabel}
               </span>
             </div>
-            <p className="mt-0.5 text-pretty text-xs leading-5 text-neutral-500">
-              Story-specific instructions sent with every write request
-            </p>
           </div>
           <button
             ref={closeRef}

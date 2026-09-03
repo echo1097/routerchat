@@ -155,7 +155,6 @@ CHAPTER_EDIT_OPERATIONS = {
 }
 CHAPTER_EDIT_INVALID_JSON = "chapter_edit_invalid_json"
 CHAPTER_EDIT_INVALID_OPERATION = "chapter_edit_invalid_operation"
-CHAPTER_EDIT_INVALID_FORMAT = "chapter_edit_invalid_format"
 CHAPTER_EDIT_REVISION_MISMATCH = "chapter_edit_revision_mismatch"
 CHAPTER_EDIT_TARGET_MISMATCH = "chapter_edit_target_mismatch"
 CHAPTER_EDIT_CONFLICTING_EDITS = "chapter_edit_conflicting_edits"
@@ -363,12 +362,13 @@ def chapter_edit_operation_schema() -> dict[str, Any]:
         "blockId": {"type": "string", "minLength": 1},
         "anchorText": {"type": "string", "minLength": 1},
         "newText": {
-            "type": "string",
-            "minLength": 1,
+            "type": "array",
+            "minItems": 1,
+            "items": {"type": "string"},
             "description": (
-                "Chapter Markdown with normal spaces between words and a blank line between "
-                "prose paragraphs. Encode paragraph breaks as \\n\\n in JSON and never flatten "
-                "multiple paragraphs into one line."
+                "The replacement prose as chapter Markdown, one array entry per paragraph, in "
+                "the order they should appear. Two paragraphs means two entries. Write each "
+                "entry as ordinary text with no line breaks inside it and never write \\n."
             ),
         },
     }
@@ -643,7 +643,8 @@ def clean_insert_text(value: Any) -> str:
     return str(value or "").strip()
 
 
-MISSING_SENTENCE_SPACE_PATTERN = re.compile(r"[.!?][\u2019\u201d\"')\]]?[A-Z]")
+RUN_TOGETHER_SENTENCE_PATTERN = re.compile(r"([.!?])([\u2019\u201d\"')\]]?)([A-Z])")
+AMBIGUOUS_QUOTES = {"'", '"'}
 UNBROKEN_PROSE_WORD_LIMIT = 300
 AUTO_PARAGRAPH_TARGET_WORDS = 110
 SENTENCE_END_PATTERN = re.compile(r"[.!?](?:[\"\u2019\u201d')\]]+)?(?=\s+)")
@@ -674,8 +675,76 @@ def paragraphize_unbroken_prose(text: str) -> str:
     return "\n\n".join(paragraphs) if len(paragraphs) > 1 else text
 
 
+def chapter_edit_text_source(value: Any) -> str:
+    #paragraphs arrive as a list so the model never has to type an escape sequence, a plain string still works for anything that sends the old shape
+    if isinstance(value, (list, tuple)):
+        paragraphs = [str(item or "").strip() for item in value]
+        return "\n\n".join(paragraph for paragraph in paragraphs if paragraph)
+    return str(value or "")
+
+
+def ends_an_initial(text: str, index: int) -> bool:
+    #"G.H." and "A.J." are initials, so the dot after a lone capital is punctuation rather than a sentence end
+    letter = index - 1
+    if letter < 0 or not text[letter].isupper():
+        return False
+    return letter == 0 or not text[letter - 1].isalpha()
+
+
+def quote_opens_dialogue(text: str, quoteIndex: int) -> bool:
+    #a straight quote reads as both ends of a quotation, so parity over the ones already used says which end this is. an apostrophe inside a word is punctuation and never counts
+    quote = text[quoteIndex]
+    used = 0
+    for index in range(quoteIndex):
+        if text[index] != quote:
+            continue
+        before = text[index - 1] if index else " "
+        after = text[index + 1] if index + 1 < len(text) else " "
+        if before.isalpha() and after.isalpha():
+            continue
+        used += 1
+
+    return used % 2 == 0
+
+
+def repair_run_together_sentences(text: str) -> str:
+    def spaceOut(match: re.Match[str]) -> str:
+        index = match.start()
+        #the last dot of an ellipsis is normal punctuation, "...Fine." is not two sentences
+        if text[max(0, index - 2):index] == "..":
+            return match.group(0)
+        if ends_an_initial(text, index):
+            return match.group(0)
+
+        sentenceEnd, quote, nextSentence = match.groups()
+        #the space belongs in front of a quote that is opening the next line of dialogue, not behind it
+        if quote in AMBIGUOUS_QUOTES and quote_opens_dialogue(text, match.start(2)):
+            return f"{sentenceEnd} {quote}{nextSentence}"
+        return f"{sentenceEnd}{quote} {nextSentence}"
+
+    return RUN_TOGETHER_SENTENCE_PATTERN.sub(spaceOut, text)
+
+
+def repair_prose_lines(text: str) -> str:
+    repairedLines: list[str] = []
+    inFence = False
+    for line in text.split("\n"):
+        stripped = line.lstrip()
+        isFence = stripped.startswith("```") or stripped.startswith("~~~")
+
+        if not inFence and not isFence:
+            line = repair_run_together_sentences(line)
+
+        repairedLines.append(line)
+        if isFence:
+            inFence = not inFence
+
+    return "\n".join(repairedLines)
+
+
 def normalize_chapter_edit_text(value: Any) -> str:
-    text = str(value or "").replace("\r\n", "\n").replace("\r", "\n")
+    text = chapter_edit_text_source(value).replace("\r\n", "\n").replace("\r", "\n")
+    text = repair_prose_lines(text)
     text = paragraphize_unbroken_prose(text)
     lines = [line.rstrip() for line in text.split("\n")]
 
@@ -717,38 +786,13 @@ def normalize_chapter_edit_text(value: Any) -> str:
     return "\n".join(compactLines).strip()
 
 
-def chapter_edit_prose_for_validation(text: str) -> str:
-    proseLines: list[str] = []
-    inFence = False
-    for line in text.split("\n"):
-        stripped = line.lstrip()
-        isFence = stripped.startswith("```") or stripped.startswith("~~~")
-        if isFence:
-            inFence = not inFence
-            continue
-        if not inFence and not MARKDOWN_LINE_PATTERN.match(stripped):
-            proseLines.append(line)
-
-    return "\n".join(proseLines)
-
-
 def validate_chapter_edit_text(value: Any) -> str:
+    #formatting is repaired on the way in rather than rejected, prose the author paid for is never thrown away over punctuation
     normalized = normalize_chapter_edit_text(value)
     if not normalized:
         raise ChapterEditError(
             CHAPTER_EDIT_INVALID_OPERATION,
-            "newText must be a non-empty string",
-        )
-    prose = chapter_edit_prose_for_validation(normalized)
-    if MISSING_SENTENCE_SPACE_PATTERN.search(prose):
-        raise ChapterEditError(
-            CHAPTER_EDIT_INVALID_FORMAT,
-            "newText contains sentences joined without a space",
-        )
-    if "\n" not in prose and len(prose.split()) > UNBROKEN_PROSE_WORD_LIMIT:
-        raise ChapterEditError(
-            CHAPTER_EDIT_INVALID_FORMAT,
-            "newText is a long block of prose with no paragraph breaks",
+            "newText must contain at least one non-empty paragraph",
         )
     return normalized
 
@@ -848,10 +892,10 @@ def validate_chapter_operation(
             )
 
     newText = operation.get("newText")
-    if not isinstance(newText, str):
+    if not isinstance(newText, (str, list)):
         raise ChapterEditError(
             CHAPTER_EDIT_INVALID_OPERATION,
-            "newText must be a non-empty string",
+            "newText must be an array of paragraphs",
         )
     operation["newText"] = validate_chapter_edit_text(newText)
 
@@ -1068,7 +1112,6 @@ def validate_chapter_edit_batch_partial(
 REPAIRABLE_EDIT_CODES = {
     CHAPTER_EDIT_INVALID_JSON,
     CHAPTER_EDIT_INVALID_OPERATION,
-    CHAPTER_EDIT_INVALID_FORMAT,
     CHAPTER_EDIT_TARGET_MISMATCH,
     CHAPTER_EDIT_CONFLICTING_EDITS,
     CHAPTER_EDIT_TRUNCATED,
@@ -1465,13 +1508,12 @@ def build_story_messages(
                     "insertAfterBlock, and appendToChapter. Every edit includes operation and "
                     "non-empty newText. Targeted single-block operations include blockId and "
                     "anchorText, copied exactly from that block's anchorText in the block map. "
-                    "newText is chapter Markdown, not wrapper Markdown. Preserve normal spaces "
-                    "between every word and sentence. Separate every prose paragraph with a blank "
-                    "line, encoded inside the JSON string as \\n\\n. Never compress several "
-                    "paragraphs into one line or join the end of one sentence directly to the "
-                    "start of the next. If the prose contains multiple paragraphs, newText must "
-                    "contain a \\n\\n break between every one. Check newText for paragraph breaks and "
-                    "normal spacing before returning the JSON. "
+                    "newText is an array of paragraphs: one array entry per paragraph, in the "
+                    "order they should appear, each entry chapter Markdown rather than wrapper "
+                    "Markdown. Three paragraphs of prose means three entries. Write each entry "
+                    "as ordinary running text with no line breaks inside it, and never write a "
+                    "\\n escape anywhere. Preserve normal spaces between every word and sentence, "
+                    "and never join the end of one sentence directly to the start of the next. "
                     "replaceBlockRange replaces an inclusive contiguous range and includes "
                     "startBlockId, startAnchorText, endBlockId, and endAnchorText; "
                     "use it only when every block in that range is genuinely being rewritten. "
@@ -1530,8 +1572,8 @@ def repair_instructions(repair_context: dict[str, Any]) -> str:
     if failed:
         parts.append(
             "These are the edits that failed. If an error mentions targeting, reuse the prose and "
-            "re-anchor it against the block map. If it mentions formatting, correct newText so "
-            "paragraphs use blank lines and words and sentences have normal spaces:\n"
+            "re-anchor it against the block map. If it mentions newText, resend it as an array "
+            "with one entry per paragraph:\n"
             + json.dumps(failed, ensure_ascii=False, indent=2)
         )
     parts.append(

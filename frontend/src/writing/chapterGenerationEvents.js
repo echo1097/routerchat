@@ -148,41 +148,78 @@ function parseStreamingEditPreview(rawText) {
     .map((field) => decodeClosedJsonString(fragment, field))
     .find((value) => value) || "";
 
-  const newTextKey = fragment.match(/"newText"\s*:\s*"/);
+  const newTextKey = fragment.match(/"newText"\s*:\s*(\[)?/);
   if (!newTextKey) {
     return { completedCount, current: { operation, anchor, newText: "", newTextComplete: false } };
   }
 
-  let raw = "";
-  let complete = false;
-  let escapedChar = false;
-  for (let cursor = newTextKey.index + newTextKey[0].length; cursor < fragment.length; cursor += 1) {
-    const char = fragment[cursor];
-    if (escapedChar) {
-      raw += char;
-      escapedChar = false;
-      continue;
-    }
-    if (char === "\\") {
-      escapedChar = true;
-      raw += char;
-      continue;
-    }
-    if (char === '"') {
-      complete = true;
-      break;
-    }
-    raw += char;
-  }
+  const isArray = Boolean(newTextKey[1]);
+  const valueStart = newTextKey.index + newTextKey[0].length;
+  const preview = isArray
+    ? readStreamingParagraphArray(fragment, valueStart)
+    : readStreamingJsonString(fragment, valueStart);
 
   return {
     completedCount,
     current: {
       operation,
       anchor,
-      newText: decodePartialJsonString(raw, complete),
-      newTextComplete: complete,
+      newText: preview.text,
+      newTextComplete: preview.complete,
     },
+  };
+}
+
+//reads however much of one json string has arrived, reporting where it ended so the caller can keep walking
+function readStreamingJsonString(fragment, from) {
+  const opening = fragment.slice(from).match(/^\s*"/);
+  if (!opening) return { text: "", complete: false, end: from };
+
+  let raw = "";
+  let escaped = false;
+  let cursor = from + opening[0].length;
+
+  for (; cursor < fragment.length; cursor += 1) {
+    const char = fragment[cursor];
+    if (escaped) {
+      raw += char;
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      raw += char;
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      return { text: decodePartialJsonString(raw, true), complete: true, end: cursor + 1 };
+    }
+    raw += char;
+  }
+
+  return { text: decodePartialJsonString(raw, false), complete: false, end: cursor };
+}
+
+//newText is an array of paragraphs now, so the preview rejoins the entries the same way the server will
+function readStreamingParagraphArray(fragment, from) {
+  const paragraphs = [];
+  let cursor = from;
+
+  while (cursor < fragment.length) {
+    const entry = readStreamingJsonString(fragment, cursor);
+    if (entry.text) paragraphs.push(entry.text);
+    cursor = entry.end;
+
+    if (!entry.complete) return { text: paragraphs.join("\n\n"), complete: false };
+
+    const separator = fragment.slice(cursor).match(/^\s*,/);
+    if (!separator) break;
+    cursor += separator[0].length;
+  }
+
+  return {
+    text: paragraphs.join("\n\n"),
+    complete: /^\s*\]/.test(fragment.slice(cursor)),
   };
 }
 

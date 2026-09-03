@@ -3,7 +3,6 @@ import unittest
 
 from backend.writing import (
     CHAPTER_EDIT_CONFLICTING_EDITS,
-    CHAPTER_EDIT_INVALID_FORMAT,
     CHAPTER_EDIT_INVALID_JSON,
     CHAPTER_EDIT_INVALID_OPERATION,
     CHAPTER_EDIT_REVISION_MISMATCH,
@@ -168,17 +167,79 @@ class ChapterEditBatchTest(unittest.TestCase):
 
         self.assertIn(code, result["content"])
 
-    def test_sentences_joined_without_a_space_are_rejected(self):
-        malformed = self.edit(1, "The door closed.She heard the lock turn.")
+    def test_paragraph_arrays_become_blank_line_separated_prose(self):
+        result = apply_chapter_edits(
+            self.content,
+            self.batch(self.edit(1, ["first new paragraph", "second new paragraph"])),
+            baseRevision=7,
+        )
 
+        self.assertEqual(
+            result["edits"][0]["appliedText"],
+            "first new paragraph\n\nsecond new paragraph",
+        )
+
+    def test_blank_paragraph_entries_are_dropped(self):
+        result = apply_chapter_edits(
+            self.content,
+            self.batch(self.edit(1, ["kept paragraph", "   ", "", "second kept"])),
+            baseRevision=7,
+        )
+
+        self.assertEqual(result["edits"][0]["appliedText"], "kept paragraph\n\nsecond kept")
+
+    def test_an_empty_paragraph_array_is_rejected(self):
         self.assertErrorCode(
             lambda: apply_chapter_edits(
                 self.content,
-                self.batch(malformed),
+                self.batch(self.edit(1, ["", "  "])),
                 baseRevision=7,
             ),
-            CHAPTER_EDIT_INVALID_FORMAT,
+            CHAPTER_EDIT_INVALID_OPERATION,
         )
+
+    def test_sentences_joined_without_a_space_are_repaired(self):
+        result = apply_chapter_edits(
+            self.content,
+            self.batch(self.edit(1, ["The door closed.She heard the lock turn."])),
+            baseRevision=7,
+        )
+
+        self.assertEqual(
+            result["edits"][0]["appliedText"],
+            "The door closed. She heard the lock turn.",
+        )
+
+    def test_repair_leaves_ellipses_and_initials_alone(self):
+        prose = 'She read G.H. by lamplight. "...Fine. Sign here," A.J. said.'
+        result = apply_chapter_edits(
+            self.content,
+            self.batch(self.edit(1, [prose])),
+            baseRevision=7,
+        )
+
+        self.assertEqual(result["edits"][0]["appliedText"], prose)
+
+    def test_repair_puts_the_space_on_the_right_side_of_a_quote(self):
+        result = apply_chapter_edits(
+            self.content,
+            self.batch(self.edit(1, ["It cost effort.'You made a mistake.'She said nothing."])),
+            baseRevision=7,
+        )
+
+        self.assertEqual(
+            result["edits"][0]["appliedText"],
+            "It cost effort. 'You made a mistake.' She said nothing.",
+        )
+
+    def test_repair_still_splits_a_sentence_ending_in_an_acronym(self):
+        result = apply_chapter_edits(
+            self.content,
+            self.batch(self.edit(1, ["He drove a BMW.She walked."])),
+            baseRevision=7,
+        )
+
+        self.assertEqual(result["edits"][0]["appliedText"], "He drove a BMW. She walked.")
 
     def test_a_long_unbroken_response_gets_paragraph_breaks(self):
         sentences = [
@@ -195,20 +256,22 @@ class ChapterEditBatchTest(unittest.TestCase):
         self.assertIn("\n\n", appliedText)
         self.assertEqual(appliedText.replace("\n\n", " "), " ".join(sentences))
 
-    def test_a_long_run_on_sentence_is_still_rejected(self):
-        malformed = self.edit(1, " ".join(["word"] * 301))
-
-        self.assertErrorCode(
-            lambda: apply_chapter_edits(self.content, self.batch(malformed), baseRevision=7),
-            CHAPTER_EDIT_INVALID_FORMAT,
+    def test_a_long_run_on_sentence_is_kept_rather_than_discarded(self):
+        prose = " ".join(["word"] * 301)
+        result = apply_chapter_edits(
+            self.content,
+            self.batch(self.edit(1, prose)),
+            baseRevision=7,
         )
 
-    def test_partial_mode_keeps_valid_edits_and_reports_malformed_prose(self):
+        self.assertEqual(result["edits"][0]["appliedText"], prose)
+
+    def test_partial_mode_applies_every_edit_once_prose_is_repaired(self):
         result = apply_chapter_edits(
             self.content,
             self.batch(
-                self.edit(0, "one rewritten"),
-                self.edit(2, "This broke.Then it got worse."),
+                self.edit(0, ["one rewritten"]),
+                self.edit(2, ["This broke.Then it got worse."]),
             ),
             baseRevision=7,
             partial=True,
@@ -216,9 +279,9 @@ class ChapterEditBatchTest(unittest.TestCase):
 
         self.assertEqual(
             result["content"],
-            "one rewritten\n\ntwo bravo\n\nthree charlie\n\nfour delta",
+            "one rewritten\n\ntwo bravo\n\nThis broke. Then it got worse.\n\nfour delta",
         )
-        self.assertEqual(result["rejected"][0]["code"], CHAPTER_EDIT_INVALID_FORMAT)
+        self.assertEqual(result["rejected"], [])
 
     def test_two_edits_on_the_same_block_are_rejected(self):
         self.assertErrorCode(

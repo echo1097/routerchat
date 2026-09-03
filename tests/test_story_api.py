@@ -2836,7 +2836,7 @@ class StoryApiTest(unittest.TestCase):
         self.assertEqual(generation["generated_text"], rawOutput)
         self.assertTrue(generation["error"].startswith("chapter_edit_invalid_operation"))
 
-    def test_malformed_edit_prose_is_not_saved_and_can_be_repaired(self):
+    def test_malformed_edit_prose_is_repaired_and_saved(self):
         story = self.client.post("/api/stories", json={"title": "Malformed Edit"}).json()["story"]
         chapter = self.client.post(
             f"/api/stories/{story['id']}/chapters",
@@ -2848,21 +2848,42 @@ class StoryApiTest(unittest.TestCase):
                 "operation": "replaceBlock",
                 "blockId": "p_001",
                 "anchorText": "The room was quiet.",
-                "newText": "The room went dark.She reached for the lamp.",
+                "newText": ["The room went dark.She reached for the lamp."],
             }],
         })
 
         response, _ = self.streamChapterGeneration(story, chapter, rawOutput)
 
         events = [json.loads(line) for line in response.text.splitlines() if line]
-        self.assertNotIn("chapter_updated", [event["type"] for event in events])
-        errorEvent = next(event for event in events if event["type"] == "error")
-        self.assertEqual(errorEvent["value"]["code"], "chapter_edit_invalid_format")
-        self.assertTrue(errorEvent["value"]["repairable"])
+        self.assertNotIn("error", [event["type"] for event in events])
 
         persisted = self.client.get(f"/api/stories/{story['id']}").json()["chapters"][0]
-        self.assertEqual(persisted["content"], "The room was quiet.")
-        self.assertEqual(persisted["revision"], 0)
+        self.assertEqual(persisted["content"], "The room went dark. She reached for the lamp.")
+        self.assertEqual(persisted["revision"], 1)
+
+    def test_paragraph_array_edits_are_saved_with_blank_lines_between_them(self):
+        story = self.client.post("/api/stories", json={"title": "Paragraph Array"}).json()["story"]
+        chapter = self.client.post(
+            f"/api/stories/{story['id']}/chapters",
+            json={"title": "Opening", "content": "The room was quiet."},
+        ).json()["chapter"]
+        rawOutput = json.dumps({
+            "chapterRevision": chapter["revision"],
+            "edits": [{
+                "operation": "replaceBlock",
+                "blockId": "p_001",
+                "anchorText": "The room was quiet.",
+                "newText": ["The room went dark.", "She reached for the lamp."],
+            }],
+        })
+
+        response, _ = self.streamChapterGeneration(story, chapter, rawOutput)
+
+        events = [json.loads(line) for line in response.text.splitlines() if line]
+        self.assertNotIn("error", [event["type"] for event in events])
+
+        persisted = self.client.get(f"/api/stories/{story['id']}").json()["chapters"][0]
+        self.assertEqual(persisted["content"], "The room went dark.\n\nShe reached for the lamp.")
 
     def test_long_unbroken_edit_prose_is_split_into_paragraphs_before_saving(self):
         story = self.client.post("/api/stories", json={"title": "Paragraph Backup"}).json()["story"]

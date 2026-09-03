@@ -164,3 +164,54 @@ describe("parseStreamingEditPreview", () => {
     expect(frame.current.newText).toBe('He said {"stop"} and [left]');
   });
 });
+
+describe("parseStreamingEditPreview with paragraph arrays", () => {
+  const arrayBatch = JSON.stringify({
+    chapterRevision: 7,
+    edits: [
+      {
+        operation: "replaceBlock",
+        blockId: "p_003",
+        anchorText: "She turned toward the door.",
+        newText: ["She turned toward the door, hesitating.", "The hallway beyond was dark."],
+      },
+      { operation: "appendToChapter", newText: ["And then it was over."] },
+    ],
+  });
+
+  it("rejoins the finished paragraphs the way the server will", () => {
+    const finalPreview = replay(arrayBatch).at(-1);
+    expect(finalPreview.operation).toBe("appendToChapter");
+    expect(finalPreview.newText).toBe("And then it was over.");
+    expect(finalPreview.newTextComplete).toBe(true);
+  });
+
+  it("shows earlier paragraphs while a later one is still streaming", () => {
+    const partial = '{"chapterRevision":7,"edits":[{"operation":"replaceBlock","newText":["First paragraph.","Second para';
+    const frame = parseStreamingEditPreview(partial);
+    expect(frame.current.newText).toBe("First paragraph.\n\nSecond para");
+    expect(frame.current.newTextComplete).toBe(false);
+  });
+
+  it("only reports complete once the array has closed", () => {
+    const open = '{"chapterRevision":7,"edits":[{"operation":"appendToChapter","newText":["Done."';
+    expect(parseStreamingEditPreview(open).current.newTextComplete).toBe(false);
+
+    const closed = `${open}]`;
+    expect(parseStreamingEditPreview(closed).current.newTextComplete).toBe(true);
+  });
+
+  it("only ever shows a prefix of the prose that edit ends up with", () => {
+    const finished = [
+      "She turned toward the door, hesitating.\n\nThe hallway beyond was dark.",
+      "And then it was over.",
+    ];
+    const texts = scan(arrayBatch)
+      .map((frame) => frame.current && frame.current.newText)
+      .filter(Boolean);
+
+    for (const text of texts) {
+      expect(finished.some((whole) => whole.startsWith(text))).toBe(true);
+    }
+  });
+});

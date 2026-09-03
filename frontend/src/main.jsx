@@ -4993,16 +4993,6 @@ function SystemPromptModal({ open, value, onSave, onClose }) {
             )}
             <button
               type="button"
-              onClick={onClose}
-              className={cx(
-                "inline-flex h-10 items-center justify-center rounded-full px-4 text-sm font-medium text-neutral-300 hover:bg-white/[0.06] hover:text-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
-                CONTROL_MOTION,
-              )}
-            >
-              Close
-            </button>
-            <button
-              type="button"
               onClick={saveNow}
               disabled={!canSave}
               className={cx(

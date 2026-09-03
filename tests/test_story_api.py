@@ -2985,8 +2985,48 @@ class StoryApiTest(unittest.TestCase):
         self.assertEqual(generation["finish_reason"], "stop")
         self.assertIsNone(generation["error"])
 
-    def test_incomplete_stream_still_discards_partial_edit_json(self):
-        #edit mode cant safely keep a half-streamed JSON batch, so a dropped connection there should still fail closed
+    def test_incomplete_stream_saves_the_paragraphs_the_edit_had_finished(self):
+        #a dropped connection used to throw away every finished paragraph, one real run lost 140,982 characters that way
+        story = self.client.post("/api/stories", json={"title": "Salvaged Edit"}).json()["story"]
+        chapter = self.client.post(
+            f"/api/stories/{story['id']}/chapters",
+            json={"title": "Opening", "content": "first line"},
+        ).json()["chapter"]
+
+        response, _ = self.streamChapterGeneration(
+            story,
+            chapter,
+            "{\"chapterRevision\": 0, \"edits\": [{\"operation\": \"appendToChapter\", "
+            "\"newText\": [\"A finished paragraph.\", \"Another finished one.\", \"And a third still be",
+            mode="edit",
+            complete=False,
+        )
+
+        events = [json.loads(line) for line in response.text.splitlines() if line]
+        self.assertNotIn("error", [event["type"] for event in events])
+        updateEvent = next(event for event in events if event["type"] == "chapter_updated")
+        self.assertEqual(
+            updateEvent["value"]["chapter"]["content"],
+            "first line\n\nA finished paragraph.\n\nAnother finished one.",
+        )
+        self.assertTrue(updateEvent["value"]["truncated"])
+        self.assertTrue(updateEvent["value"]["repairable"])
+        self.assertNotIn("still be", updateEvent["value"]["chapter"]["content"])
+
+        historyLabels = [
+            event["value"]["label"] for event in events if event["type"] == "history"
+        ]
+        self.assertTrue(any(label.endswith("before the run stopped") for label in historyLabels))
+
+        persisted = self.client.get(f"/api/stories/{story['id']}").json()["chapters"][0]
+        self.assertEqual(persisted["revision"], 1)
+        self.assertEqual(
+            persisted["content"],
+            "first line\n\nA finished paragraph.\n\nAnother finished one.",
+        )
+
+    def test_incomplete_stream_still_fails_closed_when_no_prose_arrived(self):
+        #nothing usable had streamed yet, so there is nothing to salvage and the run has to stay a failure
         story = self.client.post("/api/stories", json={"title": "Incomplete Edit Stream"}).json()["story"]
         chapter = self.client.post(
             f"/api/stories/{story['id']}/chapters",
@@ -3004,14 +3044,16 @@ class StoryApiTest(unittest.TestCase):
         events = [json.loads(line) for line in response.text.splitlines() if line]
         self.assertNotIn("chapter_updated", [event["type"] for event in events])
         errorEvents = [event for event in events if event["type"] == "error"]
-        self.assertEqual(errorEvents[0]["value"]["code"], "generation_incomplete_stream")
+        #being told the response was cut off beats being told the stream ended, and it is the one that offers a retry
+        self.assertEqual(errorEvents[0]["value"]["code"], "chapter_edit_truncated")
+        self.assertTrue(errorEvents[0]["value"]["repairable"])
         self.assertEqual(self.client.get(f"/api/stories/{story['id']}").json()["chapters"][0]["content"], "unchanged")
         with main.get_db() as conn:
             generation = conn.execute(
                 "SELECT error FROM story_generations WHERE chapter_id = ?",
                 (chapter["id"],),
             ).fetchone()
-        self.assertEqual(generation["error"], "generation_incomplete_stream")
+        self.assertTrue(generation["error"].startswith("chapter_edit_truncated"))
 
     def test_edit_revision_and_target_conflicts_fail_closed(self):
         story = self.client.post("/api/stories", json={"title": "Edit Conflicts"}).json()["story"]

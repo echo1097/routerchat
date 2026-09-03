@@ -454,6 +454,97 @@ class ChapterEditBatchTest(unittest.TestCase):
             CHAPTER_EDIT_TRUNCATED,
         )
 
+    def test_an_append_cut_off_mid_array_keeps_the_paragraphs_that_finished(self):
+        #the run that lost 140,982 characters was exactly this, one append whose object never closed
+        raw = (
+            '{"chapterRevision": 7, "edits": [{"operation": "appendToChapter", '
+            '"newText": ["First finished paragraph.", "Second finished paragraph.", "Third one was still'
+        )
+        batch = parse_chapter_edit_batch(raw)
+
+        self.assertTrue(batch["truncated"])
+        self.assertEqual(len(batch["edits"]), 1)
+        self.assertEqual(
+            batch["edits"][0]["newText"],
+            ["First finished paragraph.", "Second finished paragraph."],
+        )
+
+        result = apply_chapter_edits(self.content, batch, baseRevision=7, partial=True)
+        self.assertTrue(result["content"].endswith("First finished paragraph.\n\nSecond finished paragraph."))
+
+    def test_an_append_cut_off_mid_string_is_trimmed_to_the_last_finished_sentence(self):
+        raw = (
+            '{"chapterRevision": 7, "edits": [{"operation": "appendToChapter", '
+            '"newText": "She closed the door. The hall was dark. She reached for the la'
+        )
+        batch = parse_chapter_edit_batch(raw)
+
+        self.assertEqual(
+            batch["edits"][0]["newText"],
+            ["She closed the door. The hall was dark."],
+        )
+
+    def test_a_cut_off_insert_keeps_its_anchor_because_the_anchor_is_written_first(self):
+        block = self.blocks[1]
+        raw = (
+            '{"chapterRevision": 7, "edits": [{"operation": "insertAfterBlock", '
+            f'"blockId": "{block["blockId"]}", "anchorText": "{block["anchorText"]}", '
+            '"newText": ["A whole new paragraph.", "And half of anot'
+        )
+        batch = parse_chapter_edit_batch(raw)
+        result = apply_chapter_edits(self.content, batch, baseRevision=7, partial=True)
+
+        self.assertEqual(
+            result["content"],
+            "one alpha\n\ntwo bravo\n\nA whole new paragraph.\n\nthree charlie\n\nfour delta",
+        )
+
+    def test_a_cut_off_replacement_is_never_salvaged(self):
+        #half a replacement would delete the original block and leave a fragment where it was, so losing the run is the safer failure
+        block = self.blocks[0]
+        raw = (
+            '{"chapterRevision": 7, "edits": [{"operation": "replaceBlock", '
+            f'"blockId": "{block["blockId"]}", "anchorText": "{block["anchorText"]}", '
+            '"newText": ["A finished paragraph.", "And half of anot'
+        )
+        self.assertErrorCode(lambda: parse_chapter_edit_batch(raw), CHAPTER_EDIT_TRUNCATED)
+
+    def test_a_cut_off_append_with_no_finished_sentence_yet_is_still_an_error(self):
+        raw = (
+            '{"chapterRevision": 7, "edits": [{"operation": "appendToChapter", '
+            '"newText": "She closed the door behind her and'
+        )
+        self.assertErrorCode(lambda: parse_chapter_edit_batch(raw), CHAPTER_EDIT_TRUNCATED)
+
+    def test_finished_edits_and_a_cut_off_append_are_both_kept(self):
+        raw = (
+            '{"chapterRevision": 7, "edits": ['
+            + json.dumps(self.edit(0, "one EDITED"))
+            + ', {"operation": "appendToChapter", "newText": ["A finished paragraph.", "still writ'
+        )
+        batch = parse_chapter_edit_batch(raw)
+        result = apply_chapter_edits(self.content, batch, baseRevision=7, partial=True)
+
+        self.assertEqual(len(batch["edits"]), 2)
+        self.assertEqual(
+            result["content"],
+            "one EDITED\n\ntwo bravo\n\nthree charlie\n\nfour delta\n\nA finished paragraph.",
+        )
+
+    def test_a_cut_off_append_that_degenerated_into_junk_keeps_only_the_real_prose(self):
+        #a real cancelled run collapsed into thousands of repeated backticks after two sentences
+        junk = " ".join("`" * 1 for _ in range(400))
+        raw = (
+            '{"chapterRevision": 7, "edits": [{"operation": "appendToChapter", '
+            f'"newText": "She closed the door. The hall was dark. {junk}'
+        )
+        batch = parse_chapter_edit_batch(raw)
+
+        self.assertEqual(
+            batch["edits"][0]["newText"],
+            ["She closed the door. The hall was dark."],
+        )
+
     def test_a_wrong_block_id_is_recovered_from_the_anchor(self):
         #the quoted prose is the stronger signal, the model only got its own bookkeeping wrong
         misfiled = {**self.edit(2, "three EDITED"), "blockId": "p_001"}

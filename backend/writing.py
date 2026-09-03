@@ -507,6 +507,117 @@ def extract_json_object(raw: str) -> tuple[str | None, bool]:
     return text[start:], True
 
 
+#a cut off replacement would delete the original block and leave half a sentence in its place, so only the operations that purely add prose are worth rescuing
+SALVAGEABLE_TRUNCATED_OPERATIONS = {"appendToChapter", "insertBeforeBlock", "insertAfterBlock"}
+LAST_FINISHED_SENTENCE_PATTERN = re.compile(r".*[.!?][\"’”')\]]*", re.DOTALL)
+
+
+def decode_partial_json_string(raw: str, complete: bool) -> str:
+    #the tail of a cut off response can land mid escape sequence, so shave a char at a time until what is left decodes
+    candidate = raw[:-1] if not complete and raw.endswith("\\") else raw
+    while candidate:
+        try:
+            return json.loads(f'"{candidate}"')
+        except json.JSONDecodeError:
+            candidate = candidate[:-1]
+    return ""
+
+
+def read_json_string_at(text: str, start: int) -> tuple[str, bool, int]:
+    #reads however much of one json string has arrived and reports where it ended, so the caller can keep walking the array
+    opening = re.match(r'\s*"', text[start:])
+    if not opening:
+        return "", False, start
+
+    raw = ""
+    escaped = False
+    index = start + opening.end()
+
+    while index < len(text):
+        char = text[index]
+        if escaped:
+            raw += char
+            escaped = False
+        elif char == "\\":
+            raw += char
+            escaped = True
+        elif char == '"':
+            return decode_partial_json_string(raw, True), True, index + 1
+        else:
+            raw += char
+        index += 1
+
+    return decode_partial_json_string(raw, False), False, index
+
+
+def closed_json_field(fragment: str, field: str) -> str | None:
+    #only matches once the closing quote landed, a field still being written is not worth guessing at
+    match = re.search(rf'"{field}"\s*:\s*"((?:\\.|[^"\\])*)"', fragment)
+    if not match:
+        return None
+    try:
+        return json.loads(f'"{match.group(1)}"')
+    except json.JSONDecodeError:
+        return None
+
+
+def read_finished_paragraphs(fragment: str, start: int) -> list[str]:
+    #only the entries that closed are finished paragraphs, the one still being written is half a thought
+    paragraphs: list[str] = []
+    cursor = start
+
+    while cursor < len(fragment):
+        text, complete, end = read_json_string_at(fragment, cursor)
+        if not complete:
+            break
+        if text.strip():
+            paragraphs.append(text)
+
+        cursor = end
+        separator = re.match(r"\s*,", fragment[cursor:])
+        if not separator:
+            break
+        cursor += separator.end()
+
+    return paragraphs
+
+
+def trim_to_last_finished_sentence(text: str) -> str:
+    #a string cut off mid word reads as broken prose, so the last sentence end is the last thing worth keeping
+    match = LAST_FINISHED_SENTENCE_PATTERN.match(text)
+    return match.group(0).rstrip() if match else ""
+
+
+def salvage_partial_edit(fragment: str) -> dict[str, Any] | None:
+    #the edit that was still being written when the run stopped has finished prose in it, and losing that is losing the whole run
+    operation = closed_json_field(fragment, "operation")
+    if operation not in SALVAGEABLE_TRUNCATED_OPERATIONS:
+        return None
+
+    newTextKey = re.search(r'"newText"\s*:\s*(\[)?', fragment)
+    if not newTextKey:
+        return None
+
+    if newTextKey.group(1):
+        paragraphs = read_finished_paragraphs(fragment, newTextKey.end())
+    else:
+        text, complete, _ = read_json_string_at(fragment, newTextKey.end())
+        if not complete:
+            text = trim_to_last_finished_sentence(text)
+        paragraphs = [text] if text.strip() else []
+
+    if not paragraphs:
+        return None
+
+    edit: dict[str, Any] = {"operation": operation, "newText": paragraphs}
+    #the anchors are written before the prose, so a run that got this far already has them
+    for field in ("blockId", "anchorText"):
+        value = closed_json_field(fragment, field)
+        if value:
+            edit[field] = value
+    return edit
+
+
 def salvage_truncated_batch(partial: str) -> dict[str, Any] | None:
     #walks the edits array keeping every element that parses on its own, a run cut off at max_tokens still has good edits in it
     editsKey = partial.find('"edits"')
@@ -555,6 +666,12 @@ def salvage_truncated_batch(partial: str) -> dict[str, Any] | None:
                 elementStart = None
         elif char == "]" and depth == 0:
             break
+
+    #still inside an object at the end of the buffer means the run stopped mid edit, and that edit is usually the only one there is
+    if depth > 0 and elementStart is not None:
+        partialEdit = salvage_partial_edit(partial[elementStart:])
+        if partialEdit is not None:
+            edits.append(partialEdit)
 
     if not edits:
         return None
@@ -1877,6 +1994,8 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
             #a dropped connection in append mode still has good prose sitting in it, worth keeping instead of throwing away
             incomplete_stream = error_text == "generation_incomplete_stream"
             append_truncated = incomplete_stream and generation_mode != "edit" and bool(content)
+            #edit mode used to walk away from a run that stopped early, which threw away every finished paragraph the model had already written
+            edit_stopped_early = (incomplete_stream or cancelled) and generation_mode == "edit" and bool(content)
             if cancelled:
                 error_event = {
                     "code": "generation_cancelled",
@@ -1885,10 +2004,14 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
 
             edit_truncated = False
 
-            if stream_completed and generation_mode == "edit" and content:
+            if (stream_completed or edit_stopped_early) and generation_mode == "edit" and content:
                 try:
                     edit_batch = parse_chapter_edit_batch(content)
-                    edit_truncated = bool(edit_batch.get("truncated")) or finish_reason == "length"
+                    edit_truncated = (
+                        bool(edit_batch.get("truncated"))
+                        or finish_reason == "length"
+                        or edit_stopped_early
+                    )
                 except ChapterEditError as exc:
                     message = exc.message
                     code = exc.code
@@ -1901,7 +2024,7 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                     edit_batch = None
 
             with deps.get_db() as conn:
-                if (stream_completed or append_truncated) and content:
+                if (stream_completed or append_truncated or edit_stopped_early) and content:
                     conn.execute("BEGIN IMMEDIATE")
                 current = conn.execute(
                     "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
@@ -1909,7 +2032,7 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                 ).fetchone()
                 current_content = current["content"] if current else ""
 
-                if stream_completed and content and generation_mode == "edit" and edit_batch is not None:
+                if (stream_completed or edit_stopped_early) and content and generation_mode == "edit" and edit_batch is not None:
                     try:
                         if not current or current["revision"] != base_revision:
                             error_event = revision_conflict_event(conn)
@@ -1957,6 +2080,9 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                                     #the applied edits are committed by now, so a repair is a fresh run on top of them and can never take them back
                                     "repairable": incomplete and not is_repair,
                                 }
+                                #the prose landed, so a stream that merely ended early is no longer a failure worth showing
+                                if incomplete_stream:
+                                    error_event = None
                                 if rejected_edits:
                                     error_text = (
                                         f"partial: applied {applied_count} of "
@@ -2082,9 +2208,11 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                             f"skipped edit {item['index'] + 1}: {item['message']}" for item in skipped
                         )
                     elif chapter_update_event.get("truncated") and generation_mode == "edit":
+                        #the token limit and a run that stopped early both cut the response off, but only one of them is the model's doing
+                        stopped_at = "the run stopped" if edit_stopped_early else "the token limit"
                         label = (
                             f"{model_label} applied {format_edit_count(applied_count)} "
-                            "before the token limit"
+                            f"before {stopped_at}"
                         )
                         detail = "the response was cut off, so any edits it had not written yet are missing"
                     elif chapter_update_event.get("truncated"):

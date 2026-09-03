@@ -767,8 +767,8 @@ class ChapterOperationTest(unittest.TestCase):
         result = apply_chapter_operation(content, operation, baseRevision=7)
         self.assertEqual(result["content"], "rewritten\n\nlast paragraph")
 
-    def test_a_too_short_anchor_is_rejected_before_it_can_match_anything(self):
-        #"the" would match half the chapter, an anchor that weak is not a check at all
+    def test_a_short_anchor_on_the_block_it_names_is_good_enough(self):
+        #the revision lock already proves the block id names a real current paragraph, so the quote only has to agree with it
         content = "the long opening paragraph that goes on for a while\n\nlast paragraph"
         blocks = chapter_blocks(content)
         operation = self.operation(
@@ -777,9 +777,77 @@ class ChapterOperationTest(unittest.TestCase):
             anchorText="the long",
             newText="rewritten",
         )
+        result = apply_chapter_operation(content, operation, baseRevision=7)
+        self.assertEqual(result["content"], "rewritten\n\nlast paragraph")
+
+    def test_a_short_anchor_that_is_nowhere_in_the_block_it_names_is_rejected(self):
+        #this is the miscount the anchor exists to catch, and it still gets caught
+        content = "the long opening paragraph that goes on for a while\n\nlast paragraph"
+        blocks = chapter_blocks(content)
+        operation = self.operation(
+            "replaceBlock",
+            blockId=blocks[1]["blockId"],
+            anchorText="the long",
+            newText="rewritten",
+        )
         self.assertErrorCode(
             lambda: apply_chapter_operation(content, operation, baseRevision=7),
-            CHAPTER_EDIT_INVALID_OPERATION,
+            CHAPTER_EDIT_TARGET_MISMATCH,
+        )
+
+    def test_a_reworded_anchor_still_finds_the_block_its_id_names(self):
+        #a real run died on this: the model got the block id right and retyped the sentence from memory with three words added
+        content = (
+            "Outside the sterile chambers, a world unfolded, an expanse of rolling hills "
+            "drenched in violet twilight.\n\nAlex stepped through the doorway, the key "
+            "clinking against his pocket."
+        )
+        blocks = chapter_blocks(content)
+        operation = self.operation(
+            "replaceBlock",
+            blockId=blocks[0]["blockId"],
+            anchorText="Outside the confines of the sterile chambers, a world unfolded",
+            newText="rewritten",
+        )
+        result = apply_chapter_operation(content, operation, baseRevision=7)
+        self.assertTrue(result["content"].startswith("rewritten"))
+        self.assertIn("Alex stepped through the doorway", result["content"])
+
+    def test_an_anchor_belonging_to_a_different_paragraph_is_still_rejected(self):
+        #rewording is forgiven, quoting the wrong paragraph entirely is not
+        content = (
+            "Outside the sterile chambers, a world unfolded, an expanse of rolling hills "
+            "drenched in violet twilight.\n\nAlex stepped through the doorway, the key "
+            "clinking against his pocket."
+        )
+        blocks = chapter_blocks(content)
+        operation = self.operation(
+            "replaceBlock",
+            blockId=blocks[1]["blockId"],
+            anchorText="a world unfolded, an expanse of rolling hills drenched in violet",
+            newText="rewritten",
+        )
+        #the quote is an exact hit on the other block, so it retargets there rather than trusting the id
+        result = apply_chapter_operation(content, operation, baseRevision=7)
+        self.assertTrue(result["content"].startswith("rewritten"))
+        self.assertIn("Alex stepped through the doorway", result["content"])
+
+    def test_a_hallucinated_anchor_is_thrown_away(self):
+        content = (
+            "Outside the sterile chambers, a world unfolded, an expanse of rolling hills "
+            "drenched in violet twilight.\n\nAlex stepped through the doorway, the key "
+            "clinking against his pocket."
+        )
+        blocks = chapter_blocks(content)
+        operation = self.operation(
+            "replaceBlock",
+            blockId=blocks[0]["blockId"],
+            anchorText="The dragon roared across the burning plain and the sky went white",
+            newText="rewritten",
+        )
+        self.assertErrorCode(
+            lambda: apply_chapter_operation(content, operation, baseRevision=7),
+            CHAPTER_EDIT_TARGET_MISMATCH,
         )
 
     def test_replace_block(self):

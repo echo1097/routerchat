@@ -265,8 +265,11 @@ ANCHOR_CHARACTER_FOLDS = {
 #long enough that it cannot match every paragraph by accident, short enough to stay copyable
 ANCHOR_MINIMUM_LENGTH = 24
 
-#what we hand the model in the block map, generous enough to clear the minimum even after it trims a word
-ANCHOR_PROMPT_LENGTH = 80
+#what we hand the model in the block map, generous enough to clear the minimum even after it trims a word. every extra character here is paid on every block of every edit request, and is one more character the model can retype wrong
+ANCHOR_PROMPT_LENGTH = 40
+
+#a reworded quote still scores far above this against the block it came from, a quote belonging to a different paragraph lands far below it
+ANCHOR_SIMILARITY_THRESHOLD = 0.6
 
 
 def normalize_anchor(value: str) -> str:
@@ -284,6 +287,17 @@ def anchor_for_block(text: str) -> str:
     if lastSpace >= ANCHOR_MINIMUM_LENGTH:
         head = head[:lastSpace]
     return head.strip()
+
+
+def anchor_resembles_block(normalizedAnchor: str, blockText: str) -> bool:
+    #models retype the quote from memory instead of copying it, so a few reworded words are sloppiness rather than the wrong paragraph
+    if not normalizedAnchor:
+        return False
+
+    normalizedBlock = normalize_anchor(blockText)
+    window = normalizedBlock[:max(len(normalizedAnchor) + ANCHOR_MINIMUM_LENGTH, ANCHOR_MINIMUM_LENGTH)]
+    similarity = difflib.SequenceMatcher(None, normalizedAnchor, window).ratio()
+    return similarity >= ANCHOR_SIMILARITY_THRESHOLD
 
 
 def resolve_block_by_anchor(
@@ -1047,22 +1061,19 @@ def validate_chapter_operation(
             block = blocksById.get(blockId.strip())
             normalizedAnchor = normalize_anchor(anchorText)
 
-            if block is not None:
-                normalizedBlock = normalize_anchor(block["text"])
-                #a two word anchor would match half the chapter, so short blocks have to be quoted whole
-                if len(normalizedAnchor) < min(ANCHOR_MINIMUM_LENGTH, len(normalizedBlock)):
-                    raise ChapterEditError(
-                        CHAPTER_EDIT_INVALID_OPERATION,
-                        f"{anchorField} must quote at least "
-                        f"{min(ANCHOR_MINIMUM_LENGTH, len(normalizedBlock))} characters of {blockId}",
-                    )
-                if normalizedAnchor in normalizedBlock:
-                    targetBlocks.append(block)
-                    operation[blockIdField] = block["blockId"]
-                    continue
+            namedBlock = block
+            if namedBlock is not None and normalizedAnchor in normalize_anchor(namedBlock["text"]):
+                targetBlocks.append(namedBlock)
+                operation[blockIdField] = namedBlock["blockId"]
+                continue
 
-            #the quoted prose is a better witness than the models block id bookkeeping, so let the anchor pick the block
+            #the quoted prose is a better witness than the models block id bookkeeping, so an exact quote elsewhere still wins the block
             block = resolve_block_by_anchor(blocks, normalizedAnchor)
+
+            #nothing quoted it exactly, so a block id that names a real paragraph the quote clearly came from is the model rewording rather than losing its place
+            if block is None and namedBlock is not None and anchor_resembles_block(normalizedAnchor, namedBlock["text"]):
+                block = namedBlock
+
             if block is None:
                 raise ChapterEditError(
                     CHAPTER_EDIT_TARGET_MISMATCH,

@@ -138,9 +138,9 @@ is the row of controls, and a white button caught in that band looks sliced off 
   align-items: center;
   gap: 8px;
   border-radius: 12px;
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(255, 255, 255, 0.05);
   padding: 0 12px;
-  color: #737373;
+  color: #8f8f8f;
   box-shadow: var(--shadow-border);
   transition:
     background-color 150ms ease-out,
@@ -148,8 +148,12 @@ is the row of controls, and a white button caught in that band looks sliced off 
     color 150ms ease-out;
 }
 
+.lorebook-search:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
 .lorebook-search:focus-within {
-  background: rgba(0, 0, 0, 0.25);
+  background: rgba(255, 255, 255, 0.08);
   color: #d4d4d4;
   box-shadow:
     var(--shadow-border-hover),
@@ -181,10 +185,13 @@ is the row of controls, and a white button caught in that band looks sliced off 
   font-size: 13px;
 }
 
-.lorebook-search input::placeholder,
 .lorebook-modal input::placeholder,
 .lorebook-modal textarea::placeholder {
   color: #525252;
+}
+
+.lorebook-search input::placeholder {
+  color: #737373;
 }
 
 .lorebook-library-controls {

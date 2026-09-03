@@ -4965,7 +4965,7 @@ function SystemPromptModal({ open, value, onSave, onClose }) {
             <X size={17} />
           </button>
         </header>
-        <div className="min-h-0 flex-1 px-4 pb-4">
+        <div className="min-h-0 flex-1 px-4 pb-2">
           <div className="prompt-edit-surface h-[min(340px,calc(100dvh-17rem))] min-h-[220px] rounded-[18px] px-4 py-3">
             <textarea
               ref={textareaRef}
@@ -4977,14 +4977,14 @@ function SystemPromptModal({ open, value, onSave, onClose }) {
             />
           </div>
         </div>
-        <footer className="flex flex-wrap items-center justify-end gap-3 px-4 pb-4">
+        <footer className="flex flex-wrap items-center justify-end gap-3 px-4 pb-2">
           <div className="flex items-center gap-2">
             {draft && (
               <button
                 type="button"
                 onClick={clearPrompt}
                 className={cx(
-                  "inline-flex h-10 items-center justify-center rounded-full px-3 text-sm font-medium text-neutral-400 hover:bg-white/[0.06] hover:text-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+                  "inline-flex h-8 items-center justify-center rounded-full px-3 text-sm font-medium text-neutral-400 hover:bg-white/[0.06] hover:text-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
                   CONTROL_MOTION,
                 )}
               >
@@ -4996,7 +4996,7 @@ function SystemPromptModal({ open, value, onSave, onClose }) {
               onClick={saveNow}
               disabled={!canSave}
               className={cx(
-                "inline-flex h-10 items-center justify-center rounded-full px-4 text-sm font-semibold text-neutral-100 hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:text-neutral-600 disabled:hover:bg-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:active:scale-100",
+                "inline-flex h-8 items-center justify-center rounded-full px-4 text-sm font-semibold text-neutral-100 hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:text-neutral-600 disabled:hover:bg-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:active:scale-100",
                 CONTROL_MOTION,
               )}
             >

@@ -224,6 +224,7 @@ export async function installWriteApi(page, options = {}) {
       return response(route, { models: [model] });
     }
     if (method === "GET" && path === "/api/chats") return response(route, { chats: [] });
+    if (method === "GET" && path === "/api/folders") return response(route, { folders: [] });
     if (method === "GET" && path === "/api/stories") {
       return response(route, {
         stories: state.importedStory ? [state.importedStory, state.story] : [state.story],

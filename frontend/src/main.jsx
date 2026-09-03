@@ -4957,7 +4957,7 @@ function SystemPromptModal({ open, value, onSave, onClose }) {
             type="button"
             onClick={onClose}
             className={cx(
-              "grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/[0.05] text-neutral-400 hover:bg-white/[0.08] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15",
+              "grid h-10 w-10 shrink-0 place-items-center rounded-full text-neutral-400 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15",
               CONTROL_MOTION,
             )}
             aria-label="Close system prompt"
@@ -4996,7 +4996,7 @@ function SystemPromptModal({ open, value, onSave, onClose }) {
               onClick={saveNow}
               disabled={!canSave}
               className={cx(
-                "inline-flex h-10 items-center justify-center rounded-full bg-neutral-100 px-4 text-sm font-semibold text-neutral-950 hover:bg-white disabled:cursor-not-allowed disabled:bg-white/30 disabled:text-neutral-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:active:scale-100",
+                "inline-flex h-10 items-center justify-center rounded-full px-4 text-sm font-semibold text-neutral-100 hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:text-neutral-600 disabled:hover:bg-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:active:scale-100",
                 CONTROL_MOTION,
               )}
             >

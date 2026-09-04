@@ -4603,7 +4603,7 @@ function Composer({
                     PROMPT_BAR_CONTROL_MOTION,
                   )}
                 >
-                  <MaskIcon src="/icons/web.png" size={14.5} />
+                  <MaskIcon src="/icons/web.png" size={13} />
                 </button>
               )}
               </div>

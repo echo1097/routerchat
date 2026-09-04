@@ -5879,9 +5879,14 @@ function SettingsDrawer({
       });
   }, [hideFreeModels, lorebookQuery, models]);
 
-  const lorebookModelName = settings.lorebook_model
-    ? promptModelName(models, settings.lorebook_model)
-    : `Same as global (${promptModelName(models, settings.model)})`;
+  const lorebookInherits = !settings.lorebook_model;
+  const lorebookModelId = settings.lorebook_model || settings.model;
+  const lorebookModel = models.find((model) => model.id === lorebookModelId);
+  const lorebookModelPrice = lorebookModel ? priceLabel(lorebookModel) : "";
+  const lorebookModelContextLimit = getModelContextLimit(lorebookModel);
+  const lorebookModelContext = Number.isFinite(lorebookModelContextLimit)
+    ? `${formatTokens(lorebookModelContextLimit)} context`
+    : "";
 
   function updateChatListEdges(element) {
     const scrollTop = element.scrollTop;
@@ -6448,11 +6453,28 @@ function SettingsDrawer({
 
   const lorebookSection = (
     <section className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-3 min-w-0">
-        <h2 className="text-balance text-sm font-semibold text-neutral-100">Lorebook model</h2>
-        <p className="mt-0.5 truncate text-xs text-neutral-500">
-          {lorebookModelName}
-        </p>
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-balance text-sm font-semibold text-neutral-100">Lorebook model</h2>
+          <p className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-neutral-500">
+            <span className="truncate">{lorebookModel?.name || lorebookModelId}</span>
+            {lorebookModelPrice && (
+              <span className="inline-flex min-h-5 shrink-0 items-center rounded-full bg-white/[0.055] px-2 text-[11px] font-medium leading-none tabular-nums text-neutral-500 shadow-[var(--shadow-border)]">
+                {lorebookModelPrice}
+              </span>
+            )}
+            {lorebookModelContext && (
+              <span className="inline-flex min-h-5 shrink-0 items-center rounded-full bg-white/[0.055] px-2 text-[11px] font-medium leading-none tabular-nums text-neutral-500 shadow-[var(--shadow-border)]">
+                {lorebookModelContext}
+              </span>
+            )}
+            {lorebookInherits && (
+              <span className="inline-flex min-h-5 shrink-0 items-center rounded-full bg-white/[0.045] px-2 text-[11px] font-medium leading-none text-neutral-500 shadow-[var(--shadow-border)]">
+                Same as global
+              </span>
+            )}
+          </p>
+        </div>
       </div>
 
       <ModelPicker

@@ -126,6 +126,60 @@ test("stabilizes brainstorm handles, selection, and structural framing", async (
   ).toBeGreaterThan(viewportRequestsAfterDelete);
 });
 
+test("dismisses brainstorm regeneration confirmation before the stream finishes", async ({ page }) => {
+  const api = await installWriteApi(page, {
+    controlledBrainstormStream: true,
+    brainstormNodes: [
+      {
+        id: "root-prompt",
+        story_id: "story-1",
+        node_type: "prompt",
+        title: "Prompt",
+        content: "Root prompt",
+        position_x: 0,
+        position_y: 180,
+        status: "complete",
+      },
+      {
+        id: "child-idea",
+        story_id: "story-1",
+        node_type: "idea",
+        title: "Original idea",
+        content: "An idea to replace.",
+        position_x: 390,
+        position_y: 180,
+        status: "complete",
+      },
+    ],
+    brainstormEdges: [
+      {
+        id: "root-child",
+        source_node_id: "root-prompt",
+        target_node_id: "child-idea",
+      },
+    ],
+  });
+  await api.openBrainstorm();
+
+  const promptNode = page.locator(".react-flow__node-prompt");
+  await promptNode.hover();
+  await promptNode.getByRole("button", { name: "Regenerate prompt" }).click();
+  const dialog = page.getByRole("alertdialog");
+  await expect(dialog).toContainText("Regenerate this prompt?");
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByText("Original idea", { exact: true })).toBeVisible();
+
+  await promptNode.hover();
+  await promptNode.getByRole("button", { name: "Regenerate prompt" }).click();
+  await dialog.getByRole("button", { name: "Regenerate", exact: true }).click();
+  await api.waitForBrainstormStream();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByText("Original idea", { exact: true })).toBeHidden();
+  await expect(page.getByRole("button", { name: "Stop brainstorming" })).toBeVisible();
+  await api.closeBrainstormStream();
+});
+
 test("resets the brainstorm camera after deleting the final node", async ({ page }) => {
   const api = await installWriteApi(page, {
     brainstormNodes: [

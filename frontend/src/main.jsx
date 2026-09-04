@@ -7217,11 +7217,14 @@ function ConfirmModal({ dialog, onClose }) {
   async function confirm() {
     if (busy) return;
     setBusy(true);
+    const closeOnConfirm = Boolean(renderedDialog.closeOnConfirm);
+    if (closeOnConfirm) onClose();
+
     try {
       await renderedDialog.onConfirm();
-      onClose();
+      if (!closeOnConfirm) onClose();
     } catch {
-      setBusy(false);
+      if (!closeOnConfirm) setBusy(false);
     }
   }
 

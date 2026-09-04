@@ -433,6 +433,8 @@ export default function StoryBrainstorm({
       title: "Regenerate this prompt?",
       body: "This replaces the ideas below this prompt, along with anything branched from them. This cannot be undone.",
       confirmLabel: "Regenerate",
+      busyLabel: "Regenerating",
+      closeOnConfirm: true,
       onConfirm: runPrompt,
     });
   }, [

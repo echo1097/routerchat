@@ -13,6 +13,7 @@ from backend.lorebook import (
     LorebookDeps,
     OPENROUTER_TIMEOUT,
     SUMMARY_INSTRUCTION,
+    lorebook_model_for,
     lorebook_summary_chapter_id,
     normalize_lorebook_category,
     normalize_timeline_description,
@@ -252,7 +253,7 @@ def create_lorebook_repair_router(deps: LorebookDeps) -> APIRouter:
             {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
         ]
         body: dict[str, Any] = {
-            "model": deps.openrouter_request_model(story["model"], False),
+            "model": deps.openrouter_request_model(lorebook_model_for(story), False),
             "messages": messages,
             "temperature": 0.1,
             "max_tokens": story["max_tokens"],
@@ -262,13 +263,13 @@ def create_lorebook_repair_router(deps: LorebookDeps) -> APIRouter:
         if providerOptions:
             body["provider"] = providerOptions
 
-        effectiveThinkingEnabled = deps.effective_thinking_enabled(story["model"], True)
+        effectiveThinkingEnabled = deps.effective_thinking_enabled(lorebook_model_for(story), True)
         reasoningConfig = deps.enabled_reasoning_config(
-            story["model"], True, story["reasoning_effort"]
+            lorebook_model_for(story), True, story["reasoning_effort"]
         )
         if reasoningConfig:
             body["reasoning"] = reasoningConfig
-        if deps.model_supports_structured_output(story["model"]):
+        if deps.model_supports_structured_output(lorebook_model_for(story)):
             body["response_format"] = lorebook_repair_response_format(summaryChapters)
 
         generatedText: list[str] = []
@@ -343,7 +344,7 @@ def create_lorebook_repair_router(deps: LorebookDeps) -> APIRouter:
             if usage:
                 yield deps.stream_event(
                     "usage",
-                    {"generation_id": generationId, "model": story["model"], **usage},
+                    {"generation_id": generationId, "model": lorebook_model_for(story), **usage},
                 )
 
             if not receivedDone:

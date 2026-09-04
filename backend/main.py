@@ -617,6 +617,7 @@ def init_db() -> None:
               reasoning_effort TEXT NOT NULL DEFAULT 'medium',
               temporary INTEGER NOT NULL DEFAULT 0,
               lorebook_auto INTEGER NOT NULL DEFAULT 0,
+              lorebook_model TEXT NOT NULL DEFAULT '',
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
             );
@@ -837,6 +838,9 @@ def ensure_story_settings_columns(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE stories ADD COLUMN temporary INTEGER NOT NULL DEFAULT 0")
     if "lorebook_auto" not in existingColumns:
         conn.execute("ALTER TABLE stories ADD COLUMN lorebook_auto INTEGER NOT NULL DEFAULT 0")
+    if "lorebook_model" not in existingColumns:
+        #blank means the author never picked one, so the story's own model keeps doing the lorebook work
+        conn.execute("ALTER TABLE stories ADD COLUMN lorebook_model TEXT NOT NULL DEFAULT ''")
 
 
 def ensure_chapter_context_column(conn: sqlite3.Connection) -> None:

@@ -56,6 +56,7 @@ class StoryCreateRequest(BaseModel):
     reasoning_effort: str = "medium"
     temporary: bool = False
     lorebook_auto: bool = False
+    lorebook_model: str = ""
 
 
 class StoryPatchRequest(BaseModel):
@@ -70,6 +71,7 @@ class StoryPatchRequest(BaseModel):
     thinking_enabled: bool | None = None
     reasoning_effort: str | None = None
     lorebook_auto: bool | None = None
+    lorebook_model: str | None = None
 
 
 class ChapterCreateRequest(BaseModel):
@@ -107,6 +109,7 @@ class StoryArchiveStory(BaseModel):
     thinking_enabled: bool = False
     reasoning_effort: str = "medium"
     lorebook_auto: bool = False
+    lorebook_model: str = ""
     created_at: str = ""
     updated_at: str = ""
 
@@ -1432,6 +1435,7 @@ def row_to_story(row: sqlite3.Row) -> dict[str, Any]:
         "reasoning_effort": row["reasoning_effort"],
         "temporary": bool(row["temporary"]),
         "lorebook_auto": bool(row["lorebook_auto"]),
+        "lorebook_model": row["lorebook_model"] or "",
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
@@ -2456,9 +2460,9 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                 INSERT INTO stories (
                   id, title, author, language, synopsis, model, system_prompt,
                   temperature, max_tokens, thinking_enabled, reasoning_effort, temporary,
-                  lorebook_auto, created_at, updated_at
+                  lorebook_auto, lorebook_model, created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     storyId,
@@ -2474,6 +2478,7 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                     story.reasoning_effort,
                     0,
                     int(story.lorebook_auto),
+                    story.lorebook_model,
                     story.created_at or now,
                     now,
                 ),
@@ -2629,9 +2634,9 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                 INSERT INTO stories (
                   id, title, author, language, synopsis, model, system_prompt,
                   temperature, max_tokens, thinking_enabled, reasoning_effort, temporary,
-                  lorebook_auto, created_at, updated_at
+                  lorebook_auto, lorebook_model, created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     story_id,
@@ -2647,6 +2652,7 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                     payload.reasoning_effort,
                     int(payload.temporary),
                     int(payload.lorebook_auto),
+                    payload.lorebook_model,
                     now,
                     now,
                 ),
@@ -2671,9 +2677,9 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                 INSERT INTO stories (
                   id, title, author, language, synopsis, model, system_prompt,
                   temperature, max_tokens, thinking_enabled, reasoning_effort, temporary,
-                  lorebook_auto, created_at, updated_at
+                  lorebook_auto, lorebook_model, created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     story_id,
@@ -2689,6 +2695,7 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                     payload.reasoning_effort,
                     int(payload.temporary),
                     int(payload.lorebook_auto),
+                    payload.lorebook_model,
                     now,
                     now,
                 ),

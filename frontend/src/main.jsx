@@ -114,6 +114,7 @@ const newSettings = {
   web_search_enabled: false,
   nitro_mode: false,
   lorebook_auto: false,
+  lorebook_model: "",
 };
 
 const REASONING_EFFORTS = [
@@ -130,7 +131,11 @@ const SETTINGS_PAGES = [
   { id: "ui", label: "UI", iconClass: "fi fi-rr-apps-add" },
   { id: "cloud", label: "Chats", icon: MessageSquarePlus },
   { id: "advanced", label: "Advanced", icon: SlidersHorizontal },
+  { id: "lorebook", label: "Lorebook", iconSrc: "/icons/newbook.png" },
 ];
+
+//"Same as global" is stored as an empty string so a story that never picked one keeps following its own model
+const LOREBOOK_MODEL_INHERIT = "";
 
 const CHAT_MODES = [
   { value: "chat", label: "Chat" },
@@ -5606,6 +5611,151 @@ function SettingRow({ title, description, children }) {
   );
 }
 
+//the searchable model list, shared by the global Models page and the Lorebook one so the two never drift apart
+function ModelPicker({
+  models,
+  query,
+  onQueryChange,
+  selectedId,
+  onSelect,
+  emptyMessage,
+  note = null,
+  inheritOption = null,
+  disabled = false,
+  activePage,
+  searchWrapRef,
+  searchInputRef,
+}) {
+  const listRef = useRef(null);
+  const [listScrolled, setListScrolled] = useState(false);
+  const [listHasMoreBelow, setListHasMoreBelow] = useState(false);
+
+  function updateEdges(element) {
+    const bottomOffset = element.scrollHeight - element.clientHeight - element.scrollTop;
+    setListScrolled(element.scrollTop > 2);
+    setListHasMoreBelow(bottomOffset > 2);
+  }
+
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+
+    requestAnimationFrame(() => updateEdges(list));
+  }, [models.length, activePage]);
+
+  function row({ key, name, subLabel, price, context, isSelected }) {
+    return (
+      <div
+        key={key}
+        className={cx(
+          "grid min-h-[52px] grid-cols-[minmax(0,1fr)_104px] items-center rounded-lg px-1 py-2 transition-colors duration-150 ease-out",
+          isSelected ? "bg-white/[0.035]" : "hover:bg-white/[0.02]",
+          disabled && !isSelected && "opacity-45",
+        )}
+      >
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => onSelect(key)}
+          className={cx(
+            "min-w-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
+            CONTROL_MOTION,
+            disabled && !isSelected && "cursor-not-allowed active:scale-100",
+          )}
+        >
+          <span className="block truncate text-sm font-medium text-neutral-100">{name}</span>
+          <span className="mt-0.5 block truncate text-xs text-neutral-600">{subLabel}</span>
+        </button>
+        <span className="flex min-w-0 flex-col items-center px-1 text-center text-xs leading-4 tabular-nums text-neutral-500">
+          <span className="whitespace-nowrap">{price}</span>
+          <span className="whitespace-nowrap">{context}</span>
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="pb-2.5">
+        <div ref={searchWrapRef} className="t-input-wrap">
+          <div
+            ref={searchInputRef}
+            className="t-input model-search-input flex h-10 items-center gap-2 rounded-xl bg-black/20 px-3 text-neutral-500 shadow-[var(--shadow-border)] transition-[background-color,box-shadow] duration-150 ease-out focus-within:bg-black/25 focus-within:shadow-[0_0_0_1px_rgba(255,255,255,0.16)]"
+          >
+            <Search size={15} />
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => onQueryChange(event.target.value)}
+              placeholder="Search models"
+              data-1p-ignore="true"
+              className="min-w-0 flex-1 bg-transparent text-sm text-neutral-100 outline-none placeholder:text-neutral-600"
+            />
+            <span className="rounded-full bg-white/[0.05] px-2 py-0.5 text-[11px] tabular-nums text-neutral-500">
+              {models.length}
+            </span>
+          </div>
+        </div>
+        {note}
+      </div>
+
+      <div className="grid grid-cols-[minmax(0,1fr)_104px] items-center px-1 pb-2 pt-1 text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-600">
+        <span>Model</span>
+        <span className="whitespace-nowrap text-center">Price + Context</span>
+      </div>
+
+      <div className="relative min-h-0 flex-1">
+        <div
+          ref={listRef}
+          onScroll={(event) => updateEdges(event.currentTarget)}
+          className="min-h-0 h-full overflow-y-auto"
+        >
+          {inheritOption && !query.trim() && row({
+            key: LOREBOOK_MODEL_INHERIT,
+            name: inheritOption.name,
+            subLabel: inheritOption.subLabel,
+            price: "-",
+            context: "-",
+            isSelected: selectedId === LOREBOOK_MODEL_INHERIT,
+          })}
+
+          {models.length === 0 ? (
+            <div className="mt-3 rounded-[18px] bg-black/15 p-4 text-pretty text-sm leading-6 text-neutral-500 shadow-[var(--shadow-border)]">
+              {emptyMessage}
+            </div>
+          ) : (
+            models.map((model) => {
+              const contextLimit = getModelContextLimit(model);
+              return row({
+                key: model.id,
+                name: model.name,
+                subLabel: model.id,
+                price: priceLabel(model) || "-",
+                context: Number.isFinite(contextLimit) ? `${formatTokens(contextLimit)} context` : "—",
+                isSelected: model.id === selectedId,
+              });
+            })
+          )}
+        </div>
+        <div
+          aria-hidden="true"
+          className={cx(
+            "settings-list-fade pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-[#202020]/95 to-transparent transition-opacity duration-150 ease-out",
+            listScrolled ? "opacity-100" : "opacity-0",
+          )}
+        />
+        <div
+          aria-hidden="true"
+          className={cx(
+            "settings-list-fade pointer-events-none absolute inset-x-0 bottom-0 h-7 bg-gradient-to-t from-[#202020]/95 to-transparent transition-opacity duration-150 ease-out",
+            listHasMoreBelow ? "opacity-100" : "opacity-0",
+          )}
+        />
+      </div>
+    </>
+  );
+}
+
 function SettingsDrawer({
   open,
   onClose,
@@ -5644,14 +5794,13 @@ function SettingsDrawer({
 }) {
   const [apiKey, setApiKey] = useState("");
   const [query, setQuery] = useState("");
+  const [lorebookQuery, setLorebookQuery] = useState("");
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [selectedCloudChatId, setSelectedCloudChatId] = useState("");
   const [cloudSearch, setCloudSearch] = useState("");
   const [activePage, setActivePage] = useState("general");
-  const [modelListScrolled, setModelListScrolled] = useState(false);
-  const [modelListHasMoreBelow, setModelListHasMoreBelow] = useState(false);
   const [chatListScrolled, setChatListScrolled] = useState(false);
   const [chatListHasMoreBelow, setChatListHasMoreBelow] = useState(false);
   const [openAccordions, setOpenAccordions] = useState({
@@ -5659,7 +5808,6 @@ function SettingsDrawer({
     generation: true,
   });
   const fileInputRef = useRef(null);
-  const modelListRef = useRef(null);
   const chatListRef = useRef(null);
   const modelSearchWrapRef = useRef(null);
   const modelSearchInputRef = useRef(null);
@@ -5687,9 +5835,10 @@ function SettingsDrawer({
   const cloudChat = selectedCloudChat || activeCloudChat || chats[0];
   const cloudChatId = cloudChat?.id || "";
   const promptModeName = chatMode === "write" ? "Write" : "Chat";
+  //the lorebook only exists inside a story, and write mode keeps its instructions in its own modal instead
   const visibleSettingsPages = chatMode === "write"
     ? SETTINGS_PAGES.filter((page) => page.id !== "system")
-    : SETTINGS_PAGES;
+    : SETTINGS_PAGES.filter((page) => page.id !== "lorebook");
 
   const filteredCloudChats = useMemo(() => {
     const normalized = cloudSearch.trim().toLowerCase();
@@ -5713,12 +5862,21 @@ function SettingsDrawer({
       });
   }, [hideFreeModels, models, query]);
 
-  function updateModelListEdges(element) {
-    const scrollTop = element.scrollTop;
-    const bottomOffset = element.scrollHeight - element.clientHeight - scrollTop;
-    setModelListScrolled(scrollTop > 2);
-    setModelListHasMoreBelow(bottomOffset > 2);
-  }
+  const filteredLorebookModels = useMemo(() => {
+    const normalized = lorebookQuery.trim().toLowerCase();
+    return models
+      .filter((model) => {
+        if (hideFreeModels && isFreeModel(model)) return false;
+        if (!normalized) return true;
+        return [model.name, model.id, model.description]
+          .filter(Boolean)
+          .some((value) => value.toLowerCase().includes(normalized));
+      });
+  }, [hideFreeModels, lorebookQuery, models]);
+
+  const lorebookModelName = settings.lorebook_model
+    ? promptModelName(models, settings.lorebook_model)
+    : `Same as global (${promptModelName(models, settings.model)})`;
 
   function updateChatListEdges(element) {
     const scrollTop = element.scrollTop;
@@ -5726,13 +5884,6 @@ function SettingsDrawer({
     setChatListScrolled(scrollTop > 2);
     setChatListHasMoreBelow(bottomOffset > 2);
   }
-
-  useEffect(() => {
-    const modelList = modelListRef.current;
-    if (!modelList) return;
-
-    requestAnimationFrame(() => updateModelListEdges(modelList));
-  }, [filteredModels.length, activePage]);
 
   useEffect(() => {
     const chatList = chatListRef.current;
@@ -5854,6 +6005,12 @@ function SettingsDrawer({
     onSetDefaultModel(settings.model);
   }
 
+  //switching modes hides some pages, and leaving one of those selected would slide the modal to a page with no tab
+  useEffect(() => {
+    if (visibleSettingsPages.some((page) => page.id === activePage)) return;
+    setActivePage("general");
+  }, [activePage, visibleSettingsPages]);
+
   function choosePage(pageId) {
     setActivePage(pageId);
   }
@@ -5863,10 +6020,6 @@ function SettingsDrawer({
       ...current,
       [id]: !current[id],
     }));
-  }
-
-  function handleModelListScroll(event) {
-    updateModelListEdges(event.currentTarget);
   }
 
   function handleChatListScroll(event) {
@@ -6230,143 +6383,89 @@ function SettingsDrawer({
 
   const modelList = (
     <section className="flex min-h-0 flex-1 flex-col">
-      <div className="pb-2.5">
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="flex items-center gap-2 text-balance text-sm font-semibold text-neutral-100">
-              Model
-              {modelLocked && (
-                <span className="inline-flex min-h-6 items-center rounded-full bg-white/[0.04] px-2 text-[11px] font-medium text-neutral-500 shadow-[var(--shadow-border)]">
-                  Model locked
-                </span>
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="flex items-center gap-2 text-balance text-sm font-semibold text-neutral-100">
+            Model
+            {modelLocked && (
+              <span className="inline-flex min-h-6 items-center rounded-full bg-white/[0.04] px-2 text-[11px] font-medium text-neutral-500 shadow-[var(--shadow-border)]">
+                Model locked
+              </span>
+            )}
+          </h2>
+          <p className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-neutral-500">
+            <span className="truncate">{selectedModel?.name || settings.model}</span>
+            {selectedModelPrice && (
+              <span className="inline-flex min-h-5 shrink-0 items-center rounded-full bg-white/[0.055] px-2 text-[11px] font-medium leading-none tabular-nums text-neutral-500 shadow-[var(--shadow-border)]">
+                {selectedModelPrice}
+              </span>
+            )}
+            <button
+              type="button"
+              disabled={!settings.model || settings.model === defaultModel}
+              onClick={setSelectedModelAsDefault}
+              className={cx(
+                "inline-flex min-h-5 shrink-0 items-center rounded-full px-2 text-[11px] font-medium leading-none shadow-[var(--shadow-border)] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 disabled:cursor-default disabled:active:scale-100",
+                CONTROL_MOTION,
+                settings.model === defaultModel
+                  ? "bg-white/[0.045] text-neutral-500"
+                  : "bg-white/[0.065] text-neutral-300 hover:bg-white/[0.1] hover:text-neutral-100",
               )}
-            </h2>
-            <p className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-neutral-500">
-              <span className="truncate">{selectedModel?.name || settings.model}</span>
-              {selectedModelPrice && (
-                <span className="inline-flex min-h-5 shrink-0 items-center rounded-full bg-white/[0.055] px-2 text-[11px] font-medium leading-none tabular-nums text-neutral-500 shadow-[var(--shadow-border)]">
-                  {selectedModelPrice}
-                </span>
-              )}
-              <button
-                type="button"
-                disabled={!settings.model || settings.model === defaultModel}
-                onClick={setSelectedModelAsDefault}
-                className={cx(
-                  "inline-flex min-h-5 shrink-0 items-center rounded-full px-2 text-[11px] font-medium leading-none shadow-[var(--shadow-border)] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 disabled:cursor-default disabled:active:scale-100",
-                  CONTROL_MOTION,
-                  settings.model === defaultModel
-                    ? "bg-white/[0.045] text-neutral-500"
-                    : "bg-white/[0.065] text-neutral-300 hover:bg-white/[0.1] hover:text-neutral-100",
-                )}
-              >
-                {settings.model === defaultModel ? "Default" : "Set default"}
-              </button>
-            </p>
-          </div>
+            >
+              {settings.model === defaultModel ? "Default" : "Set default"}
+            </button>
+          </p>
         </div>
-        <div
-          ref={modelSearchWrapRef}
-          className="t-input-wrap"
-        >
-          <div
-            ref={modelSearchInputRef}
-            className="t-input model-search-input flex h-10 items-center gap-2 rounded-xl bg-black/20 px-3 text-neutral-500 shadow-[var(--shadow-border)] transition-[background-color,box-shadow] duration-150 ease-out focus-within:bg-black/25 focus-within:shadow-[0_0_0_1px_rgba(255,255,255,0.16)]"
-          >
-          <Search size={15} />
-          <input
-            type="search"
-            value={query}
-            onChange={handleModelSearchChange}
-            placeholder="Search models"
-            data-1p-ignore="true"
-            className="min-w-0 flex-1 bg-transparent text-sm text-neutral-100 outline-none placeholder:text-neutral-600"
-          />
-          <span className="rounded-full bg-white/[0.05] px-2 py-0.5 text-[11px] tabular-nums text-neutral-500">
-            {filteredModels.length}
-          </span>
-          </div>
-        </div>
-        {modelLocked && (
+      </div>
+
+      <ModelPicker
+        models={filteredModels}
+        query={query}
+        onQueryChange={setQuery}
+        selectedId={settings.model}
+        onSelect={(modelId) => {
+          const model = models.find((entry) => entry.id === modelId);
+          if (model) selectModel(model);
+        }}
+        emptyMessage={models.length === 0 ? "Save an API key to load models." : "No matching models."}
+        disabled={modelLocked}
+        activePage={activePage}
+        searchWrapRef={modelSearchWrapRef}
+        searchInputRef={modelSearchInputRef}
+        note={modelLocked && (
           <p className="mt-2 text-pretty text-xs leading-5 text-neutral-600">
             Model selection is locked after the first message in a chat.
           </p>
         )}
-      </div>
-      <div className="grid grid-cols-[minmax(0,1fr)_104px] items-center px-1 pb-2 pt-1 text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-600">
-        <span>Model</span>
-        <span className="whitespace-nowrap text-center">Price + Context</span>
-      </div>
-      <div className="relative min-h-0 flex-1">
-        <div
-          ref={modelListRef}
-          onScroll={handleModelListScroll}
-          className="min-h-0 h-full overflow-y-auto"
-        >
-          {filteredModels.length === 0 ? (
-            <div className="mt-3 rounded-[18px] bg-black/15 p-4 text-pretty text-sm leading-6 text-neutral-500 shadow-[var(--shadow-border)]">
-              {models.length === 0 ? "Save an API key to load models." : "No matching models."}
-            </div>
-          ) : (
-            filteredModels.map((model) => {
-              const isSelected = model.id === settings.model;
-              const modelPrice = priceLabel(model);
-              const modelContextLimit = getModelContextLimit(model);
-              const modelContext = Number.isFinite(modelContextLimit)
-                ? `${formatTokens(modelContextLimit)} context`
-                : "—";
-              return (
-                <div
-                  key={model.id}
-                  className={cx(
-                    "grid min-h-[52px] grid-cols-[minmax(0,1fr)_104px] items-center rounded-lg px-1 py-2 transition-colors duration-150 ease-out",
-                    isSelected ? "bg-white/[0.035]" : "hover:bg-white/[0.02]",
-                    modelLocked && !isSelected && "opacity-45",
-                  )}
-                >
-                  <button
-                    type="button"
-                    disabled={modelLocked}
-                    onClick={() => selectModel(model)}
-                    className={cx(
-                      "min-w-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
-                      CONTROL_MOTION,
-                      modelLocked && !isSelected && "cursor-not-allowed active:scale-100",
-                    )}
-                  >
-                    <span className="block truncate text-sm font-medium text-neutral-100">
-                      {model.name}
-                    </span>
-                    <span className="mt-0.5 block truncate text-xs text-neutral-600">
-                      {model.id}
-                    </span>
-                  </button>
-                  <span className="flex min-w-0 flex-col items-center px-1 text-center text-xs leading-4 tabular-nums text-neutral-500">
-                    <span className="whitespace-nowrap">{modelPrice || "-"}</span>
-                    <span className="whitespace-nowrap">{modelContext}</span>
-                  </span>
-                </div>
-              );
-            })
-          )}
-        </div>
-        <div
-          aria-hidden="true"
-          className={cx(
-            "settings-list-fade pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-[#202020]/95 to-transparent transition-opacity duration-150 ease-out",
-            modelListScrolled ? "opacity-100" : "opacity-0",
-          )}
-        />
-        <div
-          aria-hidden="true"
-          className={cx(
-            "settings-list-fade pointer-events-none absolute inset-x-0 bottom-0 h-7 bg-gradient-to-t from-[#202020]/95 to-transparent transition-opacity duration-150 ease-out",
-            modelListHasMoreBelow ? "opacity-100" : "opacity-0",
-          )}
-        />
-      </div>
+      />
     </section>
   );
+
+  const lorebookSection = (
+    <section className="flex min-h-0 flex-1 flex-col">
+      <div className="mb-3 min-w-0">
+        <h2 className="text-balance text-sm font-semibold text-neutral-100">Lorebook model</h2>
+        <p className="mt-0.5 truncate text-xs text-neutral-500">
+          {lorebookModelName}
+        </p>
+      </div>
+
+      <ModelPicker
+        models={filteredLorebookModels}
+        query={lorebookQuery}
+        onQueryChange={setLorebookQuery}
+        selectedId={settings.lorebook_model || LOREBOOK_MODEL_INHERIT}
+        onSelect={(modelId) => commit({ lorebook_model: modelId })}
+        emptyMessage={models.length === 0 ? "Save an API key to load models." : "No matching models."}
+        activePage={activePage}
+        inheritOption={{
+          name: "Same as global",
+          subLabel: promptModelName(models, settings.model),
+        }}
+      />
+    </section>
+  );
+
 
   const reasoningSection = (
     <Accordion
@@ -6552,11 +6651,11 @@ function SettingsDrawer({
                     )}
                     aria-hidden="true"
                   >
-                    {page.iconClass ? (
+                    {page.iconClass && (
                       <i className={cx(page.iconClass, "text-[15px] leading-none")} />
-                    ) : (
-                      <Icon size={15} strokeWidth={1.9} />
                     )}
+                    {page.iconSrc && <MaskIcon src={page.iconSrc} size={15} />}
+                    {!page.iconClass && !page.iconSrc && <Icon size={15} strokeWidth={1.9} />}
                   </span>
                   <span className="truncate">{page.label}</span>
                 </button>
@@ -6644,6 +6743,13 @@ function SettingsDrawer({
             >
               {reasoningSection}
               {generationSection}
+            </section>
+            <section
+              className="t-page flex min-h-0 flex-col px-4 py-3 md:px-4 md:py-3"
+              data-page-id="7"
+              aria-label="Lorebook settings"
+            >
+              {lorebookSection}
             </section>
           </div>
         </div>
@@ -7752,6 +7858,7 @@ function App() {
       web_search_enabled: false,
       nitro_mode: nitroMode,
       lorebook_auto: Boolean(story.lorebook_auto),
+      lorebook_model: story.lorebook_model || "",
     });
   }
 
@@ -8203,6 +8310,7 @@ function App() {
       web_search_enabled: Boolean(chat.web_search_enabled),
       nitro_mode: nitroMode,
       lorebook_auto: false, //chats have no lorebook, this just keeps the object shape steady across modes
+      lorebook_model: "",
     });
   }
 
@@ -9234,6 +9342,7 @@ function App() {
         thinking_enabled: settings.thinking_enabled,
         reasoning_effort: settings.reasoning_effort,
         lorebook_auto: settings.lorebook_auto,
+        lorebook_model: settings.lorebook_model,
         temporary: true,
       });
       storyId = story.id;
@@ -9291,6 +9400,7 @@ function App() {
           thinking_enabled: settings.thinking_enabled,
           reasoning_effort: settings.reasoning_effort,
           lorebook_auto: settings.lorebook_auto,
+          lorebook_model: settings.lorebook_model,
         },
         { title: "Chapter 1", content: "" },
       );

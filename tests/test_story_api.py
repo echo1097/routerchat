@@ -1014,6 +1014,64 @@ class StoryApiTest(unittest.TestCase):
         _, unsupportedCalls = self.callLorebookUpdate(story, chapter, updates=[])
         self.assertNotIn("response_format", unsupportedCalls[0])
 
+    def test_lorebook_uses_its_own_model_when_one_is_picked(self):
+        storyModel = "test/story-writer"
+        lorebookModel = "test/lorebook-keeper"
+        main.cache_models([
+            main.normalize_model({"id": storyModel, "supported_parameters": []}),
+            main.normalize_model({"id": lorebookModel, "supported_parameters": []}),
+        ])
+        story, chapter = self.storyWithChapter("Own Model", "Mara opens the gate.")
+        self.client.patch(f"/api/stories/{story['id']}", json={"model": storyModel})
+
+        #blank means the author never picked one, so the story's own model does the lorebook work
+        _, inheritedCalls = self.callLorebookUpdate(story, chapter, updates=[])
+        self.assertEqual(inheritedCalls[0]["model"], storyModel)
+
+        self.client.patch(f"/api/stories/{story['id']}", json={"lorebook_model": lorebookModel})
+        _, ownCalls = self.callLorebookUpdate(story, chapter, updates=[])
+        self.assertEqual(ownCalls[0]["model"], lorebookModel)
+
+        #the story's own prose model is untouched by the lorebook choice
+        persisted = self.client.get(f"/api/stories/{story['id']}").json()["story"]
+        self.assertEqual(persisted["model"], storyModel)
+        self.assertEqual(persisted["lorebook_model"], lorebookModel)
+
+    def test_clearing_the_lorebook_model_goes_back_to_the_story_model(self):
+        storyModel = "test/story-writer"
+        lorebookModel = "test/lorebook-keeper"
+        main.cache_models([
+            main.normalize_model({"id": storyModel, "supported_parameters": []}),
+            main.normalize_model({"id": lorebookModel, "supported_parameters": []}),
+        ])
+        story, chapter = self.storyWithChapter("Back To Global", "Mara opens the gate.")
+        self.client.patch(
+            f"/api/stories/{story['id']}",
+            json={"model": storyModel, "lorebook_model": lorebookModel},
+        )
+
+        self.client.patch(f"/api/stories/{story['id']}", json={"lorebook_model": ""})
+        _, calls = self.callLorebookUpdate(story, chapter, updates=[])
+        self.assertEqual(calls[0]["model"], storyModel)
+
+    def test_a_lorebook_model_survives_export_and_import(self):
+        story, _ = self.storyWithChapter("Round Trip", "Mara opens the gate.")
+        self.client.patch(
+            f"/api/stories/{story['id']}",
+            json={"lorebook_model": "test/lorebook-keeper"},
+        )
+
+        archive = self.client.get(f"/api/stories/{story['id']}/export").json()
+        self.assertEqual(archive["story"]["lorebook_model"], "test/lorebook-keeper")
+
+        imported = self.client.post("/api/stories/import", json=archive).json()
+        importedBundle = self.client.get(f"/api/stories/{imported['story_id']}").json()
+        self.assertEqual(importedBundle["story"]["lorebook_model"], "test/lorebook-keeper")
+
+    def test_a_new_story_starts_on_the_global_model(self):
+        story = self.client.post("/api/stories", json={"title": "Fresh"}).json()["story"]
+        self.assertEqual(story["lorebook_model"], "")
+
     def test_lorebook_update_rejects_truncated_and_incomplete_streams_without_changes(self):
         cases = [
             (

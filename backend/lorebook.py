@@ -71,6 +71,15 @@ def format_duration(ms: float) -> str:
     return f"{seconds} {'second' if seconds == 1 else 'seconds'}"
 
 
+def lorebook_model_for(story: Any) -> str:
+    #blank means the author left it on "Same as global", so the story's own model keeps doing the lorebook work
+    try:
+        chosen = str(story["lorebook_model"] or "").strip()
+    except (KeyError, IndexError, TypeError):
+        chosen = ""
+    return chosen or story["model"]
+
+
 def display_model_name(model: str) -> str:
     name = str(model or "Model").split("/")[-1]
     name = name.replace(":free", "").replace("-", " ").replace("_", " ")
@@ -1607,7 +1616,7 @@ def finalize_lorebook_update(
     applied = result.get("applied") or []
     skipped = result.get("skipped") or []
     actions = lorebook_run_history_actions(
-        display_model_name(story["model"]), applied, duration_ms, result.get("cost"), skipped
+        display_model_name(lorebook_model_for(story)), applied, duration_ms, result.get("cost"), skipped
     )
     history_run_id = str(uuid.uuid4())
     history_entries: list[dict[str, Any]] = []
@@ -1716,7 +1725,7 @@ def create_lorebook_router(deps: LorebookDeps) -> APIRouter:
             {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
         ]
         body: dict[str, Any] = {
-            "model": deps.openrouter_request_model(story["model"], False),
+            "model": deps.openrouter_request_model(lorebook_model_for(story), False),
             "messages": messages,
             "temperature": 0.1,
             "max_tokens": story["max_tokens"],
@@ -1726,13 +1735,13 @@ def create_lorebook_router(deps: LorebookDeps) -> APIRouter:
         if providerOptions:
             body["provider"] = providerOptions
 
-        effectiveThinkingEnabled = deps.effective_thinking_enabled(story["model"], True)
+        effectiveThinkingEnabled = deps.effective_thinking_enabled(lorebook_model_for(story), True)
         reasoningConfig = deps.enabled_reasoning_config(
-            story["model"], True, story["reasoning_effort"]
+            lorebook_model_for(story), True, story["reasoning_effort"]
         )
         if reasoningConfig:
             body["reasoning"] = reasoningConfig
-        if deps.model_supports_structured_output(story["model"]):
+        if deps.model_supports_structured_output(lorebook_model_for(story)):
             body["response_format"] = timeline_repair_response_format()
 
         generatedText: list[str] = []
@@ -1807,7 +1816,7 @@ def create_lorebook_router(deps: LorebookDeps) -> APIRouter:
             if usage:
                 yield deps.stream_event(
                     "usage",
-                    {"generation_id": generationId, "model": story["model"], **usage},
+                    {"generation_id": generationId, "model": lorebook_model_for(story), **usage},
                 )
 
             if not receivedDone:
@@ -2020,7 +2029,7 @@ def create_lorebook_router(deps: LorebookDeps) -> APIRouter:
             story_id,
             payload.chapter_id,
             source_text,
-            story["model"],
+            lorebook_model_for(story),
             story["max_tokens"],
         ):
             if event["type"] == "result":
@@ -2210,7 +2219,7 @@ def create_lorebook_router(deps: LorebookDeps) -> APIRouter:
             story_id,
             chapter_id,
             source_text,
-            story["model"],
+            lorebook_model_for(story),
             story["max_tokens"],
         ):
             if event["type"] == "reasoning":

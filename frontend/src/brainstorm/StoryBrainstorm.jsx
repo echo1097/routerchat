@@ -230,16 +230,22 @@ function IdeaNode({ data, selected }) {
 }
 
 function brainstormEdgePath(sourceX, sourceY, targetX, targetY) {
-  const spanX = Math.max(Math.abs(targetX - sourceX), 1);
-  const spanY = Math.abs(targetY - sourceY);
+  const deltaX = targetX - sourceX;
+  const deltaY = targetY - sourceY;
+  const spanX = Math.max(Math.abs(deltaX), 1);
+  const spanY = Math.abs(deltaY);
+  const reach = Math.hypot(deltaX, deltaY) || 1;
 
-  // Every idea in a fan leaves the prompt from the same point, so a short lead-out
-  // lets the curves separate straight away instead of running as one bundle. The
-  // target side gets the rest of the gap so each line flattens into its own node.
-  const leadOut = Math.min(spanX * 0.28, 34);
-  const leadIn = Math.min(Math.max(spanX * 0.55, spanY * 0.3), spanX * 0.92);
+  // A mind-map arc rather than an S-curve: the line leaves the prompt already
+  // aimed at its idea, so a wide fan splays apart on its own instead of setting
+  // out as one bundle. Only the far end flattens, to meet the node horizontally.
+  const leadOut = Math.min(spanX * 0.75, reach * 0.45);
+  const aimX = sourceX + (deltaX / reach) * leadOut;
+  const aimY = sourceY + (deltaY / reach) * leadOut;
 
-  return `M ${sourceX},${sourceY} C ${sourceX + leadOut},${sourceY} ${targetX - leadIn},${targetY} ${targetX},${targetY}`;
+  const leadIn = Math.min(Math.max(spanX * 0.6, spanY * 0.35), spanX * 0.95);
+
+  return `M ${sourceX},${sourceY} C ${aimX},${aimY} ${targetX - leadIn},${targetY} ${targetX},${targetY}`;
 }
 
 function BrainstormEdge({ id, sourceX, sourceY, targetX, targetY, style }) {

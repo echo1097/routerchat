@@ -5643,6 +5643,14 @@ function ModelPicker({
     requestAnimationFrame(() => updateEdges(list));
   }, [models.length, activePage]);
 
+  function modelRowValues(model) {
+    const contextLimit = getModelContextLimit(model);
+    return {
+      price: priceLabel(model) || "-",
+      context: Number.isFinite(contextLimit) ? `${formatTokens(contextLimit)} context` : "—",
+    };
+  }
+
   function row({ key, name, subLabel, price, context, isSelected }) {
     return (
       <div
@@ -5714,8 +5722,7 @@ function ModelPicker({
             key: LOREBOOK_MODEL_INHERIT,
             name: inheritOption.name,
             subLabel: inheritOption.subLabel,
-            price: "-",
-            context: "-",
+            ...(inheritOption.model ? modelRowValues(inheritOption.model) : { price: "-", context: "-" }),
             isSelected: selectedId === LOREBOOK_MODEL_INHERIT,
           })}
 
@@ -5724,17 +5731,15 @@ function ModelPicker({
               {emptyMessage}
             </div>
           ) : (
-            models.map((model) => {
-              const contextLimit = getModelContextLimit(model);
-              return row({
+            models.map((model) =>
+              row({
                 key: model.id,
                 name: model.name,
                 subLabel: model.id,
-                price: priceLabel(model) || "-",
-                context: Number.isFinite(contextLimit) ? `${formatTokens(contextLimit)} context` : "—",
+                ...modelRowValues(model),
                 isSelected: model.id === selectedId,
-              });
-            })
+              }),
+            )
           )}
         </div>
         <div
@@ -6461,6 +6466,7 @@ function SettingsDrawer({
         inheritOption={{
           name: "Same as global",
           subLabel: promptModelName(models, settings.model),
+          model: models.find((model) => model.id === settings.model) || null,
         }}
       />
     </section>

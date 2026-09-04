@@ -302,12 +302,6 @@
   line-height: inherit;
 }
 
-.brainstorm-thinking-waiting {
-  display: block;
-  padding-bottom: 8px;
-  color: #5f5f5f;
-}
-
 .brainstorm-edit-form {
   display: grid;
   gap: 10px;

@@ -10085,8 +10085,7 @@ function App() {
                 ...current.filter((node) => node.id !== value.node.id),
                 {
                   ...value.node,
-                  generation_phase: value.node.generation_phase
-                    || (brainstormThinkingEnabled ? "thinking" : "working"),
+                  generation_phase: value.node.generation_phase || "waiting",
                   reasoning: value.node.reasoning || "",
                 },
               ]);
@@ -10105,7 +10104,13 @@ function App() {
             if (!promptNodeId || !reasoningValue) return;
             setBrainstormNodes((current) => current.map((node) => (
               node.id === promptNodeId
-                ? { ...node, reasoning: `${node.reasoning || ""}${reasoningValue}` }
+                ? {
+                    ...node,
+                    generation_phase: node.generation_phase === "working"
+                      ? node.generation_phase
+                      : "thinking",
+                    reasoning: `${node.reasoning || ""}${reasoningValue}`,
+                  }
                 : node
             )));
             return;

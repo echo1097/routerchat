@@ -35,8 +35,10 @@ function PromptNode({ data }) {
   const isGenerating = data.status === "generating";
   const isThinking = isGenerating && data.generation_phase === "thinking";
   const isWorking = isGenerating && data.generation_phase === "working";
+  const isWaiting = isGenerating && !isThinking && !isWorking;
   const hasThinking = Boolean(data.reasoning) || isThinking;
-  const showWritingStatus = isWorking && !hasThinking;
+  const showPlainStatus = (isWaiting || isWorking) && !hasThinking;
+  const plainStatusLabel = isWaiting ? "Working" : "Writing";
   let operationLabel = "Thinking";
   if (isWorking) operationLabel = "Writing";
   if (data.status === "complete") {
@@ -95,10 +97,10 @@ function PromptNode({ data }) {
         </div>
       </div>
       <p className="brainstorm-prompt-content nowheel">{data.content}</p>
-      {showWritingStatus && (
+      {showPlainStatus && (
         <div className="brainstorm-writing-status">
-          <span className="brainstorm-thinking-label t-shimmer" data-text="Writing">
-            Writing
+          <span className="brainstorm-thinking-label t-shimmer" data-text={plainStatusLabel}>
+            {plainStatusLabel}
           </span>
         </div>
       )}
@@ -140,11 +142,7 @@ function PromptNode({ data }) {
                 followThinkingRef.current = distanceFromBottom < 24;
               }}
             >
-              {data.reasoning ? (
-                <ThinkingContent>{data.reasoning}</ThinkingContent>
-              ) : (
-                <span className="brainstorm-thinking-waiting">Waiting for the model</span>
-              )}
+              <ThinkingContent>{data.reasoning}</ThinkingContent>
             </div>
           </div>
         </div>

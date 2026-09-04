@@ -613,9 +613,7 @@ def create_brainstorm_router(deps: BrainstormDeps) -> APIRouter:
 
         try:
             promptNodeValue = row_to_brainstorm_node(prompt_node)
-            promptNodeValue["generation_phase"] = (
-                "thinking" if effectiveThinkingEnabled else "working"
-            )
+            promptNodeValue["generation_phase"] = "waiting"
             yield deps.stream_event(
                 "prompt",
                 {

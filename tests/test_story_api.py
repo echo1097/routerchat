@@ -3948,7 +3948,7 @@ class StoryApiTest(unittest.TestCase):
         self.assertEqual(events[0]["value"]["node"]["position_y"], 180)
         self.assertEqual(
             events[0]["value"]["node"]["generation_phase"],
-            "thinking",
+            "waiting",
         )
         graph = self.client.get(f"/api/stories/{story['id']}/brainstorm").json()
         self.assertEqual(len(graph["nodes"]), 4)
@@ -4044,7 +4044,7 @@ class StoryApiTest(unittest.TestCase):
         )
         self.assertEqual(
             events[0]["value"]["node"]["generation_phase"],
-            "working",
+            "waiting",
         )
         graph = self.client.get(f"/api/stories/{story['id']}/brainstorm").json()
         self.assertEqual(len(graph["nodes"]), 1)

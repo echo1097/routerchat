@@ -10056,7 +10056,7 @@ function App() {
   }
 
   async function generateBrainstorm(text = brainstormPrompt.trim(), selectedIdeaIds = [], ideaCount = 3) {
-    if (isStreaming || !text || !activeStoryId) return;
+    if (isStreaming || !text || !activeStoryId) return false;
     const brainstormThinkingEnabled = effectiveThinkingEnabled(
       models,
       settings.model,
@@ -10155,12 +10155,14 @@ function App() {
         },
       });
       if (!streamError) showToast("Ideas added");
+      return !streamError;
     } catch (error) {
       if (error.name === "AbortError") {
         setStatus("Brainstorm stopped");
       } else {
         setStatus(error.message);
       }
+      return false;
     } finally {
       setIsStreaming(false);
       brainstormPromptNodeIdRef.current = null;

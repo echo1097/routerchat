@@ -149,9 +149,9 @@ function PromptNode({ data }) {
           <button
             type="button"
             onClick={data.onRetry}
-            disabled={actionsLocked}
+            disabled={actionsLocked || data.generateDisabled}
             aria-label="Regenerate prompt"
-            title="Regenerate prompt"
+            title={data.generateDisabled ? "Add an API key to regenerate" : "Regenerate prompt"}
           >
             <RefreshCw size={17} />
           </button>
@@ -404,6 +404,10 @@ export default function StoryBrainstorm({
   }, [descendantsByNode, onDeleteNode]);
 
   const retryPrompt = useCallback(async (node) => {
+    // nothing below is recoverable once the old branch is deleted, so refuse to start a regenerate
+    // that generateBrainstorm would just drop on the floor
+    if (disabled || nodeOperationInProgress) return;
+
     const parentIds = graphEdges
       .filter((edge) => edge.target_node_id === node.id)
       .map((edge) => edge.source_node_id);
@@ -411,7 +415,11 @@ export default function StoryBrainstorm({
 
     const runPrompt = async () => {
       await onDeleteNode(node.id, hasDescendants, true);
-      onGenerate(node.content, parentIds);
+      const started = await onGenerate(node.content, parentIds);
+
+      // the ideas are already gone at this point, so at least hand the prompt text back to the
+      // composer instead of losing it with them
+      if (!started) setPrompt(node.content);
     };
 
     // a failed prompt has nothing under it, but regenerating a finished one throws away the ideas it
@@ -427,11 +435,20 @@ export default function StoryBrainstorm({
       confirmLabel: "Regenerate",
       onConfirm: runPrompt,
     });
-  }, [descendantsByNode, graphEdges, onConfirm, onDeleteNode, onGenerate]);
+  }, [
+    descendantsByNode,
+    disabled,
+    graphEdges,
+    nodeOperationInProgress,
+    onConfirm,
+    onDeleteNode,
+    onGenerate,
+    setPrompt,
+  ]);
 
   const nodeDataDeps = useMemo(
-    () => ({ deleteNode, retryPrompt, onUpdateNode, incomingNodeIds, nodeOperationInProgress }),
-    [deleteNode, incomingNodeIds, nodeOperationInProgress, onUpdateNode, retryPrompt],
+    () => ({ deleteNode, retryPrompt, onUpdateNode, incomingNodeIds, nodeOperationInProgress, disabled }),
+    [deleteNode, disabled, incomingNodeIds, nodeOperationInProgress, onUpdateNode, retryPrompt],
   );
 
   // Reuse the React Flow node objects instead of rebuilding them. They carry `measured`, and a
@@ -475,6 +492,7 @@ export default function StoryBrainstorm({
             deps: nodeDataDeps,
             hasIncomingEdge: incomingNodeIds.has(graphNode.id),
             operationInProgress: nodeOperationInProgress,
+            generateDisabled: disabled,
             onSave: (changes) => onUpdateNode(graphNode.id, changes),
             onDelete: () => deleteNode(graphNode.id),
             onRetry: () => retryPrompt(graphNode),
@@ -484,6 +502,7 @@ export default function StoryBrainstorm({
     });
   }, [
     deleteNode,
+    disabled,
     graphNodes,
     incomingNodeIds,
     nodeDataDeps,

@@ -155,9 +155,9 @@
 .brainstorm-node-actions {
   position: absolute;
   top: 6px;
-  right: 6px;
+  right: 10px;
   display: flex;
-  gap: 2px;
+  gap: 0;
   opacity: 0;
   pointer-events: none;
   transition-property: opacity;
@@ -172,7 +172,21 @@
   pointer-events: auto;
 }
 
-.brainstorm-node-actions button,
+.brainstorm-node-actions button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 0;
+  border-radius: 12px;
+  color: #737373;
+  background: transparent;
+  cursor: pointer;
+  transition-property: color, scale;
+  transition-duration: 150ms;
+  transition-timing-function: ease-out;
+}
+
 .brainstorm-edit-actions button {
   display: grid;
   width: 40px;

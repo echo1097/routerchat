@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
+  BaseEdge,
   Controls,
   Handle,
-  MarkerType,
   Position,
   ReactFlow,
   useEdgesState,
@@ -229,9 +229,32 @@ function IdeaNode({ data, selected }) {
   );
 }
 
+function brainstormEdgePath(sourceX, sourceY, targetX, targetY) {
+  const spanX = Math.max(Math.abs(targetX - sourceX), 1);
+  const spanY = Math.abs(targetY - sourceY);
+
+  // Every idea in a fan leaves the prompt from the same point, so a short lead-out
+  // lets the curves separate straight away instead of running as one bundle. The
+  // target side gets the rest of the gap so each line flattens into its own node.
+  const leadOut = Math.min(spanX * 0.28, 34);
+  const leadIn = Math.min(Math.max(spanX * 0.55, spanY * 0.3), spanX * 0.92);
+
+  return `M ${sourceX},${sourceY} C ${sourceX + leadOut},${sourceY} ${targetX - leadIn},${targetY} ${targetX},${targetY}`;
+}
+
+function BrainstormEdge({ id, sourceX, sourceY, targetX, targetY, style }) {
+  const path = brainstormEdgePath(sourceX, sourceY, targetX, targetY);
+
+  return <BaseEdge id={id} path={path} style={style} />;
+}
+
 const nodeTypes = {
   prompt: PromptNode,
   idea: IdeaNode,
+};
+
+const edgeTypes = {
+  branch: BrainstormEdge,
 };
 
 export default function StoryBrainstorm({
@@ -376,9 +399,12 @@ export default function StoryBrainstorm({
       id: edge.id,
       source: edge.source_node_id,
       target: edge.target_node_id,
-      type: "smoothstep",
-      markerEnd: { type: MarkerType.ArrowClosed, color: "rgba(255,255,255,0.16)" },
-      style: { stroke: "rgba(255,255,255,0.12)", strokeWidth: 1.25 },
+      type: "branch",
+      style: {
+        stroke: "rgba(255,255,255,0.16)",
+        strokeWidth: 1.5,
+        strokeLinecap: "round",
+      },
     })));
   }, [graphEdges, setEdges]);
 
@@ -524,6 +550,7 @@ export default function StoryBrainstorm({
           nodes={nodes}
           edges={edges}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onInit={setFlowInstance}

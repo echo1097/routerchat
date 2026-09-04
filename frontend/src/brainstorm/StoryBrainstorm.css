@@ -543,8 +543,8 @@
   position: absolute;
   z-index: 30;
   bottom: calc(100% + 8px);
-  left: 0;
-  width: 176px;
+  left: -8px;
+  width: 208px;
   border-radius: 16px;
   padding: 6px;
   background: #292929;

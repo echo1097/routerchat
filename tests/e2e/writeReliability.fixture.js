@@ -128,6 +128,10 @@ export async function installWriteApi(page, options = {}) {
               controller,
               requestBody,
             };
+            init.signal?.addEventListener("abort", () => {
+              controller.error(new DOMException("The operation was aborted.", "AbortError"));
+              window.__brainstormStream = null;
+            }, { once: true });
           },
         });
 

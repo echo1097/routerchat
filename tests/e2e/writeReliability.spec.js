@@ -175,9 +175,11 @@ test("dismisses brainstorm regeneration confirmation before the stream finishes"
   await dialog.getByRole("button", { name: "Regenerate", exact: true }).click();
   await api.waitForBrainstormStream();
   await expect(dialog).toBeHidden();
-  await expect(page.getByText("Original idea", { exact: true })).toBeHidden();
+  await expect(page.getByText("Original idea", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Stop brainstorming" })).toBeVisible();
   await api.closeBrainstormStream();
+  await expect(page.getByRole("button", { name: "Stop brainstorming" })).toBeHidden();
+  await expect(page.getByText("Original idea", { exact: true })).toBeVisible();
 });
 
 test("resets the brainstorm camera after deleting the final node", async ({ page }) => {

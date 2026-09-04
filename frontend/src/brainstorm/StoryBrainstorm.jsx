@@ -404,8 +404,6 @@ export default function StoryBrainstorm({
   }, [descendantsByNode, onDeleteNode]);
 
   const retryPrompt = useCallback(async (node) => {
-    // nothing below is recoverable once the old branch is deleted, so refuse to start a regenerate
-    // that generateBrainstorm would just drop on the floor
     if (disabled || nodeOperationInProgress) return;
 
     const parentIds = graphEdges
@@ -414,16 +412,16 @@ export default function StoryBrainstorm({
     const hasDescendants = (descendantsByNode.get(node.id) || []).length > 0;
 
     const runPrompt = async () => {
-      await onDeleteNode(node.id, hasDescendants, true);
-      const started = await onGenerate(node.content, parentIds);
+      const completed = await onGenerate(node.content, parentIds);
 
-      // the ideas are already gone at this point, so at least hand the prompt text back to the
-      // composer instead of losing it with them
-      if (!started) setPrompt(node.content);
+      if (!completed) {
+        setPrompt(node.content);
+        return;
+      }
+
+      await onDeleteNode(node.id, hasDescendants, true);
     };
 
-    // a failed prompt has nothing under it, but regenerating a finished one throws away the ideas it
-    // already produced, so that case has to be confirmed first
     if (!hasDescendants) {
       await runPrompt();
       return;
@@ -431,7 +429,7 @@ export default function StoryBrainstorm({
 
     onConfirm({
       title: "Regenerate this prompt?",
-      body: "This replaces the ideas below this prompt, along with anything branched from them. This cannot be undone.",
+      body: "Your current branch stays until new ideas are ready. After a successful generation, this prompt and everything branched from it are replaced. This cannot be undone.",
       confirmLabel: "Regenerate",
       busyLabel: "Regenerating",
       closeOnConfirm: true,

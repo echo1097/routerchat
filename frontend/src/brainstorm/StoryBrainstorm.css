@@ -712,8 +712,9 @@
 }
 
 .brainstorm-workspace .react-flow__controls-button {
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
   border: 0;
   color: #737373;
   background: transparent;
@@ -722,13 +723,15 @@
   transition-timing-function: ease-out;
 }
 
+.brainstorm-workspace .react-flow__controls-button svg {
+  max-width: 15px;
+  max-height: 15px;
+  fill: currentColor;
+}
+
 .brainstorm-workspace .react-flow__controls-button:hover {
   color: #f5f5f5;
   background: transparent;
-}
-
-.brainstorm-workspace .react-flow__controls-button svg {
-  fill: currentColor;
 }
 
 .brainstorm-workspace .react-flow__node {

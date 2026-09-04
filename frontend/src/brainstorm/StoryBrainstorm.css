@@ -455,6 +455,7 @@
 }
 
 .brainstorm-composer-surface {
+  position: relative;
   width: min(820px, 100%);
   border-radius: 20px;
   padding: 11px 14px 4.5px;
@@ -517,10 +518,6 @@
   transition-timing-function: ease-out;
 }
 
-.brainstorm-branch-count {
-  position: relative;
-}
-
 .brainstorm-branch-trigger {
   display: inline-flex;
   min-height: 32px;
@@ -555,25 +552,37 @@
   font-weight: 400;
 }
 
+.brainstorm-branch-count {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .brainstorm-branch-menu {
   position: absolute;
   z-index: 30;
-  bottom: calc(100% + 12px);
+  bottom: 100%;
   left: 0;
   width: min(280px, calc(100vw - 48px));
-  border: 1px solid #ffffff12;
+  border: 0;
   border-radius: 16px;
   padding: 12px;
   background: #262626;
-  box-shadow: 0 16px 48px #00000055;
-  transform-origin: bottom left;
-  animation: brainstorm-branch-menu-in 150ms cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow: 0 12px 32px #00000040;
+  animation: brainstorm-branch-menu-in 150ms ease-out;
+}
+
+.brainstorm-branch-menu-title {
+  padding-bottom: 10px;
+  color: #a3a3a3;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 @keyframes brainstorm-branch-menu-in {
   from {
     opacity: 0;
-    transform: translateY(4px) scale(0.96);
   }
 }
 
@@ -581,18 +590,6 @@
   .brainstorm-branch-menu {
     animation: none;
   }
-}
-
-.brainstorm-branch-menu-heading {
-  display: flex;
-  align-items: center;
-  padding-bottom: 10px;
-}
-
-.brainstorm-branch-menu-title {
-  color: #a3a3a3;
-  font-size: 12px;
-  font-weight: 500;
 }
 
 .brainstorm-branch-slider-row {

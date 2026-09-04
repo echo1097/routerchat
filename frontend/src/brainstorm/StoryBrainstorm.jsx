@@ -747,9 +747,7 @@ export default function StoryBrainstorm({
                       }
                     }}
                   >
-                    <div className="brainstorm-branch-menu-heading">
-                      <span className="brainstorm-branch-menu-title">New ideas</span>
-                    </div>
+                    <div className="brainstorm-branch-menu-title">New ideas</div>
                     <div className="brainstorm-branch-slider-row">
                       <input
                         type="range"

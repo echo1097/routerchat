@@ -188,7 +188,11 @@
   transition-timing-function: ease-out;
 }
 
-.brainstorm-node-actions button:hover:not(:disabled),
+.brainstorm-node-actions button:hover:not(:disabled) {
+  color: #f5f5f5;
+  background: transparent;
+}
+
 .brainstorm-edit-actions button:hover {
   color: #f5f5f5;
   background: rgba(255, 255, 255, 0.07);

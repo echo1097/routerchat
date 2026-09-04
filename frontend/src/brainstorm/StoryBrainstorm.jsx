@@ -9,7 +9,7 @@ import {
   useEdgesState,
   useNodesState,
 } from "@xyflow/react";
-import { ArrowLeft, Check, ChevronDown, Edit3, RotateCcw, Square, Trash2, X } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, Copy, Edit3, RotateCcw, Square, Trash2, X } from "lucide-react";
 import "@xyflow/react/dist/style.css";
 import "./StoryBrainstorm.css";
 import ThinkingContent from "../ThinkingContent.jsx";
@@ -156,12 +156,23 @@ function IdeaNode({ data, selected }) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(data.title);
   const [content, setContent] = useState(data.content);
+  const [copied, setCopied] = useState(false);
+  const copyResetRef = useRef(null);
 
   useEffect(() => {
     if (editing) return;
     setTitle(data.title);
     setContent(data.content);
   }, [data.content, data.title, editing]);
+
+  useEffect(() => () => window.clearTimeout(copyResetRef.current), []);
+
+  async function copyIdea() {
+    await navigator.clipboard.writeText(`${data.title}\n-\n${data.content}`);
+    setCopied(true);
+    window.clearTimeout(copyResetRef.current);
+    copyResetRef.current = window.setTimeout(() => setCopied(false), 1600);
+  }
 
   async function saveEdit() {
     const nextTitle = title.trim();
@@ -204,6 +215,14 @@ function IdeaNode({ data, selected }) {
           <div className="brainstorm-node-eyebrow">
             <span>Idea</span>
             <div className="brainstorm-node-actions nodrag">
+              <button
+                type="button"
+                onClick={copyIdea}
+                aria-label="Copy idea"
+                title={copied ? "Copied" : "Copy idea"}
+              >
+                {copied ? <Check size={15} /> : <Copy size={15} />}
+              </button>
               <button type="button" onClick={() => setEditing(true)} aria-label="Edit idea" title="Edit idea">
                 <Edit3 size={15} />
               </button>

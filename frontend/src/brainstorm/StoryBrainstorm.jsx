@@ -404,8 +404,6 @@ export default function StoryBrainstorm({
   }, [descendantsByNode, onDeleteNode]);
 
   const retryPrompt = useCallback(async (node) => {
-    // nothing below is recoverable once the old branch is deleted, so refuse to start a regenerate
-    // that generateBrainstorm would just drop on the floor
     if (disabled || nodeOperationInProgress) return;
 
     const parentIds = graphEdges
@@ -414,16 +412,16 @@ export default function StoryBrainstorm({
     const hasDescendants = (descendantsByNode.get(node.id) || []).length > 0;
 
     const runPrompt = async () => {
-      await onDeleteNode(node.id, hasDescendants, true);
-      const started = await onGenerate(node.content, parentIds);
+      const completed = await onGenerate(node.content, parentIds);
 
-      // the ideas are already gone at this point, so at least hand the prompt text back to the
-      // composer instead of losing it with them
-      if (!started) setPrompt(node.content);
+      if (!completed) {
+        setPrompt(node.content);
+        return;
+      }
+
+      await onDeleteNode(node.id, hasDescendants, true);
     };
 
-    // a failed prompt has nothing under it, but regenerating a finished one throws away the ideas it
-    // already produced, so that case has to be confirmed first
     if (!hasDescendants) {
       await runPrompt();
       return;
@@ -431,8 +429,10 @@ export default function StoryBrainstorm({
 
     onConfirm({
       title: "Regenerate this prompt?",
-      body: "This replaces the ideas below this prompt, along with anything branched from them. This cannot be undone.",
+      body: "Your current branch stays until new ideas are ready. After a successful generation, this prompt and everything branched from it are replaced. This cannot be undone.",
       confirmLabel: "Regenerate",
+      busyLabel: "Regenerating",
+      closeOnConfirm: true,
       onConfirm: runPrompt,
     });
   }, [
@@ -724,7 +724,8 @@ export default function StoryBrainstorm({
                     setModelMenuOpen(false);
                   }}
                   aria-expanded={ideaMenuOpen}
-                  aria-haspopup="menu"
+                  aria-haspopup="dialog"
+                  aria-label={`New ideas: ${ideaCount}`}
                 >
                   <span className="brainstorm-branch-label">New ideas</span>
                   <span className="brainstorm-branch-value tabular-nums">{ideaCount}</span>
@@ -735,24 +736,50 @@ export default function StoryBrainstorm({
                   />
                 </button>
                 {ideaMenuOpen && (
-                  <div className="brainstorm-branch-menu" role="menu">
-                    <div className="brainstorm-branch-menu-caption">New ideas</div>
-                    <div className="brainstorm-branch-menu-grid">
-                      {[1, 2, 3, 4, 5, 6, 7, 8].map((count) => (
-                        <button
-                          type="button"
-                          role="menuitemradio"
-                          aria-checked={ideaCount === count}
-                          className={ideaCount === count ? "is-active" : undefined}
-                          key={count}
-                          onClick={() => {
-                            setIdeaCount(count);
+                  <div
+                    className="brainstorm-branch-menu"
+                    role="dialog"
+                    aria-label="Choose the number of new ideas"
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") {
+                        setIdeaMenuOpen(false);
+                        ideaMenuRef.current?.querySelector("button")?.focus();
+                      }
+                    }}
+                  >
+                    <div className="brainstorm-branch-menu-title">New ideas</div>
+                    <div className="brainstorm-branch-slider-row">
+                      <input
+                        type="range"
+                        className="brainstorm-branch-slider"
+                        min={1}
+                        max={8}
+                        step={1}
+                        value={ideaCount}
+                        autoFocus
+                        aria-label="Number of new ideas"
+                        aria-valuetext={`${ideaCount} ${ideaCount === 1 ? "idea" : "ideas"}`}
+                        style={{ "--idea-progress": `calc(${16 - ((ideaCount - 1) / 7) * 32}px + ${((ideaCount - 1) / 7) * 100}%)` }}
+                        onChange={(event) => setIdeaCount(Number(event.target.value))}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
                             setIdeaMenuOpen(false);
-                          }}
-                        >
-                          {count}
-                        </button>
-                      ))}
+                            ideaMenuRef.current?.querySelector("button")?.focus();
+                          }
+                        }}
+                      />
+                      <div className="brainstorm-branch-slider-labels" aria-hidden="true">
+                        {[1, 2, 3, 4, 5, 6, 7, 8].map((count) => (
+                          <span
+                            key={count}
+                            className={count === ideaCount ? "is-active" : undefined}
+                            style={{ left: `${((count - 1) / 7) * 100}%` }}
+                          >
+                            {count}
+                          </span>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 )}

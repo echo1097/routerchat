@@ -7217,11 +7217,14 @@ function ConfirmModal({ dialog, onClose }) {
   async function confirm() {
     if (busy) return;
     setBusy(true);
+    const closeOnConfirm = Boolean(renderedDialog.closeOnConfirm);
+    if (closeOnConfirm) onClose();
+
     try {
       await renderedDialog.onConfirm();
-      onClose();
+      if (!closeOnConfirm) onClose();
     } catch {
-      setBusy(false);
+      if (!closeOnConfirm) setBusy(false);
     }
   }
 
@@ -10065,8 +10068,10 @@ function App() {
     setIsStreaming(true);
     setStatus("");
     setBrainstormPrompt("");
-    abortRef.current = new AbortController();
+    const abortController = new AbortController();
+    abortRef.current = abortController;
     let streamError = "";
+    let hasGeneratedIdeas = false;
 
     try {
       await storyApi.generateBrainstorm({
@@ -10075,7 +10080,7 @@ function App() {
         selectedIdeaIds,
         ideaCount,
         settings,
-        signal: abortRef.current.signal,
+        signal: abortController.signal,
         onEvent: (event) => {
           if (event.type === "prompt") {
             const value = event.value || {};
@@ -10127,6 +10132,9 @@ function App() {
           }
           if (event.type === "ideas") {
             const value = event.value || {};
+            hasGeneratedIdeas = Array.isArray(value.nodes) && value.nodes.some(
+              (node) => node.node_type === "idea",
+            );
             const promptNodeId = brainstormPromptNodeIdRef.current;
             setBrainstormNodes((current) => [
               ...current.map((node) => (
@@ -10154,8 +10162,18 @@ function App() {
           }
         },
       });
-      if (!streamError) showToast("Ideas added");
-      return !streamError;
+      if (abortController.signal.aborted) {
+        setStatus("Brainstorm stopped");
+        return false;
+      }
+      if (streamError) return false;
+      if (!hasGeneratedIdeas) {
+        setStatus("Brainstorming ended before any ideas were received. Try again.");
+        return false;
+      }
+
+      showToast("Ideas added");
+      return true;
     } catch (error) {
       if (error.name === "AbortError") {
         setStatus("Brainstorm stopped");
@@ -10164,7 +10182,6 @@ function App() {
       }
       return false;
     } finally {
-      setIsStreaming(false);
       brainstormPromptNodeIdRef.current = null;
       abortRef.current = null;
       try {
@@ -10172,6 +10189,7 @@ function App() {
       } catch (error) {
         setStatus(error.message);
       }
+      setIsStreaming(false);
     }
   }
 

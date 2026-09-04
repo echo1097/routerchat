@@ -4,7 +4,7 @@ RouterChat is a local, bring-your-own-key app maintained by one person. This pol
 
 ## Reporting
 
-Report security issues through GitHub private vulnerability reporting:
+Report security issues ONLY through GitHub private vulnerability reporting:
 
 **[Report a vulnerability](https://github.com/echo1097/routerchat/security/advisories/new)**
 

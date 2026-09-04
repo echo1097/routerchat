@@ -539,38 +539,55 @@
   font-weight: 400;
 }
 
-.brainstorm-branch-panel {
+.brainstorm-branch-menu {
   position: absolute;
   z-index: 30;
   bottom: calc(100% + 8px);
-  left: 12px;
+  left: 0;
   width: 176px;
-  pointer-events: none;
-}
-
-.brainstorm-branch-count[data-open="true"] .brainstorm-branch-panel {
-  pointer-events: auto;
-}
-
-.brainstorm-branch-menu {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 4px;
   border-radius: 16px;
   padding: 6px;
   background: #292929;
+  transform-origin: bottom left;
+  animation: brainstorm-branch-menu-in 150ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes brainstorm-branch-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.96);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brainstorm-branch-menu {
+    animation: none;
+  }
+}
+
+.brainstorm-branch-menu-caption {
+  padding: 4px 6px 6px;
+  color: #737373;
+  font-size: 11px;
+}
+
+.brainstorm-branch-menu-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
 }
 
 .brainstorm-branch-menu button {
   display: grid;
   min-width: 0;
-  min-height: 44px;
+  min-height: 34px;
   place-items: center;
-  gap: 1px;
   border: 0;
   border-radius: 11px;
   padding: 5px;
   color: #d4d4d4;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
   background: transparent;
   cursor: pointer;
   transition-property: color, background-color, scale;
@@ -585,16 +602,6 @@
 
 .brainstorm-branch-menu button:active {
   scale: 0.96;
-}
-
-.brainstorm-branch-menu button span:first-child {
-  font-size: 14px;
-  font-variant-numeric: tabular-nums;
-}
-
-.brainstorm-branch-menu button span:last-child {
-  color: #737373;
-  font-size: 9px;
 }
 
 .brainstorm-selection-pill {

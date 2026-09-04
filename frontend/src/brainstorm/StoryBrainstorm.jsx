@@ -696,14 +696,10 @@ export default function StoryBrainstorm({
           />
           <div className="brainstorm-composer-controls">
             <div className="brainstorm-composer-left">
-              <div
-                className="t-acc brainstorm-branch-count"
-                data-open={ideaMenuOpen}
-                ref={ideaMenuRef}
-              >
+              <div className="brainstorm-branch-count" ref={ideaMenuRef}>
                 <button
                   type="button"
-                  className="t-acc-head brainstorm-branch-trigger"
+                  className="brainstorm-branch-trigger"
                   onClick={() => {
                     setIdeaMenuOpen((open) => !open);
                     setModelMenuOpen(false);
@@ -719,26 +715,28 @@ export default function StoryBrainstorm({
                     className={cx("brainstorm-model-chevron", ideaMenuOpen && "is-open")}
                   />
                 </button>
-                <div className="t-acc-panel brainstorm-branch-panel">
-                  <div className="t-acc-panel-inner brainstorm-branch-menu" role="menu">
-                    {[1, 2, 3, 4, 5, 6, 7, 8].map((count) => (
-                      <button
-                        type="button"
-                        role="menuitemradio"
-                        aria-checked={ideaCount === count}
-                        className={ideaCount === count ? "is-active" : undefined}
-                        key={count}
-                        onClick={() => {
-                          setIdeaCount(count);
-                          setIdeaMenuOpen(false);
-                        }}
-                      >
-                        <span>{count}</span>
-                        <span>{count === 1 ? "idea" : "ideas"}</span>
-                      </button>
-                    ))}
+                {ideaMenuOpen && (
+                  <div className="brainstorm-branch-menu" role="menu">
+                    <div className="brainstorm-branch-menu-caption">New ideas</div>
+                    <div className="brainstorm-branch-menu-grid">
+                      {[1, 2, 3, 4, 5, 6, 7, 8].map((count) => (
+                        <button
+                          type="button"
+                          role="menuitemradio"
+                          aria-checked={ideaCount === count}
+                          className={ideaCount === count ? "is-active" : undefined}
+                          key={count}
+                          onClick={() => {
+                            setIdeaCount(count);
+                            setIdeaMenuOpen(false);
+                          }}
+                        >
+                          {count}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
               {selectedIdeaIds.length > 0 && (
                 <button type="button" className="brainstorm-selection-pill" onClick={clearSelection}>

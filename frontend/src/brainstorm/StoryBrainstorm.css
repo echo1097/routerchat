@@ -514,8 +514,9 @@
   border: 0;
   border-radius: 999px;
   padding: 0 8px 0 11px;
-  color: #a3a3a3;
+  color: #d4d4d4;
   font-size: 12px;
+  font-weight: 500;
   background: transparent;
   cursor: pointer;
   transition-property: color, background-color, scale;
@@ -532,9 +533,10 @@
   scale: 0.96;
 }
 
-.brainstorm-branch-chevron {
-  position: relative;
-  top: 1px;
+.brainstorm-branch-value {
+  flex: none;
+  color: #737373;
+  font-weight: 400;
 }
 
 .brainstorm-branch-panel {

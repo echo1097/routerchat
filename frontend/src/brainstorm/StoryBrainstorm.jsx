@@ -711,11 +711,13 @@ export default function StoryBrainstorm({
                   aria-expanded={ideaMenuOpen}
                   aria-haspopup="menu"
                 >
-                  <span>New ideas</span>
-                  <span className="tabular-nums">{ideaCount}</span>
-                  <span className="t-acc-chevron brainstorm-branch-chevron">
-                    <ChevronDown size={14} aria-hidden="true" />
-                  </span>
+                  <span className="brainstorm-branch-label">New ideas</span>
+                  <span className="brainstorm-branch-value tabular-nums">{ideaCount}</span>
+                  <ChevronDown
+                    size={14}
+                    aria-hidden="true"
+                    className={cx("brainstorm-model-chevron", ideaMenuOpen && "is-open")}
+                  />
                 </button>
                 <div className="t-acc-panel brainstorm-branch-panel">
                   <div className="t-acc-panel-inner brainstorm-branch-menu" role="menu">

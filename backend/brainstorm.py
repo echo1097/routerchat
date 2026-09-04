@@ -16,9 +16,6 @@ from backend.lorebook import lorebook_context_line, parse_lorebook_json
 
 OPENROUTER_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=10.0)
 
-# Horizontal distance from a parent column to the column of nodes it spawns. Nodes
-# are 300px wide, so this leaves enough gap for the edge curves to fan out rather
-# than run as one near vertical bundle.
 COLUMN_OFFSET_X = 660
 
 

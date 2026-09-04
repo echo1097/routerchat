@@ -236,9 +236,6 @@ function brainstormEdgePath(sourceX, sourceY, targetX, targetY) {
   const spanY = Math.abs(deltaY);
   const reach = Math.hypot(deltaX, deltaY) || 1;
 
-  // A mind-map arc rather than an S-curve: the line leaves the prompt already
-  // aimed at its idea, so a wide fan splays apart on its own instead of setting
-  // out as one bundle. Only the far end flattens, to meet the node horizontally.
   const leadOut = Math.min(spanX * 0.75, reach * 0.45);
   const aimX = sourceX + (deltaX / reach) * leadOut;
   const aimY = sourceY + (deltaY / reach) * leadOut;
@@ -407,7 +404,7 @@ export default function StoryBrainstorm({
       target: edge.target_node_id,
       type: "branch",
       style: {
-        stroke: "rgba(255,255,255,0.16)",
+        stroke: "#ffffff",
         strokeWidth: 1.5,
         strokeLinecap: "round",
       },

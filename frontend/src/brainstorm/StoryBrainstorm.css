@@ -91,7 +91,7 @@
   padding: 16px;
   color: #e5e5e5;
   background: #171717;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.075);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.075), 0 0 0 1px #090909;
   transition-property: background-color, box-shadow;
   transition-duration: 160ms;
   transition-timing-function: ease-out;
@@ -100,13 +100,13 @@
 .brainstorm-node:hover {
   --brainstorm-node-surface: #1a1a1a;
   background: #1a1a1a;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 0 0 1px #090909;
 }
 
 .brainstorm-idea-node.is-selected {
   --brainstorm-node-surface: #202020;
   background: #202020;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.32);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.32), 0 0 0 1px #090909;
 }
 
 .brainstorm-prompt-node {
@@ -116,7 +116,7 @@
 }
 
 .brainstorm-prompt-node.is-failed {
-  box-shadow: 0 0 0 1px rgba(248, 113, 113, 0.34);
+  box-shadow: 0 0 0 1px rgba(248, 113, 113, 0.34), 0 0 0 1px #090909;
 }
 
 .brainstorm-node-eyebrow {
@@ -399,6 +399,11 @@
   background: transparent !important;
   opacity: 0 !important;
   pointer-events: none !important;
+}
+
+.brainstorm-handle.react-flow__handle-left,
+.brainstorm-handle.react-flow__handle-right {
+  transform: translateY(-50%);
 }
 
 .brainstorm-empty {

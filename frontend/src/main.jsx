@@ -4599,7 +4599,7 @@ function Composer({
                     "grid h-8 w-8 shrink-0 place-items-center rounded-full focus:outline-none",
                     webSearchEnabled
                       ? "text-white"
-                      : "text-neutral-300 hover:text-white",
+                      : "text-neutral-400 hover:text-white",
                     PROMPT_BAR_CONTROL_MOTION,
                   )}
                 >

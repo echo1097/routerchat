@@ -38,7 +38,7 @@ export default function AttachButton({
         aria-label={title}
         title={title}
         className={cx(
-          "grid h-8 w-8 shrink-0 place-items-center rounded-full text-neutral-300",
+          "grid h-8 w-8 shrink-0 place-items-center rounded-full text-neutral-400",
           "hover:text-white focus:outline-none",
           "disabled:cursor-not-allowed disabled:text-neutral-600 disabled:active:scale-100",
           PROMPT_BAR_CONTROL_MOTION,

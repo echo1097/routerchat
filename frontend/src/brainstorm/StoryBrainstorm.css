@@ -79,7 +79,12 @@
   z-index: 9;
 }
 
+.brainstorm-canvas .react-flow__edges {
+  opacity: 0.16;
+}
+
 .brainstorm-node {
+  --brainstorm-node-surface: #171717;
   position: relative;
   width: 300px;
   border-radius: 18px;
@@ -93,16 +98,19 @@
 }
 
 .brainstorm-node:hover {
+  --brainstorm-node-surface: #1a1a1a;
   background: #1a1a1a;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
 }
 
 .brainstorm-idea-node.is-selected {
+  --brainstorm-node-surface: #202020;
   background: #202020;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.32);
 }
 
 .brainstorm-prompt-node {
+  --brainstorm-node-surface: #121212;
   width: 280px;
   background: #121212;
 }
@@ -113,10 +121,12 @@
 
 .brainstorm-node-eyebrow {
   display: flex;
-  min-height: 20px;
+  min-height: 32px;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   color: #686868;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 650;
   letter-spacing: 0.13em;
   text-transform: uppercase;
@@ -131,7 +141,7 @@
   text-wrap: balance;
 }
 
-.brainstorm-node > p,
+.brainstorm-node .brainstorm-idea-content,
 .brainstorm-node .brainstorm-prompt-content {
   max-height: 190px;
   margin: 7px 0 0;
@@ -148,12 +158,42 @@
   color: #d0d0d0;
 }
 
-.brainstorm-node-actions {
+.brainstorm-scroll {
+  position: relative;
+}
+
+.brainstorm-scroll-fade {
+  z-index: 1;
   position: absolute;
-  top: 6px;
-  right: 6px;
+  right: 0;
+  left: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition-property: opacity;
+  transition-duration: 150ms;
+  transition-timing-function: ease-out;
+}
+
+.brainstorm-scroll-fade.is-visible {
+  opacity: 1;
+}
+
+.brainstorm-scroll-fade.is-top {
+  top: 0;
+  height: 24px;
+  background: linear-gradient(180deg, var(--brainstorm-node-surface) 0%, transparent 100%);
+}
+
+.brainstorm-scroll-fade.is-bottom {
+  bottom: 0;
+  height: 28px;
+  background: linear-gradient(0deg, var(--brainstorm-node-surface) 0%, transparent 100%);
+}
+
+.brainstorm-node-actions {
   display: flex;
-  gap: 2px;
+  align-items: center;
+  gap: 0;
   opacity: 0;
   pointer-events: none;
   transition-property: opacity;
@@ -168,7 +208,21 @@
   pointer-events: auto;
 }
 
-.brainstorm-node-actions button,
+.brainstorm-node-actions button {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 0;
+  border-radius: 12px;
+  color: #737373;
+  background: transparent;
+  cursor: pointer;
+  transition-property: color, scale;
+  transition-duration: 150ms;
+  transition-timing-function: ease-out;
+}
+
 .brainstorm-edit-actions button {
   display: grid;
   width: 40px;
@@ -184,7 +238,11 @@
   transition-timing-function: ease-out;
 }
 
-.brainstorm-node-actions button:hover:not(:disabled),
+.brainstorm-node-actions button:hover:not(:disabled) {
+  color: #f5f5f5;
+  background: transparent;
+}
+
 .brainstorm-edit-actions button:hover {
   color: #f5f5f5;
   background: rgba(255, 255, 255, 0.07);
@@ -298,12 +356,6 @@
   line-height: inherit;
 }
 
-.brainstorm-thinking-waiting {
-  display: block;
-  padding-bottom: 8px;
-  color: #5f5f5f;
-}
-
 .brainstorm-edit-form {
   display: grid;
   gap: 10px;
@@ -344,7 +396,9 @@
   width: 7px !important;
   height: 7px !important;
   border: 0 !important;
-  background: #454545 !important;
+  background: transparent !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
 
 .brainstorm-empty {
@@ -460,8 +514,9 @@
   border: 0;
   border-radius: 999px;
   padding: 0 8px 0 11px;
-  color: #a3a3a3;
+  color: #d4d4d4;
   font-size: 12px;
+  font-weight: 500;
   background: transparent;
   cursor: pointer;
   transition-property: color, background-color, scale;
@@ -471,50 +526,68 @@
 
 .brainstorm-branch-trigger:hover {
   color: #f5f5f5;
-  background: rgba(255, 255, 255, 0.065);
+  background: transparent;
 }
 
 .brainstorm-branch-trigger:active {
   scale: 0.96;
 }
 
-.brainstorm-branch-chevron {
-  position: relative;
-  top: 1px;
-}
-
-.brainstorm-branch-panel {
-  position: absolute;
-  z-index: 30;
-  bottom: calc(100% + 8px);
-  left: 12px;
-  width: 176px;
-  pointer-events: none;
-}
-
-.brainstorm-branch-count[data-open="true"] .brainstorm-branch-panel {
-  pointer-events: auto;
+.brainstorm-branch-value {
+  flex: none;
+  color: #737373;
+  font-weight: 400;
 }
 
 .brainstorm-branch-menu {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 4px;
+  position: absolute;
+  z-index: 30;
+  bottom: calc(100% + 8px);
+  left: -8px;
+  width: 208px;
   border-radius: 16px;
   padding: 6px;
   background: #292929;
+  transform-origin: bottom left;
+  animation: brainstorm-branch-menu-in 150ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes brainstorm-branch-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.96);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brainstorm-branch-menu {
+    animation: none;
+  }
+}
+
+.brainstorm-branch-menu-caption {
+  padding: 4px 6px 6px;
+  color: #737373;
+  font-size: 11px;
+}
+
+.brainstorm-branch-menu-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
 }
 
 .brainstorm-branch-menu button {
   display: grid;
   min-width: 0;
-  min-height: 44px;
+  min-height: 34px;
   place-items: center;
-  gap: 1px;
   border: 0;
   border-radius: 11px;
   padding: 5px;
   color: #d4d4d4;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
   background: transparent;
   cursor: pointer;
   transition-property: color, background-color, scale;
@@ -529,16 +602,6 @@
 
 .brainstorm-branch-menu button:active {
   scale: 0.96;
-}
-
-.brainstorm-branch-menu button span:first-child {
-  font-size: 14px;
-  font-variant-numeric: tabular-nums;
-}
-
-.brainstorm-branch-menu button span:last-child {
-  color: #737373;
-  font-size: 9px;
 }
 
 .brainstorm-selection-pill {
@@ -688,32 +751,32 @@
   z-index: 20;
   top: 24px;
   right: 24px;
-  overflow: hidden;
-  border-radius: 20px;
-  background: #181818;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  background: transparent;
+  box-shadow: none;
   isolation: isolate;
 }
 
 .brainstorm-workspace .react-flow__controls-button {
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
   border: 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  color: #a3a3a3;
+  color: #737373;
   background: transparent;
-  transition-property: color, background-color;
+  transition-property: color;
   transition-duration: 150ms;
   transition-timing-function: ease-out;
 }
 
-.brainstorm-workspace .react-flow__controls-button:hover {
-  color: #f5f5f5;
-  background: rgba(255, 255, 255, 0.07);
+.brainstorm-workspace .react-flow__controls-button svg {
+  max-width: 15px;
+  max-height: 15px;
+  fill: currentColor;
 }
 
-.brainstorm-workspace .react-flow__controls-button svg {
-  fill: currentColor;
+.brainstorm-workspace .react-flow__controls-button:hover {
+  color: #f5f5f5;
+  background: transparent;
 }
 
 .brainstorm-workspace .react-flow__node {

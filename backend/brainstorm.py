@@ -16,6 +16,8 @@ from backend.lorebook import lorebook_context_line, parse_lorebook_json
 
 OPENROUTER_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=10.0)
 
+COLUMN_OFFSET_X = 660
+
 
 @dataclass(frozen=True)
 class BrainstormDeps:
@@ -611,9 +613,7 @@ def create_brainstorm_router(deps: BrainstormDeps) -> APIRouter:
 
         try:
             promptNodeValue = row_to_brainstorm_node(prompt_node)
-            promptNodeValue["generation_phase"] = (
-                "thinking" if effectiveThinkingEnabled else "working"
-            )
+            promptNodeValue["generation_phase"] = "waiting"
             yield deps.stream_event(
                 "prompt",
                 {
@@ -692,7 +692,7 @@ def create_brainstorm_router(deps: BrainstormDeps) -> APIRouter:
                 )
             prompt_x = float(prompt_node["position_x"])
             prompt_y = float(prompt_node["position_y"])
-            child_x = prompt_x + 390
+            child_x = prompt_x + COLUMN_OFFSET_X
             child_gap = 210
             first_y = prompt_y - ((len(ideas) - 1) * child_gap / 2)
             now = deps.utc_now()
@@ -818,7 +818,7 @@ def create_brainstorm_router(deps: BrainstormDeps) -> APIRouter:
             branch_nodes = [row for row in all_nodes if row["id"] in branch_ids]
 
             if selected_ids:
-                prompt_x = max(float(nodes_by_id[node_id]["position_x"]) for node_id in selected_ids) + 390
+                prompt_x = max(float(nodes_by_id[node_id]["position_x"]) for node_id in selected_ids) + COLUMN_OFFSET_X
                 prompt_y = sum(
                     float(nodes_by_id[node_id]["position_y"]) for node_id in selected_ids
                 ) / len(selected_ids)

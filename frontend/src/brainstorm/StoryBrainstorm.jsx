@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
+  BaseEdge,
   Controls,
   Handle,
-  MarkerType,
   Position,
   ReactFlow,
   useEdgesState,
   useNodesState,
 } from "@xyflow/react";
-import { ArrowLeft, Check, ChevronDown, Edit3, RotateCcw, Square, Trash2, X } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, Copy, Edit3, RefreshCw, Square, Trash2, X } from "lucide-react";
 import "@xyflow/react/dist/style.css";
 import "./StoryBrainstorm.css";
 import ThinkingContent from "../ThinkingContent.jsx";
@@ -29,14 +29,73 @@ function brainstormDurationLabel(node) {
   return `${seconds} ${seconds === 1 ? "second" : "seconds"}`;
 }
 
+// same edge treatment the model picker uses: the fade only shows on the side that still has content
+function NodeText({ className, children }) {
+  const scrollRef = useRef(null);
+  const [scrolled, setScrolled] = useState(false);
+  const [hasMoreBelow, setHasMoreBelow] = useState(false);
+
+  function updateEdges(element) {
+    const bottomOffset = element.scrollHeight - element.clientHeight - element.scrollTop;
+    setScrolled(element.scrollTop > 2);
+    setHasMoreBelow(bottomOffset > 2);
+  }
+
+  useEffect(() => {
+    const node = scrollRef.current;
+    if (!node) return;
+
+    const frame = requestAnimationFrame(() => updateEdges(node));
+    return () => cancelAnimationFrame(frame);
+  }, [children]);
+
+  return (
+    <div className="brainstorm-scroll">
+      <p
+        ref={scrollRef}
+        className={className}
+        onScroll={(event) => updateEdges(event.currentTarget)}
+      >
+        {children}
+      </p>
+      <div
+        aria-hidden="true"
+        className={cx("brainstorm-scroll-fade is-top", scrolled && "is-visible")}
+      />
+      <div
+        aria-hidden="true"
+        className={cx("brainstorm-scroll-fade is-bottom", hasMoreBelow && "is-visible")}
+      />
+    </div>
+  );
+}
+
+function useCopyAction(getText) {
+  const [copied, setCopied] = useState(false);
+  const resetRef = useRef(null);
+
+  useEffect(() => () => window.clearTimeout(resetRef.current), []);
+
+  async function copy() {
+    await navigator.clipboard.writeText(getText());
+    setCopied(true);
+    window.clearTimeout(resetRef.current);
+    resetRef.current = window.setTimeout(() => setCopied(false), 1600);
+  }
+
+  return [copied, copy];
+}
+
 function PromptNode({ data }) {
   const failed = data.status === "failed" || data.status === "cancelled";
   const actionsLocked = Boolean(data.operationInProgress);
   const isGenerating = data.status === "generating";
   const isThinking = isGenerating && data.generation_phase === "thinking";
   const isWorking = isGenerating && data.generation_phase === "working";
+  const isWaiting = isGenerating && !isThinking && !isWorking;
   const hasThinking = Boolean(data.reasoning) || isThinking;
-  const showWritingStatus = isWorking && !hasThinking;
+  const showPlainStatus = (isWaiting || isWorking) && !hasThinking;
+  const plainStatusLabel = isWaiting ? "Working" : "Writing";
   let operationLabel = "Thinking";
   if (isWorking) operationLabel = "Writing";
   if (data.status === "complete") {
@@ -48,6 +107,7 @@ function PromptNode({ data }) {
   if (isThinking) thinkingAriaLabel = "Thinking in progress";
   const thinkingScrollRef = useRef(null);
   const followThinkingRef = useRef(true);
+  const [copied, copyPrompt] = useCopyAction(() => data.content);
 
   useEffect(() => {
     if (isThinking) {
@@ -78,11 +138,23 @@ function PromptNode({ data }) {
       <div className="brainstorm-node-eyebrow">
         <span>{failed ? data.status : "Your prompt"}</span>
         <div className="brainstorm-node-actions nodrag">
-          {failed && !actionsLocked && (
-            <button type="button" onClick={data.onRetry} aria-label="Retry prompt" title="Retry prompt">
-              <RotateCcw size={15} />
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={copyPrompt}
+            aria-label="Copy prompt"
+            title={copied ? "Copied" : "Copy prompt"}
+          >
+            {copied ? <Check size={17} /> : <Copy size={17} />}
+          </button>
+          <button
+            type="button"
+            onClick={data.onRetry}
+            disabled={actionsLocked || data.generateDisabled}
+            aria-label="Regenerate prompt"
+            title={data.generateDisabled ? "Add an API key to regenerate" : "Regenerate prompt"}
+          >
+            <RefreshCw size={17} />
+          </button>
           <button
             type="button"
             onClick={data.onDelete}
@@ -90,15 +162,15 @@ function PromptNode({ data }) {
             aria-label="Delete prompt"
             title="Delete prompt"
           >
-            <Trash2 size={15} />
+            <Trash2 size={17} />
           </button>
         </div>
       </div>
-      <p className="brainstorm-prompt-content nowheel">{data.content}</p>
-      {showWritingStatus && (
+      <NodeText className="brainstorm-prompt-content nowheel">{data.content}</NodeText>
+      {showPlainStatus && (
         <div className="brainstorm-writing-status">
-          <span className="brainstorm-thinking-label t-shimmer" data-text="Writing">
-            Writing
+          <span className="brainstorm-thinking-label t-shimmer" data-text={plainStatusLabel}>
+            {plainStatusLabel}
           </span>
         </div>
       )}
@@ -140,11 +212,7 @@ function PromptNode({ data }) {
                 followThinkingRef.current = distanceFromBottom < 24;
               }}
             >
-              {data.reasoning ? (
-                <ThinkingContent>{data.reasoning}</ThinkingContent>
-              ) : (
-                <span className="brainstorm-thinking-waiting">Waiting for the model</span>
-              )}
+              <ThinkingContent>{data.reasoning}</ThinkingContent>
             </div>
           </div>
         </div>
@@ -158,6 +226,7 @@ function IdeaNode({ data, selected }) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(data.title);
   const [content, setContent] = useState(data.content);
+  const [copied, copyIdea] = useCopyAction(() => `${data.title}\n-\n${data.content}`);
 
   useEffect(() => {
     if (editing) return;
@@ -206,8 +275,16 @@ function IdeaNode({ data, selected }) {
           <div className="brainstorm-node-eyebrow">
             <span>Idea</span>
             <div className="brainstorm-node-actions nodrag">
+              <button
+                type="button"
+                onClick={copyIdea}
+                aria-label="Copy idea"
+                title={copied ? "Copied" : "Copy idea"}
+              >
+                {copied ? <Check size={17} /> : <Copy size={17} />}
+              </button>
               <button type="button" onClick={() => setEditing(true)} aria-label="Edit idea" title="Edit idea">
-                <Edit3 size={15} />
+                <Edit3 size={17} />
               </button>
               <button
                 type="button"
@@ -216,12 +293,12 @@ function IdeaNode({ data, selected }) {
                 aria-label="Delete idea"
                 title="Delete idea"
               >
-                <Trash2 size={15} />
+                <Trash2 size={17} />
               </button>
             </div>
           </div>
           <h2>{data.title}</h2>
-          <p className="nowheel">{data.content}</p>
+          <NodeText className="brainstorm-idea-content nowheel">{data.content}</NodeText>
         </>
       )}
       <Handle type="source" position={Position.Right} className="brainstorm-handle" />
@@ -229,9 +306,35 @@ function IdeaNode({ data, selected }) {
   );
 }
 
+function brainstormEdgePath(sourceX, sourceY, targetX, targetY) {
+  const deltaX = targetX - sourceX;
+  const deltaY = targetY - sourceY;
+  const spanX = Math.max(Math.abs(deltaX), 1);
+  const spanY = Math.abs(deltaY);
+  const reach = Math.hypot(deltaX, deltaY) || 1;
+
+  const leadOut = Math.min(spanX * 0.75, reach * 0.45);
+  const aimX = sourceX + (deltaX / reach) * leadOut;
+  const aimY = sourceY + (deltaY / reach) * leadOut;
+
+  const leadIn = Math.min(Math.max(spanX * 0.6, spanY * 0.35), spanX * 0.95);
+
+  return `M ${sourceX},${sourceY} C ${aimX},${aimY} ${targetX - leadIn},${targetY} ${targetX},${targetY}`;
+}
+
+function BrainstormEdge({ id, sourceX, sourceY, targetX, targetY, style }) {
+  const path = brainstormEdgePath(sourceX, sourceY, targetX, targetY);
+
+  return <BaseEdge id={id} path={path} style={style} />;
+}
+
 const nodeTypes = {
   prompt: PromptNode,
   idea: IdeaNode,
+};
+
+const edgeTypes = {
+  branch: BrainstormEdge,
 };
 
 export default function StoryBrainstorm({
@@ -256,6 +359,7 @@ export default function StoryBrainstorm({
   onUpdateNode,
   onDeleteNode,
   onUpdateViewport,
+  onConfirm,
 }) {
   const [selectedIdeaIds, setSelectedIdeaIds] = useState([]);
   const [ideaCount, setIdeaCount] = useState(3);
@@ -300,16 +404,51 @@ export default function StoryBrainstorm({
   }, [descendantsByNode, onDeleteNode]);
 
   const retryPrompt = useCallback(async (node) => {
+    // nothing below is recoverable once the old branch is deleted, so refuse to start a regenerate
+    // that generateBrainstorm would just drop on the floor
+    if (disabled || nodeOperationInProgress) return;
+
     const parentIds = graphEdges
       .filter((edge) => edge.target_node_id === node.id)
       .map((edge) => edge.source_node_id);
-    await onDeleteNode(node.id, false, true);
-    onGenerate(node.content, parentIds);
-  }, [graphEdges, onDeleteNode, onGenerate]);
+    const hasDescendants = (descendantsByNode.get(node.id) || []).length > 0;
+
+    const runPrompt = async () => {
+      await onDeleteNode(node.id, hasDescendants, true);
+      const started = await onGenerate(node.content, parentIds);
+
+      // the ideas are already gone at this point, so at least hand the prompt text back to the
+      // composer instead of losing it with them
+      if (!started) setPrompt(node.content);
+    };
+
+    // a failed prompt has nothing under it, but regenerating a finished one throws away the ideas it
+    // already produced, so that case has to be confirmed first
+    if (!hasDescendants) {
+      await runPrompt();
+      return;
+    }
+
+    onConfirm({
+      title: "Regenerate this prompt?",
+      body: "This replaces the ideas below this prompt, along with anything branched from them. This cannot be undone.",
+      confirmLabel: "Regenerate",
+      onConfirm: runPrompt,
+    });
+  }, [
+    descendantsByNode,
+    disabled,
+    graphEdges,
+    nodeOperationInProgress,
+    onConfirm,
+    onDeleteNode,
+    onGenerate,
+    setPrompt,
+  ]);
 
   const nodeDataDeps = useMemo(
-    () => ({ deleteNode, retryPrompt, onUpdateNode, incomingNodeIds, nodeOperationInProgress }),
-    [deleteNode, incomingNodeIds, nodeOperationInProgress, onUpdateNode, retryPrompt],
+    () => ({ deleteNode, retryPrompt, onUpdateNode, incomingNodeIds, nodeOperationInProgress, disabled }),
+    [deleteNode, disabled, incomingNodeIds, nodeOperationInProgress, onUpdateNode, retryPrompt],
   );
 
   // Reuse the React Flow node objects instead of rebuilding them. They carry `measured`, and a
@@ -353,6 +492,7 @@ export default function StoryBrainstorm({
             deps: nodeDataDeps,
             hasIncomingEdge: incomingNodeIds.has(graphNode.id),
             operationInProgress: nodeOperationInProgress,
+            generateDisabled: disabled,
             onSave: (changes) => onUpdateNode(graphNode.id, changes),
             onDelete: () => deleteNode(graphNode.id),
             onRetry: () => retryPrompt(graphNode),
@@ -362,6 +502,7 @@ export default function StoryBrainstorm({
     });
   }, [
     deleteNode,
+    disabled,
     graphNodes,
     incomingNodeIds,
     nodeDataDeps,
@@ -376,9 +517,12 @@ export default function StoryBrainstorm({
       id: edge.id,
       source: edge.source_node_id,
       target: edge.target_node_id,
-      type: "smoothstep",
-      markerEnd: { type: MarkerType.ArrowClosed, color: "rgba(255,255,255,0.16)" },
-      style: { stroke: "rgba(255,255,255,0.12)", strokeWidth: 1.25 },
+      type: "branch",
+      style: {
+        stroke: "#ffffff",
+        strokeWidth: 1.5,
+        strokeLinecap: "round",
+      },
     })));
   }, [graphEdges, setEdges]);
 
@@ -524,6 +668,7 @@ export default function StoryBrainstorm({
           nodes={nodes}
           edges={edges}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onInit={setFlowInstance}
@@ -570,14 +715,10 @@ export default function StoryBrainstorm({
           />
           <div className="brainstorm-composer-controls">
             <div className="brainstorm-composer-left">
-              <div
-                className="t-acc brainstorm-branch-count"
-                data-open={ideaMenuOpen}
-                ref={ideaMenuRef}
-              >
+              <div className="brainstorm-branch-count" ref={ideaMenuRef}>
                 <button
                   type="button"
-                  className="t-acc-head brainstorm-branch-trigger"
+                  className="brainstorm-branch-trigger"
                   onClick={() => {
                     setIdeaMenuOpen((open) => !open);
                     setModelMenuOpen(false);
@@ -585,32 +726,36 @@ export default function StoryBrainstorm({
                   aria-expanded={ideaMenuOpen}
                   aria-haspopup="menu"
                 >
-                  <span>New ideas</span>
-                  <span className="tabular-nums">{ideaCount}</span>
-                  <span className="t-acc-chevron brainstorm-branch-chevron">
-                    <ChevronDown size={14} aria-hidden="true" />
-                  </span>
+                  <span className="brainstorm-branch-label">New ideas</span>
+                  <span className="brainstorm-branch-value tabular-nums">{ideaCount}</span>
+                  <ChevronDown
+                    size={14}
+                    aria-hidden="true"
+                    className={cx("brainstorm-model-chevron", ideaMenuOpen && "is-open")}
+                  />
                 </button>
-                <div className="t-acc-panel brainstorm-branch-panel">
-                  <div className="t-acc-panel-inner brainstorm-branch-menu" role="menu">
-                    {[1, 2, 3, 4, 5, 6, 7, 8].map((count) => (
-                      <button
-                        type="button"
-                        role="menuitemradio"
-                        aria-checked={ideaCount === count}
-                        className={ideaCount === count ? "is-active" : undefined}
-                        key={count}
-                        onClick={() => {
-                          setIdeaCount(count);
-                          setIdeaMenuOpen(false);
-                        }}
-                      >
-                        <span>{count}</span>
-                        <span>{count === 1 ? "idea" : "ideas"}</span>
-                      </button>
-                    ))}
+                {ideaMenuOpen && (
+                  <div className="brainstorm-branch-menu" role="menu">
+                    <div className="brainstorm-branch-menu-caption">New ideas</div>
+                    <div className="brainstorm-branch-menu-grid">
+                      {[1, 2, 3, 4, 5, 6, 7, 8].map((count) => (
+                        <button
+                          type="button"
+                          role="menuitemradio"
+                          aria-checked={ideaCount === count}
+                          className={ideaCount === count ? "is-active" : undefined}
+                          key={count}
+                          onClick={() => {
+                            setIdeaCount(count);
+                            setIdeaMenuOpen(false);
+                          }}
+                        >
+                          {count}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
               {selectedIdeaIds.length > 0 && (
                 <button type="button" className="brainstorm-selection-pill" onClick={clearSelection}>

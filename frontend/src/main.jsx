@@ -10056,7 +10056,7 @@ function App() {
   }
 
   async function generateBrainstorm(text = brainstormPrompt.trim(), selectedIdeaIds = [], ideaCount = 3) {
-    if (isStreaming || !text || !activeStoryId) return;
+    if (isStreaming || !text || !activeStoryId) return false;
     const brainstormThinkingEnabled = effectiveThinkingEnabled(
       models,
       settings.model,
@@ -10085,8 +10085,7 @@ function App() {
                 ...current.filter((node) => node.id !== value.node.id),
                 {
                   ...value.node,
-                  generation_phase: value.node.generation_phase
-                    || (brainstormThinkingEnabled ? "thinking" : "working"),
+                  generation_phase: value.node.generation_phase || "waiting",
                   reasoning: value.node.reasoning || "",
                 },
               ]);
@@ -10105,7 +10104,13 @@ function App() {
             if (!promptNodeId || !reasoningValue) return;
             setBrainstormNodes((current) => current.map((node) => (
               node.id === promptNodeId
-                ? { ...node, reasoning: `${node.reasoning || ""}${reasoningValue}` }
+                ? {
+                    ...node,
+                    generation_phase: node.generation_phase === "working"
+                      ? node.generation_phase
+                      : "thinking",
+                    reasoning: `${node.reasoning || ""}${reasoningValue}`,
+                  }
                 : node
             )));
             return;
@@ -10150,12 +10155,14 @@ function App() {
         },
       });
       if (!streamError) showToast("Ideas added");
+      return !streamError;
     } catch (error) {
       if (error.name === "AbortError") {
         setStatus("Brainstorm stopped");
       } else {
         setStatus(error.message);
       }
+      return false;
     } finally {
       setIsStreaming(false);
       brainstormPromptNodeIdRef.current = null;
@@ -10640,6 +10647,7 @@ function App() {
             onUpdateNode={updateBrainstormNode}
             onDeleteNode={deleteBrainstormNode}
             onUpdateViewport={updateBrainstormViewport}
+            onConfirm={setConfirmDialog}
           />
         ) : isWritingMode && !showLandingComposer ? (
           <StoryWorkspace

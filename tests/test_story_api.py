@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 import backend.main as main
 from backend.brainstorm import (
+    COLUMN_OFFSET_X,
     brainstorm_response_format,
     build_brainstorm_messages,
     next_brainstorm_root_position,
@@ -3947,7 +3948,7 @@ class StoryApiTest(unittest.TestCase):
         self.assertEqual(events[0]["value"]["node"]["position_y"], 180)
         self.assertEqual(
             events[0]["value"]["node"]["generation_phase"],
-            "thinking",
+            "waiting",
         )
         graph = self.client.get(f"/api/stories/{story['id']}/brainstorm").json()
         self.assertEqual(len(graph["nodes"]), 4)
@@ -3993,7 +3994,7 @@ class StoryApiTest(unittest.TestCase):
         branchPrompt = branchEvents[0]["value"]["node"]
         self.assertEqual(
             branchPrompt["position_x"],
-            selectedIdea["position_x"] + 390,
+            selectedIdea["position_x"] + COLUMN_OFFSET_X,
         )
         self.assertEqual(branchPrompt["position_y"], selectedIdea["position_y"])
 
@@ -4043,7 +4044,7 @@ class StoryApiTest(unittest.TestCase):
         )
         self.assertEqual(
             events[0]["value"]["node"]["generation_phase"],
-            "working",
+            "waiting",
         )
         graph = self.client.get(f"/api/stories/{story['id']}/brainstorm").json()
         self.assertEqual(len(graph["nodes"]), 1)

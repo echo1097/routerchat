@@ -526,7 +526,7 @@
 
 .brainstorm-branch-trigger:hover {
   color: #f5f5f5;
-  background: rgba(255, 255, 255, 0.065);
+  background: transparent;
 }
 
 .brainstorm-branch-trigger:active {

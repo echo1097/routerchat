@@ -82,7 +82,7 @@ function PromptNode({ data }) {
         <div className="brainstorm-node-actions nodrag">
           {failed && !actionsLocked && (
             <button type="button" onClick={data.onRetry} aria-label="Retry prompt" title="Retry prompt">
-              <RotateCcw size={15} />
+              <RotateCcw size={17} />
             </button>
           )}
           <button
@@ -92,7 +92,7 @@ function PromptNode({ data }) {
             aria-label="Delete prompt"
             title="Delete prompt"
           >
-            <Trash2 size={15} />
+            <Trash2 size={17} />
           </button>
         </div>
       </div>
@@ -221,10 +221,10 @@ function IdeaNode({ data, selected }) {
                 aria-label="Copy idea"
                 title={copied ? "Copied" : "Copy idea"}
               >
-                {copied ? <Check size={15} /> : <Copy size={15} />}
+                {copied ? <Check size={17} /> : <Copy size={17} />}
               </button>
               <button type="button" onClick={() => setEditing(true)} aria-label="Edit idea" title="Edit idea">
-                <Edit3 size={15} />
+                <Edit3 size={17} />
               </button>
               <button
                 type="button"
@@ -233,7 +233,7 @@ function IdeaNode({ data, selected }) {
                 aria-label="Delete idea"
                 title="Delete idea"
               >
-                <Trash2 size={15} />
+                <Trash2 size={17} />
               </button>
             </div>
           </div>

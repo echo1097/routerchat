@@ -37,7 +37,7 @@ How to behave:
 
 A local, single-user web app for talking to models through OpenRouter. The user runs it on their own computer. Nothing is hosted for them and nothing is uploaded anywhere except the API calls to OpenRouter. It is strictly bring-your-own-key.
 
-Current version: 1.1.1. The version number is shown at the top of the sidebar next to the RouterChat name.
+Current version: 1.1.2. The version number is shown at the top of the sidebar next to the RouterChat name.
 
 Repository:
 

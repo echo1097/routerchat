@@ -9,7 +9,7 @@ import {
   useEdgesState,
   useNodesState,
 } from "@xyflow/react";
-import { ArrowLeft, Check, ChevronDown, Copy, Edit3, RotateCcw, Square, Trash2, X } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, Copy, Edit3, RefreshCw, Square, Trash2, X } from "lucide-react";
 import "@xyflow/react/dist/style.css";
 import "./StoryBrainstorm.css";
 import ThinkingContent from "../ThinkingContent.jsx";
@@ -27,6 +27,22 @@ function brainstormDurationLabel(node) {
 
   const seconds = Math.max(1, Math.round(durationMs / 1000));
   return `${seconds} ${seconds === 1 ? "second" : "seconds"}`;
+}
+
+function useCopyAction(getText) {
+  const [copied, setCopied] = useState(false);
+  const resetRef = useRef(null);
+
+  useEffect(() => () => window.clearTimeout(resetRef.current), []);
+
+  async function copy() {
+    await navigator.clipboard.writeText(getText());
+    setCopied(true);
+    window.clearTimeout(resetRef.current);
+    resetRef.current = window.setTimeout(() => setCopied(false), 1600);
+  }
+
+  return [copied, copy];
 }
 
 function PromptNode({ data }) {
@@ -50,6 +66,7 @@ function PromptNode({ data }) {
   if (isThinking) thinkingAriaLabel = "Thinking in progress";
   const thinkingScrollRef = useRef(null);
   const followThinkingRef = useRef(true);
+  const [copied, copyPrompt] = useCopyAction(() => data.content);
 
   useEffect(() => {
     if (isThinking) {
@@ -80,11 +97,23 @@ function PromptNode({ data }) {
       <div className="brainstorm-node-eyebrow">
         <span>{failed ? data.status : "Your prompt"}</span>
         <div className="brainstorm-node-actions nodrag">
-          {failed && !actionsLocked && (
-            <button type="button" onClick={data.onRetry} aria-label="Retry prompt" title="Retry prompt">
-              <RotateCcw size={17} />
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={copyPrompt}
+            aria-label="Copy prompt"
+            title={copied ? "Copied" : "Copy prompt"}
+          >
+            {copied ? <Check size={17} /> : <Copy size={17} />}
+          </button>
+          <button
+            type="button"
+            onClick={data.onRetry}
+            disabled={actionsLocked}
+            aria-label="Regenerate prompt"
+            title="Regenerate prompt"
+          >
+            <RefreshCw size={17} />
+          </button>
           <button
             type="button"
             onClick={data.onDelete}
@@ -156,23 +185,13 @@ function IdeaNode({ data, selected }) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(data.title);
   const [content, setContent] = useState(data.content);
-  const [copied, setCopied] = useState(false);
-  const copyResetRef = useRef(null);
+  const [copied, copyIdea] = useCopyAction(() => `${data.title}\n-\n${data.content}`);
 
   useEffect(() => {
     if (editing) return;
     setTitle(data.title);
     setContent(data.content);
   }, [data.content, data.title, editing]);
-
-  useEffect(() => () => window.clearTimeout(copyResetRef.current), []);
-
-  async function copyIdea() {
-    await navigator.clipboard.writeText(`${data.title}\n-\n${data.content}`);
-    setCopied(true);
-    window.clearTimeout(copyResetRef.current);
-    copyResetRef.current = window.setTimeout(() => setCopied(false), 1600);
-  }
 
   async function saveEdit() {
     const nextTitle = title.trim();
@@ -299,6 +318,7 @@ export default function StoryBrainstorm({
   onUpdateNode,
   onDeleteNode,
   onUpdateViewport,
+  onConfirm,
 }) {
   const [selectedIdeaIds, setSelectedIdeaIds] = useState([]);
   const [ideaCount, setIdeaCount] = useState(3);
@@ -346,9 +366,27 @@ export default function StoryBrainstorm({
     const parentIds = graphEdges
       .filter((edge) => edge.target_node_id === node.id)
       .map((edge) => edge.source_node_id);
-    await onDeleteNode(node.id, false, true);
-    onGenerate(node.content, parentIds);
-  }, [graphEdges, onDeleteNode, onGenerate]);
+    const hasDescendants = (descendantsByNode.get(node.id) || []).length > 0;
+
+    const runPrompt = async () => {
+      await onDeleteNode(node.id, hasDescendants, true);
+      onGenerate(node.content, parentIds);
+    };
+
+    // a failed prompt has nothing under it, but regenerating a finished one throws away the ideas it
+    // already produced, so that case has to be confirmed first
+    if (!hasDescendants) {
+      await runPrompt();
+      return;
+    }
+
+    onConfirm({
+      title: "Regenerate this prompt?",
+      body: "This replaces the ideas below this prompt, along with anything branched from them. This cannot be undone.",
+      confirmLabel: "Regenerate",
+      onConfirm: runPrompt,
+    });
+  }, [descendantsByNode, graphEdges, onConfirm, onDeleteNode, onGenerate]);
 
   const nodeDataDeps = useMemo(
     () => ({ deleteNode, retryPrompt, onUpdateNode, incomingNodeIds, nodeOperationInProgress }),

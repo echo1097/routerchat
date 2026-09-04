@@ -10645,6 +10645,7 @@ function App() {
             onUpdateNode={updateBrainstormNode}
             onDeleteNode={deleteBrainstormNode}
             onUpdateViewport={updateBrainstormViewport}
+            onConfirm={setConfirmDialog}
           />
         ) : isWritingMode && !showLandingComposer ? (
           <StoryWorkspace

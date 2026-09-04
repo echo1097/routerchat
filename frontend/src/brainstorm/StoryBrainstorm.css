@@ -84,6 +84,7 @@
 }
 
 .brainstorm-node {
+  --brainstorm-node-surface: #171717;
   position: relative;
   width: 300px;
   border-radius: 18px;
@@ -97,16 +98,19 @@
 }
 
 .brainstorm-node:hover {
+  --brainstorm-node-surface: #1a1a1a;
   background: #1a1a1a;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
 }
 
 .brainstorm-idea-node.is-selected {
+  --brainstorm-node-surface: #202020;
   background: #202020;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.32);
 }
 
 .brainstorm-prompt-node {
+  --brainstorm-node-surface: #121212;
   width: 280px;
   background: #121212;
 }
@@ -137,7 +141,7 @@
   text-wrap: balance;
 }
 
-.brainstorm-node > p,
+.brainstorm-node .brainstorm-idea-content,
 .brainstorm-node .brainstorm-prompt-content {
   max-height: 190px;
   margin: 7px 0 0;
@@ -152,6 +156,38 @@
 .brainstorm-node .brainstorm-prompt-content {
   max-height: 130px;
   color: #d0d0d0;
+}
+
+.brainstorm-scroll {
+  position: relative;
+}
+
+.brainstorm-scroll-fade {
+  z-index: 1;
+  position: absolute;
+  right: 0;
+  left: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition-property: opacity;
+  transition-duration: 150ms;
+  transition-timing-function: ease-out;
+}
+
+.brainstorm-scroll-fade.is-visible {
+  opacity: 1;
+}
+
+.brainstorm-scroll-fade.is-top {
+  top: 0;
+  height: 24px;
+  background: linear-gradient(180deg, var(--brainstorm-node-surface) 0%, transparent 100%);
+}
+
+.brainstorm-scroll-fade.is-bottom {
+  bottom: 0;
+  height: 28px;
+  background: linear-gradient(0deg, var(--brainstorm-node-surface) 0%, transparent 100%);
 }
 
 .brainstorm-node-actions {

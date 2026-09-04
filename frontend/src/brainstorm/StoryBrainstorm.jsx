@@ -29,6 +29,47 @@ function brainstormDurationLabel(node) {
   return `${seconds} ${seconds === 1 ? "second" : "seconds"}`;
 }
 
+// same edge treatment the model picker uses: the fade only shows on the side that still has content
+function NodeText({ className, children }) {
+  const scrollRef = useRef(null);
+  const [scrolled, setScrolled] = useState(false);
+  const [hasMoreBelow, setHasMoreBelow] = useState(false);
+
+  function updateEdges(element) {
+    const bottomOffset = element.scrollHeight - element.clientHeight - element.scrollTop;
+    setScrolled(element.scrollTop > 2);
+    setHasMoreBelow(bottomOffset > 2);
+  }
+
+  useEffect(() => {
+    const node = scrollRef.current;
+    if (!node) return;
+
+    const frame = requestAnimationFrame(() => updateEdges(node));
+    return () => cancelAnimationFrame(frame);
+  }, [children]);
+
+  return (
+    <div className="brainstorm-scroll">
+      <p
+        ref={scrollRef}
+        className={className}
+        onScroll={(event) => updateEdges(event.currentTarget)}
+      >
+        {children}
+      </p>
+      <div
+        aria-hidden="true"
+        className={cx("brainstorm-scroll-fade is-top", scrolled && "is-visible")}
+      />
+      <div
+        aria-hidden="true"
+        className={cx("brainstorm-scroll-fade is-bottom", hasMoreBelow && "is-visible")}
+      />
+    </div>
+  );
+}
+
 function useCopyAction(getText) {
   const [copied, setCopied] = useState(false);
   const resetRef = useRef(null);
@@ -125,7 +166,7 @@ function PromptNode({ data }) {
           </button>
         </div>
       </div>
-      <p className="brainstorm-prompt-content nowheel">{data.content}</p>
+      <NodeText className="brainstorm-prompt-content nowheel">{data.content}</NodeText>
       {showPlainStatus && (
         <div className="brainstorm-writing-status">
           <span className="brainstorm-thinking-label t-shimmer" data-text={plainStatusLabel}>
@@ -257,7 +298,7 @@ function IdeaNode({ data, selected }) {
             </div>
           </div>
           <h2>{data.title}</h2>
-          <p className="nowheel">{data.content}</p>
+          <NodeText className="brainstorm-idea-content nowheel">{data.content}</NodeText>
         </>
       )}
       <Handle type="source" position={Position.Right} className="brainstorm-handle" />

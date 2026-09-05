@@ -4445,7 +4445,6 @@ function Composer({
   const [contextMenuOpen, setContextMenuOpen] = useState(false);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const isEmptyVariant = variant === "empty";
-  const isWritePromptBar = Boolean(writeGenerationMode);
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -4619,9 +4618,7 @@ function Composer({
                     aria-expanded={contextMenuOpen}
                     aria-haspopup="menu"
                     className={cx(
-                      "inline-flex h-8 min-w-0 items-center gap-1.5 rounded-full text-xs font-medium text-neutral-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30 active:scale-[0.96]",
-                      isWritePromptBar ? "pl-0 pr-6" : "px-3",
-                      isWritePromptBar ? "" : "bg-white/[0.07] shadow-[inset_0_1px_rgba(255,255,255,0.06)] hover:bg-white/[0.11]",
+                      "inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-full bg-transparent px-3 text-xs font-medium text-neutral-300 hover:bg-white/[0.08] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30 active:scale-[0.96]",
                       PROMPT_BAR_CONTROL_MOTION,
                     )}
                   >
@@ -4667,10 +4664,9 @@ function Composer({
                   aria-expanded={modelMenuOpen}
                   aria-haspopup="menu"
                   className={cx(
-                    "inline-flex min-w-0 max-w-[220px] items-center gap-1.5 rounded-full text-xs font-medium text-neutral-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30 active:scale-[0.96] sm:max-w-[280px]",
+                    "inline-flex min-w-0 max-w-[220px] items-center justify-center gap-1.5 rounded-full text-xs font-medium text-neutral-300 hover:bg-white/[0.08] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30 active:scale-[0.96] sm:max-w-[280px]",
                     "h-8",
-                    "pl-0 pr-3",
-                    isWritePromptBar ? "" : "bg-transparent shadow-none hover:bg-transparent",
+                    "px-3 bg-transparent shadow-none",
                     PROMPT_BAR_CONTROL_MOTION,
                   )}
                 >

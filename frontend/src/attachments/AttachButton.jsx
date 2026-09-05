@@ -39,8 +39,8 @@ export default function AttachButton({
         title={title}
         className={cx(
           "grid h-8 w-8 shrink-0 place-items-center rounded-full text-neutral-400",
-          "hover:text-white focus:outline-none",
-          "disabled:cursor-not-allowed disabled:text-neutral-600 disabled:active:scale-100",
+          "hover:bg-white/[0.08] focus:outline-none",
+          "disabled:cursor-not-allowed disabled:text-neutral-600 disabled:hover:bg-transparent disabled:active:scale-100",
           PROMPT_BAR_CONTROL_MOTION,
         )}
       >

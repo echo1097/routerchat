@@ -4595,10 +4595,10 @@ function Composer({
                       : "Search the web before answering"
                   }
                   className={cx(
-                    "grid h-8 w-8 shrink-0 place-items-center rounded-full focus:outline-none",
+                    "grid h-8 w-8 shrink-0 place-items-center rounded-full hover:bg-white/[0.08] focus:outline-none",
                     webSearchEnabled
                       ? "text-blue-400"
-                      : "text-neutral-400 hover:text-white",
+                      : "text-neutral-400",
                     PROMPT_BAR_CONTROL_MOTION,
                   )}
                 >

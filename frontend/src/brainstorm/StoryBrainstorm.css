@@ -562,7 +562,7 @@
 .brainstorm-branch-menu {
   position: absolute;
   z-index: 30;
-  bottom: 100%;
+  bottom: calc(100% + 1.5px);
   left: 0;
   width: min(280px, calc(100vw - 48px));
   border: 0;

@@ -4715,12 +4715,12 @@ function Composer({
               disabled={!isStreaming && ((!value.trim() && attachments.length === 0) || disabled)}
               className={cx(
                 "group relative inline-flex shrink-0 items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
-                "h-8 w-8",
+                "h-8 w-8 hover:bg-white/[0.08] disabled:hover:bg-transparent",
                 PROMPT_BAR_CONTROL_MOTION,
                 isStreaming
                   ? "text-neutral-200"
                   : cx(
-                    "text-neutral-300 hover:text-white",
+                    "text-neutral-300",
                     "disabled:cursor-not-allowed disabled:text-neutral-600 disabled:active:scale-100",
                   ),
               )}

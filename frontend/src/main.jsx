@@ -2179,7 +2179,7 @@ function ConversationRail({
                 title="Search chats"
                 onClick={() => setSearchOpen(true)}
                 className={cx(
-                  "hidden h-10 w-9 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:bg-white/[0.08] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 lg:inline-flex",
+                  "hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:bg-white/[0.08] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 lg:inline-flex",
                   CONTROL_MOTION,
                 )}
               >
@@ -2192,7 +2192,7 @@ function ConversationRail({
                 data-tour="collapse-sidebar-button"
                 onClick={onCollapse}
                 className={cx(
-                  "hidden h-10 w-9 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:bg-white/[0.08] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 lg:inline-flex",
+                  "hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:bg-white/[0.08] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 lg:inline-flex",
                   CONTROL_MOTION,
                 )}
               >
@@ -3581,7 +3581,7 @@ function StoryRail({
                 title="Search stories"
                 onClick={() => setSearchOpen(true)}
                 className={cx(
-                  "hidden h-10 w-9 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:bg-white/[0.08] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 lg:inline-flex",
+                  "hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:bg-white/[0.08] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 lg:inline-flex",
                   CONTROL_MOTION,
                 )}
               >
@@ -3593,7 +3593,7 @@ function StoryRail({
                 title="Collapse sidebar"
                 onClick={onCollapse}
                 className={cx(
-                  "hidden h-10 w-9 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:bg-white/[0.08] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 lg:inline-flex",
+                  "hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:bg-white/[0.08] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 lg:inline-flex",
                   CONTROL_MOTION,
                 )}
               >

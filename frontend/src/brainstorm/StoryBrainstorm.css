@@ -505,6 +505,7 @@
   display: inline-flex;
   min-height: 32px;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   border: 0;
   border-radius: 999px;
@@ -526,7 +527,7 @@
   gap: 6px;
   border: 0;
   border-radius: 999px;
-  padding: 0 8px 0 11px;
+  padding: 0 12px;
   color: #d4d4d4;
   font-size: 12px;
   font-weight: 500;
@@ -538,8 +539,7 @@
 }
 
 .brainstorm-branch-trigger:hover {
-  color: #f5f5f5;
-  background: transparent;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .brainstorm-branch-trigger:active {
@@ -680,15 +680,14 @@
 
 .brainstorm-model-button {
   max-width: 280px;
-  padding: 0 12px 0 0;
+  padding: 0 12px;
   color: #d4d4d4;
   font-weight: 500;
 }
 
 .brainstorm-selection-pill:hover,
 .brainstorm-model-button:hover {
-  color: #f5f5f5;
-  background: transparent;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .brainstorm-selection-pill:active,
@@ -800,13 +799,13 @@
   color: #d4d4d4;
   background: transparent;
   cursor: pointer;
-  transition-property: color, opacity, scale;
+  transition-property: color, background-color, opacity, scale;
   transition-duration: 150ms;
   transition-timing-function: ease-out;
 }
 
-.brainstorm-send-button:hover {
-  color: #fff;
+.brainstorm-send-button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .brainstorm-send-button:disabled {

@@ -3035,16 +3035,26 @@ class StoryApiTest(unittest.TestCase):
         asyncio.run(stopGeneration())
         bundle = self.client.get(f"/api/stories/{story['id']}").json()
         savedChapter = next(item for item in bundle["chapters"] if item["id"] == chapter["id"])
-        self.assertEqual(savedChapter["content"], "first line\n\nA finished paragraph.")
-        self.assertEqual(savedChapter["revision"], 1)
+        hasContent = stopEvent != "history"
+        expectedContent = "first line\n\nA finished paragraph." if hasContent else "first line"
+        self.assertEqual(savedChapter["content"], expectedContent)
+        self.assertEqual(savedChapter["revision"], int(hasContent))
         historyKinds = [entry["kind"] for entry in savedChapter["history"]]
-        self.assertEqual(historyKinds.count("write"), 1)
+        self.assertEqual(historyKinds.count("prompt"), 1)
+        self.assertEqual(historyKinds.count("write"), int(hasContent))
+        self.assertEqual(historyKinds.count("write_failed"), int(stopEvent != "chapter_updated"))
         with main.get_db() as conn:
             generations = conn.execute(
                 "SELECT * FROM story_generations WHERE chapter_id = ?", (chapter["id"],),
             ).fetchall()
         self.assertEqual(len(generations), 1)
-        self.assertEqual(generations[0]["generated_text"], output)
+        self.assertEqual(generations[0]["generated_text"], output if hasContent else "")
+        if stopEvent == "chapter_updated":
+            self.assertIsNone(generations[0]["error"])
+        elif not hasContent:
+            self.assertEqual(generations[0]["error"], "generation_cancelled")
+        else:
+            self.assertIn("partial: applied", generations[0]["error"])
         return savedChapter, generations[0]
 
     def testClosingWriteStreamFinishesCleanup(self):
@@ -3052,6 +3062,12 @@ class StoryApiTest(unittest.TestCase):
 
     def testCancellingWriteStreamFinishesCleanup(self):
         self.checkStoppedChapterGeneration("cancel")
+
+    def testClosingWriteStreamBeforeContentKeepsChapterUnchanged(self):
+        self.checkStoppedChapterGeneration("close", stopEvent="history")
+
+    def testClosingWriteStreamAfterChapterUpdateKeepsWriteHistory(self):
+        self.checkStoppedChapterGeneration("close", stopEvent="chapter_updated")
 
     def test_incomplete_stream_saves_partial_chapter_text_in_new_mode(self):
         #a dropped connection still has good prose in it in append mode, so it gets kept instead of thrown away

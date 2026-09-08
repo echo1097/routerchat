@@ -1,3 +1,31 @@
+async function loadSettledGeneration(run, {
+  getStatus,
+  getStory,
+  isCurrent,
+  wait = (delay) => new Promise((resolve) => setTimeout(resolve, delay)),
+  maxAttempts = 60,
+}) {
+  if (!isCurrent()) return null;
+  if (run.generationId) {
+    let settled = false;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const status = await getStatus(run);
+      if (!isCurrent()) return null;
+      if (status.settled) {
+        settled = true;
+        break;
+      }
+      if (attempt + 1 < maxAttempts) await wait(250);
+      if (!isCurrent()) return null;
+    }
+    if (!settled) {
+      throw new Error("The server has not confirmed saving yet. Your preview is still shown; reload the chapter shortly to check the saved result.");
+    }
+  }
+  const payload = await getStory(run.storyId);
+  return isCurrent() ? payload : null;
+}
+
 function chapterFromUpdateEvent(value) {
   const chapter = value?.chapter;
   if (!chapter || typeof chapter !== "object" || !chapter.id) return null;
@@ -240,6 +268,7 @@ function nextEditPreview(current, parsed) {
 }
 
 export {
+  loadSettledGeneration,
   chapterAppliedEditSummary,
   chapterFromUpdateEvent,
   chapterRunTargetsOpenChapter,

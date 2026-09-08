@@ -80,6 +80,7 @@ import { useAttachments } from "./attachments/useAttachments.js";
 const ChapterCanvasEditor = lazy(() => import("./writing/ChapterCanvasEditor.jsx"));
 import {
   chapterAppliedEditSummary,
+  loadSettledGeneration,
   chapterFromUpdateEvent,
   chapterRunTargetsOpenChapter,
   chapterGenerationErrorIsRepairable,
@@ -239,6 +240,10 @@ const storyApi = {
 
   async getStory(storyId) {
     return api(`/api/stories/${encodeURIComponent(storyId)}`);
+  },
+
+  async getGenerationStatus(run) {
+    return api(`/api/stories/${encodeURIComponent(run.storyId)}/chapters/${encodeURIComponent(run.chapterId)}/generations/${encodeURIComponent(run.generationId)}`);
   },
 
   async createStory(data) {
@@ -7912,8 +7917,12 @@ function App() {
 
   async function reconcileGenerationRun(run) {
     if (run.navigationIntent !== currentNavigationIntent()) return;
-    const payload = await storyApi.getStory(run.storyId);
-    if (run.navigationIntent !== currentNavigationIntent()) return;
+    const payload = await loadSettledGeneration(run, {
+      getStatus: (currentRun) => storyApi.getGenerationStatus(currentRun),
+      getStory: (storyId) => storyApi.getStory(storyId),
+      isCurrent: () => generationRunOwnsVisibleWorkspace(run),
+    });
+    if (!payload) return;
     const nextChapters = payload.chapters || [];
     nextChapters.forEach((chapter) => chapterSaveCoordinator.rememberServerChapter(chapter));
 
@@ -10291,6 +10300,7 @@ function App() {
         onEvent: (event) => {
           if (!chapterGenerationEventMatchesRun(event, run)) return;
           if (!generationRunOwnsVisibleWorkspace(run)) return;
+          if (event.generationId) run.generationId = event.generationId;
           if (event.type === "history") {
             appendWriteHistoryEntry(event.value || {});
             return;
@@ -10452,6 +10462,7 @@ function App() {
           await reconcileGenerationRun(run);
         } catch (error) {
           if (terminalStatus === "completed") terminalStatus = "failed";
+          setStatus(error.message);
         }
       }
       run.status = terminalStatus;

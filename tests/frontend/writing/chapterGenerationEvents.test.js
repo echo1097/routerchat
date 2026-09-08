@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  loadSettledGeneration,
   chapterAppliedEditSummary,
   chapterFromUpdateEvent,
   chapterGenerationErrorIsRepairable,
@@ -146,5 +147,69 @@ describe("chapter generation events", () => {
     expect(coordinator.getDraft("story-1", "chapter-1")).toBeNull();
     expect(coordinator.getConfirmedChapter("story-1", "chapter-1").content)
       .toBe("what the model edited");
+  });
+});
+
+describe("generation reconciliation", () => {
+  const run = { storyId: "story", chapterId: "chapter", generationId: "generation" };
+
+  it("waits for delayed cleanup before reading the saved chapter", async () => {
+    const savedStory = { chapters: [{ id: "chapter", content: "saved partial prose" }] };
+    const getStory = vi.fn().mockResolvedValue(savedStory);
+    const getStatus = vi.fn()
+      .mockResolvedValueOnce({ settled: false })
+      .mockResolvedValueOnce({ settled: false })
+      .mockResolvedValueOnce({ settled: true });
+    const wait = vi.fn(async () => {
+      expect(getStory).not.toHaveBeenCalled();
+    });
+
+    const payload = await loadSettledGeneration(run, {
+      getStatus, getStory, wait, isCurrent: () => true,
+    });
+
+    expect(payload).toBe(savedStory);
+    expect(getStatus).toHaveBeenCalledTimes(3);
+    expect(getStatus).toHaveBeenCalledWith(run);
+    expect(getStory).toHaveBeenCalledExactlyOnceWith("story");
+  });
+
+  it("keeps the preview when cleanup cannot be confirmed", async () => {
+    const getStory = vi.fn();
+    await expect(loadSettledGeneration(run, {
+      getStatus: vi.fn().mockResolvedValue({ settled: false }),
+      getStory, wait: async () => {}, isCurrent: () => true, maxAttempts: 2,
+    })).rejects.toThrow("has not confirmed saving yet");
+    expect(getStory).not.toHaveBeenCalled();
+  });
+
+  it("does not reconcile another workspace after waiting", async () => {
+    let current = true;
+    const getStory = vi.fn();
+    const payload = await loadSettledGeneration(run, {
+      getStatus: vi.fn().mockResolvedValue({ settled: false }),
+      getStory, isCurrent: () => current, wait: async () => { current = false; },
+    });
+    expect(payload).toBeNull();
+    expect(getStory).not.toHaveBeenCalled();
+  });
+
+  it("does not poll when stopped before the server sends a generation id", async () => {
+    const getStatus = vi.fn();
+    const getStory = vi.fn().mockResolvedValue({ chapters: [] });
+    await loadSettledGeneration({ storyId: "story" }, {
+      getStatus, getStory, isCurrent: () => true,
+    });
+    expect(getStatus).not.toHaveBeenCalled();
+    expect(getStory).toHaveBeenCalledExactlyOnceWith("story");
+  });
+
+  it("keeps the preview if the status request fails", async () => {
+    const getStory = vi.fn();
+    await expect(loadSettledGeneration(run, {
+      getStatus: vi.fn().mockRejectedValue(new Error("offline")),
+      getStory, isCurrent: () => true,
+    })).rejects.toThrow("offline");
+    expect(getStory).not.toHaveBeenCalled();
   });
 });

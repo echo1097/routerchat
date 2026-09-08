@@ -145,6 +145,23 @@ class AttachmentApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["content-type"], "image/png")
         self.assertEqual(response.content, PNG_BYTES)
+        self.assertTrue(response.headers["content-disposition"].startswith("inline;"))
+        self.assertEqual(response.headers["x-content-type-options"], "nosniff")
+
+    def testRawHtmlDownloadsInsteadOfRendering(self):
+        htmlBody = b"<script>document.title = 'attachment script ran'</script>"
+        attachment = self.uploadText("page.html", htmlBody)
+
+        response = self.client.get(f"/api/attachments/{attachment['id']}/raw")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, htmlBody)
+        self.assertEqual(response.headers["content-type"], "application/octet-stream")
+        self.assertTrue(response.headers["content-disposition"].startswith("attachment;"))
+        self.assertEqual(response.headers["x-content-type-options"], "nosniff")
+        self.assertEqual(
+            response.headers["content-security-policy"], "sandbox; default-src 'none'"
+        )
 
     def test_raw_route_survives_a_filename_the_http_header_cannot_hold(self):
         screenshotName = "Screenshot 2026-08-29 at 1.06.01\u202fPM.png"

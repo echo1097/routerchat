@@ -1794,7 +1794,7 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
             "runId": getattr(payload, "generation_run_id", None),
             "storyId": story_id,
             "chapterId": chapter_id,
-            "generationId": str(uuid.uuid4()),
+            "generationId": getattr(payload, "generation_run_id", None) or str(uuid.uuid4()),
         }
 
         def emit(event_type: str, value: Any, revision: int | None = None) -> bytes:

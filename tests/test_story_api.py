@@ -2977,7 +2977,7 @@ class StoryApiTest(unittest.TestCase):
 
     def checkStoppedChapterGeneration(
         self, stopMethod, stopEvent="content", mode="edit", concurrentEdit=False,
-        completionSignal=None,
+        completionSignal=None, clientRunId=None,
     ):
         story = self.client.post(
             "/api/stories", json={"title": "Stopped generation", "lorebook_auto": True},
@@ -3031,7 +3031,7 @@ class StoryApiTest(unittest.TestCase):
             ), patch("backend.writing.run_lorebook_update") as lorebookRun:
                 response = await endpoint(story["id"], chapter["id"], main.StreamMessageRequest(
                     message="continue", model="test/model", write_generation_mode=mode,
-                    chapter_revision=chapter["revision"],
+                    chapter_revision=chapter["revision"], generation_run_id=clientRunId,
                 ))
                 stream = response.body_iterator
                 generationId = None
@@ -3039,6 +3039,8 @@ class StoryApiTest(unittest.TestCase):
                     async for chunk in stream:
                         event = json.loads(chunk)
                         generationId = event["generationId"]
+                        if clientRunId:
+                            self.assertEqual(generationId, clientRunId)
                         if event["type"] == stopEvent:
                             break
                     statusPath = (
@@ -3109,6 +3111,13 @@ class StoryApiTest(unittest.TestCase):
         else:
             self.assertIn("partial: applied", generations[0]["error"])
         return savedChapter, generations[0]
+
+    def testClientRunIdAcknowledgesCancelledGeneration(self):
+        for mode in ("new", "edit"):
+            with self.subTest(mode=mode):
+                self.checkStoppedChapterGeneration(
+                    "cancel", mode=mode, clientRunId=str(uuid.uuid4()),
+                )
 
     def testGenerationSettledMigrationIsIdempotent(self):
         with sqlite3.connect(":memory:") as conn:

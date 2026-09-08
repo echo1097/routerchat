@@ -1872,6 +1872,7 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
         stream_completed = False
         received_done = False
         cancelled = False
+        pendingEvents: list[bytes] = []
 
         def save_history(
             label: str,
@@ -1986,7 +1987,7 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                             {"generation_id": generation_id, "model": payload.model, **usage},
                         )
                     stream_completed = received_done or bool(finish_reason)
-        except asyncio.CancelledError:
+        except (asyncio.CancelledError, GeneratorExit):
             cancelled = True
             error_text = "generation_cancelled"
             raise
@@ -2190,7 +2191,7 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                     (now, story_id),
                 )
             if error_event is not None:
-                yield emit("error", error_event)
+                pendingEvents.append(emit("error", error_event))
                 #new mode never touches an edit at all, so the label needs to say what actually failed
                 fail_label = (
                     f"{model_label} could not apply the edit"
@@ -2198,7 +2199,7 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                     else f"{model_label} could not finish writing"
                 )
                 #a run that failed still burned tokens, so it gets a line and carries the cost the wrote for line never got to report
-                yield emit(
+                pendingEvents.append(emit(
                     "history",
                     save_history(
                         fail_label,
@@ -2206,9 +2207,13 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                         kind="write_failed",
                         cost=usage.get("cost") if usage else None,
                     ),
-                )
+                ))
             if chapter_update_event is not None:
-                yield emit("chapter_updated", chapter_update_event, chapter_update_event["chapter"]["revision"])
+                pendingEvents.append(emit(
+                    "chapter_updated",
+                    chapter_update_event,
+                    chapter_update_event["chapter"]["revision"],
+                ))
                 if content_started_at is not None:
                     duration_ms = (time.perf_counter() - content_started_at) * 1000
                     written_added, written_removed = word_diff_counts(
@@ -2237,7 +2242,7 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                         label = f"{model_label} wrote for {format_duration(duration_ms)}"
                         detail = ""
 
-                    yield emit(
+                    pendingEvents.append(emit(
                         "history",
                         save_history(
                             label,
@@ -2247,61 +2252,65 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                             words_removed=written_removed,
                             cost=usage.get("cost") if usage else None,
                         ),
-                    )
+                    ))
                     content_started_at = None
 
-                with deps.get_db() as conn:
-                    auto_row = conn.execute(
-                        "SELECT lorebook_auto FROM stories WHERE id = ?", (story_id,)
-                    ).fetchone()
+        for event in pendingEvents:
+            yield event
 
-                #manual runs get their own button, this is only for the folks who opted into auto
-                if auto_row and bool(auto_row["lorebook_auto"]):
-                    lorebook_started_at = time.perf_counter()
-                    yield emit("lorebook_start", {"generation_id": story_generation_id})
+        if chapter_update_event is not None:
+            with deps.get_db() as conn:
+                auto_row = conn.execute(
+                    "SELECT lorebook_auto FROM stories WHERE id = ?", (story_id,)
+                ).fetchone()
 
-                    lorebook_result: dict[str, Any] = {}
-                    #the reasoning rides the same stream so the write mode dropdown can show it live
-                    async for lorebook_event in run_lorebook_update(
-                        lorebookDeps,
-                        story_id,
-                        chapter_id,
-                        chapter_update_event["chapter"]["content"],
-                        payload.model,
-                        payload.max_tokens,
-                        generation_row_id=story_generation_id,
+            #manual runs get their own button, this is only for the folks who opted into auto
+            if auto_row and bool(auto_row["lorebook_auto"]):
+                lorebook_started_at = time.perf_counter()
+                yield emit("lorebook_start", {"generation_id": story_generation_id})
+
+                lorebook_result: dict[str, Any] = {}
+                #the reasoning rides the same stream so the write mode dropdown can show it live
+                async for lorebook_event in run_lorebook_update(
+                    lorebookDeps,
+                    story_id,
+                    chapter_id,
+                    chapter_update_event["chapter"]["content"],
+                    payload.model,
+                    payload.max_tokens,
+                    generation_row_id=story_generation_id,
+                ):
+                    if lorebook_event["type"] == "reasoning":
+                        yield emit("lorebook_reasoning", lorebook_event["value"])
+                        continue
+                    if lorebook_event["type"] == "content":
+                        yield emit("lorebook_content", None)
+                        continue
+                    lorebook_result = lorebook_event["value"]
+
+                lorebook_duration_ms = (time.perf_counter() - lorebook_started_at) * 1000
+                #a skipped run never reached the model, so there is no activity to record
+                if not lorebook_result.get("skipped_run"):
+                    for action in lorebook_run_history_actions(
+                        model_label,
+                        lorebook_result.get("applied") or [],
+                        lorebook_duration_ms,
+                        lorebook_result.get("cost"),
+                        lorebook_result.get("skipped") or [],
                     ):
-                        if lorebook_event["type"] == "reasoning":
-                            yield emit("lorebook_reasoning", lorebook_event["value"])
-                            continue
-                        if lorebook_event["type"] == "content":
-                            yield emit("lorebook_content", None)
-                            continue
-                        lorebook_result = lorebook_event["value"]
+                        yield emit(
+                            "history",
+                            save_history(
+                                action["label"],
+                                detail=action.get("detail") or "",
+                                kind=action["kind"],
+                                words_added=action["words_added"],
+                                words_removed=action["words_removed"],
+                                cost=action["cost"],
+                            ),
+                        )
 
-                    lorebook_duration_ms = (time.perf_counter() - lorebook_started_at) * 1000
-                    #a skipped run never reached the model, so there is no activity to record
-                    if not lorebook_result.get("skipped_run"):
-                        for action in lorebook_run_history_actions(
-                            model_label,
-                            lorebook_result.get("applied") or [],
-                            lorebook_duration_ms,
-                            lorebook_result.get("cost"),
-                            lorebook_result.get("skipped") or [],
-                        ):
-                            yield emit(
-                                "history",
-                                save_history(
-                                    action["label"],
-                                    detail=action.get("detail") or "",
-                                    kind=action["kind"],
-                                    words_added=action["words_added"],
-                                    words_removed=action["words_removed"],
-                                    cost=action["cost"],
-                                ),
-                            )
-
-                    yield emit("lorebook", lorebook_result)
+                yield emit("lorebook", lorebook_result)
 
     @router.get("/api/stories")
     def list_stories() -> dict[str, Any]:

@@ -3112,6 +3112,65 @@ class StoryApiTest(unittest.TestCase):
             self.assertIn("partial: applied", generations[0]["error"])
         return savedChapter, generations[0]
 
+    def testDisconnectBeforeBodyIterationSettlesPendingGeneration(self):
+        for specVersion in ("2.0", "2.4"):
+            with self.subTest(specVersion=specVersion):
+                story = self.client.post("/api/stories", json={"title": "Early stop"}).json()["story"]
+                chapter = self.client.post(
+                    f"/api/stories/{story['id']}/chapters",
+                    json={"title": "Opening", "content": "Original prose."},
+                ).json()["chapter"]
+                generationId = str(uuid.uuid4())
+                statusPath = (
+                    f"/api/stories/{story['id']}/chapters/{chapter['id']}"
+                    f"/generations/{generationId}"
+                )
+
+                async def disconnectBeforeBody():
+                    endpoint = next(
+                        route.endpoint for route in main.create_writing_router(main.writingDeps, main.lorebookDeps).routes
+                        if getattr(route, "path", "") ==
+                        "/api/stories/{story_id}/chapters/{chapter_id}/generate/stream"
+                    )
+                    response = await endpoint(story["id"], chapter["id"], main.StreamMessageRequest(
+                        message="continue", model="test/model", chapter_revision=chapter["revision"],
+                        generation_status_id=generationId,
+                    ))
+                    with main.get_db() as conn:
+                        pendingRow = conn.execute(
+                            "SELECT error, settled FROM story_generations WHERE id = ?", (generationId,),
+                        ).fetchone()
+                    self.assertEqual(dict(pendingRow), {"error": "generation_pending", "settled": 0})
+                    headersSent = asyncio.Event()
+
+                    async def send(message):
+                        self.assertEqual(message["type"], "http.response.start")
+                        headersSent.set()
+                        if specVersion == "2.4":
+                            raise OSError("client disconnected")
+                        await asyncio.Event().wait()
+
+                    async def receive():
+                        await headersSent.wait()
+                        return {"type": "http.disconnect"}
+
+                    if specVersion == "2.4":
+                        from starlette.requests import ClientDisconnect
+                        with self.assertRaises(ClientDisconnect):
+                            await response({"type": "http", "asgi": {"spec_version": specVersion}}, receive, send)
+                    else:
+                        await response({"type": "http", "asgi": {"spec_version": specVersion}}, receive, send)
+
+                with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
+                    "backend.writing.httpx.AsyncClient",
+                ) as providerClient:
+                    asyncio.run(disconnectBeforeBody())
+                    providerClient.assert_not_called()
+                self.assertEqual(self.client.get(statusPath).json(), {"settled": True})
+                savedChapter = self.client.get(f"/api/stories/{story['id']}").json()["chapters"][0]
+                self.assertEqual(savedChapter["content"], "Original prose.")
+                self.assertEqual(savedChapter["history"], [])
+
     def testClientRunIdAcknowledgesCancelledGeneration(self):
         for mode in ("new", "edit"):
             with self.subTest(mode=mode):

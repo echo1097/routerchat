@@ -1717,6 +1717,19 @@ def repair_instructions(repair_context: dict[str, Any]) -> str:
 
 
 
+class ChapterStreamingResponse(StreamingResponse):
+    def __init__(self, content, *, onClose, **kwargs):
+        super().__init__(content, **kwargs)
+        self.onClose = onClose
+
+    async def __call__(self, scope, receive, send):
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            await self.body_iterator.aclose()
+            self.onClose()
+
+
 def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIRouter:
     router = APIRouter()
     StreamMessageRequest = deps.stream_message_request
@@ -1788,13 +1801,14 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
         chapter: sqlite3.Row,
         lorebook_rows: list[sqlite3.Row],
         base_revision: int,
+        generationId: str,
         previous_chapters: list[sqlite3.Row] | None = None,
     ) -> AsyncIterator[bytes]:
         event_metadata = {
             "runId": getattr(payload, "generation_run_id", None),
             "storyId": story_id,
             "chapterId": chapter_id,
-            "generationId": getattr(payload, "generation_status_id", None) or str(uuid.uuid4()),
+            "generationId": generationId,
         }
 
         def emit(event_type: str, value: Any, revision: int | None = None) -> bytes:
@@ -2159,19 +2173,14 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
 
                 conn.execute(
                     """
-                    INSERT INTO story_generations (
-                      id, story_id, chapter_id, prompt, generated_text, model,
-                      finish_reason, error, generation_id, prompt_tokens,
-                      completion_tokens, reasoning_tokens, total_tokens, cost,
-                      provider_name, generation_time, latency, created_at
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    UPDATE story_generations
+                    SET generated_text = ?, model = ?, finish_reason = ?, error = ?,
+                        generation_id = ?, prompt_tokens = ?, completion_tokens = ?,
+                        reasoning_tokens = ?, total_tokens = ?, cost = ?, provider_name = ?,
+                        generation_time = ?, latency = ?, created_at = ?
+                    WHERE id = ?
                     """,
                     (
-                        story_generation_id,
-                        story_id,
-                        chapter_id,
-                        payload.message,
                         content,
                         payload.model,
                         finish_reason,
@@ -2186,6 +2195,7 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                         usage.get("generation_time") if usage else None,
                         usage.get("latency") if usage else None,
                         now,
+                        story_generation_id,
                     ),
                 )
                 conn.execute(
@@ -3046,7 +3056,30 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
             )
             claim_attachments(conn, attachmentIds, story_id=story_id)
 
-        return StreamingResponse(
+            generationId = payload.generation_status_id or str(uuid.uuid4())
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO story_generations (
+                        id, story_id, chapter_id, prompt, generated_text, model, error, created_at
+                    ) VALUES (?, ?, ?, ?, '', ?, 'generation_pending', ?)
+                    """,
+                    (generationId, story_id, chapter_id, payload.message, payload.model, deps.utc_now()),
+                )
+            except sqlite3.IntegrityError as exc:
+                raise HTTPException(status_code=409, detail="Generation status ID is already in use.") from exc
+
+        def settleUnstartedGeneration():
+            with deps.get_db() as conn:
+                conn.execute(
+                    """
+                    UPDATE story_generations SET settled = 1, error = 'generation_cancelled'
+                    WHERE id = ? AND error = 'generation_pending' AND settled = 0
+                    """,
+                    (generationId,),
+                )
+
+        return ChapterStreamingResponse(
             stream_story_generation(
                 story_id,
                 chapter_id,
@@ -3055,8 +3088,10 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                 chapter,
                 lorebook_rows,
                 base_revision,
+                generationId,
                 previousChapters,
             ),
+            onClose=settleUnstartedGeneration,
             media_type="application/x-ndjson; charset=utf-8",
         )
 

@@ -4506,6 +4506,7 @@ function Composer({
         isEmptyVariant
           ? "pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-4 pb-[12vh] pt-20 sm:px-8 lg:px-10"
           : "bg-[#080808] px-4 py-4 sm:px-8 lg:px-10",
+        !isEmptyVariant && writeGenerationMode && "write-composer",
       )}
     >
       <div className={cx("mx-auto w-full", isEmptyVariant ? "pointer-events-auto max-w-[760px]" : "max-w-4xl")}>

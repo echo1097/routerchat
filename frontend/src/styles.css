@@ -1867,6 +1867,37 @@ sticky header veil and reads as clipping through the blur */
   }
 }
 
+.write-composer {
+  position: relative;
+  z-index: 30;
+}
+
+.write-composer::before {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 100%;
+  left: 0;
+  height: 1.5rem;
+  pointer-events: none;
+  background: #080808;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  --write-composer-fade: linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 1) 0%,
+    rgba(0, 0, 0, 1) 16.67%,
+    rgba(0, 0, 0, 0.94) 33.33%,
+    rgba(0, 0, 0, 0.8) 45.83%,
+    rgba(0, 0, 0, 0.6) 58.33%,
+    rgba(0, 0, 0, 0.38) 70.83%,
+    rgba(0, 0, 0, 0.18) 83.33%,
+    rgba(0, 0, 0, 0) 100%
+  );
+  mask-image: var(--write-composer-fade);
+  -webkit-mask-image: var(--write-composer-fade);
+}
+
 .write-canvas-header {
   position: sticky;
   top: 0;

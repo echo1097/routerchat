@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import base64
-import mimetypes
 import sqlite3
 import unicodedata
 import uuid
@@ -143,7 +142,7 @@ def safe_filename(filename: str) -> str:
     return cleaned[:180] or "file"
 
 
-def content_disposition(filename: str) -> str:
+def content_disposition(filename: str, *, inline: bool = False) -> str:
     normalized = unicodedata.normalize("NFKD", filename)
     asciiName = "".join(
         character
@@ -154,8 +153,9 @@ def content_disposition(filename: str) -> str:
     if not asciiName or asciiName.startswith("."):
         asciiName = f"file{asciiName}"
 
+    disposition = "inline" if inline else "attachment"
     return (
-        f'inline; filename="{asciiName}"; '
+        f'{disposition}; filename="{asciiName}"; '
         f"filename*=UTF-8''{quote(filename, safe='')}"
     )
 
@@ -430,14 +430,14 @@ def create_attachments_router(deps: AttachmentsDeps) -> APIRouter:
             for upload in files:
                 filename = safe_filename(upload.filename or "file")
                 kind, mime = classify_upload(filename)
-                raw = await upload.read()
+                limit = KIND_LIMITS[kind]
+                raw = await upload.read(limit + 1)
 
                 if not raw:
                     raise HTTPException(
                         status_code=400, detail=f"{filename} is empty."
                     )
 
-                limit = KIND_LIMITS[kind]
                 if len(raw) > limit:
                     raise HTTPException(
                         status_code=400,
@@ -517,12 +517,15 @@ def create_attachments_router(deps: AttachmentsDeps) -> APIRouter:
         if not raw:
             raise HTTPException(status_code=404, detail="Attachment file is missing.")
 
-        mime = row["mime"] or mimetypes.guess_type(row["filename"])[0] or "application/octet-stream"
+        isInlineImage = row["kind"] == "image" and row["mime"] in IMAGE_TYPES.values()
+        mediaType = row["mime"] if isInlineImage else "application/octet-stream"
         return Response(
             content=raw,
-            media_type=mime,
+            media_type=mediaType,
             headers={
-                "Content-Disposition": content_disposition(row["filename"]),
+                "Content-Disposition": content_disposition(row["filename"], inline=isInlineImage),
+                "X-Content-Type-Options": "nosniff",
+                "Content-Security-Policy": "sandbox; default-src 'none'",
                 "Cache-Control": "no-store",
             },
         )

@@ -413,6 +413,7 @@ class StreamMessageRequest(BaseModel):
     write_generation_mode: str | None = None
     chapter_revision: int | None = Field(default=None, ge=0)
     generation_run_id: str | None = Field(default=None, min_length=1)
+    generation_status_id: str | None = Field(default=None, min_length=1)
     selected_idea_ids: list[str] = Field(default_factory=list)
     brainstorm_idea_count: int = Field(default=3, ge=1, le=8)
     repair_context: ChapterRepairContext | None = None
@@ -782,6 +783,7 @@ def init_db() -> None:
         ensure_message_usage_columns(conn)
         ensure_chat_settings_columns(conn)
         ensure_story_settings_columns(conn)
+        ensureGenerationSettledColumn(conn)
         ensure_chapter_context_column(conn)
         ensure_chapter_revision_column(conn)
         ensure_lorebook_revision_column(conn)
@@ -790,6 +792,14 @@ def init_db() -> None:
         ensure_chapter_history_columns(conn)
         ensure_lorebook_run_usage_columns(conn)
         clean_lorebook_categories(conn)
+
+
+def ensureGenerationSettledColumn(conn: sqlite3.Connection) -> None:
+    existingColumns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(story_generations)").fetchall()
+    }
+    if "settled" not in existingColumns:
+        conn.execute("ALTER TABLE story_generations ADD COLUMN settled INTEGER NOT NULL DEFAULT 0")
 
 
 def ensure_chat_settings_columns(conn: sqlite3.Connection) -> None:

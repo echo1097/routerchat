@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
+from starlette.datastructures import UploadFile
 
 import backend.attachments as attachments
 import backend.main as main
@@ -113,6 +114,78 @@ class AttachmentApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("larger than", response.json()["detail"])
 
+    def testOversizedUploadReadIsBounded(self):
+        readLengths = []
+        originalRead = UploadFile.read
+
+        async def trackRead(upload, size=-1):
+            raw = await originalRead(upload, size)
+            readLengths.append(len(raw))
+            return raw
+
+        oversized = b"x" * (2 * 1024 * 1024)
+        with patch.object(UploadFile, "read", trackRead):
+            response = self.upload([("files", ("big.txt", oversized, "text/plain"))])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["detail"], "big.txt is larger than 256KB.")
+        self.assertTrue(readLengths)
+        self.assertLessEqual(sum(readLengths), attachments.MAX_TEXT_BYTES + 1)
+        self.assertEqual(list((main.DATA_DIR / "attachments").iterdir()), [])
+
+    def testUploadSizeBoundariesForEveryKind(self):
+        cases = [("text", "note.TXT"), ("image", "shot.PNG"), ("pdf", "document.PDF")]
+        originalRead = UploadFile.read
+
+        for kind, filename in cases:
+            limit = attachments.KIND_LIMITS[kind]
+            for extraBytes in (0, 1, 1024):
+                with self.subTest(kind=kind, extraBytes=extraBytes):
+                    readLengths = []
+
+                    async def trackRead(upload, size=-1):
+                        raw = await originalRead(upload, size)
+                        readLengths.append(len(raw))
+                        return raw
+
+                    body = b"x" * (limit + extraBytes)
+                    with patch.object(UploadFile, "read", trackRead):
+                        response = self.upload([("files", (filename, body))])
+
+                    self.assertTrue(readLengths)
+                    self.assertLessEqual(sum(readLengths), limit + 1)
+                    if extraBytes:
+                        self.assertEqual(response.status_code, 400)
+                        self.assertEqual(
+                            response.json()["detail"],
+                            f"{filename} is larger than {attachments.readable_size(limit)}.",
+                        )
+                    else:
+                        self.assertEqual(response.status_code, 200, response.text)
+                        attachment = response.json()["attachments"][0]
+                        self.assertEqual(attachment["kind"], kind)
+                        self.assertEqual(attachment["size_bytes"], limit)
+                        rawResponse = self.client.get(f"/api/attachments/{attachment['id']}/raw")
+                        self.assertEqual(rawResponse.content, body)
+
+    def testRejectedUploadSizeCleansUpEarlierFiles(self):
+        for body, detail in (
+            (b"", "bad.txt is empty."),
+            (b"x" * (attachments.MAX_TEXT_BYTES + 1), "bad.txt is larger than 256KB."),
+        ):
+            with self.subTest(detail=detail):
+                response = self.upload([
+                    ("files", ("good.txt", b"body", "text/plain")),
+                    ("files", ("bad.txt", body, "text/plain")),
+                ])
+
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response.json()["detail"], detail)
+                self.assertEqual(list((main.DATA_DIR / "attachments").iterdir()), [])
+                with main.get_db() as conn:
+                    row = conn.execute("SELECT COUNT(*) AS total FROM attachments").fetchone()
+                self.assertEqual(row["total"], 0)
+
     def test_upload_rejects_more_files_than_the_limit(self):
         payload = [
             ("files", (f"note{index}.txt", b"body", "text/plain"))
@@ -145,6 +218,23 @@ class AttachmentApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["content-type"], "image/png")
         self.assertEqual(response.content, PNG_BYTES)
+        self.assertTrue(response.headers["content-disposition"].startswith("inline;"))
+        self.assertEqual(response.headers["x-content-type-options"], "nosniff")
+
+    def testRawHtmlDownloadsInsteadOfRendering(self):
+        htmlBody = b"<script>document.title = 'attachment script ran'</script>"
+        attachment = self.uploadText("page.html", htmlBody)
+
+        response = self.client.get(f"/api/attachments/{attachment['id']}/raw")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, htmlBody)
+        self.assertEqual(response.headers["content-type"], "application/octet-stream")
+        self.assertTrue(response.headers["content-disposition"].startswith("attachment;"))
+        self.assertEqual(response.headers["x-content-type-options"], "nosniff")
+        self.assertEqual(
+            response.headers["content-security-policy"], "sandbox; default-src 'none'"
+        )
 
     def test_raw_route_survives_a_filename_the_http_header_cannot_hold(self):
         screenshotName = "Screenshot 2026-08-29 at 1.06.01\u202fPM.png"
@@ -160,6 +250,79 @@ class AttachmentApiTest(unittest.TestCase):
         self.assertIn('filename="Screenshot 2026-08-29 at 1.06.01 PM.png"', disposition)
         self.assertIn("filename*=UTF-8''", disposition)
         self.assertIn("%E2%80%AF", disposition)
+
+    def testRawNonImagesDownloadWithOriginalBytes(self):
+        cases = [
+            ("page.HTML", b"<script>alert(1)</script>"),
+            ("page.xml", b'<html xmlns="http://www.w3.org/1999/xhtml"><script>alert(1)</script></html>'),
+            ("notes.md", b"# Notes"),
+            ("document.pdf", b"%PDF-1.7\nexample"),
+            ("r\u00e9sum\u00e9.html", b"<script>alert(1)</script>"),
+        ]
+        for filename, body in cases:
+            with self.subTest(filename=filename):
+                attachment = self.uploadText(filename, body)
+                response = self.client.get(f"/api/attachments/{attachment['id']}/raw")
+
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.content, body)
+                self.assertEqual(response.headers["content-type"], "application/octet-stream")
+                self.assertTrue(response.headers["content-disposition"].startswith("attachment;"))
+                self.assertEqual(response.headers["x-content-type-options"], "nosniff")
+                self.assertEqual(response.headers["cache-control"], "no-store")
+                self.assertEqual(
+                    response.headers["content-security-policy"], "sandbox; default-src 'none'"
+                )
+
+    def testRawUnsafeStoredMetadataCannotEnableInlineDocuments(self):
+        attachment = self.uploadText("page.html", b"<script>alert(1)</script>")
+        cases = [
+            ("image", "image/svg+xml"),
+            ("image", "text/html"),
+            ("image", "image/png; charset=utf-8"),
+            ("image", ""),
+            ("text", "image/png"),
+        ]
+        for kind, mime in cases:
+            with self.subTest(kind=kind, mime=mime):
+                with main.get_db() as conn:
+                    conn.execute(
+                        "UPDATE attachments SET kind = ?, mime = ? WHERE id = ?",
+                        (kind, mime, attachment["id"]),
+                    )
+
+                response = self.client.get(f"/api/attachments/{attachment['id']}/raw")
+
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.headers["content-type"], "application/octet-stream")
+                self.assertTrue(response.headers["content-disposition"].startswith("attachment;"))
+                self.assertEqual(response.headers["x-content-type-options"], "nosniff")
+
+    def testRawAllowedImageTypesStayInline(self):
+        for extension, mime in attachments.IMAGE_TYPES.items():
+            with self.subTest(extension=extension):
+                attachment = self.uploadImage(f"image{extension}")
+                response = self.client.get(f"/api/attachments/{attachment['id']}/raw")
+
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.content, PNG_BYTES)
+                self.assertEqual(response.headers["content-type"], mime)
+                self.assertTrue(response.headers["content-disposition"].startswith("inline;"))
+                self.assertEqual(response.headers["x-content-type-options"], "nosniff")
+
+    def testRawHtmlDisguisedAsPngRetainsBrowserProtections(self):
+        htmlBody = b"<script>alert(1)</script>"
+        attachment = self.uploadText("image.png", htmlBody)
+
+        response = self.client.get(f"/api/attachments/{attachment['id']}/raw")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, htmlBody)
+        self.assertEqual(response.headers["content-type"], "image/png")
+        self.assertEqual(response.headers["x-content-type-options"], "nosniff")
+        self.assertEqual(
+            response.headers["content-security-policy"], "sandbox; default-src 'none'"
+        )
 
     def test_content_disposition_is_always_latin_1_encodable(self):
         for filename in [

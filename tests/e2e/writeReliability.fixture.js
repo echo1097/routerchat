@@ -100,6 +100,10 @@ export async function installWriteApi(page, options = {}) {
               controller,
               requestBody,
             };
+            init.signal?.addEventListener("abort", () => {
+              controller.error(new DOMException("The operation was aborted.", "AbortError"));
+              window.__writeReasoningStream = null;
+            }, { once: true });
           },
         });
 
@@ -211,6 +215,10 @@ export async function installWriteApi(page, options = {}) {
     const method = request.method();
     const segments = path.split("/").filter(Boolean);
     const body = request.postData() ? request.postDataJSON() : {};
+
+    if (method === "GET" && segments[5] === "generations") {
+      return response(route, { settled: true });
+    }
 
     if (method === "GET" && path === "/api/tos") {
       return response(route, {

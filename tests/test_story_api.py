@@ -1,11 +1,13 @@
+import asyncio
 import json
 import os
 import sqlite3
 import tempfile
 import unittest
 import uuid
+from dataclasses import replace
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -2972,6 +2974,286 @@ class StoryApiTest(unittest.TestCase):
         self.assertIn("\n\n", savedContent)
         self.assertEqual(savedContent.replace("\n\n", " "), prose)
         self.assertEqual(updateEvent["value"]["chapter"]["revision"], 1)
+
+    def checkStoppedChapterGeneration(
+        self, stopMethod, stopEvent="content", mode="edit", concurrentEdit=False,
+        completionSignal=None, clientRunId=None,
+    ):
+        story = self.client.post(
+            "/api/stories", json={"title": "Stopped generation", "lorebook_auto": True},
+        ).json()["story"]
+        chapter = self.client.post(
+            f"/api/stories/{story['id']}/chapters",
+            json={"title": "Opening", "content": "first line"},
+        ).json()["chapter"]
+        output = json.dumps({
+            "chapterRevision": chapter["revision"],
+            "edits": [{"operation": "appendToChapter", "newText": ["A finished paragraph."]}],
+        })
+        if mode == "new":
+            output = "A finished paragraph."
+
+        async def stopGeneration():
+            providerWaiting = asyncio.Event()
+            providerResponse = fakeLorebookStream(
+                output, complete=completionSignal != "finish",
+                finishReason="stop" if completionSignal == "finish" else None,
+            )
+            if completionSignal:
+                providerResponse.headers = {"X-Generation-Id": "test-generation"}
+
+            async def waitForUsage(*args):
+                providerWaiting.set()
+                await asyncio.Event().wait()
+
+            originalLines = providerResponse.aiter_lines
+
+            async def providerLines():
+                async for line in originalLines():
+                    yield line
+                    if stopMethod == "cancel" and not completionSignal:
+                        providerWaiting.set()
+                        await asyncio.Event().wait()
+
+            providerResponse.aiter_lines = providerLines
+            providerClient = AsyncMock()
+            providerClient.stream = lambda *args, **kwargs: providerResponse
+            providerClient.__aenter__.return_value = providerClient
+            endpoint = next(
+                route.endpoint for route in main.create_writing_router(
+                    replace(main.writingDeps, fetch_generation_usage=waitForUsage), main.lorebookDeps,
+                ).routes
+                if getattr(route, "path", "") ==
+                "/api/stories/{story_id}/chapters/{chapter_id}/generate/stream"
+            )
+            with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
+                "backend.writing.httpx.AsyncClient", return_value=providerClient,
+            ), patch("backend.writing.run_lorebook_update") as lorebookRun:
+                response = await endpoint(story["id"], chapter["id"], main.StreamMessageRequest(
+                    message="continue", model="test/model", write_generation_mode=mode,
+                    chapter_revision=chapter["revision"], generation_run_id=clientRunId, generation_status_id=clientRunId,
+                ))
+                stream = response.body_iterator
+                generationId = None
+                try:
+                    async for chunk in stream:
+                        event = json.loads(chunk)
+                        generationId = event["generationId"]
+                        if clientRunId:
+                            self.assertEqual(generationId, clientRunId)
+                        if event["type"] == stopEvent:
+                            break
+                    statusPath = (
+                        f"/api/stories/{story['id']}/chapters/{chapter['id']}"
+                        f"/generations/{generationId}"
+                    )
+                    self.assertEqual(
+                        self.client.get(statusPath).json(),
+                        {"settled": stopEvent == "chapter_updated"},
+                    )
+                    if concurrentEdit:
+                        with main.get_db() as conn:
+                            conn.execute(
+                                "UPDATE chapters SET content = ?, revision = revision + 1 WHERE id = ?",
+                                ("A newer user edit.", chapter["id"]),
+                            )
+                    if stopMethod == "cancel":
+                        nextChunk = asyncio.create_task(anext(stream))
+                        await asyncio.wait_for(providerWaiting.wait(), timeout=1)
+                        nextChunk.cancel()
+                        with self.assertRaises(asyncio.CancelledError):
+                            await nextChunk
+                    else:
+                        await stream.aclose()
+                finally:
+                    await stream.aclose()
+                self.assertEqual(self.client.get(statusPath).json(), {"settled": True})
+                self.assertEqual(
+                    self.client.get(statusPath.replace(story["id"], "another-story")).json(),
+                    {"settled": False},
+                )
+                lorebookRun.assert_not_called()
+
+        asyncio.run(stopGeneration())
+        bundle = self.client.get(f"/api/stories/{story['id']}").json()
+        savedChapter = next(item for item in bundle["chapters"] if item["id"] == chapter["id"])
+        hasContent = stopEvent != "history"
+        expectedContent = "first line\n\nA finished paragraph." if hasContent else "first line"
+        if concurrentEdit:
+            expectedContent = "A newer user edit."
+        self.assertEqual(savedChapter["content"], expectedContent)
+        self.assertEqual(savedChapter["revision"], int(hasContent or concurrentEdit))
+        historyKinds = [entry["kind"] for entry in savedChapter["history"]]
+        self.assertEqual(historyKinds.count("prompt"), 1)
+        self.assertEqual(historyKinds.count("write"), int(hasContent and not concurrentEdit))
+        expectedFailure = concurrentEdit or (
+            not completionSignal and stopEvent != "chapter_updated" and (mode == "edit" or not hasContent)
+        )
+        self.assertEqual(historyKinds.count("write_failed"), int(expectedFailure))
+        if completionSignal:
+            writeEntry = next(entry for entry in savedChapter["history"] if entry["kind"] == "write")
+            self.assertNotIn("before", writeEntry["label"])
+        if mode == "new" and hasContent and stopEvent != "chapter_updated" and not concurrentEdit and not completionSignal:
+            writeEntry = next(entry for entry in savedChapter["history"] if entry["kind"] == "write")
+            self.assertTrue(writeEntry["label"].endswith("before the run stopped"))
+        with main.get_db() as conn:
+            generations = conn.execute(
+                "SELECT * FROM story_generations WHERE chapter_id = ?", (chapter["id"],),
+            ).fetchall()
+        self.assertEqual(len(generations), 1)
+        self.assertEqual(generations[0]["generated_text"], output if hasContent else "")
+        if concurrentEdit:
+            self.assertEqual(generations[0]["error"], "chapter_revision_conflict")
+        elif stopEvent == "chapter_updated" or completionSignal:
+            self.assertIsNone(generations[0]["error"])
+        elif not hasContent or mode == "new":
+            self.assertEqual(generations[0]["error"], "generation_cancelled")
+        else:
+            self.assertIn("partial: applied", generations[0]["error"])
+        return savedChapter, generations[0]
+
+    def testResponseDisconnectSettlesGeneration(self):
+        for specVersion, stopEvent in (("2.0", None), ("2.4", None), ("2.4", "content")):
+            with self.subTest(specVersion=specVersion, stopEvent=stopEvent):
+                story = self.client.post("/api/stories", json={"title": "Early stop"}).json()["story"]
+                chapter = self.client.post(
+                    f"/api/stories/{story['id']}/chapters",
+                    json={"title": "Opening", "content": "Original prose."},
+                ).json()["chapter"]
+                generationId = str(uuid.uuid4())
+                statusPath = (
+                    f"/api/stories/{story['id']}/chapters/{chapter['id']}"
+                    f"/generations/{generationId}"
+                )
+
+                async def disconnectResponse():
+                    endpoint = next(
+                        route.endpoint for route in main.create_writing_router(main.writingDeps, main.lorebookDeps).routes
+                        if getattr(route, "path", "") ==
+                        "/api/stories/{story_id}/chapters/{chapter_id}/generate/stream"
+                    )
+                    response = await endpoint(story["id"], chapter["id"], main.StreamMessageRequest(
+                        message="continue", model="test/model", chapter_revision=chapter["revision"],
+                        generation_status_id=generationId, write_generation_mode="new",
+                    ))
+                    with self.assertRaises(main.HTTPException) as duplicateError:
+                        await endpoint(story["id"], chapter["id"], main.StreamMessageRequest(
+                            message="duplicate", model="test/model", chapter_revision=chapter["revision"],
+                            generation_status_id=generationId,
+                        ))
+                    self.assertEqual(duplicateError.exception.status_code, 409)
+                    with main.get_db() as conn:
+                        pendingRow = conn.execute(
+                            "SELECT error, settled FROM story_generations WHERE id = ?", (generationId,),
+                        ).fetchone()
+                    self.assertEqual(dict(pendingRow), {"error": "generation_pending", "settled": 0})
+                    headersSent = asyncio.Event()
+
+                    async def send(message):
+                        if stopEvent:
+                            if message["type"] == "http.response.start":
+                                return
+                            event = json.loads(message["body"])
+                            if event["type"] != stopEvent:
+                                return
+                        else:
+                            self.assertEqual(message["type"], "http.response.start")
+                        headersSent.set()
+                        if specVersion == "2.4":
+                            raise OSError("client disconnected")
+                        await asyncio.Event().wait()
+
+                    async def receive():
+                        await headersSent.wait()
+                        return {"type": "http.disconnect"}
+
+                    if specVersion == "2.4":
+                        from starlette.requests import ClientDisconnect
+                        with self.assertRaises(ClientDisconnect):
+                            await response({"type": "http", "asgi": {"spec_version": specVersion}}, receive, send)
+                    else:
+                        await response({"type": "http", "asgi": {"spec_version": specVersion}}, receive, send)
+
+                fakeClient = AsyncMock()
+                fakeClient.__aenter__.return_value = fakeClient
+                fakeClient.stream = lambda *args, **kwargs: fakeLorebookStream("Partial prose.")
+                with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
+                    "backend.writing.httpx.AsyncClient", return_value=fakeClient,
+                ) as providerClient:
+                    asyncio.run(disconnectResponse())
+                    if stopEvent:
+                        providerClient.assert_called_once()
+                    else:
+                        providerClient.assert_not_called()
+                self.assertEqual(self.client.get(statusPath).json(), {"settled": True})
+                savedChapter = self.client.get(f"/api/stories/{story['id']}").json()["chapters"][0]
+                expectedContent = "Original prose.\n\nPartial prose." if stopEvent else "Original prose."
+                self.assertEqual(savedChapter["content"], expectedContent)
+                self.assertEqual(savedChapter["revision"], int(bool(stopEvent)))
+                if stopEvent:
+                    self.assertEqual([entry["kind"] for entry in savedChapter["history"]], ["prompt", "write"])
+                else:
+                    self.assertEqual(savedChapter["history"], [])
+                with main.get_db() as conn:
+                    rows = conn.execute(
+                        "SELECT * FROM story_generations WHERE id = ?", (generationId,),
+                    ).fetchall()
+                self.assertEqual(len(rows), 1)
+                self.assertEqual(rows[0]["prompt"], "continue")
+                self.assertEqual(rows[0]["error"], "generation_cancelled")
+
+    def testClientRunIdAcknowledgesCancelledGeneration(self):
+        for mode in ("new", "edit"):
+            with self.subTest(mode=mode):
+                self.checkStoppedChapterGeneration(
+                    "cancel", mode=mode, clientRunId=str(uuid.uuid4()),
+                )
+
+    def testGenerationSettledMigrationIsIdempotent(self):
+        with sqlite3.connect(":memory:") as conn:
+            conn.row_factory = sqlite3.Row
+            conn.execute("CREATE TABLE story_generations (id TEXT PRIMARY KEY)")
+            conn.execute("INSERT INTO story_generations (id) VALUES ('old-run')")
+            main.ensureGenerationSettledColumn(conn)
+            main.ensureGenerationSettledColumn(conn)
+            self.assertEqual(conn.execute("SELECT settled FROM story_generations").fetchone()[0], 0)
+
+    def testCancellationDuringUsageKeepsCompletedGeneration(self):
+        for mode in ("new", "edit"):
+            for completionSignal in ("done", "finish"):
+                with self.subTest(mode=mode, completionSignal=completionSignal):
+                    self.checkStoppedChapterGeneration(
+                        "cancel", mode=mode, completionSignal=completionSignal,
+                    )
+
+    def testClosingWriteStreamFinishesCleanup(self):
+        self.checkStoppedChapterGeneration("close")
+
+    def testCancellingWriteStreamFinishesCleanup(self):
+        self.checkStoppedChapterGeneration("cancel")
+
+    def testClosingWriteStreamBeforeContentKeepsChapterUnchanged(self):
+        self.checkStoppedChapterGeneration("close", stopEvent="history")
+
+    def testClosingWriteStreamAfterChapterUpdateKeepsWriteHistory(self):
+        self.checkStoppedChapterGeneration("close", stopEvent="chapter_updated")
+
+    def testClosingNewWriteStreamKeepsProse(self):
+        self.checkStoppedChapterGeneration("close", mode="new")
+
+    def testCancellingNewWriteStreamKeepsProse(self):
+        self.checkStoppedChapterGeneration("cancel", mode="new")
+
+    def testClosingNewWriteStreamBeforeContentKeepsChapterUnchanged(self):
+        self.checkStoppedChapterGeneration("close", stopEvent="history", mode="new")
+
+    def testClosingNewWriteStreamAfterChapterUpdateSavesOnlyOnce(self):
+        self.checkStoppedChapterGeneration("close", stopEvent="chapter_updated", mode="new")
+
+    def testStoppedNewWriteStreamPreservesConcurrentEdit(self):
+        for stopMethod in ("close", "cancel"):
+            with self.subTest(stopMethod=stopMethod):
+                self.checkStoppedChapterGeneration(stopMethod, mode="new", concurrentEdit=True)
 
     def test_incomplete_stream_saves_partial_chapter_text_in_new_mode(self):
         #a dropped connection still has good prose in it in append mode, so it gets kept instead of thrown away

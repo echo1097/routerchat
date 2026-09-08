@@ -80,6 +80,7 @@ import { useAttachments } from "./attachments/useAttachments.js";
 const ChapterCanvasEditor = lazy(() => import("./writing/ChapterCanvasEditor.jsx"));
 import {
   chapterAppliedEditSummary,
+  loadSettledGeneration,
   chapterFromUpdateEvent,
   chapterRunTargetsOpenChapter,
   chapterGenerationErrorIsRepairable,
@@ -239,6 +240,10 @@ const storyApi = {
 
   async getStory(storyId) {
     return api(`/api/stories/${encodeURIComponent(storyId)}`);
+  },
+
+  async getGenerationStatus(run) {
+    return api(`/api/stories/${encodeURIComponent(run.storyId)}/chapters/${encodeURIComponent(run.chapterId)}/generations/${encodeURIComponent(run.generationId)}`);
   },
 
   async createStory(data) {
@@ -484,6 +489,7 @@ const storyApi = {
     generationMode,
     chapterRevision,
     generationRunId,
+    generationStatusId,
     repairContext,
     attachmentIds = [],
     onEvent,
@@ -501,6 +507,7 @@ const storyApi = {
           write_generation_mode: generationMode,
           chapter_revision: chapterRevision,
           generation_run_id: generationRunId,
+          generation_status_id: generationStatusId,
           repair_context: repairContext || null,
           message: prompt,
           attachment_ids: attachmentIds,
@@ -508,9 +515,12 @@ const storyApi = {
       },
     );
 
-    if (!response.ok || !response.body) {
-      throw await responseError(response);
+    if (!response.ok) {
+      const error = await responseError(response);
+      error.generationRejected = true;
+      throw error;
     }
+    if (!response.body) throw new Error("The generation stream is missing.");
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -7912,8 +7922,12 @@ function App() {
 
   async function reconcileGenerationRun(run) {
     if (run.navigationIntent !== currentNavigationIntent()) return;
-    const payload = await storyApi.getStory(run.storyId);
-    if (run.navigationIntent !== currentNavigationIntent()) return;
+    const payload = await loadSettledGeneration(run, {
+      getStatus: (currentRun) => storyApi.getGenerationStatus(currentRun),
+      getStory: (storyId) => storyApi.getStory(storyId),
+      isCurrent: () => generationRunOwnsVisibleWorkspace(run),
+    });
+    if (!payload) return;
     const nextChapters = payload.chapters || [];
     nextChapters.forEach((chapter) => chapterSaveCoordinator.rememberServerChapter(chapter));
 
@@ -10277,6 +10291,8 @@ function App() {
 
       run.status = "streaming";
       setStoryGenerationStatus(repairContext ? "Fixing the edit" : "Working");
+      abortController.signal.throwIfAborted();
+      run.generationId = crypto.randomUUID();
       await storyApi.generateChapter({
         storyId: run.storyId,
         chapterId: targetChapterId,
@@ -10285,12 +10301,14 @@ function App() {
         generationMode: run.generationMode,
         chapterRevision: targetChapterRevision,
         generationRunId: run.runId,
+        generationStatusId: run.generationId,
         repairContext,
         attachmentIds: sentAttachmentIds,
         signal: abortController.signal,
         onEvent: (event) => {
           if (!chapterGenerationEventMatchesRun(event, run)) return;
           if (!generationRunOwnsVisibleWorkspace(run)) return;
+          if (event.generationId) run.generationId = event.generationId;
           if (event.type === "history") {
             appendWriteHistoryEntry(event.value || {});
             return;
@@ -10437,6 +10455,7 @@ function App() {
       run.status = terminalStatus;
       if (!streamFailed) showToast("Finished chapter");
     } catch (error) {
+      if (error.generationRejected) run.generationId = null;
       if (error.name === "AbortError") {
         setStatus("Response stopped");
         terminalStatus = "aborted";
@@ -10452,6 +10471,7 @@ function App() {
           await reconcileGenerationRun(run);
         } catch (error) {
           if (terminalStatus === "completed") terminalStatus = "failed";
+          setStatus(error.message);
         }
       }
       run.status = terminalStatus;

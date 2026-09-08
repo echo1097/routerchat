@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import json
 import re
+import socket
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
@@ -172,10 +174,73 @@ def icon_href_from_html(html: str) -> str | None:
     return None
 
 
+class FaviconTransport(httpx.AsyncBaseTransport):
+    def __init__(self):
+        self.transports = {}
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        host = request.url.raw_host.decode("ascii")
+        if (
+            request.url.scheme != "https"
+            or not safe_favicon_domain(host)
+            or request.url.userinfo
+        ):
+            raise httpx.ConnectError("Unsafe favicon URL", request=request)
+
+        port = request.url.port or 443
+        try:
+            addressInfo = await asyncio.wait_for(
+                asyncio.get_running_loop().getaddrinfo(host, port, type=socket.SOCK_STREAM),
+                timeout=FAVICON_TIMEOUT.connect,
+            )
+            addresses = list(dict.fromkeys(item[4][0] for item in addressInfo))
+            if not addresses:
+                raise ValueError("No favicon addresses")
+
+            for addressText in addresses:
+                address = ipaddress.ip_address(addressText)
+                if not address.is_global or address.is_multicast:
+                    raise ValueError("Non-public favicon address")
+                if isinstance(address, ipaddress.IPv6Address) and (
+                    address.ipv4_mapped
+                    or address.sixtofour
+                    or address.teredo
+                    or address in ipaddress.ip_network("::/96")
+                    or address in ipaddress.ip_network("64:ff9b::/96")
+                ):
+                    raise ValueError("Translated favicon address")
+        except (OSError, ValueError, TimeoutError) as error:
+            raise httpx.ConnectError("Unsafe or unresolved favicon host", request=request) from error
+
+        for addressIndex, addressText in enumerate(addresses):
+            transportKey = (host, addressText, port)
+            if transportKey not in self.transports:
+                self.transports[transportKey] = httpx.AsyncHTTPTransport(trust_env=False)
+
+            pinnedRequest = httpx.Request(
+                request.method,
+                request.url.copy_with(host=addressText),
+                headers=request.headers,
+                stream=request.stream,
+                extensions={**request.extensions, "sni_hostname": host},
+            )
+            try:
+                return await self.transports[transportKey].handle_async_request(pinnedRequest)
+            except (httpx.ConnectError, httpx.ConnectTimeout):
+                if addressIndex == len(addresses) - 1:
+                    raise
+
+    async def aclose(self):
+        for transport in self.transports.values():
+            await transport.aclose()
+
+
 async def fetch_favicon(domain: str) -> tuple[str, bytes] | None:
     headers = {"User-Agent": FAVICON_USER_AGENT, "Accept": "image/*,*/*;q=0.5"}
 
     async with httpx.AsyncClient(
+        transport=FaviconTransport(),
+        trust_env=False,
         timeout=FAVICON_TIMEOUT,
         follow_redirects=True,
         max_redirects=3,

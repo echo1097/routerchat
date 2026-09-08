@@ -1717,6 +1717,19 @@ def repair_instructions(repair_context: dict[str, Any]) -> str:
 
 
 
+class ChapterStreamingResponse(StreamingResponse):
+    def __init__(self, content, *, onClose, **kwargs):
+        super().__init__(content, **kwargs)
+        self.onClose = onClose
+
+    async def __call__(self, scope, receive, send):
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            await self.body_iterator.aclose()
+            self.onClose()
+
+
 def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIRouter:
     router = APIRouter()
     StreamMessageRequest = deps.stream_message_request
@@ -1788,12 +1801,14 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
         chapter: sqlite3.Row,
         lorebook_rows: list[sqlite3.Row],
         base_revision: int,
+        generationId: str,
         previous_chapters: list[sqlite3.Row] | None = None,
     ) -> AsyncIterator[bytes]:
         event_metadata = {
             "runId": getattr(payload, "generation_run_id", None),
             "storyId": story_id,
             "chapterId": chapter_id,
+            "generationId": generationId,
         }
 
         def emit(event_type: str, value: Any, revision: int | None = None) -> bytes:
@@ -1862,7 +1877,7 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
         error_text: str | None = None
         generation_id: str | None = None
         usage: dict[str, Any] | None = None
-        story_generation_id = str(uuid.uuid4())
+        story_generation_id = event_metadata["generationId"]
         history_run_id = str(uuid.uuid4())
         model_label = display_model_name(payload.model)
         reasoning_started_at: float | None = None
@@ -1872,6 +1887,7 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
         stream_completed = False
         received_done = False
         cancelled = False
+        pendingEvents: list[bytes] = []
 
         def save_history(
             label: str,
@@ -1986,9 +2002,11 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                             {"generation_id": generation_id, "model": payload.model, **usage},
                         )
                     stream_completed = received_done or bool(finish_reason)
-        except asyncio.CancelledError:
+        except (asyncio.CancelledError, GeneratorExit):
             cancelled = True
-            error_text = "generation_cancelled"
+            stream_completed = received_done or bool(finish_reason)
+            if not stream_completed:
+                error_text = "generation_cancelled"
             raise
         except Exception as exc:  # noqa: BLE001
             error_text = str(exc)
@@ -2006,12 +2024,11 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                     "code": "generation_incomplete_stream",
                     "message": "Generation ended before the provider completed the stream.",
                 }
-            #a dropped connection in append mode still has good prose sitting in it, worth keeping instead of throwing away
             incomplete_stream = error_text == "generation_incomplete_stream"
-            append_truncated = incomplete_stream and generation_mode != "edit" and bool(content)
+            append_truncated = (incomplete_stream or (cancelled and not stream_completed)) and generation_mode != "edit" and bool(content)
             #edit mode used to walk away from a run that stopped early, which threw away every finished paragraph the model had already written
-            edit_stopped_early = (incomplete_stream or cancelled) and generation_mode == "edit" and bool(content)
-            if cancelled:
+            edit_stopped_early = (incomplete_stream or (cancelled and not stream_completed)) and generation_mode == "edit" and bool(content)
+            if cancelled and not stream_completed:
                 error_event = {
                     "code": "generation_cancelled",
                     "message": "Generation was cancelled.",
@@ -2156,19 +2173,14 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
 
                 conn.execute(
                     """
-                    INSERT INTO story_generations (
-                      id, story_id, chapter_id, prompt, generated_text, model,
-                      finish_reason, error, generation_id, prompt_tokens,
-                      completion_tokens, reasoning_tokens, total_tokens, cost,
-                      provider_name, generation_time, latency, created_at
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    UPDATE story_generations
+                    SET generated_text = ?, model = ?, finish_reason = ?, error = ?,
+                        generation_id = ?, prompt_tokens = ?, completion_tokens = ?,
+                        reasoning_tokens = ?, total_tokens = ?, cost = ?, provider_name = ?,
+                        generation_time = ?, latency = ?, created_at = ?
+                    WHERE id = ?
                     """,
                     (
-                        story_generation_id,
-                        story_id,
-                        chapter_id,
-                        payload.message,
                         content,
                         payload.model,
                         finish_reason,
@@ -2183,6 +2195,7 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                         usage.get("generation_time") if usage else None,
                         usage.get("latency") if usage else None,
                         now,
+                        story_generation_id,
                     ),
                 )
                 conn.execute(
@@ -2190,7 +2203,7 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                     (now, story_id),
                 )
             if error_event is not None:
-                yield emit("error", error_event)
+                pendingEvents.append(emit("error", error_event))
                 #new mode never touches an edit at all, so the label needs to say what actually failed
                 fail_label = (
                     f"{model_label} could not apply the edit"
@@ -2198,7 +2211,7 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                     else f"{model_label} could not finish writing"
                 )
                 #a run that failed still burned tokens, so it gets a line and carries the cost the wrote for line never got to report
-                yield emit(
+                pendingEvents.append(emit(
                     "history",
                     save_history(
                         fail_label,
@@ -2206,9 +2219,13 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                         kind="write_failed",
                         cost=usage.get("cost") if usage else None,
                     ),
-                )
+                ))
             if chapter_update_event is not None:
-                yield emit("chapter_updated", chapter_update_event, chapter_update_event["chapter"]["revision"])
+                pendingEvents.append(emit(
+                    "chapter_updated",
+                    chapter_update_event,
+                    chapter_update_event["chapter"]["revision"],
+                ))
                 if content_started_at is not None:
                     duration_ms = (time.perf_counter() - content_started_at) * 1000
                     written_added, written_removed = word_diff_counts(
@@ -2231,13 +2248,14 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                         )
                         detail = "the response was cut off, so any edits it had not written yet are missing"
                     elif chapter_update_event.get("truncated"):
-                        label = f"{model_label} wrote for {format_duration(duration_ms)} before the connection dropped"
+                        stoppedAt = "the run stopped" if cancelled else "the connection dropped"
+                        label = f"{model_label} wrote for {format_duration(duration_ms)} before {stoppedAt}"
                         detail = "the response was cut off, so anything written after that point is missing"
                     else:
                         label = f"{model_label} wrote for {format_duration(duration_ms)}"
                         detail = ""
 
-                    yield emit(
+                    pendingEvents.append(emit(
                         "history",
                         save_history(
                             label,
@@ -2247,61 +2265,71 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                             words_removed=written_removed,
                             cost=usage.get("cost") if usage else None,
                         ),
-                    )
+                    ))
                     content_started_at = None
 
-                with deps.get_db() as conn:
-                    auto_row = conn.execute(
-                        "SELECT lorebook_auto FROM stories WHERE id = ?", (story_id,)
-                    ).fetchone()
+            with deps.get_db() as conn:
+                conn.execute(
+                    "UPDATE story_generations SET settled = 1 WHERE id = ?",
+                    (story_generation_id,),
+                )
 
-                #manual runs get their own button, this is only for the folks who opted into auto
-                if auto_row and bool(auto_row["lorebook_auto"]):
-                    lorebook_started_at = time.perf_counter()
-                    yield emit("lorebook_start", {"generation_id": story_generation_id})
+        for event in pendingEvents:
+            yield event
 
-                    lorebook_result: dict[str, Any] = {}
-                    #the reasoning rides the same stream so the write mode dropdown can show it live
-                    async for lorebook_event in run_lorebook_update(
-                        lorebookDeps,
-                        story_id,
-                        chapter_id,
-                        chapter_update_event["chapter"]["content"],
-                        payload.model,
-                        payload.max_tokens,
-                        generation_row_id=story_generation_id,
+        if chapter_update_event is not None:
+            with deps.get_db() as conn:
+                auto_row = conn.execute(
+                    "SELECT lorebook_auto FROM stories WHERE id = ?", (story_id,)
+                ).fetchone()
+
+            #manual runs get their own button, this is only for the folks who opted into auto
+            if auto_row and bool(auto_row["lorebook_auto"]):
+                lorebook_started_at = time.perf_counter()
+                yield emit("lorebook_start", {"generation_id": story_generation_id})
+
+                lorebook_result: dict[str, Any] = {}
+                #the reasoning rides the same stream so the write mode dropdown can show it live
+                async for lorebook_event in run_lorebook_update(
+                    lorebookDeps,
+                    story_id,
+                    chapter_id,
+                    chapter_update_event["chapter"]["content"],
+                    payload.model,
+                    payload.max_tokens,
+                    generation_row_id=story_generation_id,
+                ):
+                    if lorebook_event["type"] == "reasoning":
+                        yield emit("lorebook_reasoning", lorebook_event["value"])
+                        continue
+                    if lorebook_event["type"] == "content":
+                        yield emit("lorebook_content", None)
+                        continue
+                    lorebook_result = lorebook_event["value"]
+
+                lorebook_duration_ms = (time.perf_counter() - lorebook_started_at) * 1000
+                #a skipped run never reached the model, so there is no activity to record
+                if not lorebook_result.get("skipped_run"):
+                    for action in lorebook_run_history_actions(
+                        model_label,
+                        lorebook_result.get("applied") or [],
+                        lorebook_duration_ms,
+                        lorebook_result.get("cost"),
+                        lorebook_result.get("skipped") or [],
                     ):
-                        if lorebook_event["type"] == "reasoning":
-                            yield emit("lorebook_reasoning", lorebook_event["value"])
-                            continue
-                        if lorebook_event["type"] == "content":
-                            yield emit("lorebook_content", None)
-                            continue
-                        lorebook_result = lorebook_event["value"]
+                        yield emit(
+                            "history",
+                            save_history(
+                                action["label"],
+                                detail=action.get("detail") or "",
+                                kind=action["kind"],
+                                words_added=action["words_added"],
+                                words_removed=action["words_removed"],
+                                cost=action["cost"],
+                            ),
+                        )
 
-                    lorebook_duration_ms = (time.perf_counter() - lorebook_started_at) * 1000
-                    #a skipped run never reached the model, so there is no activity to record
-                    if not lorebook_result.get("skipped_run"):
-                        for action in lorebook_run_history_actions(
-                            model_label,
-                            lorebook_result.get("applied") or [],
-                            lorebook_duration_ms,
-                            lorebook_result.get("cost"),
-                            lorebook_result.get("skipped") or [],
-                        ):
-                            yield emit(
-                                "history",
-                                save_history(
-                                    action["label"],
-                                    detail=action.get("detail") or "",
-                                    kind=action["kind"],
-                                    words_added=action["words_added"],
-                                    words_removed=action["words_removed"],
-                                    cost=action["cost"],
-                                ),
-                            )
-
-                    yield emit("lorebook", lorebook_result)
+                yield emit("lorebook", lorebook_result)
 
     @router.get("/api/stories")
     def list_stories() -> dict[str, Any]:
@@ -2725,6 +2753,15 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
 
         return {"story": row_to_story(story), "chapter": row_to_chapter(chapter)}
 
+    @router.get("/api/stories/{story_id}/chapters/{chapter_id}/generations/{generationId}")
+    def getGenerationStatus(story_id: str, chapter_id: str, generationId: str) -> dict[str, bool]:
+        with deps.get_db() as conn:
+            generationRow = conn.execute(
+                "SELECT settled FROM story_generations WHERE id = ? AND story_id = ? AND chapter_id = ?",
+                (generationId, story_id, chapter_id),
+            ).fetchone()
+        return {"settled": bool(generationRow and generationRow["settled"])}
+
     @router.get("/api/stories/{story_id}")
     def get_story(story_id: str) -> dict[str, Any]:
         return get_story_bundle(story_id)
@@ -3019,7 +3056,30 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
             )
             claim_attachments(conn, attachmentIds, story_id=story_id)
 
-        return StreamingResponse(
+            generationId = payload.generation_status_id or str(uuid.uuid4())
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO story_generations (
+                        id, story_id, chapter_id, prompt, generated_text, model, error, created_at
+                    ) VALUES (?, ?, ?, ?, '', ?, 'generation_pending', ?)
+                    """,
+                    (generationId, story_id, chapter_id, payload.message, payload.model, deps.utc_now()),
+                )
+            except sqlite3.IntegrityError as exc:
+                raise HTTPException(status_code=409, detail="Generation status ID is already in use.") from exc
+
+        def settleUnstartedGeneration():
+            with deps.get_db() as conn:
+                conn.execute(
+                    """
+                    UPDATE story_generations SET settled = 1, error = 'generation_cancelled'
+                    WHERE id = ? AND error = 'generation_pending' AND settled = 0
+                    """,
+                    (generationId,),
+                )
+
+        return ChapterStreamingResponse(
             stream_story_generation(
                 story_id,
                 chapter_id,
@@ -3028,8 +3088,10 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                 chapter,
                 lorebook_rows,
                 base_revision,
+                generationId,
                 previousChapters,
             ),
+            onClose=settleUnstartedGeneration,
             media_type="application/x-ndjson; charset=utf-8",
         )
 

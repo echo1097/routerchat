@@ -2974,7 +2974,9 @@ class StoryApiTest(unittest.TestCase):
         self.assertEqual(savedContent.replace("\n\n", " "), prose)
         self.assertEqual(updateEvent["value"]["chapter"]["revision"], 1)
 
-    def checkStoppedChapterGeneration(self, stopMethod, stopEvent="content", mode="edit"):
+    def checkStoppedChapterGeneration(
+        self, stopMethod, stopEvent="content", mode="edit", concurrentEdit=False,
+    ):
         story = self.client.post(
             "/api/stories", json={"title": "Stopped generation", "lorebook_auto": True},
         ).json()["story"]
@@ -3022,6 +3024,12 @@ class StoryApiTest(unittest.TestCase):
                     async for chunk in stream:
                         if json.loads(chunk)["type"] == stopEvent:
                             break
+                    if concurrentEdit:
+                        with main.get_db() as conn:
+                            conn.execute(
+                                "UPDATE chapters SET content = ?, revision = revision + 1 WHERE id = ?",
+                                ("A newer user edit.", chapter["id"]),
+                            )
                     if stopMethod == "cancel":
                         nextChunk = asyncio.create_task(anext(stream))
                         await asyncio.wait_for(providerWaiting.wait(), timeout=1)
@@ -3039,14 +3047,18 @@ class StoryApiTest(unittest.TestCase):
         savedChapter = next(item for item in bundle["chapters"] if item["id"] == chapter["id"])
         hasContent = stopEvent != "history"
         expectedContent = "first line\n\nA finished paragraph." if hasContent else "first line"
+        if concurrentEdit:
+            expectedContent = "A newer user edit."
         self.assertEqual(savedChapter["content"], expectedContent)
-        self.assertEqual(savedChapter["revision"], int(hasContent))
+        self.assertEqual(savedChapter["revision"], int(hasContent or concurrentEdit))
         historyKinds = [entry["kind"] for entry in savedChapter["history"]]
         self.assertEqual(historyKinds.count("prompt"), 1)
-        self.assertEqual(historyKinds.count("write"), int(hasContent))
-        expectedFailure = stopEvent != "chapter_updated" and (mode == "edit" or not hasContent)
+        self.assertEqual(historyKinds.count("write"), int(hasContent and not concurrentEdit))
+        expectedFailure = concurrentEdit or (
+            stopEvent != "chapter_updated" and (mode == "edit" or not hasContent)
+        )
         self.assertEqual(historyKinds.count("write_failed"), int(expectedFailure))
-        if mode == "new" and hasContent and stopEvent != "chapter_updated":
+        if mode == "new" and hasContent and stopEvent != "chapter_updated" and not concurrentEdit:
             writeEntry = next(entry for entry in savedChapter["history"] if entry["kind"] == "write")
             self.assertTrue(writeEntry["label"].endswith("before the run stopped"))
         with main.get_db() as conn:
@@ -3055,7 +3067,9 @@ class StoryApiTest(unittest.TestCase):
             ).fetchall()
         self.assertEqual(len(generations), 1)
         self.assertEqual(generations[0]["generated_text"], output if hasContent else "")
-        if stopEvent == "chapter_updated":
+        if concurrentEdit:
+            self.assertEqual(generations[0]["error"], "chapter_revision_conflict")
+        elif stopEvent == "chapter_updated":
             self.assertIsNone(generations[0]["error"])
         elif not hasContent or mode == "new":
             self.assertEqual(generations[0]["error"], "generation_cancelled")
@@ -3080,6 +3094,17 @@ class StoryApiTest(unittest.TestCase):
 
     def testCancellingNewWriteStreamKeepsProse(self):
         self.checkStoppedChapterGeneration("cancel", mode="new")
+
+    def testClosingNewWriteStreamBeforeContentKeepsChapterUnchanged(self):
+        self.checkStoppedChapterGeneration("close", stopEvent="history", mode="new")
+
+    def testClosingNewWriteStreamAfterChapterUpdateSavesOnlyOnce(self):
+        self.checkStoppedChapterGeneration("close", stopEvent="chapter_updated", mode="new")
+
+    def testStoppedNewWriteStreamPreservesConcurrentEdit(self):
+        for stopMethod in ("close", "cancel"):
+            with self.subTest(stopMethod=stopMethod):
+                self.checkStoppedChapterGeneration(stopMethod, mode="new", concurrentEdit=True)
 
     def test_incomplete_stream_saves_partial_chapter_text_in_new_mode(self):
         #a dropped connection still has good prose in it in append mode, so it gets kept instead of thrown away

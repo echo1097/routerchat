@@ -430,14 +430,14 @@ def create_attachments_router(deps: AttachmentsDeps) -> APIRouter:
             for upload in files:
                 filename = safe_filename(upload.filename or "file")
                 kind, mime = classify_upload(filename)
-                raw = await upload.read()
+                limit = KIND_LIMITS[kind]
+                raw = await upload.read(limit + 1)
 
                 if not raw:
                     raise HTTPException(
                         status_code=400, detail=f"{filename} is empty."
                     )
 
-                limit = KIND_LIMITS[kind]
                 if len(raw) > limit:
                     raise HTTPException(
                         status_code=400,

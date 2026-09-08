@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
+from starlette.datastructures import UploadFile
 
 import backend.attachments as attachments
 import backend.main as main
@@ -112,6 +113,25 @@ class AttachmentApiTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("larger than", response.json()["detail"])
+
+    def testOversizedUploadReadIsBounded(self):
+        readLengths = []
+        originalRead = UploadFile.read
+
+        async def trackRead(upload, size=-1):
+            raw = await originalRead(upload, size)
+            readLengths.append(len(raw))
+            return raw
+
+        oversized = b"x" * (2 * 1024 * 1024)
+        with patch.object(UploadFile, "read", trackRead):
+            response = self.upload([("files", ("big.txt", oversized, "text/plain"))])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["detail"], "big.txt is larger than 256KB.")
+        self.assertTrue(readLengths)
+        self.assertLessEqual(sum(readLengths), attachments.MAX_TEXT_BYTES + 1)
+        self.assertEqual(list((main.DATA_DIR / "attachments").iterdir()), [])
 
     def test_upload_rejects_more_files_than_the_limit(self):
         payload = [

@@ -1,4 +1,4 @@
-# RouterChat 1.1.2
+# RouterChat 1.1.3
 A 100% free local OpenRouter chat interface. Strictly BYOK. 
 
 ## Disclaimer

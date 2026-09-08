@@ -194,7 +194,7 @@ describe("generation reconciliation", () => {
     expect(getStory).not.toHaveBeenCalled();
   });
 
-  it("does not poll when stopped before the server sends a generation id", async () => {
+  it("does not poll when stopped during preparation before a request is sent", async () => {
     const getStatus = vi.fn();
     const getStory = vi.fn().mockResolvedValue({ chapters: [] });
     await loadSettledGeneration({ storyId: "story" }, {
@@ -202,6 +202,20 @@ describe("generation reconciliation", () => {
     });
     expect(getStatus).not.toHaveBeenCalled();
     expect(getStory).toHaveBeenCalledExactlyOnceWith("story");
+  });
+
+  it("polls the preassigned id without receiving any stream events", async () => {
+    const getStory = vi.fn().mockResolvedValue({ chapters: [{ content: "saved after Stop" }] });
+    const getStatus = vi.fn()
+      .mockResolvedValueOnce({ settled: false })
+      .mockResolvedValueOnce({ settled: true });
+    await loadSettledGeneration({ storyId: "story", generationId: "client-created-id" }, {
+      getStatus, getStory, isCurrent: () => true,
+      wait: async () => { expect(getStory).not.toHaveBeenCalled(); },
+    });
+    expect(getStatus).toHaveBeenCalledTimes(2);
+    expect(getStatus.mock.calls[0][0].generationId).toBe("client-created-id");
+    expect(getStory).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the preview if the status request fails", async () => {

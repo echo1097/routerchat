@@ -216,6 +216,10 @@ export async function installWriteApi(page, options = {}) {
     const segments = path.split("/").filter(Boolean);
     const body = request.postData() ? request.postDataJSON() : {};
 
+    if (method === "GET" && segments[5] === "generations") {
+      return response(route, { settled: true });
+    }
+
     if (method === "GET" && path === "/api/tos") {
       return response(route, {
         hash: "e2e-tos-hash",

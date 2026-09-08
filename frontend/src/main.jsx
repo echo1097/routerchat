@@ -489,6 +489,7 @@ const storyApi = {
     generationMode,
     chapterRevision,
     generationRunId,
+    generationStatusId,
     repairContext,
     attachmentIds = [],
     onEvent,
@@ -506,6 +507,7 @@ const storyApi = {
           write_generation_mode: generationMode,
           chapter_revision: chapterRevision,
           generation_run_id: generationRunId,
+          generation_status_id: generationStatusId,
           repair_context: repairContext || null,
           message: prompt,
           attachment_ids: attachmentIds,
@@ -513,9 +515,12 @@ const storyApi = {
       },
     );
 
-    if (!response.ok || !response.body) {
-      throw await responseError(response);
+    if (!response.ok) {
+      const error = await responseError(response);
+      error.generationRejected = true;
+      throw error;
     }
+    if (!response.body) throw new Error("The generation stream is missing.");
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -10286,6 +10291,8 @@ function App() {
 
       run.status = "streaming";
       setStoryGenerationStatus(repairContext ? "Fixing the edit" : "Working");
+      abortController.signal.throwIfAborted();
+      run.generationId = crypto.randomUUID();
       await storyApi.generateChapter({
         storyId: run.storyId,
         chapterId: targetChapterId,
@@ -10294,6 +10301,7 @@ function App() {
         generationMode: run.generationMode,
         chapterRevision: targetChapterRevision,
         generationRunId: run.runId,
+        generationStatusId: run.generationId,
         repairContext,
         attachmentIds: sentAttachmentIds,
         signal: abortController.signal,
@@ -10447,6 +10455,7 @@ function App() {
       run.status = terminalStatus;
       if (!streamFailed) showToast("Finished chapter");
     } catch (error) {
+      if (error.generationRejected) run.generationId = null;
       if (error.name === "AbortError") {
         setStatus("Response stopped");
         terminalStatus = "aborted";

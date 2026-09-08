@@ -178,6 +178,79 @@ class AttachmentApiTest(unittest.TestCase):
         self.assertIn("filename*=UTF-8''", disposition)
         self.assertIn("%E2%80%AF", disposition)
 
+    def testRawNonImagesDownloadWithOriginalBytes(self):
+        cases = [
+            ("page.HTML", b"<script>alert(1)</script>"),
+            ("page.xml", b'<html xmlns="http://www.w3.org/1999/xhtml"><script>alert(1)</script></html>'),
+            ("notes.md", b"# Notes"),
+            ("document.pdf", b"%PDF-1.7\nexample"),
+            ("r\u00e9sum\u00e9.html", b"<script>alert(1)</script>"),
+        ]
+        for filename, body in cases:
+            with self.subTest(filename=filename):
+                attachment = self.uploadText(filename, body)
+                response = self.client.get(f"/api/attachments/{attachment['id']}/raw")
+
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.content, body)
+                self.assertEqual(response.headers["content-type"], "application/octet-stream")
+                self.assertTrue(response.headers["content-disposition"].startswith("attachment;"))
+                self.assertEqual(response.headers["x-content-type-options"], "nosniff")
+                self.assertEqual(response.headers["cache-control"], "no-store")
+                self.assertEqual(
+                    response.headers["content-security-policy"], "sandbox; default-src 'none'"
+                )
+
+    def testRawUnsafeStoredMetadataCannotEnableInlineDocuments(self):
+        attachment = self.uploadText("page.html", b"<script>alert(1)</script>")
+        cases = [
+            ("image", "image/svg+xml"),
+            ("image", "text/html"),
+            ("image", "image/png; charset=utf-8"),
+            ("image", ""),
+            ("text", "image/png"),
+        ]
+        for kind, mime in cases:
+            with self.subTest(kind=kind, mime=mime):
+                with main.get_db() as conn:
+                    conn.execute(
+                        "UPDATE attachments SET kind = ?, mime = ? WHERE id = ?",
+                        (kind, mime, attachment["id"]),
+                    )
+
+                response = self.client.get(f"/api/attachments/{attachment['id']}/raw")
+
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.headers["content-type"], "application/octet-stream")
+                self.assertTrue(response.headers["content-disposition"].startswith("attachment;"))
+                self.assertEqual(response.headers["x-content-type-options"], "nosniff")
+
+    def testRawAllowedImageTypesStayInline(self):
+        for extension, mime in attachments.IMAGE_TYPES.items():
+            with self.subTest(extension=extension):
+                attachment = self.uploadImage(f"image{extension}")
+                response = self.client.get(f"/api/attachments/{attachment['id']}/raw")
+
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.content, PNG_BYTES)
+                self.assertEqual(response.headers["content-type"], mime)
+                self.assertTrue(response.headers["content-disposition"].startswith("inline;"))
+                self.assertEqual(response.headers["x-content-type-options"], "nosniff")
+
+    def testRawHtmlDisguisedAsPngRetainsBrowserProtections(self):
+        htmlBody = b"<script>alert(1)</script>"
+        attachment = self.uploadText("image.png", htmlBody)
+
+        response = self.client.get(f"/api/attachments/{attachment['id']}/raw")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, htmlBody)
+        self.assertEqual(response.headers["content-type"], "image/png")
+        self.assertEqual(response.headers["x-content-type-options"], "nosniff")
+        self.assertEqual(
+            response.headers["content-security-policy"], "sandbox; default-src 'none'"
+        )
+
     def test_content_disposition_is_always_latin_1_encodable(self):
         for filename in [
             "Screenshot 2026-08-29 at 1.06.01\u202fPM.png",

@@ -205,6 +205,7 @@ class FaviconTransport(httpx.AsyncBaseTransport):
                     address.ipv4_mapped
                     or address.sixtofour
                     or address.teredo
+                    or address in ipaddress.ip_network("::/96")
                     or address in ipaddress.ip_network("64:ff9b::/96")
                 ):
                     raise ValueError("Translated favicon address")

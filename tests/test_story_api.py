@@ -5,6 +5,7 @@ import sqlite3
 import tempfile
 import unittest
 import uuid
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -2976,6 +2977,7 @@ class StoryApiTest(unittest.TestCase):
 
     def checkStoppedChapterGeneration(
         self, stopMethod, stopEvent="content", mode="edit", concurrentEdit=False,
+        completionSignal=None,
     ):
         story = self.client.post(
             "/api/stories", json={"title": "Stopped generation", "lorebook_auto": True},
@@ -2993,13 +2995,23 @@ class StoryApiTest(unittest.TestCase):
 
         async def stopGeneration():
             providerWaiting = asyncio.Event()
-            providerResponse = fakeLorebookStream(output)
+            providerResponse = fakeLorebookStream(
+                output, complete=completionSignal != "finish",
+                finishReason="stop" if completionSignal == "finish" else None,
+            )
+            if completionSignal:
+                providerResponse.headers = {"X-Generation-Id": "test-generation"}
+
+            async def waitForUsage(*args):
+                providerWaiting.set()
+                await asyncio.Event().wait()
+
             originalLines = providerResponse.aiter_lines
 
             async def providerLines():
                 async for line in originalLines():
                     yield line
-                    if stopMethod == "cancel":
+                    if stopMethod == "cancel" and not completionSignal:
                         providerWaiting.set()
                         await asyncio.Event().wait()
 
@@ -3008,7 +3020,9 @@ class StoryApiTest(unittest.TestCase):
             providerClient.stream = lambda *args, **kwargs: providerResponse
             providerClient.__aenter__.return_value = providerClient
             endpoint = next(
-                route.endpoint for route in main.create_writing_router(main.writingDeps, main.lorebookDeps).routes
+                route.endpoint for route in main.create_writing_router(
+                    replace(main.writingDeps, fetch_generation_usage=waitForUsage), main.lorebookDeps,
+                ).routes
                 if getattr(route, "path", "") ==
                 "/api/stories/{story_id}/chapters/{chapter_id}/generate/stream"
             )
@@ -3055,10 +3069,13 @@ class StoryApiTest(unittest.TestCase):
         self.assertEqual(historyKinds.count("prompt"), 1)
         self.assertEqual(historyKinds.count("write"), int(hasContent and not concurrentEdit))
         expectedFailure = concurrentEdit or (
-            stopEvent != "chapter_updated" and (mode == "edit" or not hasContent)
+            not completionSignal and stopEvent != "chapter_updated" and (mode == "edit" or not hasContent)
         )
         self.assertEqual(historyKinds.count("write_failed"), int(expectedFailure))
-        if mode == "new" and hasContent and stopEvent != "chapter_updated" and not concurrentEdit:
+        if completionSignal:
+            writeEntry = next(entry for entry in savedChapter["history"] if entry["kind"] == "write")
+            self.assertNotIn("before", writeEntry["label"])
+        if mode == "new" and hasContent and stopEvent != "chapter_updated" and not concurrentEdit and not completionSignal:
             writeEntry = next(entry for entry in savedChapter["history"] if entry["kind"] == "write")
             self.assertTrue(writeEntry["label"].endswith("before the run stopped"))
         with main.get_db() as conn:
@@ -3069,13 +3086,21 @@ class StoryApiTest(unittest.TestCase):
         self.assertEqual(generations[0]["generated_text"], output if hasContent else "")
         if concurrentEdit:
             self.assertEqual(generations[0]["error"], "chapter_revision_conflict")
-        elif stopEvent == "chapter_updated":
+        elif stopEvent == "chapter_updated" or completionSignal:
             self.assertIsNone(generations[0]["error"])
         elif not hasContent or mode == "new":
             self.assertEqual(generations[0]["error"], "generation_cancelled")
         else:
             self.assertIn("partial: applied", generations[0]["error"])
         return savedChapter, generations[0]
+
+    def testCancellationDuringUsageKeepsCompletedGeneration(self):
+        for mode in ("new", "edit"):
+            for completionSignal in ("done", "finish"):
+                with self.subTest(mode=mode, completionSignal=completionSignal):
+                    self.checkStoppedChapterGeneration(
+                        "cancel", mode=mode, completionSignal=completionSignal,
+                    )
 
     def testClosingWriteStreamFinishesCleanup(self):
         self.checkStoppedChapterGeneration("close")

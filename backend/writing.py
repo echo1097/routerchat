@@ -1989,7 +1989,9 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                     stream_completed = received_done or bool(finish_reason)
         except (asyncio.CancelledError, GeneratorExit):
             cancelled = True
-            error_text = "generation_cancelled"
+            stream_completed = received_done or bool(finish_reason)
+            if not stream_completed:
+                error_text = "generation_cancelled"
             raise
         except Exception as exc:  # noqa: BLE001
             error_text = str(exc)
@@ -2008,10 +2010,10 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                     "message": "Generation ended before the provider completed the stream.",
                 }
             incomplete_stream = error_text == "generation_incomplete_stream"
-            append_truncated = (incomplete_stream or cancelled) and generation_mode != "edit" and bool(content)
+            append_truncated = (incomplete_stream or (cancelled and not stream_completed)) and generation_mode != "edit" and bool(content)
             #edit mode used to walk away from a run that stopped early, which threw away every finished paragraph the model had already written
-            edit_stopped_early = (incomplete_stream or cancelled) and generation_mode == "edit" and bool(content)
-            if cancelled:
+            edit_stopped_early = (incomplete_stream or (cancelled and not stream_completed)) and generation_mode == "edit" and bool(content)
+            if cancelled and not stream_completed:
                 error_event = {
                     "code": "generation_cancelled",
                     "message": "Generation was cancelled.",

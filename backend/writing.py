@@ -2007,9 +2007,8 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                     "code": "generation_incomplete_stream",
                     "message": "Generation ended before the provider completed the stream.",
                 }
-            #a dropped connection in append mode still has good prose sitting in it, worth keeping instead of throwing away
             incomplete_stream = error_text == "generation_incomplete_stream"
-            append_truncated = incomplete_stream and generation_mode != "edit" and bool(content)
+            append_truncated = (incomplete_stream or cancelled) and generation_mode != "edit" and bool(content)
             #edit mode used to walk away from a run that stopped early, which threw away every finished paragraph the model had already written
             edit_stopped_early = (incomplete_stream or cancelled) and generation_mode == "edit" and bool(content)
             if cancelled:
@@ -2236,7 +2235,8 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                         )
                         detail = "the response was cut off, so any edits it had not written yet are missing"
                     elif chapter_update_event.get("truncated"):
-                        label = f"{model_label} wrote for {format_duration(duration_ms)} before the connection dropped"
+                        stoppedAt = "the run stopped" if cancelled else "the connection dropped"
+                        label = f"{model_label} wrote for {format_duration(duration_ms)} before {stoppedAt}"
                         detail = "the response was cut off, so anything written after that point is missing"
                     else:
                         label = f"{model_label} wrote for {format_duration(duration_ms)}"

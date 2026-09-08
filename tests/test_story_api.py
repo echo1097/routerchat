@@ -3112,9 +3112,9 @@ class StoryApiTest(unittest.TestCase):
             self.assertIn("partial: applied", generations[0]["error"])
         return savedChapter, generations[0]
 
-    def testDisconnectBeforeBodyIterationSettlesPendingGeneration(self):
-        for specVersion in ("2.0", "2.4"):
-            with self.subTest(specVersion=specVersion):
+    def testResponseDisconnectSettlesGeneration(self):
+        for specVersion, stopEvent in (("2.0", None), ("2.4", None), ("2.4", "content")):
+            with self.subTest(specVersion=specVersion, stopEvent=stopEvent):
                 story = self.client.post("/api/stories", json={"title": "Early stop"}).json()["story"]
                 chapter = self.client.post(
                     f"/api/stories/{story['id']}/chapters",
@@ -3126,7 +3126,7 @@ class StoryApiTest(unittest.TestCase):
                     f"/generations/{generationId}"
                 )
 
-                async def disconnectBeforeBody():
+                async def disconnectResponse():
                     endpoint = next(
                         route.endpoint for route in main.create_writing_router(main.writingDeps, main.lorebookDeps).routes
                         if getattr(route, "path", "") ==
@@ -3134,8 +3134,14 @@ class StoryApiTest(unittest.TestCase):
                     )
                     response = await endpoint(story["id"], chapter["id"], main.StreamMessageRequest(
                         message="continue", model="test/model", chapter_revision=chapter["revision"],
-                        generation_status_id=generationId,
+                        generation_status_id=generationId, write_generation_mode="new",
                     ))
+                    with self.assertRaises(main.HTTPException) as duplicateError:
+                        await endpoint(story["id"], chapter["id"], main.StreamMessageRequest(
+                            message="duplicate", model="test/model", chapter_revision=chapter["revision"],
+                            generation_status_id=generationId,
+                        ))
+                    self.assertEqual(duplicateError.exception.status_code, 409)
                     with main.get_db() as conn:
                         pendingRow = conn.execute(
                             "SELECT error, settled FROM story_generations WHERE id = ?", (generationId,),
@@ -3144,7 +3150,14 @@ class StoryApiTest(unittest.TestCase):
                     headersSent = asyncio.Event()
 
                     async def send(message):
-                        self.assertEqual(message["type"], "http.response.start")
+                        if stopEvent:
+                            if message["type"] == "http.response.start":
+                                return
+                            event = json.loads(message["body"])
+                            if event["type"] != stopEvent:
+                                return
+                        else:
+                            self.assertEqual(message["type"], "http.response.start")
                         headersSent.set()
                         if specVersion == "2.4":
                             raise OSError("client disconnected")
@@ -3161,15 +3174,33 @@ class StoryApiTest(unittest.TestCase):
                     else:
                         await response({"type": "http", "asgi": {"spec_version": specVersion}}, receive, send)
 
+                fakeClient = AsyncMock()
+                fakeClient.__aenter__.return_value = fakeClient
+                fakeClient.stream = lambda *args, **kwargs: fakeLorebookStream("Partial prose.")
                 with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-                    "backend.writing.httpx.AsyncClient",
+                    "backend.writing.httpx.AsyncClient", return_value=fakeClient,
                 ) as providerClient:
-                    asyncio.run(disconnectBeforeBody())
-                    providerClient.assert_not_called()
+                    asyncio.run(disconnectResponse())
+                    if stopEvent:
+                        providerClient.assert_called_once()
+                    else:
+                        providerClient.assert_not_called()
                 self.assertEqual(self.client.get(statusPath).json(), {"settled": True})
                 savedChapter = self.client.get(f"/api/stories/{story['id']}").json()["chapters"][0]
-                self.assertEqual(savedChapter["content"], "Original prose.")
-                self.assertEqual(savedChapter["history"], [])
+                expectedContent = "Original prose.\n\nPartial prose." if stopEvent else "Original prose."
+                self.assertEqual(savedChapter["content"], expectedContent)
+                self.assertEqual(savedChapter["revision"], int(bool(stopEvent)))
+                if stopEvent:
+                    self.assertEqual([entry["kind"] for entry in savedChapter["history"]], ["prompt", "write"])
+                else:
+                    self.assertEqual(savedChapter["history"], [])
+                with main.get_db() as conn:
+                    rows = conn.execute(
+                        "SELECT * FROM story_generations WHERE id = ?", (generationId,),
+                    ).fetchall()
+                self.assertEqual(len(rows), 1)
+                self.assertEqual(rows[0]["prompt"], "continue")
+                self.assertEqual(rows[0]["error"], "generation_cancelled")
 
     def testClientRunIdAcknowledgesCancelledGeneration(self):
         for mode in ("new", "edit"):

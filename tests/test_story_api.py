@@ -3031,7 +3031,7 @@ class StoryApiTest(unittest.TestCase):
             ), patch("backend.writing.run_lorebook_update") as lorebookRun:
                 response = await endpoint(story["id"], chapter["id"], main.StreamMessageRequest(
                     message="continue", model="test/model", write_generation_mode=mode,
-                    chapter_revision=chapter["revision"], generation_run_id=clientRunId,
+                    chapter_revision=chapter["revision"], generation_run_id=clientRunId, generation_status_id=clientRunId,
                 ))
                 stream = response.body_iterator
                 generationId = None

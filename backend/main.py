@@ -413,6 +413,7 @@ class StreamMessageRequest(BaseModel):
     write_generation_mode: str | None = None
     chapter_revision: int | None = Field(default=None, ge=0)
     generation_run_id: str | None = Field(default=None, min_length=1)
+    generation_status_id: str | None = Field(default=None, min_length=1)
     selected_idea_ids: list[str] = Field(default_factory=list)
     brainstorm_idea_count: int = Field(default=3, ge=1, le=8)
     repair_context: ChapterRepairContext | None = None

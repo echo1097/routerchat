@@ -133,6 +133,59 @@ class AttachmentApiTest(unittest.TestCase):
         self.assertLessEqual(sum(readLengths), attachments.MAX_TEXT_BYTES + 1)
         self.assertEqual(list((main.DATA_DIR / "attachments").iterdir()), [])
 
+    def testUploadSizeBoundariesForEveryKind(self):
+        cases = [("text", "note.TXT"), ("image", "shot.PNG"), ("pdf", "document.PDF")]
+        originalRead = UploadFile.read
+
+        for kind, filename in cases:
+            limit = attachments.KIND_LIMITS[kind]
+            for extraBytes in (0, 1, 1024):
+                with self.subTest(kind=kind, extraBytes=extraBytes):
+                    readLengths = []
+
+                    async def trackRead(upload, size=-1):
+                        raw = await originalRead(upload, size)
+                        readLengths.append(len(raw))
+                        return raw
+
+                    body = b"x" * (limit + extraBytes)
+                    with patch.object(UploadFile, "read", trackRead):
+                        response = self.upload([("files", (filename, body))])
+
+                    self.assertTrue(readLengths)
+                    self.assertLessEqual(sum(readLengths), limit + 1)
+                    if extraBytes:
+                        self.assertEqual(response.status_code, 400)
+                        self.assertEqual(
+                            response.json()["detail"],
+                            f"{filename} is larger than {attachments.readable_size(limit)}.",
+                        )
+                    else:
+                        self.assertEqual(response.status_code, 200, response.text)
+                        attachment = response.json()["attachments"][0]
+                        self.assertEqual(attachment["kind"], kind)
+                        self.assertEqual(attachment["size_bytes"], limit)
+                        rawResponse = self.client.get(f"/api/attachments/{attachment['id']}/raw")
+                        self.assertEqual(rawResponse.content, body)
+
+    def testRejectedUploadSizeCleansUpEarlierFiles(self):
+        for body, detail in (
+            (b"", "bad.txt is empty."),
+            (b"x" * (attachments.MAX_TEXT_BYTES + 1), "bad.txt is larger than 256KB."),
+        ):
+            with self.subTest(detail=detail):
+                response = self.upload([
+                    ("files", ("good.txt", b"body", "text/plain")),
+                    ("files", ("bad.txt", body, "text/plain")),
+                ])
+
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response.json()["detail"], detail)
+                self.assertEqual(list((main.DATA_DIR / "attachments").iterdir()), [])
+                with main.get_db() as conn:
+                    row = conn.execute("SELECT COUNT(*) AS total FROM attachments").fetchone()
+                self.assertEqual(row["total"], 0)
+
     def test_upload_rejects_more_files_than_the_limit(self):
         payload = [
             ("files", (f"note{index}.txt", b"body", "text/plain"))

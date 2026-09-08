@@ -4305,18 +4305,12 @@ function StoryWorkspace({
     >
       <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col">
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="write-canvas-header">
-            <div className="write-canvas-header-row">
-              <div className="write-canvas-heading">
-                <div className="write-canvas-story" title={activeStory.title}>
-                  {activeStory.title}
-                </div>
-                <span className="write-canvas-heading-divider" aria-hidden="true">/</span>
-                <h1 className="write-canvas-title" title={activeChapter.title}>
-                  {activeChapter.title}
-                </h1>
-              </div>
-              <div className="write-canvas-status">
+          <div className="write-canvas-header mb-4 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <h1 className="m-0 block min-w-0 truncate text-left text-2xl font-semibold leading-none text-neutral-100" title={activeChapter.title}>
+                {activeChapter.title}
+              </h1>
+              <div className="flex shrink-0 items-center gap-3 text-xs text-neutral-500">
                 {writeStatus ? (
                   <WriteOperationStatus
                     status={writeStatus}

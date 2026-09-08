@@ -782,6 +782,7 @@ def init_db() -> None:
         ensure_message_usage_columns(conn)
         ensure_chat_settings_columns(conn)
         ensure_story_settings_columns(conn)
+        ensureGenerationSettledColumn(conn)
         ensure_chapter_context_column(conn)
         ensure_chapter_revision_column(conn)
         ensure_lorebook_revision_column(conn)
@@ -790,6 +791,14 @@ def init_db() -> None:
         ensure_chapter_history_columns(conn)
         ensure_lorebook_run_usage_columns(conn)
         clean_lorebook_categories(conn)
+
+
+def ensureGenerationSettledColumn(conn: sqlite3.Connection) -> None:
+    existingColumns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(story_generations)").fetchall()
+    }
+    if "settled" not in existingColumns:
+        conn.execute("ALTER TABLE story_generations ADD COLUMN settled INTEGER NOT NULL DEFAULT 0")
 
 
 def ensure_chat_settings_columns(conn: sqlite3.Connection) -> None:

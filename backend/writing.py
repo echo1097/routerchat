@@ -1794,6 +1794,7 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
             "runId": getattr(payload, "generation_run_id", None),
             "storyId": story_id,
             "chapterId": chapter_id,
+            "generationId": str(uuid.uuid4()),
         }
 
         def emit(event_type: str, value: Any, revision: int | None = None) -> bytes:
@@ -1862,7 +1863,7 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
         error_text: str | None = None
         generation_id: str | None = None
         usage: dict[str, Any] | None = None
-        story_generation_id = str(uuid.uuid4())
+        story_generation_id = event_metadata["generationId"]
         history_run_id = str(uuid.uuid4())
         model_label = display_model_name(payload.model)
         reasoning_started_at: float | None = None
@@ -2256,6 +2257,12 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                         ),
                     ))
                     content_started_at = None
+
+            with deps.get_db() as conn:
+                conn.execute(
+                    "UPDATE story_generations SET settled = 1 WHERE id = ?",
+                    (story_generation_id,),
+                )
 
         for event in pendingEvents:
             yield event
@@ -2735,6 +2742,15 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
             ).fetchone()
 
         return {"story": row_to_story(story), "chapter": row_to_chapter(chapter)}
+
+    @router.get("/api/stories/{story_id}/chapters/{chapter_id}/generations/{generationId}")
+    def getGenerationStatus(story_id: str, chapter_id: str, generationId: str) -> dict[str, bool]:
+        with deps.get_db() as conn:
+            generationRow = conn.execute(
+                "SELECT settled FROM story_generations WHERE id = ? AND story_id = ? AND chapter_id = ?",
+                (generationId, story_id, chapter_id),
+            ).fetchone()
+        return {"settled": bool(generationRow and generationRow["settled"])}
 
     @router.get("/api/stories/{story_id}")
     def get_story(story_id: str) -> dict[str, Any]:

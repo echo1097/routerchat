@@ -3034,10 +3034,21 @@ class StoryApiTest(unittest.TestCase):
                     chapter_revision=chapter["revision"],
                 ))
                 stream = response.body_iterator
+                generationId = None
                 try:
                     async for chunk in stream:
-                        if json.loads(chunk)["type"] == stopEvent:
+                        event = json.loads(chunk)
+                        generationId = event["generationId"]
+                        if event["type"] == stopEvent:
                             break
+                    statusPath = (
+                        f"/api/stories/{story['id']}/chapters/{chapter['id']}"
+                        f"/generations/{generationId}"
+                    )
+                    self.assertEqual(
+                        self.client.get(statusPath).json(),
+                        {"settled": stopEvent == "chapter_updated"},
+                    )
                     if concurrentEdit:
                         with main.get_db() as conn:
                             conn.execute(
@@ -3054,6 +3065,11 @@ class StoryApiTest(unittest.TestCase):
                         await stream.aclose()
                 finally:
                     await stream.aclose()
+                self.assertEqual(self.client.get(statusPath).json(), {"settled": True})
+                self.assertEqual(
+                    self.client.get(statusPath.replace(story["id"], "another-story")).json(),
+                    {"settled": False},
+                )
                 lorebookRun.assert_not_called()
 
         asyncio.run(stopGeneration())
@@ -3093,6 +3109,15 @@ class StoryApiTest(unittest.TestCase):
         else:
             self.assertIn("partial: applied", generations[0]["error"])
         return savedChapter, generations[0]
+
+    def testGenerationSettledMigrationIsIdempotent(self):
+        with sqlite3.connect(":memory:") as conn:
+            conn.row_factory = sqlite3.Row
+            conn.execute("CREATE TABLE story_generations (id TEXT PRIMARY KEY)")
+            conn.execute("INSERT INTO story_generations (id) VALUES ('old-run')")
+            main.ensureGenerationSettledColumn(conn)
+            main.ensureGenerationSettledColumn(conn)
+            self.assertEqual(conn.execute("SELECT settled FROM story_generations").fetchone()[0], 0)
 
     def testCancellationDuringUsageKeepsCompletedGeneration(self):
         for mode in ("new", "edit"):

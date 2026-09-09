@@ -300,6 +300,11 @@ test("transitions brainstorm reasoning from locked thinking to writing to comple
   const promptNode = page.locator(".react-flow__node-prompt").filter({
     hasText: "Follow the full reasoning lifecycle.",
   });
+  await api.pushBrainstormEvent({
+    type: "reasoning",
+    value: "The signal needs one final consequence.",
+  });
+
   const thinkingTrigger = promptNode.getByRole("button", {
     name: "Thinking in progress",
   });
@@ -307,10 +312,6 @@ test("transitions brainstorm reasoning from locked thinking to writing to comple
   await expect(thinkingTrigger).toHaveAttribute("aria-expanded", "true");
   await expect(thinkingTrigger).toHaveText("Thinking");
 
-  await api.pushBrainstormEvent({
-    type: "reasoning",
-    value: "The signal needs one final consequence.",
-  });
   await expect(
     promptNode.getByText("The signal needs one final consequence."),
   ).toBeVisible();

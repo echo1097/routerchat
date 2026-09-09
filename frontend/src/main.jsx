@@ -1,122 +1,56 @@
-import React, {
-  lazy,
-  memo,
-  Suspense,
-  useCallback,
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { lazy, useState, useRef, useEffect, useMemo, useCallback, useId, memo, useLayoutEffect, Suspense } from "react";
+import { MessageSquarePlus, SlidersHorizontal, Pencil, X, Trash2, Eye, EyeOff, PanelLeftOpen, ChevronDown, Copy, RefreshCw, ArrowLeft, Square, Plus, Check, Search, Menu } from "lucide-react";
+import { cx, CONTROL_MOTION, SOFT_SURFACE, FADE_MOTION, PROMPT_BAR_CONTROL_MOTION } from "./uiShared.js";
+import { formatInteger, formatCost, truncatePromptText, formatThoughtDuration, exportFileName, shortTitle, storyExportFileName } from "./textFormatting.js";
 import { createPortal } from "react-dom";
-import { createRoot } from "react-dom/client";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-
-import { MARKDOWN_IMAGE_COMPONENT } from "./markdownImage.jsx";
-import { streamWordsPlugin, useStreamReveal } from "./streamingText.js";
-import ChapterStreamingCanvas from "./writing/ChapterStreamingCanvas.jsx";
-import {
-  ArrowLeft,
-  Check,
-  ChevronDown,
-  Copy,
-  Eye,
-  EyeOff,
-  Menu,
-  MessageSquarePlus,
-  PanelLeftOpen,
-  Pencil,
-  Plus,
-  RefreshCw,
-  Search,
-  SlidersHorizontal,
-  Square,
-  Trash2,
-  Users,
-  X,
-} from "lucide-react";
-import packageInfo from "../../package.json";
-import openingMessages from "./openingMessages.json";
-import { cx, CONTROL_MOTION, PROMPT_BAR_CONTROL_MOTION, SOFT_SURFACE, FADE_MOTION } from "./uiShared.js";
-import HelpTourButton from "./HelpTourButton.jsx";
+import { api, responseErrorDetail } from "./api.js";
+import { promptModelName, getModelContextLimit, priceLabel, formatTokens, isFreeModel, toFiniteNumber, getContextWindowInfo } from "./modelFormatting.js";
+import { APP_VERSION } from "./appInfo.js";
+import { CHAT_MODES, LOREBOOK_MODEL_INHERIT, newSettings, DEFAULT_MODEL } from "./settings/settingsDefaults.js";
 import ThinkingContent from "./ThinkingContent.jsx";
-import { TosGateModal, TosLoadingScreen, TosUnavailableScreen } from "./TosGate.jsx";
-import StoryBrainstorm from "./brainstorm/StoryBrainstorm.jsx";
-import StoryLorebook from "./lorebook/StoryLorebook.jsx";
-import { repairLorebook as repairLorebookStream } from "./lorebook/repairLorebookApi.js";
-import { generateLorebookEntry as generateLorebookEntryStream } from "./lorebook/generateEntryApi.js";
-import { updateLorebookStream } from "./lorebook/lorebookUpdateApi.js";
-import NotificationStack from "./notifications/NotificationStack.jsx";
-import { useNotifications } from "./notifications/useNotifications.js";
-import { useRafScroller } from "./streamScroll.js";
 import { useTextSwap } from "./textSwap.js";
-import { ThinkingStatus } from "./thinkingStates.jsx";
-import { createSaveCoordinator } from "./writing/saveCoordinator.js";
-import { createNavigationCoordinator } from "./writing/navigationCoordinator.js";
-import {
-  effectiveThinkingEnabled,
-  reasoningEffortLabel,
-  requiresThinking,
-  resolveReasoningEffort,
-  supportsImageInput,
-  supportsReasoningEffort,
-  supportsThinking,
-} from "./modelReasoning.js";
-import AttachButton from "./attachments/AttachButton.jsx";
-import AttachmentChips from "./attachments/AttachmentChips.jsx";
-import { useFileDrop } from "./attachments/useFileDrop.js";
+import remarkGfm from "remark-gfm";
+import { remarkCitationPills, isCitationLink, uncitedSources } from "./websearch/citations.js";
+import { streamWordsPlugin, useStreamReveal } from "./streamingText.js";
+import ReactMarkdown from "react-markdown";
+import { MARKDOWN_IMAGE_COMPONENT } from "./markdownImage.jsx";
 import SourcePills, { InlineCitation } from "./websearch/SourcePills.jsx";
-import {
-  isCitationLink,
-  remarkCitationPills,
-  uncitedSources,
-} from "./websearch/citations.js";
+import AttachmentChips from "./attachments/AttachmentChips.jsx";
+import { useRafScroller } from "./streamScroll.js";
+import { ThinkingStatus } from "./thinkingStates.jsx";
+import StoryLorebook from "./lorebook/StoryLorebook.jsx";
+import ChapterStreamingCanvas from "./writing/ChapterStreamingCanvas.jsx";
+import { supportsThinking, supportsImageInput, requiresThinking, effectiveThinkingEnabled, reasoningEffortLabel, resolveReasoningEffort, supportsReasoningEffort } from "./modelReasoning.js";
+import AttachButton from "./attachments/AttachButton.jsx";
 import { MAX_FILES_PER_MESSAGE } from "./attachments/attachmentsApi.js";
-import { useAttachments } from "./attachments/useAttachments.js";
-
-const ChapterCanvasEditor = lazy(() => import("./writing/ChapterCanvasEditor.jsx"));
-import {
-  chapterAppliedEditSummary,
-  loadSettledGeneration,
-  chapterFromUpdateEvent,
-  chapterRunTargetsOpenChapter,
-  chapterGenerationErrorIsRepairable,
-  chapterGenerationErrorMessage,
-  chapterGenerationEventMatchesRun,
-  chapterRepairContext,
-  chapterUpdateMatchesRun,
-  nextEditPreview,
-  parseStreamingEditPreview,
-} from "./writing/chapterGenerationEvents.js";
-import TourOverlay from "./tour/TourOverlay.jsx";
+import { historyRunGroups, isPromptEntry, historyCostTotal, historyWordTotals, historyRunRows, historyRowChildren, historyRowText, historyRowWords, historyRowLabel } from "./writing/historyFormatting.js";
+import { readLocalAppSettings, pickOpeningMessage, PENDING_CHAPTER_DRAFTS_STORAGE_KEY, readLocalChatFolders, clearLocalChatFolders, writeLocalAppSettings } from "./localStorage.js";
+import { parseRoute, storyRoute, routePath, chatRoute } from "./routing.js";
 import { useTour } from "./tour/useTour.js";
 import { WRITE_TOUR_STEPS } from "./tour/tourSteps.js";
+import { useNotifications } from "./notifications/useNotifications.js";
+import { useAttachments } from "./attachments/useAttachments.js";
+import { createNavigationCoordinator } from "./writing/navigationCoordinator.js";
+import { createSaveCoordinator } from "./writing/saveCoordinator.js";
+import { storyApi } from "./writing/storyApi.js";
+import { chapterRunTargetsOpenChapter, loadSettledGeneration, chapterGenerationEventMatchesRun, parseStreamingEditPreview, nextEditPreview, chapterUpdateMatchesRun, chapterFromUpdateEvent, chapterRepairContext, chapterGenerationErrorMessage, chapterGenerationErrorIsRepairable, chapterAppliedEditSummary } from "./writing/chapterGenerationEvents.js";
+import { updateLorebookStream } from "./lorebook/lorebookUpdateApi.js";
+import { repairLorebook as repairLorebookStream } from "./lorebook/repairLorebookApi.js";
+import { generateLorebookEntry as generateLorebookEntryStream } from "./lorebook/generateEntryApi.js";
+import { useFileDrop } from "./attachments/useFileDrop.js";
+import HelpTourButton from "./HelpTourButton.jsx";
+import StoryBrainstorm from "./brainstorm/StoryBrainstorm.jsx";
+import NotificationStack from "./notifications/NotificationStack.jsx";
+import TourOverlay from "./tour/TourOverlay.jsx";
+import { TosLoadingScreen, TosUnavailableScreen, TosGateModal } from "./TosGate.jsx";
+import { createRoot } from "react-dom/client";
 import "./styles.css";
 
-const DEFAULT_MODEL = "anthropic/claude-3.5-sonnet";
-const APP_VERSION = packageInfo.version;
-const APP_SETTINGS_STORAGE_KEY = "routerchat.appSettings";
-const CHAT_FOLDERS_STORAGE_KEY = "routerchat.chatFolders";
-const OPENING_MESSAGE_STORAGE_KEY = "routerchat.lastOpeningMessage";
-const PENDING_CHAPTER_DRAFTS_STORAGE_KEY = "routerchat.pendingChapterDrafts";
-const FEEDBACK_FORM_URL = "https://forms.gle/gTth2TcXLYAArvGm6";
-const GITHUB_RELEASES_LATEST_URL = "https://api.github.com/repos/echo1097/routerchat/releases/latest";
+const ChapterCanvasEditor = lazy(() => import("./writing/ChapterCanvasEditor.jsx"));
 
-const newSettings = {
-  model: DEFAULT_MODEL,
-  temperature: 0.7,
-  max_tokens: 30000,
-  system_prompt: "",
-  thinking_enabled: false,
-  reasoning_effort: "medium",
-  web_search_enabled: false,
-  nitro_mode: false,
-  lorebook_auto: false,
-  lorebook_model: "",
-};
+const FEEDBACK_FORM_URL = "https://forms.gle/gTth2TcXLYAArvGm6";
+
+const GITHUB_RELEASES_LATEST_URL = "https://api.github.com/repos/echo1097/routerchat/releases/latest";
 
 const REASONING_EFFORTS = [
   { value: "low", label: "Low" },
@@ -135,14 +69,6 @@ const SETTINGS_PAGES = [
   { id: "lorebook", label: "Lorebook", iconSrc: "/icons/newbook.png" },
 ];
 
-//"Same as global" is stored as an empty string so a story that never picked one keeps following its own model
-const LOREBOOK_MODEL_INHERIT = "";
-
-const CHAT_MODES = [
-  { value: "chat", label: "Chat" },
-  { value: "write", label: "Write" },
-];
-
 const WRITE_GENERATION_MODES = {
   edit: "Edit Chapter",
   new: "New Chapter",
@@ -155,604 +81,6 @@ const LOREBOOK_UPDATE_MODES = {
 
 function rangeProgress(value, min, max) {
   return `${((Number(value) - min) / (max - min)) * 100}%`;
-}
-
-function pickOpeningMessage(mode = "chat") {
-  const runTime = new Date().getHours();
-  const timeKey =
-    runTime >= 22 || runTime < 5
-      ? "lateNight"
-      : runTime < 12
-        ? "morning"
-        : runTime < 17
-          ? "afternoon"
-          : "evening";
-
-  const messageSet = openingMessages[mode] || openingMessages.chat || openingMessages;
-  const timeMessages = Array.isArray(messageSet[timeKey]) ? messageSet[timeKey] : [];
-  const messages = timeMessages.filter((message) => typeof message === "string" && message.trim());
-  if (messages.length === 0) return "Where should we begin?";
-
-  const lastMessage =
-    typeof window !== "undefined"
-      ? window.localStorage.getItem(`${OPENING_MESSAGE_STORAGE_KEY}.${mode}`)
-      : null;
-  const choices = messages.length > 1 ? messages.filter((message) => message !== lastMessage) : messages;
-  const nextMessage = choices[Math.floor(Math.random() * choices.length)];
-
-  if (typeof window !== "undefined") {
-    window.localStorage.setItem(`${OPENING_MESSAGE_STORAGE_KEY}.${mode}`, nextMessage);
-  }
-
-  return nextMessage;
-}
-
-async function api(path, options = {}) {
-  const response = await fetch(path, {
-    cache: "no-store",
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-    ...options,
-  });
-
-  if (!response.ok) {
-    throw await responseError(response);
-  }
-
-  return response.json();
-}
-
-async function responseError(response) {
-  const fallback = response.statusText || "Request failed";
-  const body = await response.text();
-  let payload = null;
-
-  if (body) {
-    try {
-      payload = JSON.parse(body);
-    } catch {
-      payload = null;
-    }
-  }
-
-  const detail = payload?.detail;
-  const message = typeof detail === "string"
-    ? detail
-    : detail?.message || payload?.error?.message || body || fallback;
-  const error = new Error(message);
-  error.name = "ApiError";
-  error.status = response.status;
-  error.payload = payload;
-  error.code = detail?.code || payload?.error?.code || payload?.code || null;
-  error.chapter = detail?.chapter || payload?.chapter || null;
-  return error;
-}
-
-async function responseErrorDetail(response) {
-  const error = await responseError(response);
-  return error.message;
-}
-
-const storyApi = {
-  async listStories() {
-    const payload = await api("/api/stories");
-    return payload.stories || [];
-  },
-
-  async getStory(storyId) {
-    return api(`/api/stories/${encodeURIComponent(storyId)}`);
-  },
-
-  async getGenerationStatus(run) {
-    return api(`/api/stories/${encodeURIComponent(run.storyId)}/chapters/${encodeURIComponent(run.chapterId)}/generations/${encodeURIComponent(run.generationId)}`);
-  },
-
-  async createStory(data) {
-    const payload = await api("/api/stories", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-    return payload.story;
-  },
-
-  async createStoryWithInitialChapter(data, initialChapter) {
-    return api("/api/stories/with-initial-chapter", {
-      method: "POST",
-      body: JSON.stringify({ ...data, initial_chapter: initialChapter }),
-    });
-  },
-
-  async updateStory(storyId, data) {
-    const payload = await api(`/api/stories/${encodeURIComponent(storyId)}`, {
-      method: "PATCH",
-      body: JSON.stringify(data),
-    });
-    return payload.story;
-  },
-
-  async deleteStory(storyId) {
-    return api(`/api/stories/${encodeURIComponent(storyId)}`, { method: "DELETE" });
-  },
-
-  async importStory(data) {
-    return api("/api/stories/import", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-  },
-
-  async closeStory(storyId) {
-    return api(`/api/stories/${encodeURIComponent(storyId)}/close`, { method: "POST" });
-  },
-
-  async listChapters(storyId) {
-    const payload = await api(`/api/stories/${encodeURIComponent(storyId)}/chapters`);
-    return payload.chapters || [];
-  },
-
-  async createChapter(storyId, data) {
-    const payload = await api(`/api/stories/${encodeURIComponent(storyId)}/chapters`, {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-    return payload.chapter;
-  },
-
-  async updateChapter(storyId, chapterId, data) {
-    const payload = await api(
-      `/api/stories/${encodeURIComponent(storyId)}/chapters/${encodeURIComponent(chapterId)}`,
-      {
-        method: "PATCH",
-        body: JSON.stringify(data),
-      },
-    );
-    return payload.chapter;
-  },
-
-  async deleteChapter(storyId, chapterId) {
-    return api(
-      `/api/stories/${encodeURIComponent(storyId)}/chapters/${encodeURIComponent(chapterId)}`,
-      { method: "DELETE" },
-    );
-  },
-
-  async saveChapterContent(storyId, chapterId, content, revision) {
-    const payload = await api(
-      `/api/stories/${encodeURIComponent(storyId)}/chapters/${encodeURIComponent(chapterId)}/content`,
-      {
-        method: "PATCH",
-        body: JSON.stringify({ content, revision }),
-      },
-    );
-    return payload.chapter;
-  },
-
-  async listLorebook(storyId) {
-    const payload = await api(`/api/stories/${encodeURIComponent(storyId)}/lorebook`);
-    return payload.entries || [];
-  },
-
-  async createLorebookEntry(storyId, data) {
-    const payload = await api(`/api/stories/${encodeURIComponent(storyId)}/lorebook`, {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-    return payload.entry;
-  },
-
-  async updateLorebookEntry(storyId, entryId, data) {
-    const payload = await api(
-      `/api/stories/${encodeURIComponent(storyId)}/lorebook/${encodeURIComponent(entryId)}`,
-      {
-        method: "PATCH",
-        body: JSON.stringify(data),
-      },
-    );
-    return payload.entry;
-  },
-
-  async deleteLorebookEntry(storyId, entryId) {
-    return api(
-      `/api/stories/${encodeURIComponent(storyId)}/lorebook/${encodeURIComponent(entryId)}`,
-      { method: "DELETE" },
-    );
-  },
-
-  async updateLorebookFromChapter(storyId, chapterId) {
-    return api(`/api/stories/${encodeURIComponent(storyId)}/lorebook/update`, {
-      method: "POST",
-      body: JSON.stringify({ chapter_id: chapterId }),
-    });
-  },
-
-  async repairTimeline({ storyId, currentTimeline, onEvent }) {
-    const response = await fetch(
-      `/api/stories/${encodeURIComponent(storyId)}/lorebook/timeline/repair/stream`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ current_timeline: currentTimeline }),
-      },
-    );
-    if (!response.ok || !response.body) {
-      throw await responseError(response);
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffered = "";
-    let completedRepair = null;
-    let repairError = null;
-
-    function handleLine(line) {
-      if (!line.trim()) return;
-
-      const event = JSON.parse(line);
-      onEvent(event);
-      if (event.type === "complete") completedRepair = event.value;
-      if (event.type === "error") {
-        const value = event.value;
-        repairError = new Error(
-          typeof value === "string" ? value : value?.message || "Could not rebuild timeline.",
-        );
-        repairError.code = typeof value === "object" ? value?.code || null : null;
-      }
-    }
-
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffered += decoder.decode(value, { stream: true });
-      const lines = buffered.split("\n");
-      buffered = lines.pop() || "";
-      lines.forEach(handleLine);
-    }
-    if (buffered.trim()) handleLine(buffered);
-
-    if (repairError) throw repairError;
-    if (!completedRepair?.entry) {
-      throw new Error("Timeline repair ended before it returned a rebuilt timeline.");
-    }
-    return completedRepair;
-  },
-
-  async getBrainstorm(storyId) {
-    return api(`/api/stories/${encodeURIComponent(storyId)}/brainstorm`);
-  },
-
-  async updateBrainstormNode(storyId, nodeId, data) {
-    const payload = await api(
-      `/api/stories/${encodeURIComponent(storyId)}/brainstorm/nodes/${encodeURIComponent(nodeId)}`,
-      { method: "PATCH", body: JSON.stringify(data) },
-    );
-    return payload.node;
-  },
-
-  async deleteBrainstormNode(storyId, nodeId, cascade = false) {
-    return api(
-      `/api/stories/${encodeURIComponent(storyId)}/brainstorm/nodes/${encodeURIComponent(nodeId)}?cascade=${cascade}`,
-      { method: "DELETE" },
-    );
-  },
-
-  async updateBrainstormViewport(storyId, viewport) {
-    return api(`/api/stories/${encodeURIComponent(storyId)}/brainstorm/viewport`, {
-      method: "PATCH",
-      body: JSON.stringify({
-        position_x: viewport.x,
-        position_y: viewport.y,
-        zoom: viewport.zoom,
-      }),
-    });
-  },
-
-  async generateBrainstorm({ storyId, prompt, selectedIdeaIds, ideaCount, settings, onEvent, signal }) {
-    const response = await fetch(
-      `/api/stories/${encodeURIComponent(storyId)}/brainstorm/generate/stream`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal,
-        body: JSON.stringify({
-          ...settings,
-          write_system_prompt: settings.system_prompt,
-          selected_idea_ids: selectedIdeaIds,
-          brainstorm_idea_count: ideaCount,
-          message: prompt,
-        }),
-      },
-    );
-    if (!response.ok || !response.body) {
-      throw await responseError(response);
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffered = "";
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffered += decoder.decode(value, { stream: true });
-      const lines = buffered.split("\n");
-      buffered = lines.pop() || "";
-      for (const line of lines) {
-        if (line.trim()) onEvent(JSON.parse(line));
-      }
-    }
-    if (buffered.trim()) onEvent(JSON.parse(buffered));
-  },
-
-  async generateChapter({
-    storyId,
-    chapterId,
-    prompt,
-    settings,
-    generationMode,
-    chapterRevision,
-    generationRunId,
-    generationStatusId,
-    repairContext,
-    attachmentIds = [],
-    onEvent,
-    signal,
-  }) {
-    const response = await fetch(
-      `/api/stories/${encodeURIComponent(storyId)}/chapters/${encodeURIComponent(chapterId)}/generate/stream`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal,
-        body: JSON.stringify({
-          ...settings,
-          write_system_prompt: settings.system_prompt,
-          write_generation_mode: generationMode,
-          chapter_revision: chapterRevision,
-          generation_run_id: generationRunId,
-          generation_status_id: generationStatusId,
-          repair_context: repairContext || null,
-          message: prompt,
-          attachment_ids: attachmentIds,
-        }),
-      },
-    );
-
-    if (!response.ok) {
-      const error = await responseError(response);
-      error.generationRejected = true;
-      throw error;
-    }
-    if (!response.body) throw new Error("The generation stream is missing.");
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffered = "";
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffered += decoder.decode(value, { stream: true });
-      const lines = buffered.split("\n");
-      buffered = lines.pop() || "";
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        onEvent(JSON.parse(line));
-      }
-    }
-    if (buffered.trim()) {
-      onEvent(JSON.parse(buffered));
-    }
-  },
-};
-
-function modelName(models, id) {
-  return models.find((model) => model.id === id)?.name || id || "No model";
-}
-
-function promptModelName(models, id) {
-  return modelName(models, id)
-    .replace(/^[^:]+:\s*/, "")
-    .replace(/^[^/]+\//, "");
-}
-
-function toFiniteNumber(value) {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim()) {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-}
-
-function formatTokens(tokens) {
-  if (!Number.isFinite(tokens)) return "Unavailable";
-  if (tokens >= 1_000_000) {
-    return `${(tokens / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
-  }
-  if (tokens >= 1_000) {
-    return `${Math.round(tokens / 1_000)}k`;
-  }
-  return `${tokens}`;
-}
-
-function truncatePromptText(value, maxLength = 96) {
-  const compact = String(value || "").replace(/\s+/g, " ").trim();
-  if (compact.length <= maxLength) return compact || "Empty prompt";
-  return `${compact.slice(0, maxLength - 1).trimEnd()}…`;
-}
-
-function getModelContextLimit(model) {
-  const providerLimit = toFiniteNumber(model?.top_provider?.context_length);
-  const modelLimit = toFiniteNumber(model?.context_length);
-  return providerLimit > 0 ? providerLimit : modelLimit > 0 ? modelLimit : null;
-}
-
-function getContextWindowInfo(contextTokens, contextLimit) {
-  if (!Number.isFinite(contextTokens) || !Number.isFinite(contextLimit) || contextLimit <= 0) {
-    return null;
-  }
-  const percentFull = (contextTokens / contextLimit) * 100;
-  const remainingTokens = Math.max(contextLimit - contextTokens, 0);
-
-  return {
-    contextTokens,
-    contextLimit,
-    remainingTokens,
-    percentFull,
-    displayPercent: `${Math.round(percentFull)}% full`,
-    displayUsage: `${formatTokens(contextTokens)} / ${formatTokens(contextLimit)} tokens used`,
-  };
-}
-
-function priceLabel(model) {
-  const prompt = Number(model.pricing?.prompt || 0) * 1000000;
-  const completion = Number(model.pricing?.completion || 0) * 1000000;
-  if ((!prompt && !completion) || prompt < 0 || completion < 0) return "";
-  return `$${prompt.toFixed(prompt >= 1 ? 0 : 2)} / $${completion.toFixed(
-    completion >= 1 ? 0 : 2,
-  )}`;
-}
-
-function isFreeModel(model) {
-  if (String(model.id || "").endsWith(":free")) return true;
-  const prompt = Number(model.pricing?.prompt || 0);
-  const completion = Number(model.pricing?.completion || 0);
-  return prompt === 0 && completion === 0;
-}
-
-function exportFileName(chat) {
-  const title = (chat?.title || "chat")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 42) || "chat";
-  return `routerchat-${title}-${new Date().toISOString().slice(0, 10)}.json`;
-}
-
-function storyExportFileName(story) {
-  const title = (story?.title || "story")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 42) || "story";
-  return `routerchat-story-${title}-${new Date().toISOString().slice(0, 10)}.json`;
-}
-
-function shortTitle(title) {
-  const trimmed = (title || "").trim();
-  if (trimmed.length <= 48) return trimmed;
-  return `${trimmed.slice(0, 48).trimEnd()}…`;
-}
-
-function chatRoute(chat) {
-  if (!chat?.id) return { page: "home" };
-  return {
-    page: chat.temporary ? "temp" : "chat",
-    chatId: chat.id,
-  };
-}
-
-function storyRoute(storyId, chapterId = null, workspaceView = "chapter") {
-  if (!storyId) return { page: "home", mode: "write" };
-  const nextWorkspaceView = ["lorebook", "brainstorm"].includes(workspaceView)
-    ? workspaceView
-    : "chapter";
-  return {
-    page: "story",
-    storyId,
-    chapterId: nextWorkspaceView === "chapter" ? chapterId : null,
-    workspaceView: nextWorkspaceView,
-  };
-}
-
-function routePath(route) {
-  if (!route || route.page === "home") {
-    const mode = route?.mode === "write" ? "write" : "chat";
-    return `/?mode=${mode}`;
-  }
-
-  if (route.page === "story") {
-    const storyPath = `/write/story/${encodeURIComponent(route.storyId)}`;
-    if (route.workspaceView === "lorebook") return `${storyPath}/lorebook`;
-    if (route.workspaceView === "brainstorm") return `${storyPath}/brainstorm`;
-    if (route.chapterId) return `${storyPath}/chapter/${encodeURIComponent(route.chapterId)}`;
-    return storyPath;
-  }
-
-  const prefix = route.page === "temp" ? "temp" : "chat";
-  return `/${prefix}/${encodeURIComponent(route.chatId)}`;
-}
-
-function parseRoute(pathname = window.location.pathname, search = window.location.search) {
-  const parts = pathname.split("/").filter(Boolean);
-  const params = new URLSearchParams(search);
-  const mode = params.get("mode") === "write" ? "write" : "chat";
-
-  if (parts.length === 0) return { page: "home", mode };
-  if ((parts[0] === "chat" || parts[0] === "temp") && parts[1]) {
-    return {
-      page: parts[0],
-      chatId: decodeURIComponent(parts[1]),
-    };
-  }
-  if (parts[0] === "write" && parts[1] === "story" && parts[2]) {
-    const storyId = decodeURIComponent(parts[2]);
-    if (parts[3] === "chapter" && parts[4]) {
-      return {
-        page: "story",
-        storyId,
-        chapterId: decodeURIComponent(parts[4]),
-        workspaceView: "chapter",
-      };
-    }
-    if (parts[3] === "lorebook") {
-      return {
-        page: "story",
-        storyId,
-        chapterId: null,
-        workspaceView: "lorebook",
-      };
-    }
-    if (parts[3] === "brainstorm") {
-      return {
-        page: "story",
-        storyId,
-        chapterId: null,
-        workspaceView: "brainstorm",
-      };
-    }
-    return {
-      page: "story",
-      storyId,
-      chapterId: null,
-      workspaceView: "chapter",
-    };
-  }
-  return { page: "home", mode: "chat" };
-}
-
-function readLocalAppSettings() {
-  try {
-    return JSON.parse(window.localStorage.getItem(APP_SETTINGS_STORAGE_KEY) || "{}");
-  } catch {
-    return {};
-  }
-}
-
-function writeLocalAppSettings(next) {
-  const merged = { ...readLocalAppSettings(), ...next };
-  window.localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify(merged));
-}
-
-function readLocalChatFolders() {
-  try {
-    const stored = JSON.parse(window.localStorage.getItem(CHAT_FOLDERS_STORAGE_KEY) || "[]");
-    if (!Array.isArray(stored)) return [];
-    return stored.filter((folder) => folder && folder.id && typeof folder.name === "string");
-  } catch {
-    return [];
-  }
-}
-
-function clearLocalChatFolders() {
-  window.localStorage.removeItem(CHAT_FOLDERS_STORAGE_KEY);
 }
 
 function IconButton({ label, children, className, ...props }) {
@@ -2559,308 +1887,6 @@ function PromptNavigationRail({ messages, streamRef, visible, activeChatId }) {
   );
 }
 
-function formatThoughtDuration(ms) {
-  const seconds = Math.max(1, Math.round(ms / 1000));
-  return `${seconds} ${seconds === 1 ? "second" : "seconds"}`;
-}
-
-function isPromptEntry(entry) {
-  //kind is authoritative, the label check only covers rows written before kind existed
-  return entry.kind === "prompt" || entry.label === "User prompt";
-}
-
-function historyRunGroups(entries) {
-  const groups = [];
-  entries.forEach((entry) => {
-    if (isPromptEntry(entry) || groups.length === 0) {
-      groups.push({
-        id: entry.id,
-        prompt: entry,
-        actions: [],
-      });
-      return;
-    }
-    groups[groups.length - 1].actions.push(entry);
-  });
-  return groups;
-}
-
-//the label is the only record of which model ran, so the name is read back off it rather than stored
-//twice. every pattern here is anchored on the fixed half of a label writing.py writes
-const HISTORY_MODEL_PATTERNS = [
-  /^(.+?) thought for /,
-  /^(.+?) wrote for /,
-  /^(.+?) applied \d/,
-  /^(.+?) could not /,
-  /^(.+?) added .+ to Lorebook$/,
-  /^(.+?) updated .+ in Lorebook$/,
-  /^(.+?) updated Timeline$/,
-  /^(.+?) excluded .+ from context$/,
-  /^(.+?) finished editing Lorebook after /,
-  /^(.+?) found no Lorebook changes after /,
-];
-
-function historyModelName(entries) {
-  for (const entry of entries) {
-    const label = String(entry?.label || "");
-    for (const pattern of HISTORY_MODEL_PATTERNS) {
-      const match = label.match(pattern);
-      if (match) return match[1];
-    }
-  }
-  return "Model";
-}
-
-//timeline is one named entry the model keeps rewriting, so it stays on its own line instead of
-//disappearing into an "updated 4 entries" tally
-function historyEntryIsTimeline(entry) {
-  return / updated Timeline$/.test(String(entry?.label || ""));
-}
-
-const HISTORY_FOLDABLE_KINDS = new Set(["lore_create", "lore_update", "lore_hide"]);
-
-function historyFoldGroup(entry) {
-  if (!HISTORY_FOLDABLE_KINDS.has(entry?.kind)) return null;
-  if (historyEntryIsTimeline(entry)) return null;
-  return entry.kind;
-}
-
-const HISTORY_LORE_KINDS = new Set([
-  "lore_create",
-  "lore_update",
-  "lore_hide",
-  "lore_summary",
-]);
-
-//a lorebook pass writes one row per entry it touched plus a closing summary, which is a whole screen of
-//detail sitting at the same level as "wrote for 31 seconds". the pass collapses to its summary line and
-//everything it did hangs underneath
-function historyActivityRows(actions) {
-  const rows = [];
-  let pass = null;
-
-  actions.forEach((entry) => {
-    if (!HISTORY_LORE_KINDS.has(entry.kind)) {
-      pass = null;
-      rows.push({ id: entry.id, group: null, entries: [entry] });
-      return;
-    }
-
-    if (!pass) {
-      //a row is identified by the first entry under it, and a pass shares that entry with the fold row
-      //directly beneath it, so every derived row prefixes its level or the two open and close as one
-      pass = { id: `pass:${entry.id}`, group: "lore_pass", entries: [] };
-      rows.push(pass);
-    }
-    pass.entries.push(entry);
-
-    //the summary closes the pass, so a second lorebook run in the same prompt opens its own row
-    if (entry.kind === "lore_summary") pass = null;
-  });
-
-  return rows;
-}
-
-//inside a pass each kind folds into one countable line so the things worth reading at a glance survive,
-//how many entries went in and how many changed. the fold is by kind across the whole pass rather than
-//by neighbour, or a run that alternates between creating and updating splits into a row per switch
-function historyLoreRows(entries) {
-  const rows = [];
-  const rowsByGroup = new Map();
-
-  entries.forEach((entry) => {
-    if (entry.kind === "lore_summary") return;
-
-    //timeline is one named entry the model keeps rewriting, so it never joins a count
-    const group = historyFoldGroup(entry);
-    if (!group) {
-      rows.push({ id: `lore:${entry.id}`, group: null, entries: [entry], lore: true });
-      return;
-    }
-
-    const existing = rowsByGroup.get(group);
-    if (existing) {
-      existing.entries.push(entry);
-      return;
-    }
-
-    //a kind takes its place in the list where it first showed up, so the pass still reads in order
-    const row = { id: `fold:${group}:${entry.id}`, group, entries: [entry], lore: true };
-    rowsByGroup.set(group, row);
-    rows.push(row);
-  });
-
-  return rows;
-}
-
-//the prompt sits at the head of the same list as the model's actions, so a run reads top to bottom as
-//one sequence rather than a card and a list. an old run that never recorded a prompt keeps its first
-//entry where it was, as an action
-function historyRunRows(run) {
-  const promptLed = isPromptEntry(run.prompt);
-  const actions = promptLed ? run.actions : [run.prompt, ...run.actions];
-  const rows = historyActivityRows(actions);
-
-  if (promptLed) {
-    rows.unshift({ id: run.prompt.id, group: null, entries: [run.prompt] });
-  }
-
-  return rows;
-}
-
-//a prompt and a thought are both a wall of text rather than a list, so they expand into a readable
-//panel instead of the tree of rows every other expandable row opens into
-function historyRowText(row) {
-  if (row.name || row.lore || row.entries.length !== 1) return null;
-
-  const entry = row.entries[0];
-  if (isPromptEntry(entry)) return { kind: "prompt", text: String(entry.detail || "").trim() };
-  if (entry.kind !== "thinking") return null;
-
-  return { kind: "thinking", text: String(entry.detail || "").trim() };
-}
-
-//one level down from a folded row there is nothing left to fold, so each entry becomes a bare name
-function historyRowChildren(row) {
-  if (row.group === "lore_pass") return historyLoreRows(row.entries);
-  if (row.entries.length > 1) {
-    return row.entries.map((entry) => ({
-      id: `name:${entry.id}`,
-      group: null,
-      entries: [entry],
-      name: true,
-    }));
-  }
-  return [];
-}
-
-//pulls the entry name back out of a lorebook label so a folded row can still list what it covered
-function historyEntryName(entry) {
-  const label = String(entry?.label || "");
-  const match =
-    label.match(/ added (.+) to Lorebook$/)
-    || label.match(/ updated (.+) in Lorebook$/)
-    || label.match(/ excluded (.+) from context$/);
-  return match ? match[1] : label;
-}
-
-//the closing line of a pass reads as its own sentence, this puts it in the same
-//"<model> <verb> for <duration>" shape as the thinking and writing lines beside it
-//a nested row already sits under a line that named the model, so it drops the subject and keeps the
-//verb. the anchors that find the name are what cut it back off the front of the label
-function historyLabelBody(label) {
-  const text = String(label || "");
-
-  for (const pattern of HISTORY_MODEL_PATTERNS) {
-    const match = text.match(pattern);
-    if (!match) continue;
-
-    const body = text.slice(match[1].length).trimStart();
-    return body ? body[0].toUpperCase() + body.slice(1) : text;
-  }
-
-  return text;
-}
-
-//the closing line of a pass reads as its own sentence, this puts it in the same
-//"<model> <verb> for <duration>" shape as the thinking and writing lines beside it
-function historyPassLabel(row) {
-  const summary = row.entries.find((entry) => entry.kind === "lore_summary");
-  const label = String(summary?.label || "");
-
-  const finished = label.match(/^(.+?) finished editing Lorebook after (.+)$/);
-  if (finished) return `${finished[1]} edited Lorebook for ${finished[2]}`;
-
-  //a pass that changed nothing already says so in its own words, and has nothing underneath it
-  if (label) return label;
-  return `${historyModelName(row.entries)} edited Lorebook`;
-}
-
-function historyRowLabel(row) {
-  if (row.group === "lore_pass") return historyPassLabel(row);
-  if (row.name) return historyEntryName(row.entries[0]);
-
-  if (row.entries.length === 1) {
-    const label = row.entries[0].label;
-    return row.lore ? historyLabelBody(label) : String(label || "");
-  }
-
-  //only a pass builds folded rows, so these are always nested and always drop the model
-  const count = row.entries.length;
-  const noun = count === 1 ? "entry" : "entries";
-
-  if (row.group === "lore_create") return `Added ${count} ${noun} to Lorebook`;
-  if (row.group === "lore_hide") return `Excluded ${count} ${noun} from context`;
-  return `Updated ${count} ${noun} in Lorebook`;
-}
-
-function historyRowWords(row) {
-  //the summary already carries the totals for the whole pass, so it stands in for its children
-  //rather than being counted on top of them
-  const summary = row.entries.find((entry) => entry.kind === "lore_summary");
-  const counted = summary ? [summary] : row.entries;
-
-  return counted.reduce(
-    (totals, entry) => ({
-      added: totals.added + (toFiniteNumber(entry.words_added) || 0),
-      removed: totals.removed + (toFiniteNumber(entry.words_removed) || 0),
-    }),
-    { added: 0, removed: 0 },
-  );
-}
-
-function historyWordTotals(entries) {
-  //hides never wrote anything, the text just left context, and lore_summary already restates the
-  //lorebook rows above it, so counting either one would inflate the tally
-  return entries.reduce(
-    (totals, entry) => {
-      if (entry.kind === "lore_hide" || entry.kind === "lore_summary") return totals;
-      return {
-        added: totals.added + (toFiniteNumber(entry.words_added) || 0),
-        removed: totals.removed + (toFiniteNumber(entry.words_removed) || 0),
-      };
-    },
-    { added: 0, removed: 0 },
-  );
-}
-
-function historyCostTotal(entries) {
-  //old history predates cost tracking so anything non numeric just doesnt count toward the tally
-  return entries.reduce((total, entry) => {
-    const cost = toFiniteNumber(entry.cost);
-    return isFiniteNumber(cost) ? total + cost : total;
-  }, 0);
-}
-
-function isFiniteNumber(value) {
-  return typeof value === "number" && Number.isFinite(value);
-}
-
-function formatInteger(value) {
-  if (!isFiniteNumber(value)) return "Unavailable";
-  return new Intl.NumberFormat().format(value);
-}
-
-function formatCost(value) {
-  if (!isFiniteNumber(value)) return "Unavailable";
-  if (value > 0 && value < 1) {
-    const cents = value * 100;
-    const centsText = new Intl.NumberFormat(undefined, {
-      minimumFractionDigits: cents < 0.1 ? 3 : 1,
-      maximumFractionDigits: cents < 0.1 ? 3 : 1,
-    }).format(cents);
-
-    return `${centsText}¢`;
-  }
-
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: value >= 1 ? 2 : 6,
-  }).format(value);
-}
-
 function ContextWindowMeter({ info, placement = "above" }) {
   const tooltipId = useId();
   if (!info) return null;
@@ -2988,7 +2014,6 @@ const AssistantStatusLine = memo(function AssistantStatusLine({
   );
 });
 
-//the label blurs out and back in whenever the state changes, so working turns into thinking without a hard cut
 function StatusLabel({ label, shimmering }) {
   const { shownText, textRef } = useTextSwap(label);
 
@@ -3913,7 +2938,6 @@ function StoryRail({
   );
 }
 
-//turns an in flight edit operation into a human phrase instead of showing the raw operation/anchor json fields
 function editPreviewPhrase(operation, anchor) {
   const snippet = anchor ? `“${anchor.length > 60 ? `${anchor.slice(0, 60)}…` : anchor}”` : "";
   switch (operation) {
@@ -5285,8 +4309,6 @@ function WriteHistoryActivity({ rows, expandedEntries, onToggleEntry }) {
   );
 }
 
-//every level is its own full width list, so a nested row lands on the same two grid tracks as a top
-//level one and the diff column stays a single edge no matter how deep the row sits
 function WriteHistoryRows({ rows, guides, parentFinal, expandedEntries, onToggleEntry }) {
   return (
     <ol className={guides.length === 0 ? "px-1" : undefined}>
@@ -5419,7 +4441,6 @@ function WriteHistoryAction({
   );
 }
 
-//indentation carries the nesting on its own, so this is a plain depth guide rather than a drawn elbow
 function WriteHistoryGuide({ drawn }) {
   return (
     <span className="relative w-[18px] shrink-0" aria-hidden="true">
@@ -5490,9 +4511,6 @@ function WriteHistoryTextPanel({ text, emptyLabel }) {
   );
 }
 
-//a hide destroys nothing, it just drops the entry out of context, so it doesnt get to wear the deletion colour
-//cost lives on the run header and the modal totals, per row it was just noise beside the diff
-//self-start keeps this on the labels first line, without it the span stretches to the whole row and centers itself six pixels low
 function WriteHistoryStats({ added, removed, isHide = false }) {
   if (!added && !removed) return null;
 
@@ -5506,8 +4524,6 @@ function WriteHistoryStats({ added, removed, isHide = false }) {
   );
 }
 
-//prompts and thoughts open into their own panel now, so what is left here is the short note a failed
-//or partial action leaves behind
 function WriteHistoryDetail({ entry }) {
   if (!entry.detail) return null;
 
@@ -5555,7 +4571,6 @@ function SettingRow({ title, description, children }) {
   );
 }
 
-//the searchable model list, shared by the global Models page and the Lorebook one so the two never drift apart
 function ModelPicker({
   models,
   query,
@@ -6768,7 +5783,6 @@ function Accordion({ id, title, open, onToggle, trailing, children }) {
   );
 }
 
-//the pill tween is 250ms in css, this leaves room for the tail before the flag expires
 const SLIDING_TAB_ANIMATION_MS = 320;
 
 function SlidingTabs({
@@ -10844,7 +9858,6 @@ function App() {
   );
 }
 
-//the whole app hides behind this, App never mounts until the current terms have been accepted
 function Root() {
   const [gate, setGate] = useState({ status: "loading", tos: null, message: "" });
   const [acceptError, setAcceptError] = useState("");

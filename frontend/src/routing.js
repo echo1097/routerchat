@@ -1,5 +1,3 @@
-
-
 export function chatRoute(chat) {
   if (!chat?.id) return { page: "home" };
   return {

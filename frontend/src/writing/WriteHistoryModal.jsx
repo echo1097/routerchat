@@ -128,7 +128,6 @@ export function WriteHistoryModal({ open, entries, title, onClose }) {
           )}
         </header>
 
-        {}
         <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3 sm:px-4 sm:pb-4">
           {runGroups.length > 0 ? (
             <div className="space-y-2.5">
@@ -156,7 +155,6 @@ export function WriteHistoryModal({ open, entries, title, onClose }) {
 
         {eventCount > 0 && (
           <footer className="shrink-0 border-t border-white/[0.06] px-5 py-3.5 sm:px-6">
-            {}
             <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-[13px] leading-5 tabular-nums text-neutral-400">
               <WriteHistoryTotal
                 value={formatInteger(runGroups.length)}
@@ -219,7 +217,6 @@ function WriteHistoryRunAccordion({
       className="t-acc overflow-hidden rounded-[20px] bg-black/20 shadow-[var(--shadow-border)]"
       data-open={String(open)}
     >
-      {}
       <button
         type="button"
         className="t-acc-head group flex w-full items-center justify-between gap-4 rounded-[20px] py-3 pl-3.5 pr-2.5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/20 sm:pl-4 sm:pr-3"
@@ -341,9 +338,7 @@ function WriteHistoryAction({
   return (
     <li className="t-tree" data-open={String(expanded)}>
       <div className="t-tree-row grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4">
-        {}
         <div className="flex min-w-0">
-          {}
           {guides.slice(1).map((drawn, level) => (
             <WriteHistoryGuide key={level} drawn={drawn} />
           ))}

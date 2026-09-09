@@ -1,5 +1,3 @@
-
-
 export function Accordion({ id, title, open, onToggle, trailing, children }) {
   return (
     <section className="t-acc border-b border-white/[0.08] last:border-b-0" data-open={String(open)}>

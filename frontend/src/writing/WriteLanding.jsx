@@ -1,5 +1,3 @@
-
-
 export function WriteLanding({ openingMessage }) {
   if (!openingMessage) return null;
 

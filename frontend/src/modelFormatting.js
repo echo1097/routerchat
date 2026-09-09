@@ -1,5 +1,3 @@
-
-
 function modelName(models, id) {
   return models.find((model) => model.id === id)?.name || id || "No model";
 }

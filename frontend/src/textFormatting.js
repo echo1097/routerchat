@@ -1,5 +1,3 @@
-
-
 export function truncatePromptText(value, maxLength = 96) {
   const compact = String(value || "").replace(/\s+/g, " ").trim();
   if (compact.length <= maxLength) return compact || "Empty prompt";

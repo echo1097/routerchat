@@ -1,5 +1,3 @@
-
-
 export const DEFAULT_MODEL = "anthropic/claude-3.5-sonnet";
 
 export const newSettings = {

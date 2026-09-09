@@ -1,5 +1,3 @@
-
-
 export async function api(path, options = {}) {
   const response = await fetch(path, {
     cache: "no-store",

@@ -107,7 +107,7 @@ test("the toggle starts off and sends no web search", async ({ page }) => {
   expect(sent[0].web_search_enabled).toBe(false);
 });
 
-test("clicking it brightens the button and turns web search on for the request", async ({ page }) => {
+test("clicking it turns the button blue and enables web search for the request", async ({ page }) => {
   const sent = [];
   await installChatApi(page, sent);
   await page.goto("/chat/chat-1");
@@ -120,8 +120,8 @@ test("clicking it brightens the button and turns web search on for the request",
 
   await expect
     .poll(() => toggle.evaluate((node) => getComputedStyle(node).color))
-    .toBe("rgb(255, 255, 255)");
-  expect(dimColor).not.toBe("rgb(255, 255, 255)");
+    .toBe("rgb(96, 165, 250)");
+  expect(dimColor).not.toBe("rgb(96, 165, 250)");
 
   await askSomething(page);
   await expect.poll(() => sent.length).toBe(1);

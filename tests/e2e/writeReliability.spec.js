@@ -258,7 +258,7 @@ test("keeps completed brainstorm thinking on its prompt node", async ({ page }) 
   const failedPrompt = page.locator(".react-flow__node-prompt").filter({
     hasText: "Retry this failed direction.",
   });
-  await expect(failedPrompt.getByRole("button", { name: "Retry prompt" })).toBeEnabled();
+  await expect(failedPrompt.getByRole("button", { name: "Regenerate prompt" })).toBeEnabled();
   await expect(failedPrompt.getByRole("button", { name: "Delete prompt" })).toBeEnabled();
 });
 

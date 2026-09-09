@@ -5113,8 +5113,8 @@ function WriteHistoryModal({ open, entries, title, onClose }) {
               type="button"
               onClick={onClose}
               className={cx(
-                "grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/[0.05] text-neutral-400 shadow-[var(--shadow-border)] hover:bg-white/[0.09] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
-                CONTROL_MOTION,
+                "grid h-8 w-8 shrink-0 place-items-center rounded-full bg-transparent text-neutral-400 hover:bg-white/[0.08] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
+                PROMPT_BAR_CONTROL_MOTION,
               )}
               aria-label="Close history"
             >

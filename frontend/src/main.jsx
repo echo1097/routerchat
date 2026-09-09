@@ -1,30 +1,110 @@
-import { lazy, useState, useRef, useEffect, useMemo, useCallback, useId, memo, useLayoutEffect, Suspense } from "react";
-import { MessageSquarePlus, SlidersHorizontal, Pencil, X, Trash2, Eye, EyeOff, PanelLeftOpen, ChevronDown, Copy, RefreshCw, ArrowLeft, Square, Plus, Check, Search, Menu } from "lucide-react";
-import { cx, CONTROL_MOTION, SOFT_SURFACE, FADE_MOTION, PROMPT_BAR_CONTROL_MOTION } from "./uiShared.js";
-import { formatInteger, formatCost, truncatePromptText, formatThoughtDuration, exportFileName, shortTitle, storyExportFileName } from "./textFormatting.js";
+import {
+  lazy,
+  useState,
+  useRef,
+  useEffect,
+  useMemo,
+  useCallback,
+  memo,
+  useId,
+  useLayoutEffect,
+  Suspense,
+} from "react";
+import {
+  MessageSquarePlus,
+  SlidersHorizontal,
+  Pencil,
+  X,
+  Trash2,
+  Eye,
+  EyeOff,
+  PanelLeftOpen,
+  ChevronDown,
+  Copy,
+  RefreshCw,
+  ArrowLeft,
+  Square,
+  Plus,
+  Check,
+  Search,
+  Menu,
+} from "lucide-react";
+import { cx, CONTROL_MOTION, FADE_MOTION, PROMPT_BAR_CONTROL_MOTION } from "./uiShared.js";
+import {
+  formatInteger,
+  formatCost,
+  truncatePromptText,
+  formatThoughtDuration,
+  exportFileName,
+  shortTitle,
+  storyExportFileName,
+} from "./textFormatting.js";
+import { OverflowActions } from "./components/OverflowActions.jsx";
+import { MaskIcon, IconButton } from "./components/IconButton.jsx";
 import { createPortal } from "react-dom";
+import { MarkdownContent } from "./chat/MarkdownContent.jsx";
 import { api, responseErrorDetail } from "./api.js";
-import { promptModelName, getModelContextLimit, priceLabel, formatTokens, isFreeModel, toFiniteNumber, getContextWindowInfo } from "./modelFormatting.js";
+import {
+  promptModelName,
+  getModelContextLimit,
+  priceLabel,
+  formatTokens,
+  isFreeModel,
+  toFiniteNumber,
+  getContextWindowInfo,
+} from "./modelFormatting.js";
 import { APP_VERSION } from "./appInfo.js";
-import { CHAT_MODES, LOREBOOK_MODEL_INHERIT, newSettings, DEFAULT_MODEL } from "./settings/settingsDefaults.js";
+import { SlidingTabs } from "./components/SlidingTabs.jsx";
+import {
+  CHAT_MODES,
+  LOREBOOK_MODEL_INHERIT,
+  newSettings,
+  DEFAULT_MODEL,
+} from "./settings/settingsDefaults.js";
+import { NamePromptModal } from "./components/NamePromptModal.jsx";
+import { StatusLabel } from "./components/StatusLabel.jsx";
 import ThinkingContent from "./ThinkingContent.jsx";
-import { useTextSwap } from "./textSwap.js";
-import remarkGfm from "remark-gfm";
-import { remarkCitationPills, isCitationLink, uncitedSources } from "./websearch/citations.js";
-import { streamWordsPlugin, useStreamReveal } from "./streamingText.js";
-import ReactMarkdown from "react-markdown";
-import { MARKDOWN_IMAGE_COMPONENT } from "./markdownImage.jsx";
-import SourcePills, { InlineCitation } from "./websearch/SourcePills.jsx";
+import { uncitedSources } from "./websearch/citations.js";
+import { useStreamReveal } from "./streamingText.js";
 import AttachmentChips from "./attachments/AttachmentChips.jsx";
+import SourcePills from "./websearch/SourcePills.jsx";
 import { useRafScroller } from "./streamScroll.js";
 import { ThinkingStatus } from "./thinkingStates.jsx";
 import StoryLorebook from "./lorebook/StoryLorebook.jsx";
 import ChapterStreamingCanvas from "./writing/ChapterStreamingCanvas.jsx";
-import { supportsThinking, supportsImageInput, requiresThinking, effectiveThinkingEnabled, reasoningEffortLabel, resolveReasoningEffort, supportsReasoningEffort } from "./modelReasoning.js";
+import {
+  supportsThinking,
+  supportsImageInput,
+  requiresThinking,
+  effectiveThinkingEnabled,
+  reasoningEffortLabel,
+  resolveReasoningEffort,
+  supportsReasoningEffort,
+} from "./modelReasoning.js";
 import AttachButton from "./attachments/AttachButton.jsx";
 import { MAX_FILES_PER_MESSAGE } from "./attachments/attachmentsApi.js";
-import { historyRunGroups, isPromptEntry, historyCostTotal, historyWordTotals, historyRunRows, historyRowChildren, historyRowText, historyRowWords, historyRowLabel } from "./writing/historyFormatting.js";
-import { readLocalAppSettings, pickOpeningMessage, PENDING_CHAPTER_DRAFTS_STORAGE_KEY, readLocalChatFolders, clearLocalChatFolders, writeLocalAppSettings } from "./localStorage.js";
+import { ContextWindowMeter } from "./components/ContextWindowMeter.jsx";
+import {
+  historyRunGroups,
+  isPromptEntry,
+  historyCostTotal,
+  historyWordTotals,
+  historyRunRows,
+  historyRowChildren,
+  historyRowText,
+  historyRowWords,
+  historyRowLabel,
+} from "./writing/historyFormatting.js";
+import { SearchClearField } from "./components/SearchClearField.jsx";
+import { Accordion } from "./components/Accordion.jsx";
+import {
+  readLocalAppSettings,
+  pickOpeningMessage,
+  PENDING_CHAPTER_DRAFTS_STORAGE_KEY,
+  readLocalChatFolders,
+  clearLocalChatFolders,
+  writeLocalAppSettings,
+} from "./localStorage.js";
 import { parseRoute, storyRoute, routePath, chatRoute } from "./routing.js";
 import { useTour } from "./tour/useTour.js";
 import { WRITE_TOUR_STEPS } from "./tour/tourSteps.js";
@@ -33,13 +113,26 @@ import { useAttachments } from "./attachments/useAttachments.js";
 import { createNavigationCoordinator } from "./writing/navigationCoordinator.js";
 import { createSaveCoordinator } from "./writing/saveCoordinator.js";
 import { storyApi } from "./writing/storyApi.js";
-import { chapterRunTargetsOpenChapter, loadSettledGeneration, chapterGenerationEventMatchesRun, parseStreamingEditPreview, nextEditPreview, chapterUpdateMatchesRun, chapterFromUpdateEvent, chapterRepairContext, chapterGenerationErrorMessage, chapterGenerationErrorIsRepairable, chapterAppliedEditSummary } from "./writing/chapterGenerationEvents.js";
+import {
+  chapterRunTargetsOpenChapter,
+  loadSettledGeneration,
+  chapterGenerationEventMatchesRun,
+  parseStreamingEditPreview,
+  nextEditPreview,
+  chapterUpdateMatchesRun,
+  chapterFromUpdateEvent,
+  chapterRepairContext,
+  chapterGenerationErrorMessage,
+  chapterGenerationErrorIsRepairable,
+  chapterAppliedEditSummary,
+} from "./writing/chapterGenerationEvents.js";
 import { updateLorebookStream } from "./lorebook/lorebookUpdateApi.js";
 import { repairLorebook as repairLorebookStream } from "./lorebook/repairLorebookApi.js";
 import { generateLorebookEntry as generateLorebookEntryStream } from "./lorebook/generateEntryApi.js";
 import { useFileDrop } from "./attachments/useFileDrop.js";
 import HelpTourButton from "./HelpTourButton.jsx";
 import StoryBrainstorm from "./brainstorm/StoryBrainstorm.jsx";
+import { ConfirmModal } from "./components/ConfirmModal.jsx";
 import NotificationStack from "./notifications/NotificationStack.jsx";
 import TourOverlay from "./tour/TourOverlay.jsx";
 import { TosLoadingScreen, TosUnavailableScreen, TosGateModal } from "./TosGate.jsx";
@@ -81,48 +174,6 @@ const LOREBOOK_UPDATE_MODES = {
 
 function rangeProgress(value, min, max) {
   return `${((Number(value) - min) / (max - min)) * 100}%`;
-}
-
-function IconButton({ label, children, className, ...props }) {
-  return (
-    <button
-      aria-label={label}
-      title={label}
-      className={cx(
-        "inline-flex h-10 w-10 items-center justify-center rounded-full border border-line bg-white/[0.04] text-neutral-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
-        CONTROL_MOTION,
-        SOFT_SURFACE,
-        "hover:border-white/15 hover:bg-white/[0.075] hover:text-white",
-        className,
-      )}
-      {...props}
-    >
-      {children}
-    </button>
-  );
-}
-
-function MaskIcon({ src, size = 19, className }) {
-  const maskStyle = {
-    width: size,
-    height: size,
-    maskImage: `url("${src}")`,
-    WebkitMaskImage: `url("${src}")`,
-    maskRepeat: "no-repeat",
-    WebkitMaskRepeat: "no-repeat",
-    maskPosition: "center",
-    WebkitMaskPosition: "center",
-    maskSize: "contain",
-    WebkitMaskSize: "contain",
-  };
-
-  return (
-    <span
-      aria-hidden="true"
-      className={cx("inline-block shrink-0 bg-current", className)}
-      style={maskStyle}
-    />
-  );
 }
 
 function AssistantActionButton({ label, children, ...props }) {
@@ -253,150 +304,6 @@ function ResponseInfoButton({ message }) {
           ))}
         </dl>
       </div>
-    </div>
-  );
-}
-
-function OverflowActions({
-  id,
-  title,
-  label,
-  isFirst = false,
-  forceVisible = false,
-  menuWidth = 156,
-  children,
-}) {
-  const [open, setOpen] = useState(false);
-  const [closing, setClosing] = useState(false);
-  const [menuStyle, setMenuStyle] = useState({});
-  const rootRef = useRef(null);
-  const buttonRef = useRef(null);
-  const menuRef = useRef(null);
-  const closeTimerRef = useRef(null);
-  const menuId = `${id}-actions`;
-
-  function updateMenuPosition() {
-    const button = buttonRef.current;
-    if (!button) return;
-
-    const rect = button.getBoundingClientRect();
-    const left = Math.min(rect.left, window.innerWidth - menuWidth - 12);
-
-    setMenuStyle({
-      left: `${Math.max(12, left)}px`,
-      top: `${rect.bottom + 6}px`,
-    });
-  }
-
-  function clearCloseTimer() {
-    if (!closeTimerRef.current) return;
-    window.clearTimeout(closeTimerRef.current);
-    closeTimerRef.current = null;
-  }
-
-  function closeMenu() {
-    if (!open) return;
-    clearCloseTimer();
-    setOpen(false);
-    setClosing(true);
-    const closeMs = parseFloat(
-      getComputedStyle(document.documentElement).getPropertyValue("--dropdown-close-dur"),
-    ) || 150;
-    closeTimerRef.current = window.setTimeout(() => {
-      setClosing(false);
-      closeTimerRef.current = null;
-    }, closeMs);
-  }
-
-  function toggleMenu(event) {
-    event.stopPropagation();
-    if (open) {
-      closeMenu();
-      return;
-    }
-    clearCloseTimer();
-    setClosing(false);
-    updateMenuPosition();
-    setOpen(true);
-  }
-
-  useEffect(() => {
-    if (!open) return undefined;
-
-    function handlePointerDown(event) {
-      if (rootRef.current?.contains(event.target)) return;
-      if (menuRef.current?.contains(event.target)) return;
-      closeMenu();
-    }
-
-    function handleKeyDown(event) {
-      if (event.key === "Escape") closeMenu();
-    }
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("resize", updateMenuPosition);
-    window.addEventListener("scroll", updateMenuPosition, true);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("resize", updateMenuPosition);
-      window.removeEventListener("scroll", updateMenuPosition, true);
-    };
-  }, [open]);
-
-  useEffect(() => () => clearCloseTimer(), []);
-
-  const menu = (open || closing) && typeof document !== "undefined"
-    ? createPortal(
-        <div
-          ref={menuRef}
-          id={menuId}
-          role="menu"
-          data-origin="top-left"
-          style={menuStyle}
-          className={cx(
-            "t-dropdown chat-history-menu",
-            open && "is-open",
-            closing && "is-closing",
-          )}
-        >
-          {children(closeMenu)}
-        </div>,
-        document.body,
-      )
-    : null;
-
-  return (
-    <div
-      ref={rootRef}
-      className={cx(
-        "chat-history-actions relative flex",
-
-        forceVisible ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
-      )}
-    >
-      <button
-        ref={buttonRef}
-        type="button"
-        title={label}
-        data-tour={isFirst ? "chat-actions-button" : undefined}
-        aria-label={`${label} for ${title}`}
-        aria-expanded={open}
-        aria-controls={menuId}
-        aria-haspopup="menu"
-        onClick={toggleMenu}
-        className={cx(
-          "chat-history-menu-button grid h-7 w-7 place-items-center rounded-full bg-transparent text-neutral-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15",
-          CONTROL_MOTION,
-          open
-            ? "text-neutral-200"
-            : "hover:text-neutral-200",
-        )}
-      >
-        <i className="fi fi-bs-menu-dots" aria-hidden="true" />
-      </button>
-      {menu}
     </div>
   );
 }
@@ -1887,74 +1794,6 @@ function PromptNavigationRail({ messages, streamRef, visible, activeChatId }) {
   );
 }
 
-function ContextWindowMeter({ info, placement = "above" }) {
-  const tooltipId = useId();
-  if (!info) return null;
-
-  const percent = Math.min(Math.max(info.percentFull, 0), 100);
-  const radius = 8;
-  const circumference = 2 * Math.PI * radius;
-  const dashOffset = circumference * (1 - percent / 100);
-  const ariaLabel = `Context window ${info.displayPercent}, ${info.displayUsage}`;
-
-  return (
-    <span
-      className={cx(
-        "t-tt-wrap context-meter-wrap inline-flex h-8 w-8 shrink-0 items-center justify-center",
-        placement === "belowEnd" && "context-meter-wrap-below-end",
-      )}
-    >
-      <button
-        type="button"
-        aria-label={ariaLabel}
-        aria-describedby={tooltipId}
-        className={cx(
-          "t-tt-trigger grid h-8 w-8 place-items-center rounded-full text-neutral-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
-          CONTROL_MOTION,
-          "hover:text-neutral-100",
-        )}
-      >
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 20 20"
-          className="h-[11px] w-[11px] -rotate-90"
-        >
-          <circle
-            cx="10"
-            cy="10"
-            r={radius}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="3"
-            className="opacity-35"
-          />
-          <circle
-            cx="10"
-            cy="10"
-            r={radius}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="3"
-            strokeLinecap="round"
-            strokeDasharray={circumference}
-            strokeDashoffset={dashOffset}
-            className="opacity-80 transition-[stroke-dashoffset] duration-300 ease-out"
-          />
-        </svg>
-      </button>
-      <span
-        id={tooltipId}
-        role="tooltip"
-        className="t-tt context-meter-tooltip"
-      >
-        <span className="block text-neutral-100">
-          {info.displayUsage}
-        </span>
-      </span>
-    </span>
-  );
-}
-
 const AssistantStatusLine = memo(function AssistantStatusLine({
   reasoning,
   reasoningStreaming,
@@ -2011,93 +1850,6 @@ const AssistantStatusLine = memo(function AssistantStatusLine({
         </div>
       )}
     </div>
-  );
-});
-
-function StatusLabel({ label, shimmering }) {
-  const { shownText, textRef } = useTextSwap(label);
-
-  return (
-    <span
-      ref={textRef}
-      className={cx("t-text-swap", shimmering && "t-shimmer")}
-      data-text={shownText}
-    >
-      {shownText}
-    </span>
-  );
-}
-
-const MARKDOWN_REMARK_PLUGINS = [remarkGfm, remarkCitationPills];
-
-function markdownLinkText(children) {
-  if (typeof children === "string") return children;
-  if (Array.isArray(children)) return children.map(markdownLinkText).join("");
-  if (children?.props?.children) return markdownLinkText(children.props.children);
-
-  return "";
-}
-
-const MarkdownContent = memo(function MarkdownContent({ children, streaming, settledRef }) {
-  //only the message that is actively streaming gets split into word spans, scrollback stays plain
-  const rehypePlugins = streaming ? [streamWordsPlugin(settledRef)] : undefined;
-
-  return (
-    <ReactMarkdown
-      remarkPlugins={MARKDOWN_REMARK_PLUGINS}
-      rehypePlugins={rehypePlugins}
-      components={{
-        ...MARKDOWN_IMAGE_COMPONENT,
-        h1: ({ node, ...props }) => (
-          <h1 className="mb-4 mt-6 text-balance text-2xl font-semibold leading-tight tracking-[-0.01em] text-neutral-100 first:mt-0" {...props} />
-        ),
-        h2: ({ node, ...props }) => (
-          <h2 className="mb-3 mt-6 text-balance text-xl font-semibold leading-tight tracking-[-0.01em] text-neutral-100 first:mt-0" {...props} />
-        ),
-        h3: ({ node, ...props }) => (
-          <h3 className="mb-2 mt-5 text-balance text-lg font-semibold leading-snug text-neutral-100 first:mt-0" {...props} />
-        ),
-        h4: ({ node, ...props }) => (
-          <h4 className="mb-2 mt-4 text-balance text-base font-semibold leading-snug text-neutral-100 first:mt-0" {...props} />
-        ),
-        strong: ({ node, ...props }) => (
-          <strong className="font-semibold text-neutral-100" {...props} />
-        ),
-        p: ({ node, ...props }) => <p className="mb-4 text-pretty last:mb-0" {...props} />,
-        a: ({ node, ...props }) => {
-          const label = markdownLinkText(props.children);
-          if (isCitationLink(props.href, label)) {
-            return <InlineCitation href={props.href} label={label} />;
-          }
-
-          return (
-            <a
-              className="text-accent underline decoration-accent/30 underline-offset-4 transition-[color,text-decoration-color] duration-150 ease-out hover:decoration-accent/70"
-              target="_blank"
-              rel="noreferrer"
-              {...props}
-            />
-          );
-        },
-        code: ({ inline, ...props }) =>
-          inline ? (
-            <code className="rounded-md bg-white/[0.07] px-1.5 py-0.5 text-[0.92em] text-neutral-100" {...props} />
-          ) : (
-            <code {...props} />
-          ),
-        pre: ({ node, ...props }) => (
-          <pre className="my-4 overflow-x-auto rounded-2xl bg-black/35 p-4 text-sm leading-6 shadow-[var(--shadow-border)]" {...props} />
-        ),
-        ul: ({ node, ...props }) => (
-          <ul className="my-4 list-disc space-y-1 pl-5 text-pretty" {...props} />
-        ),
-        ol: ({ node, ...props }) => (
-          <ol className="my-4 list-decimal space-y-1 pl-5 text-pretty" {...props} />
-        ),
-      }}
-    >
-      {children || ""}
-    </ReactMarkdown>
   );
 });
 
@@ -5745,556 +5497,6 @@ function SettingsDrawer({
   );
 }
 
-function Accordion({ id, title, open, onToggle, trailing, children }) {
-  return (
-    <section className="t-acc border-b border-white/[0.08] last:border-b-0" data-open={String(open)}>
-      <button
-        type="button"
-        className="t-acc-head flex min-h-10 w-full items-center justify-between gap-4 rounded-xl px-1 py-2 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/35"
-        aria-expanded={open}
-        onClick={() => onToggle(id)}
-      >
-        <span className="flex min-w-0 items-center gap-3">
-          <span className="truncate text-sm font-semibold text-neutral-100">{title}</span>
-          {trailing && (
-            <span className="shrink-0 rounded-full bg-white/[0.04] px-2.5 py-1 text-[11px] text-neutral-600 shadow-[var(--shadow-border)]">
-              {trailing}
-            </span>
-          )}
-        </span>
-        <span className="t-acc-chevron shrink-0 text-neutral-400">
-          <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-            <path
-              d="M4 6.5L8 10.5L12 6.5"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </span>
-      </button>
-      <div className="t-acc-panel">
-        <div className="t-acc-panel-inner px-1 pb-3">
-          {children}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-const SLIDING_TAB_ANIMATION_MS = 320;
-
-function SlidingTabs({
-  options,
-  value,
-  fromValue = null,
-  onChange,
-  getValue,
-  getLabel,
-  isOptionDisabled,
-  ariaLabel,
-  disabled = false,
-  className,
-}) {
-  const barRef = useRef(null);
-  const pillRef = useRef(null);
-  const measuredRef = useRef(false);
-  const fromValueRef = useRef(fromValue);
-  const previousValueRef = useRef(value);
-  const moveToActiveRef = useRef(null);
-  const barWidthRef = useRef(null);
-  const animatingRef = useRef(false);
-  const animationTimeoutRef = useRef(null);
-
-  useEffect(() => {
-    fromValueRef.current = fromValue;
-  }, [fromValue]);
-
-  useLayoutEffect(() => {
-    const bar = barRef.current;
-    const pill = pillRef.current;
-    if (!bar || !pill) return undefined;
-
-    function tabForValue(tabValue) {
-      if (!tabValue) return null;
-      return [...bar.querySelectorAll(".t-tab")].find(
-        (tab) => tab.dataset.value === tabValue,
-      );
-    }
-
-    function moveToTab(tab, animate) {
-      if (!tab) return;
-
-      const tabLeft = tab.offsetLeft;
-      const tabWidth = tab.offsetWidth;
-
-      window.clearTimeout(animationTimeoutRef.current);
-
-      if (!animate) {
-        animatingRef.current = false;
-        const previousTransition = pill.style.transition;
-        pill.style.transition = "none";
-        pill.style.transform = `translateX(${tabLeft}px)`;
-        pill.style.width = `${tabWidth}px`;
-        void pill.offsetWidth;
-        pill.style.transition = previousTransition;
-        return;
-      }
-
-      //a cancelled transition never fires transitionend, so the flag needs its own expiry
-      animatingRef.current = true;
-      animationTimeoutRef.current = window.setTimeout(() => {
-        animatingRef.current = false;
-      }, SLIDING_TAB_ANIMATION_MS);
-
-      pill.style.transform = `translateX(${tabLeft}px)`;
-      pill.style.width = `${tabWidth}px`;
-    }
-
-    function moveToActive(animate) {
-      const activeTab =
-        tabForValue(value) ||
-        bar.querySelector('[aria-selected="true"]') ||
-        bar.querySelector(".t-tab");
-
-      moveToTab(activeTab, animate);
-    }
-
-    moveToActiveRef.current = moveToActive;
-
-    const previousValue = measuredRef.current
-      ? previousValueRef.current
-      : fromValueRef.current;
-    const previousTab = tabForValue(previousValue);
-    const shouldAnimate = Boolean(previousTab && previousValue !== value);
-
-    if (shouldAnimate) {
-      moveToTab(previousTab, false);
-    } else {
-      moveToActive(false);
-    }
-
-    barWidthRef.current = bar.offsetWidth;
-    measuredRef.current = true;
-    previousValueRef.current = value;
-    fromValueRef.current = null;
-
-    const frameId = shouldAnimate
-      ? requestAnimationFrame(() => moveToActive(true))
-      : null;
-
-    return () => {
-      if (frameId) cancelAnimationFrame(frameId);
-    };
-  }, [options, value]);
-
-  useEffect(() => {
-    const bar = barRef.current;
-    if (!bar) return undefined;
-
-    const pill = pillRef.current;
-
-    //observe() always delivers once with the current size, and that lands between the
-    //animation frame and the paint, so an unfiltered snap here would kill the slide on mount
-    function handleResize() {
-      const barWidth = bar.offsetWidth;
-      if (barWidth === barWidthRef.current) return;
-
-      barWidthRef.current = barWidth;
-      moveToActiveRef.current?.(animatingRef.current);
-    }
-
-    function handleTransitionEnd(event) {
-      if (event.target !== pill) return;
-      window.clearTimeout(animationTimeoutRef.current);
-      animatingRef.current = false;
-    }
-
-    const resizeObserver =
-      typeof ResizeObserver === "undefined"
-        ? null
-        : new ResizeObserver(handleResize);
-
-    resizeObserver?.observe(bar);
-    pill?.addEventListener("transitionend", handleTransitionEnd);
-    window.addEventListener("resize", handleResize);
-    return () => {
-      resizeObserver?.disconnect();
-      pill?.removeEventListener("transitionend", handleTransitionEnd);
-      window.removeEventListener("resize", handleResize);
-      window.clearTimeout(animationTimeoutRef.current);
-    };
-  }, []);
-
-  return (
-    <div
-      ref={barRef}
-      className={cx("t-tabs", disabled && "is-disabled", className)}
-      role="tablist"
-      aria-label={ariaLabel}
-    >
-      <span ref={pillRef} className="t-tabs-pill" aria-hidden="true" />
-      {options.map((option) => {
-        const optionValue = getValue(option);
-        const selected = optionValue === value;
-        const optionDisabled = disabled || isOptionDisabled?.(option);
-        return (
-          <button
-            key={optionValue}
-            type="button"
-            role="tab"
-            aria-selected={selected}
-            data-value={optionValue}
-            disabled={optionDisabled}
-            onClick={() => onChange(optionValue)}
-            className={cx(
-              "t-tab min-w-0 flex-1 whitespace-nowrap",
-              optionDisabled && "is-option-disabled",
-            )}
-          >
-            {getLabel(option)}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function SearchClearField({ value, onChange, placeholder }) {
-  const wrapRef = useRef(null);
-  const inputRef = useRef(null);
-  const mirrorRef = useRef(null);
-  const placeholderRef = useRef(null);
-  const glowRef = useRef(null);
-  const [isClearing, setIsClearing] = useState(false);
-  const clearingRef = useRef(false);
-  const frameRef = useRef(null);
-
-  useEffect(
-    () => () => {
-      if (frameRef.current) cancelAnimationFrame(frameRef.current);
-    },
-    [],
-  );
-
-  function readNumber(name, fallback) {
-    const value = parseFloat(
-      getComputedStyle(document.documentElement).getPropertyValue(name),
-    );
-    return Number.isFinite(value) ? value : fallback;
-  }
-
-  function clearSearch() {
-    if (!value || clearingRef.current) return;
-    const wrap = wrapRef.current;
-    const input = inputRef.current;
-    const mirror = mirrorRef.current;
-    const phold = placeholderRef.current;
-    const glow = glowRef.current;
-    if (!wrap || !input || !mirror || !phold || !glow) {
-      onChange("");
-      return;
-    }
-
-    clearingRef.current = true;
-    setIsClearing(true);
-    mirror.textContent = value.replace(/ /g, "\u00a0");
-    wrap.classList.add("is-clearing");
-    onChange("");
-
-    const total = readNumber("--clear-dur", 1000);
-    const outDur = readNumber("--clear-out-dur", 400);
-    const inDur = readNumber("--clear-in-dur", 400);
-    const outFly = readNumber("--clear-out-fly", 12);
-    const inFly = readNumber("--clear-in-fly", 12);
-    const blur = readNumber("--clear-blur", 2);
-    const glowDelay = readNumber("--glow-delay", 50);
-    const glowPeakAt = readNumber("--glow-peak-at", 0.15);
-    const glowOpacity = readNumber("--glow-opacity", 0.85);
-
-    glow.style.background = "radial-gradient(ellipse 70% 18px at 50% 100%, rgba(255,255,255,0.22), transparent)";
-    phold.style.transform = `translateY(-${inFly}px)`;
-    phold.style.opacity = "0.9";
-    phold.style.filter = `blur(${blur}px)`;
-
-    const start = performance.now();
-    function tick(now) {
-      const elapsed = now - start;
-      const outProgress = Math.min(1, elapsed / outDur);
-      const inProgress = Math.min(1, elapsed / inDur);
-      const easedOut = 1 - Math.pow(1 - outProgress, 3);
-      const easedIn = 1 - Math.pow(1 - inProgress, 3);
-
-      mirror.style.transform = `translateY(${(easedOut * outFly).toFixed(1)}px)`;
-      mirror.style.opacity = (1 - easedOut).toFixed(3);
-      mirror.style.filter = `blur(${(easedOut * blur).toFixed(1)}px)`;
-      phold.style.transform = `translateY(${(-inFly + easedIn * inFly).toFixed(1)}px)`;
-      phold.style.opacity = (0.9 + easedIn * 0.1).toFixed(3);
-      phold.style.filter = `blur(${(blur - easedIn * blur).toFixed(1)}px)`;
-
-      let nextGlow = 0;
-      if (elapsed > glowDelay) {
-        const glowProgress = Math.min(1, (elapsed - glowDelay) / Math.max(1, total - glowDelay));
-        nextGlow = glowProgress < glowPeakAt
-          ? glowProgress / glowPeakAt
-          : 1 - (glowProgress - glowPeakAt) / (1 - glowPeakAt);
-      }
-      glow.style.opacity = (nextGlow * glowOpacity).toFixed(3);
-
-      if (elapsed < total) {
-        frameRef.current = requestAnimationFrame(tick);
-        return;
-      }
-
-      frameRef.current = null;
-      wrap.classList.remove("is-clearing");
-      setIsClearing(false);
-      [mirror, phold, glow].forEach((node) => {
-        node.removeAttribute("style");
-      });
-      mirror.textContent = "";
-      clearingRef.current = false;
-      requestAnimationFrame(() => input.focus({ preventScroll: true }));
-    }
-
-    frameRef.current = requestAnimationFrame(tick);
-  }
-
-  return (
-    <div
-      ref={wrapRef}
-      className={cx(
-        "cloud-search t-clear flex h-10 items-center gap-2 rounded-xl bg-black/20 px-3 text-neutral-500 shadow-[var(--shadow-border)] transition-[background-color,box-shadow] duration-150 ease-out focus-within:bg-black/25 focus-within:shadow-[0_0_0_1px_rgba(255,255,255,0.16)]",
-        value && "has-value",
-        isClearing && "is-clearing",
-      )}
-    >
-      <Search size={15} className="relative z-[4] shrink-0" />
-      <input
-        ref={inputRef}
-        type="search"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        data-1p-ignore="true"
-        className="relative z-[4] min-w-0 flex-1 bg-transparent text-sm text-neutral-100 outline-none placeholder:text-transparent"
-      />
-      <div ref={mirrorRef} className="t-clear-mirror" aria-hidden="true">
-        {value}
-      </div>
-      <div ref={placeholderRef} className="t-clear-placeholder" aria-hidden="true">
-        {placeholder}
-      </div>
-      <div ref={glowRef} className="t-clear-glow" aria-hidden="true" />
-      <button
-        type="button"
-        aria-label="Clear chat search"
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={clearSearch}
-        className={cx(
-          "t-clear-btn relative z-[4] grid h-7 w-7 shrink-0 place-items-center rounded-full text-neutral-500 hover:bg-white/[0.06] hover:text-neutral-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
-          CONTROL_MOTION,
-          !value && "pointer-events-none opacity-0",
-        )}
-      >
-        <X size={13} />
-      </button>
-    </div>
-  );
-}
-
-function ConfirmModal({ dialog, onClose }) {
-  const [renderedDialog, setRenderedDialog] = useState(dialog);
-  const [phase, setPhase] = useState(dialog ? "open" : "closed");
-  const [busy, setBusy] = useState(false);
-  const [nameOverflowing, setNameOverflowing] = useState(false);
-  const cancelRef = useRef(null);
-  const chatNameRef = useRef(null);
-
-  useEffect(() => {
-    if (dialog) {
-      setRenderedDialog(dialog);
-      setPhase("open");
-      setBusy(false);
-      requestAnimationFrame(() => cancelRef.current?.focus());
-      return undefined;
-    }
-
-    if (!renderedDialog) return undefined;
-
-    setPhase("closing");
-    const closeMs =
-      parseFloat(
-        getComputedStyle(document.documentElement).getPropertyValue("--modal-close-dur"),
-      ) || 150;
-    const timeoutId = window.setTimeout(() => {
-      setRenderedDialog(null);
-      setPhase("closed");
-      setBusy(false);
-    }, closeMs);
-    return () => window.clearTimeout(timeoutId);
-  }, [dialog, renderedDialog]);
-
-  useEffect(() => {
-    if (!renderedDialog) return undefined;
-
-    function handleKeyDown(event) {
-      if (event.key === "Escape" && !busy) onClose();
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [busy, onClose, renderedDialog]);
-
-  useEffect(() => {
-    if (!renderedDialog?.chatTitle) {
-      setNameOverflowing(false);
-      return undefined;
-    }
-
-    const node = chatNameRef.current;
-    if (!node) return undefined;
-
-    function measure() {
-      setNameOverflowing(node.scrollWidth > node.clientWidth + 1);
-    }
-
-    measure();
-    const resizeObserver = new ResizeObserver(measure);
-    resizeObserver.observe(node);
-    window.addEventListener("resize", measure);
-    return () => {
-      resizeObserver.disconnect();
-      window.removeEventListener("resize", measure);
-    };
-  }, [renderedDialog?.chatTitle]);
-
-  if (!renderedDialog) return null;
-
-  async function confirm() {
-    if (busy) return;
-    setBusy(true);
-    const closeOnConfirm = Boolean(renderedDialog.closeOnConfirm);
-    if (closeOnConfirm) onClose();
-
-    try {
-      await renderedDialog.onConfirm();
-      if (!closeOnConfirm) onClose();
-    } catch {
-      if (!closeOnConfirm) setBusy(false);
-    }
-  }
-
-  async function runSecondary() {
-    if (busy) return;
-    setBusy(true);
-    try {
-      await renderedDialog.onSecondary();
-      onClose();
-    } catch {
-      setBusy(false);
-    }
-  }
-
-  const open = phase === "open";
-
-  return createPortal(
-    <div className="fixed inset-0 z-[100] grid place-items-center px-4 py-6">
-      <button
-        type="button"
-        aria-label="Close dialog"
-        className={cx(
-          "absolute inset-0 bg-black/60 backdrop-blur-sm transition-[opacity,backdrop-filter] duration-150 ease-out",
-          open ? "opacity-100" : "opacity-0",
-        )}
-        onClick={() => {
-          if (!busy) onClose();
-        }}
-      />
-      <section
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="delete-modal-title"
-        className={cx(
-          "t-modal relative z-10 w-fit max-w-[calc(100vw-2rem)] rounded-[24px] bg-[#181818] p-4 text-neutral-100 [box-shadow:var(--shadow-surface)] sm:max-w-[560px]",
-          open ? "is-open" : "is-closing",
-        )}
-      >
-        <div className="flex items-center justify-between gap-4">
-          <h2
-            id="delete-modal-title"
-            className="flex min-w-0 flex-1 items-baseline gap-2 overflow-hidden text-base font-semibold text-neutral-100"
-          >
-            <span className="shrink-0">{renderedDialog.title || "Delete chat"}</span>
-            {renderedDialog.chatTitle && (
-              <span className="delete-chat-name" title={renderedDialog.chatTitle}>
-                <span
-                  ref={chatNameRef}
-                  className={cx(
-                    "delete-chat-name-text",
-                    nameOverflowing && "is-overflowing",
-                  )}
-                >
-                  {renderedDialog.chatTitle}
-                </span>
-              </span>
-            )}
-          </h2>
-        </div>
-        {renderedDialog.body && (
-          <p className="mt-2 text-sm text-neutral-400">{renderedDialog.body}</p>
-        )}
-        <div className="mt-4 flex justify-end gap-2">
-          <button
-            ref={cancelRef}
-            type="button"
-            disabled={busy}
-            onClick={onClose}
-            className={cx(
-              "h-10 rounded-full bg-white/[0.05] px-4 text-sm font-medium text-neutral-300 hover:bg-white/[0.08] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15 disabled:cursor-not-allowed disabled:opacity-55",
-              CONTROL_MOTION,
-            )}
-          >
-            Cancel
-          </button>
-          {renderedDialog.secondaryLabel && renderedDialog.onSecondary && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={runSecondary}
-              className={cx(
-                "h-10 rounded-full bg-white/[0.05] px-4 text-sm font-medium text-red-300 hover:bg-red-500/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-200/40 disabled:cursor-not-allowed disabled:opacity-55",
-                CONTROL_MOTION,
-              )}
-            >
-              {renderedDialog.secondaryLabel}
-            </button>
-          )}
-          <button
-            type="button"
-            disabled={busy}
-            onClick={confirm}
-            className={cx(
-              "h-10 rounded-full px-4 text-sm font-semibold text-neutral-950 focus:outline-none disabled:cursor-not-allowed disabled:opacity-55",
-              //not every confirm is a delete, a retry styled blood red reads like it is about to eat your chapter
-              renderedDialog.tone === "neutral"
-                ? "bg-neutral-100 hover:bg-white focus-visible:ring-2 focus-visible:ring-white/40"
-                : "bg-red-400 hover:bg-red-300 focus-visible:ring-2 focus-visible:ring-red-200/60",
-              CONTROL_MOTION,
-            )}
-          >
-            {busy
-              ? renderedDialog.busyLabel || "Deleting"
-              : renderedDialog.confirmLabel || "Delete"}
-          </button>
-        </div>
-      </section>
-    </div>,
-    document.body,
-  );
-}
-
 function NewStoryModal({ open, onClose, onCreate }) {
   return (
     <NamePromptModal
@@ -6308,155 +5510,6 @@ function NewStoryModal({ open, onClose, onCreate }) {
       submitLabel="Create story"
       dialogLabel="Close new story dialog"
     />
-  );
-}
-
-function NamePromptModal({
-  open,
-  onClose,
-  onCreate,
-  heading,
-  description,
-  placeholder,
-  inputLabel,
-  submitLabel,
-  dialogLabel,
-}) {
-  const [rendered, setRendered] = useState(open);
-  const [phase, setPhase] = useState(open ? "open" : "closed");
-  const [title, setTitle] = useState("");
-  const [busy, setBusy] = useState(false);
-  const titleInputId = useId();
-  const headingId = useId();
-  const titleRef = useRef(null);
-
-  useEffect(() => {
-    if (open) {
-      setRendered(true);
-      setPhase("open");
-      setTitle("");
-      setBusy(false);
-      requestAnimationFrame(() => titleRef.current?.focus());
-      return undefined;
-    }
-
-    if (!rendered) return undefined;
-
-    setPhase("closing");
-    const closeMs =
-      parseFloat(
-        getComputedStyle(document.documentElement).getPropertyValue("--modal-close-dur"),
-      ) || 150;
-    const timeoutId = window.setTimeout(() => {
-      setRendered(false);
-      setPhase("closed");
-      setBusy(false);
-    }, closeMs);
-    return () => window.clearTimeout(timeoutId);
-  }, [open, rendered]);
-
-  useEffect(() => {
-    if (!rendered) return undefined;
-
-    function handleKeyDown(event) {
-      if (event.key === "Escape" && !busy) onClose();
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [busy, onClose, rendered]);
-
-  if (!rendered) return null;
-
-  const nextName = title.trim();
-  const canCreate = nextName.length > 0 && !busy;
-  const isOpen = phase === "open";
-
-  async function createItem(event) {
-    event.preventDefault();
-    if (!canCreate) return;
-
-    setBusy(true);
-    try {
-      await onCreate(nextName);
-      onClose();
-    } catch {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-[80] grid place-items-center px-4 py-6">
-      <button
-        type="button"
-        aria-label={dialogLabel}
-        className={cx(
-          "absolute inset-0 bg-black/60 backdrop-blur-sm transition-[opacity,backdrop-filter] duration-150 ease-out",
-          isOpen ? "opacity-100" : "opacity-0",
-        )}
-        onClick={() => {
-          if (!busy) onClose();
-        }}
-      />
-      <form
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={headingId}
-        onSubmit={createItem}
-        className={cx(
-          "t-modal relative z-10 w-full max-w-[420px] rounded-[24px] bg-[#181818] p-4 text-neutral-100 [box-shadow:var(--shadow-surface)]",
-          isOpen ? "is-open" : "is-closing",
-        )}
-      >
-        <div>
-          <h2
-            id={headingId}
-            className="text-balance text-base font-semibold text-neutral-100"
-          >
-            {heading}
-          </h2>
-          <p className="mt-2 text-pretty text-sm leading-6 text-neutral-400">
-            {description}
-          </p>
-        </div>
-        <input
-          ref={titleRef}
-          id={titleInputId}
-          type="text"
-          value={title}
-          disabled={busy}
-          maxLength={120}
-          data-1p-ignore="true"
-          onChange={(event) => setTitle(event.target.value)}
-          placeholder={placeholder}
-          aria-label={inputLabel}
-          className="mt-4 h-11 w-full rounded-2xl bg-black/25 px-3.5 text-sm font-medium text-neutral-100 shadow-[var(--shadow-border)] outline-none placeholder:text-neutral-600 focus:shadow-[var(--shadow-border-hover)] disabled:cursor-not-allowed disabled:opacity-60"
-        />
-        <div className="mt-5 flex justify-end gap-2">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onClose}
-            className={cx(
-              "h-10 rounded-full bg-white/[0.05] px-4 text-sm font-medium text-neutral-300 hover:bg-white/[0.08] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15 disabled:cursor-not-allowed disabled:opacity-55",
-              CONTROL_MOTION,
-            )}
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={!canCreate}
-            className={cx(
-              "h-10 rounded-full bg-neutral-100 px-4 text-sm font-semibold text-neutral-950 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:cursor-not-allowed disabled:opacity-55",
-              CONTROL_MOTION,
-            )}
-          >
-            {busy ? "Creating" : submitLabel}
-          </button>
-        </div>
-      </form>
-    </div>
   );
 }
 

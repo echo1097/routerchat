@@ -1534,11 +1534,13 @@ test("thinking dropdown follows new reasoning until the reader scrolls away", as
 
   await page.setViewportSize({ width: 390, height: 700 });
   const details = page.getByRole("region", { name: "Writing details" });
-  const popoverBox = await details.boundingBox();
-  expect(popoverBox?.x).toBeGreaterThanOrEqual(15);
-  expect((popoverBox?.x || 0) + (popoverBox?.width || 0)).toBeLessThanOrEqual(375);
-  expect(popoverBox?.y).toBeGreaterThanOrEqual(15);
-  expect((popoverBox?.y || 0) + (popoverBox?.height || 0)).toBeLessThanOrEqual(685);
+  await expect(async () => {
+    const popoverBox = await details.boundingBox();
+    expect(popoverBox?.x).toBeGreaterThanOrEqual(15);
+    expect((popoverBox?.x || 0) + (popoverBox?.width || 0)).toBeLessThanOrEqual(375);
+    expect(popoverBox?.y).toBeGreaterThanOrEqual(15);
+    expect((popoverBox?.y || 0) + (popoverBox?.height || 0)).toBeLessThanOrEqual(685);
+  }).toPass({ timeout: 5000 });
   await expect.poll(() => details.evaluate((node) => node.scrollHeight > node.clientHeight)).toBe(true);
 
   await api.closeReasoningStream();

@@ -279,50 +279,6 @@ textarea::placeholder {
   transition-delay: var(--tt-delay);
 }
 
-/*the copy target is the whole block of text rather than a button beside it, so the chip rides the
-  cursor. it renders to the body and pins itself to the viewport because the accordion panel it would
-  otherwise sit inside clips anything past its own edges, and for a one line prompt that panel is
-  shorter than the chip. this also deliberately skips t-tt-wrap, whose hover rule would show the chip
-  the moment the pointer lands when the whole point here is that it waits for the pointer to settle*/
-.history-copy-tooltip {
-  position: fixed;
-  top: 0;
-  right: auto;
-  bottom: auto;
-  left: 0;
-  z-index: 90;
-  width: 64px;
-  padding: 5px 0;
-  transform: translate(-50%, calc(-100% - 6px)) scale(var(--tt-scale));
-  transform-origin: 50% 100%;
-  text-align: center;
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 1.35;
-  letter-spacing: 0;
-  /*the shared rule keeps a compositor layer alive for the scale, and text on that layer stays
-    rasterised at the scaled size, which reads as blurry once the chip has settled*/
-  will-change: auto;
-}
-
-/*near the top of the viewport there is no room above the cursor, so the chip drops under it*/
-.history-copy-tooltip[data-tip-below="true"] {
-  transform: translate(-50%, 14px) scale(var(--tt-scale));
-  transform-origin: 50% 0;
-}
-
-.history-copy-tooltip[data-tip-idle="true"] {
-  opacity: 1;
-  transform: translate(-50%, calc(-100% - 6px)) scale(1);
-  transition-duration: var(--tt-in-dur);
-  transition-timing-function: var(--tt-in-ease);
-}
-
-.history-copy-tooltip[data-tip-below="true"][data-tip-idle="true"] {
-  transform: translate(-50%, 14px) scale(1);
-}
-
-
 .context-meter-tooltip {
   min-width: 184px;
   text-align: center;

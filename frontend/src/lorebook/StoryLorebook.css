@@ -101,8 +101,17 @@ is the row of controls, and a white button caught in that band looks sliced off 
   white-space: nowrap;
 }
 
+.lorebook-new-entry-button {
+  background: rgba(255, 255, 255, 0.1822);
+  color: #f5f5f5;
+}
+
 .lorebook-primary-button:hover {
   background: #ffffff;
+}
+
+.lorebook-new-entry-button:hover {
+  color: #0a0a0a;
 }
 
 .lorebook-primary-button:disabled,

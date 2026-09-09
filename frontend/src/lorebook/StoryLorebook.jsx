@@ -586,7 +586,7 @@ export default function StoryLorebook({
                 type="button"
                 onClick={openNewEntry}
                 disabled={locked}
-                className={cx("lorebook-primary-button", CONTROL_MOTION)}
+                className={cx("lorebook-primary-button lorebook-new-entry-button", CONTROL_MOTION)}
               >
                 <Plus size={16} />
                 New entry

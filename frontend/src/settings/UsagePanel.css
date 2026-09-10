@@ -103,13 +103,13 @@
 }
 
 .usage-sparkline-marker line {
-  stroke: #c59af5;
+  stroke: #fff;
   stroke-width: 1;
   stroke-dasharray: 3 3;
 }
 
 .usage-sparkline-marker circle {
-  fill: #c59af5;
+  fill: #fff;
   transition: transform 140ms ease-out;
 }
 
@@ -121,7 +121,7 @@
 
 .usage-sparkline polyline {
   fill: none;
-  stroke: #c59af5;
+  stroke: #fff;
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;

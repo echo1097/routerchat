@@ -110,6 +110,15 @@ def getUsage(conn, offsetMinutes=0, now=None, timeZone=None):
             (upperBound.isoformat(),),
         )
         for row in rows:
+            try:
+                rowTime = datetime.fromisoformat(row["created_at"])
+                if rowTime.tzinfo is None:
+                    rowTime = rowTime.replace(tzinfo=timezone.utc)
+                rowDate = rowTime.astimezone(localZone).date()
+            except (TypeError, ValueError, OverflowError):
+                continue
+            if rowTime > upperBound:
+                continue
             generationId = row["generation_id"]
             modelId = row["model"] or "unknown"
             if not generationId or generationId not in seenGenerations:
@@ -118,10 +127,6 @@ def getUsage(conn, offsetMinutes=0, now=None, timeZone=None):
                 addUsage(lifetimeTotals[modelId], row)
                 if generationId:
                     seenGenerations.add(generationId)
-            rowTime = datetime.fromisoformat(row["created_at"].replace("Z", "+00:00"))
-            if rowTime.tzinfo is None:
-                rowTime = rowTime.replace(tzinfo=timezone.utc)
-            rowDate = rowTime.astimezone(localZone).date()
             if rowDate < previousDate:
                 continue
             if generationId and generationId in seenWeeklyGenerations:

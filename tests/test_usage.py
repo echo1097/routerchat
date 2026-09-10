@@ -175,6 +175,16 @@ class UsageTest(unittest.TestCase):
         self.assertEqual(result["lifetimeModels"][0]["cost"], 0.5)
         self.assertEqual(result["current"]["requests"], 1)
 
+    def testMalformedImportedDatesAreSkippedBeforeDeduplication(self):
+        for index, value in enumerate(("0", "now", "not-a-date", "2026-02-30T12:00:00Z", "0001-01-01T00:00:00Z")):
+            self.addRow(id=f"invalid-{index}", created_at=value, generation_id="shared")
+        self.addRow(id="valid", generation_id="shared")
+        result = self.summary()
+        self.assertEqual(result["current"]["requests"], 1)
+        self.assertEqual(result["current"]["cost"], 0.5)
+        self.assertEqual(result["lifetimeModels"][0]["requests"], 1)
+        self.assertEqual(result["lifetimeModels"][0]["cost"], 0.5)
+
     def testEndpointValidatesOffsetAndDoesNotCallProvider(self):
         def getDb():
             conn = sqlite3.connect(self.dbPath)

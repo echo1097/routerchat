@@ -451,6 +451,14 @@ textarea::placeholder {
     opacity   var(--modal-close-dur) var(--modal-ease);
 }
 
+.t-modal.settings-modal.is-open {
+  transition:
+    transform var(--modal-open-dur) var(--modal-ease),
+    opacity var(--modal-open-dur) var(--modal-ease),
+    max-width 340ms cubic-bezier(0.22, 1, 0.36, 1),
+    height 340ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 .modal-interaction-guard.is-inert,
 .modal-interaction-guard.is-inert * {
   pointer-events: none !important;
@@ -468,7 +476,8 @@ textarea::placeholder {
 .t-page-slide .t-page[data-page-id="4"],
 .t-page-slide .t-page[data-page-id="5"],
 .t-page-slide .t-page[data-page-id="6"],
-.t-page-slide .t-page[data-page-id="7"] {
+.t-page-slide .t-page[data-page-id="7"],
+.t-page-slide .t-page[data-page-id="8"] {
   --t-page-from-x: var(--page-slide-distance);
 }
 .t-page-slide .t-page {
@@ -490,7 +499,8 @@ textarea::placeholder {
 .t-page-slide[data-page="4"] .t-page[data-page-id="4"],
 .t-page-slide[data-page="5"] .t-page[data-page-id="5"],
 .t-page-slide[data-page="6"] .t-page[data-page-id="6"],
-.t-page-slide[data-page="7"] .t-page[data-page-id="7"] {
+.t-page-slide[data-page="7"] .t-page[data-page-id="7"],
+.t-page-slide[data-page="8"] .t-page[data-page-id="8"] {
   opacity: 1;
   pointer-events: auto;
   transform: translateX(0);

@@ -4,3 +4,4 @@ httpx
 python-dotenv
 pydantic
 python-multipart
+tzdata

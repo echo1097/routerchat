@@ -61,12 +61,14 @@ class ApiSecurityTest(unittest.TestCase):
         health = self.client.get("/api/health")
         tos = self.client.get("/api/tos")
         chats = self.client.get("/api/chats")
+        usage = self.client.get("/api/usage")
         apiRoot = self.client.get("/api")
 
         self.assertEqual(health.status_code, 200)
         self.assertEqual(set(health.json()), {"ok", "version"})
         self.assertEqual(tos.status_code, 401)
         self.assertEqual(chats.status_code, 401)
+        self.assertEqual(usage.status_code, 401)
         self.assertEqual(apiRoot.status_code, 401)
         self.assertEqual(chats.json()["detail"]["code"], "api_auth_required")
 

@@ -15,6 +15,7 @@ import { LOREBOOK_MODEL_INHERIT } from "./settingsDefaults.js";
 import { Accordion } from "../components/Accordion.jsx";
 import { SlidingTabs } from "../components/SlidingTabs.jsx";
 import { MaskIcon, IconButton } from "../components/IconButton.jsx";
+import { UsagePanel } from "./UsagePanel.jsx";
 
 const REASONING_EFFORTS = [
   { value: "low", label: "Low" },
@@ -31,6 +32,7 @@ const SETTINGS_PAGES = [
   { id: "cloud", label: "Chats", icon: MessageSquarePlus },
   { id: "advanced", label: "Advanced", icon: SlidersHorizontal },
   { id: "lorebook", label: "Lorebook", iconSrc: "/icons/newbook.png" },
+  { id: "usage", label: "Usage", iconSrc: "/icons/money.png" },
 ];
 
 function rangeProgress(value, min, max) {
@@ -952,7 +954,8 @@ export function SettingsDrawer({
         aria-labelledby="settings-modal-title"
         aria-hidden={!open}
         className={cx(
-          "t-modal relative z-10 grid h-[min(400px,calc(100vh-2rem))] w-full max-w-[560px] overflow-hidden rounded-[18px] bg-[#202020] text-neutral-100 [box-shadow:var(--shadow-surface)] md:grid-cols-[132px_minmax(0,1fr)]",
+          "t-modal relative z-10 grid w-full overflow-hidden rounded-[18px] bg-[#202020] text-neutral-100 [box-shadow:var(--shadow-surface)] md:grid-cols-[132px_minmax(0,1fr)]",
+          activePage === "usage" ? "h-[min(780px,calc(100dvh-2rem))] max-w-[980px]" : "h-[min(400px,calc(100vh-2rem))] max-w-[560px]",
           open ? "is-open" : "is-closing",
         )}
       >
@@ -968,7 +971,7 @@ export function SettingsDrawer({
           >
             <X size={20} strokeWidth={1.9} />
           </button>
-          <nav className="space-y-1.5" aria-label="Settings sections">
+          <nav className="space-y-1.5 overflow-y-auto" aria-label="Settings sections">
             {visibleSettingsPages.map((page) => {
               const Icon = page.icon;
               const selected = activePage === page.id;
@@ -1091,6 +1094,13 @@ export function SettingsDrawer({
               aria-label="Lorebook settings"
             >
               {lorebookSection}
+            </section>
+            <section
+              className="settings-scroll-page t-page overflow-y-auto px-4 py-3"
+              data-page-id="8"
+              aria-label="Usage settings"
+            >
+              {open && activePage === "usage" && <UsagePanel models={models} />}
             </section>
           </div>
         </div>

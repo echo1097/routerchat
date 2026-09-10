@@ -74,7 +74,9 @@ function UsageMetric({ metric, usage }) {
     <section className="usage-metric" aria-label={metric.label}>
       <h3>{metric.label}</h3>
       <div className="usage-metric-value">
-        <strong>{formatUsage(activeDay ? activeDay[metric.key] : usage.current[metric.key], metric.money)}</strong>
+        <strong key={activeIndex ?? "weekly"} className="usage-metric-update">
+          {formatUsage(activeDay ? activeDay[metric.key] : usage.current[metric.key], metric.money)}
+        </strong>
         <svg
           className="usage-sparkline"
           viewBox="0 0 96 34"
@@ -94,14 +96,16 @@ function UsageMetric({ metric, usage }) {
         >
           <polyline points={points.map((point) => `${point.x},${point.y}`).join(" ")} />
           {activePoint && (
-            <g className="usage-sparkline-marker">
-              <line x1={activePoint.x} x2={activePoint.x} y1={0} y2={34} />
-              <circle cx={activePoint.x} cy={activePoint.y} r={3} />
+            <g className="usage-sparkline-marker" style={{ transform: `translateX(${activePoint.x}px)` }}>
+              <line x1={0} x2={0} y1={0} y2={34} />
+              <circle cx={0} cy={0} r={3} style={{ transform: `translateY(${activePoint.y}px)` }} />
             </g>
           )}
         </svg>
       </div>
-      <p>{activeDay ? dateLabel(activeDay.date) : comparison(usage.current[metric.key], usage.previous[metric.key])}</p>
+      <p key={activeIndex ?? "weekly"} className="usage-metric-update">
+        {activeDay ? dateLabel(activeDay.date) : comparison(usage.current[metric.key], usage.previous[metric.key])}
+      </p>
     </section>
   );
 }

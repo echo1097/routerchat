@@ -99,6 +99,7 @@
 
 .usage-sparkline-marker {
   pointer-events: none;
+  transition: transform 140ms ease-out;
 }
 
 .usage-sparkline-marker line {
@@ -109,6 +110,32 @@
 
 .usage-sparkline-marker circle {
   fill: #c59af5;
+  transition: transform 140ms ease-out;
+}
+
+.usage-metric-update {
+  animation: usage-value-in 140ms ease-out;
+}
+
+@keyframes usage-value-in {
+  from {
+    opacity: .65;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .usage-metric-update {
+    animation: none;
+  }
+
+  .usage-sparkline-marker, .usage-sparkline-marker circle {
+    transition: none;
+  }
 }
 
 .usage-sparkline polyline {

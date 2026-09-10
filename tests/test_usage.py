@@ -1,6 +1,7 @@
 import sqlite3
 import tempfile
 import unittest
+import zoneinfo
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -184,6 +185,17 @@ class UsageTest(unittest.TestCase):
         self.assertEqual(result["current"]["cost"], 0.5)
         self.assertEqual(result["lifetimeModels"][0]["requests"], 1)
         self.assertEqual(result["lifetimeModels"][0]["cost"], 0.5)
+
+    def testBundledTimezonesWorkWithoutSystemDatabase(self):
+        originalPath = zoneinfo.TZPATH
+        try:
+            zoneinfo.reset_tzpath(())
+            zoneinfo.ZoneInfo.clear_cache()
+            self.testDaylightSavingTransitionsUseHistoricalOffsets()
+            self.testEndpointValidatesOffsetAndDoesNotCallProvider()
+        finally:
+            zoneinfo.reset_tzpath(originalPath)
+            zoneinfo.ZoneInfo.clear_cache()
 
     def testEndpointValidatesOffsetAndDoesNotCallProvider(self):
         def getDb():

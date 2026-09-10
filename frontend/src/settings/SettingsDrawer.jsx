@@ -954,7 +954,7 @@ export function SettingsDrawer({
         aria-labelledby="settings-modal-title"
         aria-hidden={!open}
         className={cx(
-          "t-modal relative z-10 grid w-full grid-cols-1 overflow-hidden rounded-[18px] bg-[#202020] text-neutral-100 [box-shadow:var(--shadow-surface)] md:grid-cols-[132px_minmax(0,1fr)]",
+          "t-modal settings-modal relative z-10 grid w-full grid-cols-1 overflow-hidden rounded-[18px] bg-[#202020] text-neutral-100 [box-shadow:var(--shadow-surface)] md:grid-cols-[132px_minmax(0,1fr)]",
           activePage === "usage" ? "h-[min(780px,calc(100dvh-2rem))] max-w-[980px]" : "h-[min(400px,calc(100vh-2rem))] max-w-[560px]",
           open ? "is-open" : "is-closing",
         )}

@@ -62,19 +62,26 @@ def finishTotals(totals):
     return result
 
 
+def finishModels(modelTotals):
+    models = [{"id": modelId, **finishTotals(totals)} for modelId, totals in modelTotals.items()]
+    models.sort(key=lambda model: (-(model["cost"] or 0), -model["requests"], model["id"]))
+    return models
+
+
 def getUsage(conn, offsetMinutes=0, now=None):
     localZone = timezone(timedelta(minutes=-offsetMinutes))
     currentTime = now or datetime.now(timezone.utc)
     today = currentTime.astimezone(localZone).date()
     startDate = today - timedelta(days=6)
     previousDate = startDate - timedelta(days=7)
-    lowerBound = datetime.combine(previousDate, datetime.min.time(), localZone).astimezone(timezone.utc)
     upperBound = currentTime.astimezone(timezone.utc)
     currentTotals = emptyTotals()
     previousTotals = emptyTotals()
     days = {}
     modelTotals = {}
+    lifetimeTotals = {}
     seenGenerations = set()
+    seenWeeklyGenerations = set()
 
     for dayIndex in range(7):
         date = (startDate + timedelta(days=dayIndex)).isoformat()
@@ -92,40 +99,47 @@ def getUsage(conn, offsetMinutes=0, now=None):
     ]
     for query in queries:
         rows = conn.execute(
-            query + " AND julianday(created_at) >= julianday(?) AND julianday(created_at) <= julianday(?) ORDER BY created_at",
-            (lowerBound.isoformat(), upperBound.isoformat()),
+            query + " AND julianday(created_at) <= julianday(?) ORDER BY created_at",
+            (upperBound.isoformat(),),
         )
         for row in rows:
             generationId = row["generation_id"]
-            if generationId and generationId in seenGenerations:
-                continue
-            if generationId:
-                seenGenerations.add(generationId)
+            modelId = row["model"] or "unknown"
+            if not generationId or generationId not in seenGenerations:
+                if modelId not in lifetimeTotals:
+                    lifetimeTotals[modelId] = emptyTotals()
+                addUsage(lifetimeTotals[modelId], row)
+                if generationId:
+                    seenGenerations.add(generationId)
             rowTime = datetime.fromisoformat(row["created_at"].replace("Z", "+00:00"))
             if rowTime.tzinfo is None:
                 rowTime = rowTime.replace(tzinfo=timezone.utc)
             rowDate = rowTime.astimezone(localZone).date()
+            if rowDate < previousDate:
+                continue
+            if generationId and generationId in seenWeeklyGenerations:
+                continue
+            if generationId:
+                seenWeeklyGenerations.add(generationId)
             if rowDate < startDate:
                 addUsage(previousTotals, row)
                 continue
             addUsage(currentTotals, row)
             day = days[rowDate.isoformat()]
             addUsage(day, row)
-            modelId = row["model"] or "unknown"
             if modelId not in modelTotals:
                 modelTotals[modelId] = emptyTotals()
             addUsage(modelTotals[modelId], row)
             day["models"][modelId] = day["models"].get(modelId, 0) + (cleanNumber(row["cost"]) or 0)
 
-    models = [{"id": modelId, **finishTotals(totals)} for modelId, totals in modelTotals.items()]
-    models.sort(key=lambda model: (-(model["cost"] or 0), -model["requests"], model["id"]))
     return {
         "startDate": startDate.isoformat(),
         "endDate": today.isoformat(),
         "current": finishTotals(currentTotals),
         "previous": finishTotals(previousTotals),
         "days": [finishTotals(day) for day in days.values()],
-        "models": models,
+        "models": finishModels(modelTotals),
+        "lifetimeModels": finishModels(lifetimeTotals),
     }
 
 

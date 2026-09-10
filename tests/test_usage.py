@@ -53,6 +53,7 @@ class UsageTest(unittest.TestCase):
         self.assertEqual(result["current"]["cost"], 0)
         self.assertIsNone(result["current"]["blendedCost"])
         self.assertEqual(result["models"], [])
+        self.assertEqual(result["lifetimeModels"], [])
 
     def testAllSavedSourcesCountOnceAndReasoningIsNotAddedTwice(self):
         for table in ("messages", "story_generations", "brainstorm_generations", "lorebook_update_runs"):
@@ -109,6 +110,36 @@ class UsageTest(unittest.TestCase):
         self.assertIsNone(current["cost"])
         self.assertIsNone(current["totalTokens"])
         self.assertEqual(current["promptTokens"], 0)
+
+    def testLifetimeIncludesOldSourcesWithoutChangingWeeklyTotals(self):
+        self.addRow(cost=2)
+        self.addRow(id="previous", created_at="2026-09-01T12:00:00Z", cost=3)
+        self.addRow("story_generations", created_at="2025-01-01T12:00:00Z", cost=4)
+        self.addRow("brainstorm_generations", created_at="2025-02-01T12:00:00Z", model="old/model", cost=5)
+        self.addRow("lorebook_update_runs", created_at="2025-03-01T12:00:00Z", cost=None)
+        self.addRow(id="future", created_at="2027-01-01T12:00:00Z", cost=100)
+        self.addRow(id="user", role="user", cost=100)
+
+        result = self.summary()
+        lifetime = {model["id"]: model for model in result["lifetimeModels"]}
+        self.assertEqual(result["current"]["cost"], 2)
+        self.assertEqual(result["previous"]["cost"], 3)
+        self.assertEqual(len(result["models"]), 1)
+        self.assertEqual(lifetime["test/model"]["cost"], 9)
+        self.assertEqual(lifetime["test/model"]["requests"], 3)
+        self.assertEqual(lifetime["test/model"]["totalTokens"], 450)
+        self.assertEqual(lifetime["old/model"]["cost"], 5)
+        self.assertIsNone(lifetime["unknown"]["cost"])
+        self.assertIsNone(lifetime["unknown"]["totalTokens"])
+
+    def testLifetimeDeduplicatesAcrossDatesAndSources(self):
+        self.addRow(id="old", created_at="2025-01-01T12:00:00Z", generation_id="shared")
+        self.addRow(id="recent", generation_id="shared")
+        self.addRow("story_generations", generation_id="shared")
+        result = self.summary()
+        self.assertEqual(result["lifetimeModels"][0]["requests"], 1)
+        self.assertEqual(result["lifetimeModels"][0]["cost"], 0.5)
+        self.assertEqual(result["current"]["requests"], 1)
 
     def testEndpointValidatesOffsetAndDoesNotCallProvider(self):
         def getDb():

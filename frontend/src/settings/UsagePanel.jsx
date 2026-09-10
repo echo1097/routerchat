@@ -251,12 +251,7 @@ export function UsagePanel({ models }) {
           </div>
         ) : <p className="usage-muted">Your model usage will appear here.</p>}
       </section>
-      <p className="usage-note">Saved RouterChat history only, including imported history. Deleted history and requests without saved usage are not included. All amounts are USD. Reasoning is shown separately from other completion tokens.</p>
-      {(usage.current.missingCost > 0 || usage.current.missingTokens > 0) && (
-        <p className="usage-note">
-          {usage.current.missingCost} requests have no recorded cost; {usage.current.missingTokens} have incomplete token details. Totals include available values.
-        </p>
-      )}
+      <p className="usage-note">Saved RouterChat history only, including imported history. Deleted history and requests without saved usage are not included. All amounts are USD.</p>
     </div>
   );
 }

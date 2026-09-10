@@ -95,7 +95,7 @@ test("distinguishes missing costs from free usage", async ({ page }) => {
   data.current.missingTokens = 2;
   const dialog = await openUsage(page, data);
   await expect(dialog.getByRole("region", { name: "Total spend", exact: true })).toContainText("Unavailable");
-  await expect(dialog).toContainText("35 requests have no recorded cost; 2 have incomplete token details.");
+  await expect(dialog).not.toContainText("requests have no recorded cost");
 });
 
 test("inspects daily summary values and restores weekly totals", async ({ page }, testInfo) => {

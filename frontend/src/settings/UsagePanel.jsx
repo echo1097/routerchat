@@ -226,9 +226,9 @@ export function UsagePanel({ models }) {
       </div>
       <UsageChart title="Usage by model" days={usage.days} series={chartSeries} getValue={getModelSpend} money />
       <UsageChart title="Token breakdown" days={usage.days} series={tokenSeries} getValue={(day, item) => day[item.id]} />
-      <section className="usage-models" aria-label="Model totals">
+      <section className="usage-models" aria-label="Lifetime model totals">
         <div className="usage-section-heading">
-          <h3>Model totals</h3>
+          <h3>Lifetime model totals</h3>
           <span>This week</span>
         </div>
         {modelSeries.length ? (

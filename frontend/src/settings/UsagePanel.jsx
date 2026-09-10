@@ -74,7 +74,7 @@ function UsageMetric({ metric, usage }) {
     <section className="usage-metric" aria-label={metric.label}>
       <h3>{metric.label}</h3>
       <div className="usage-metric-value">
-        <strong key={activeIndex ?? "weekly"} className="usage-metric-update">
+        <strong>
           {formatUsage(activeDay ? activeDay[metric.key] : usage.current[metric.key], metric.money)}
         </strong>
         <svg
@@ -103,7 +103,7 @@ function UsageMetric({ metric, usage }) {
           )}
         </svg>
       </div>
-      <p key={activeIndex ?? "weekly"} className="usage-metric-update">
+      <p>
         {activeDay ? dateLabel(activeDay.date) : comparison(usage.current[metric.key], usage.previous[metric.key])}
       </p>
     </section>

@@ -37,13 +37,72 @@ function comparison(value, previous) {
   return `${change > 0 ? "↑" : "↓"} ${Math.abs(change).toFixed(1)}% vs last week`;
 }
 
-function Sparkline({ values }) {
-  const maxValue = Math.max(...values, 0.000001);
-  const points = values.map((value, index) => `${index * 16},${30 - value / maxValue * 26}`).join(" ");
+function UsageMetric({ metric, usage }) {
+  const [activeIndex, setActiveIndex] = useState(null);
+  const days = usage.days;
+  const maxValue = Math.max(...days.map((day) => day[metric.key] || 0), 0.000001);
+  const points = days.map((day, index) => ({
+    x: 4 + index / Math.max(days.length - 1, 1) * 88,
+    y: 30 - (day[metric.key] || 0) / maxValue * 26,
+  }));
+  const activeDay = activeIndex == null ? null : days[activeIndex];
+  const activePoint = activeIndex == null ? null : points[activeIndex];
+
+  function selectDay(event) {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const position = ((event.clientX - bounds.left) / bounds.width * 96 - 4) / 88;
+    setActiveIndex(Math.max(0, Math.min(days.length - 1, Math.round(position * (days.length - 1)))));
+  }
+
+  function navigateDays(event) {
+    const index = activeIndex ?? days.length - 1;
+    if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
+      setActiveIndex(Math.max(0, index - 1));
+    } else if (event.key === "ArrowRight" || event.key === "ArrowUp") {
+      setActiveIndex(Math.min(days.length - 1, index + 1));
+    } else if (event.key === "Home") {
+      setActiveIndex(0);
+    } else if (event.key === "End") {
+      setActiveIndex(days.length - 1);
+    } else {
+      return;
+    }
+    event.preventDefault();
+  }
+
   return (
-    <svg className="usage-sparkline" viewBox="0 0 96 34" aria-hidden="true">
-      <polyline points={points} />
-    </svg>
+    <section className="usage-metric" aria-label={metric.label}>
+      <h3>{metric.label}</h3>
+      <div className="usage-metric-value">
+        <strong>{formatUsage(activeDay ? activeDay[metric.key] : usage.current[metric.key], metric.money)}</strong>
+        <svg
+          className="usage-sparkline"
+          viewBox="0 0 96 34"
+          role="slider"
+          tabIndex={0}
+          aria-label={`${metric.label} by day`}
+          aria-valuemin={0}
+          aria-valuemax={days.length - 1}
+          aria-valuenow={activeIndex ?? days.length - 1}
+          aria-valuetext={`${dateLabel((activeDay || days.at(-1)).date)}: ${formatUsage((activeDay || days.at(-1))[metric.key], metric.money)}`}
+          onPointerMove={selectDay}
+          onPointerDown={selectDay}
+          onPointerLeave={() => setActiveIndex(null)}
+          onFocus={() => setActiveIndex(days.length - 1)}
+          onBlur={() => setActiveIndex(null)}
+          onKeyDown={navigateDays}
+        >
+          <polyline points={points.map((point) => `${point.x},${point.y}`).join(" ")} />
+          {activePoint && (
+            <g className="usage-sparkline-marker">
+              <line x1={activePoint.x} x2={activePoint.x} y1={0} y2={34} />
+              <circle cx={activePoint.x} cy={activePoint.y} r={3} />
+            </g>
+          )}
+        </svg>
+      </div>
+      <p>{activeDay ? dateLabel(activeDay.date) : comparison(usage.current[metric.key], usage.previous[metric.key])}</p>
+    </section>
   );
 }
 
@@ -144,10 +203,9 @@ export function UsagePanel({ models }) {
   const chartSeries = modelSeries.length > 5 ? [...topModels, { id: "other", name: "Other", color: chartColors[5] }] : topModels;
   const getModelSpend = (day, item) => item.id === "other" ? modelSeries.slice(5).reduce((sum, model) => sum + (day.models[model.id] || 0), 0) : day.models[item.id] || 0;
   const metrics = [
-    { key: "cost", label: "Recorded spend", money: true },
+    { key: "cost", label: "Total spend", money: true },
     { key: "requests", label: "Requests" },
     { key: "totalTokens", label: "Token volume" },
-    { key: "blendedCost", label: "Cost / 1M tokens", money: true },
   ];
   const dateRange = `${dateLabel(usage.startDate)} – ${dateLabel(usage.endDate)}`;
 
@@ -159,14 +217,7 @@ export function UsagePanel({ models }) {
       </div>
       <div className="usage-summary">
         {metrics.map((metric) => (
-          <section className="usage-metric" key={metric.key} aria-label={metric.label}>
-            <h3>{metric.label}</h3>
-            <div className="usage-metric-value">
-              <strong>{formatUsage(usage.current[metric.key], metric.money)}</strong>
-              <Sparkline values={usage.days.map((day) => day[metric.key] || 0)} />
-            </div>
-            <p>{comparison(usage.current[metric.key], usage.previous[metric.key])}</p>
-          </section>
+          <UsageMetric key={metric.key} metric={metric} usage={usage} />
         ))}
       </div>
       <UsageChart title="Usage by model" days={usage.days} series={chartSeries} getValue={getModelSpend} money />

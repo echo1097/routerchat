@@ -38,7 +38,7 @@
 
 .usage-summary {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 14px;
 }
@@ -83,11 +83,32 @@
 }
 
 .usage-sparkline {
-  width: 50px;
-  height: 28px;
+  width: 88px;
+  height: 34px;
   flex-shrink: 1;
   min-width: 20px;
   overflow: visible;
+  cursor: crosshair;
+}
+
+.usage-sparkline:focus-visible {
+  outline: 1px solid #aaa;
+  outline-offset: 4px;
+  border-radius: 3px;
+}
+
+.usage-sparkline-marker {
+  pointer-events: none;
+}
+
+.usage-sparkline-marker line {
+  stroke: #c59af5;
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.usage-sparkline-marker circle {
+  fill: #c59af5;
 }
 
 .usage-sparkline polyline {
@@ -336,7 +357,7 @@
 
 @media (max-width: 640px) {
   .usage-summary {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .usage-metric strong {

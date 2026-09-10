@@ -2,7 +2,9 @@ import math
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Query
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from fastapi import APIRouter, HTTPException, Query
 
 
 def emptyTotals():
@@ -73,8 +75,8 @@ def finishModels(modelTotals):
     return models
 
 
-def getUsage(conn, offsetMinutes=0, now=None):
-    localZone = timezone(timedelta(minutes=-offsetMinutes))
+def getUsage(conn, offsetMinutes=0, now=None, timeZone=None):
+    localZone = ZoneInfo(timeZone) if timeZone else timezone(timedelta(minutes=-offsetMinutes))
     currentTime = now or datetime.now(timezone.utc)
     today = currentTime.astimezone(localZone).date()
     startDate = today - timedelta(days=6)
@@ -154,8 +156,13 @@ def createUsageRouter(getDb):
     router = APIRouter()
 
     @router.get("/api/usage")
-    def usageOverview(offsetMinutes: int = Query(default=0, ge=-840, le=840)):
+    def usageOverview(offsetMinutes: int = Query(default=0, ge=-840, le=840), timeZone: str | None = Query(default=None, max_length=100)):
+        if timeZone:
+            try:
+                ZoneInfo(timeZone)
+            except (ZoneInfoNotFoundError, ValueError) as error:
+                raise HTTPException(status_code=422, detail="Invalid timezone") from error
         with closing(getDb()) as conn:
-            return getUsage(conn, offsetMinutes)
+            return getUsage(conn, offsetMinutes, timeZone=timeZone)
 
     return router

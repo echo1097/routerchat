@@ -122,6 +122,22 @@ class UsageTest(unittest.TestCase):
         self.assertEqual(result["current"]["cost"], 2)
         self.assertEqual(result["days"][0]["cost"], 2)
 
+    def testDaylightSavingTransitionsUseHistoricalOffsets(self):
+        for currentTime, rowTime, expectedDate in (
+            ("2026-11-07T12:00:00+00:00", "2026-11-01T07:30:00Z", "2026-11-01"),
+            ("2026-03-14T12:00:00+00:00", "2026-03-08T07:30:00Z", "2026-03-07"),
+        ):
+            with self.subTest(currentTime=currentTime):
+                self.conn.execute("DELETE FROM messages")
+                self.addRow(created_at=rowTime)
+                result = getUsage(self.conn, now=datetime.fromisoformat(currentTime), timeZone="America/Los_Angeles")
+                if expectedDate < result["startDate"]:
+                    self.assertEqual(result["previous"]["requests"], 1)
+                    self.assertEqual(result["current"]["requests"], 0)
+                else:
+                    self.assertEqual(result["current"]["requests"], 1)
+                    self.assertEqual(next(day for day in result["days"] if day["date"] == expectedDate)["requests"], 1)
+
     def testInvalidNumbersAreMissingAndTotalsStayFinite(self):
         self.addRow(cost=float("inf"), prompt_tokens=-1, total_tokens=-1)
         current = self.summary()["current"]
@@ -170,3 +186,5 @@ class UsageTest(unittest.TestCase):
         with TestClient(app) as client, patch("httpx.AsyncClient", side_effect=AssertionError("Provider call forbidden")):
             self.assertEqual(client.get("/api/usage?offsetMinutes=420").status_code, 200)
             self.assertEqual(client.get("/api/usage?offsetMinutes=900").status_code, 422)
+            self.assertEqual(client.get("/api/usage?timeZone=America%2FLos_Angeles").status_code, 200)
+            self.assertEqual(client.get("/api/usage?timeZone=Invalid%2FZone").status_code, 422)

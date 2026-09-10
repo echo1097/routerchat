@@ -181,7 +181,9 @@ export function UsagePanel({ models }) {
     const controller = new AbortController();
     setError("");
     setUsage(null);
-    api(`/api/usage?offsetMinutes=${new Date().getTimezoneOffset()}`, { signal: controller.signal })
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const query = new URLSearchParams({ offsetMinutes: String(new Date().getTimezoneOffset()), timeZone });
+    api(`/api/usage?${query}`, { signal: controller.signal })
       .then(setUsage)
       .catch((requestError) => {
         if (!controller.signal.aborted) setError(requestError.message || "Usage could not be loaded.");

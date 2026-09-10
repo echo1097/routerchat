@@ -29,6 +29,11 @@ function makeUsage(empty = false) {
       { id: "test/model", cost: 1.61, requests: 24, totalTokens: 215600 },
       { id: "other/model", cost: 0.69, requests: 11, totalTokens: 92400 },
     ],
+    lifetimeModels: empty ? [] : [
+      { id: "test/model", cost: 16.1, requests: 240, totalTokens: 2156000 },
+      { id: "test/retired-model", cost: 5, requests: 50, totalTokens: 100000 },
+      { id: "other/model", cost: 0.69, requests: 11, totalTokens: 92400 },
+    ],
   };
 }
 
@@ -50,7 +55,9 @@ test("shows weekly spending and model details without provider requests", async 
   await expect(dialog.getByRole("region", { name: "Usage by model", exact: true })).toBeVisible();
   await expect(dialog.getByRole("region", { name: "Token breakdown", exact: true })).toBeVisible();
   await expect(dialog.getByRole("table")).toContainText("Test model");
-  await expect(dialog.getByRole("table")).toContainText("$1.61");
+  await expect(dialog.getByRole("table")).toContainText("$16.10");
+  await expect(dialog.getByRole("table")).toContainText("retired-model");
+  await expect(dialog.getByRole("region", { name: "Lifetime model totals" })).toContainText("All time");
   await page.screenshot({ path: testInfo.outputPath("usage-desktop.png"), animations: "disabled" });
   await dialog.getByRole("button", { name: "API", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "API", exact: true })).toBeVisible();

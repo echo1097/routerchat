@@ -203,6 +203,12 @@ export function UsagePanel({ models }) {
       || (item.id === "unknown" ? "Unrecorded model" : item.id.split("/").at(-1)),
     color: chartColors[index % chartColors.length],
   }));
+  const lifetimeModels = (usage.lifetimeModels || []).map((item, index) => ({
+    ...item,
+    name: models.find((model) => model.id === item.id)?.name
+      || (item.id === "unknown" ? "Unrecorded model" : item.id.split("/").at(-1)),
+    color: modelSeries.find((model) => model.id === item.id)?.color || chartColors[index % chartColors.length],
+  }));
   const topModels = modelSeries.slice(0, 5);
   const chartSeries = modelSeries.length > 5 ? [...topModels, { id: "other", name: "Other", color: chartColors[5] }] : topModels;
   const getModelSpend = (day, item) => item.id === "other" ? modelSeries.slice(5).reduce((sum, model) => sum + (day.models[model.id] || 0), 0) : day.models[item.id] || 0;
@@ -229,16 +235,16 @@ export function UsagePanel({ models }) {
       <section className="usage-models" aria-label="Lifetime model totals">
         <div className="usage-section-heading">
           <h3>Lifetime model totals</h3>
-          <span>This week</span>
+          <span>All time</span>
         </div>
-        {modelSeries.length ? (
+        {lifetimeModels.length ? (
           <div className="usage-table-wrap">
             <table>
               <thead>
                 <tr><th>Model</th><th>Requests</th><th>Tokens</th><th>Spend</th></tr>
               </thead>
               <tbody>
-                {modelSeries.map((model) => (
+                {lifetimeModels.map((model) => (
                   <tr key={model.id}>
                     <td><i style={{ background: model.color }} />{model.name}</td>
                     <td>{formatUsage(model.requests)}</td>

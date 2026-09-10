@@ -45,6 +45,11 @@ function UsageMetric({ metric, usage }) {
     x: 4 + index / Math.max(days.length - 1, 1) * 88,
     y: 30 - (day[metric.key] || 0) / maxValue * 26,
   }));
+  const segments = [[]];
+  points.forEach((point, index) => {
+    if (days[index][metric.key] == null) segments.push([]);
+    else segments.at(-1).push(`${point.x},${point.y}`);
+  });
   const activeDay = activeIndex == null ? null : days[activeIndex];
   const activePoint = activeIndex == null ? null : points[activeIndex];
 
@@ -94,11 +99,11 @@ function UsageMetric({ metric, usage }) {
           onBlur={() => setActiveIndex(null)}
           onKeyDown={navigateDays}
         >
-          <polyline points={points.map((point) => `${point.x},${point.y}`).join(" ")} />
+          {segments.map((segment, index) => <polyline key={index} points={segment.join(" ")} />)}
           {activePoint && (
             <g className="usage-sparkline-marker" style={{ transform: `translateX(${activePoint.x}px)` }}>
               <line x1={0} x2={0} y1={0} y2={34} />
-              <circle cx={0} cy={0} r={3} style={{ transform: `translateY(${activePoint.y}px)` }} />
+              {activeDay[metric.key] != null && <circle cx={0} cy={0} r={3} style={{ transform: `translateY(${activePoint.y}px)` }} />}
             </g>
           )}
         </svg>

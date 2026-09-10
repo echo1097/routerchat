@@ -98,11 +98,21 @@ test("retries a failed request and reloads usage when reopened", async ({ page }
 test("distinguishes missing costs from free usage", async ({ page }) => {
   const data = makeUsage();
   data.current.cost = null;
-  data.current.missingCost = 35;
+  data.current.missingCost = 1;
+  data.current.totalTokens = null;
+  data.lifetimeModels[0].cost = null;
+  data.lifetimeModels[0].totalTokens = null;
+  data.days[0].models["test/model"] = null;
   data.current.missingTokens = 2;
   const dialog = await openUsage(page, data);
   await expect(dialog.getByRole("region", { name: "Total spend", exact: true })).toContainText("Unavailable");
   await expect(dialog).not.toContainText("requests have no recorded cost");
+  await expect(dialog.getByRole("region", { name: "Token volume", exact: true })).toContainText("Unavailable");
+  const modelRow = dialog.locator("tbody tr").first();
+  await expect(modelRow).toContainText("UnavailableUnavailable");
+  const chart = dialog.getByRole("region", { name: "Usage by model", exact: true });
+  await chart.locator(".usage-bar").first().focus();
+  await expect(chart.locator(".usage-tooltip").first()).toContainText("Unavailable");
 });
 
 test("inspects daily summary values and restores weekly totals", async ({ page }, testInfo) => {

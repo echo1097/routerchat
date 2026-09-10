@@ -115,7 +115,7 @@ test("distinguishes missing costs from free usage", async ({ page }) => {
   await expect(chart.locator(".usage-tooltip").first()).toContainText("Unavailable");
 });
 
-test("shows recorded totals with partial labels when some usage is missing", async ({ page }) => {
+test("shows clean summary totals and labels partial lifetime totals", async ({ page }) => {
   const data = makeUsage();
   data.current.partialCost = true;
   data.current.partialTokens = true;
@@ -124,13 +124,13 @@ test("shows recorded totals with partial labels when some usage is missing", asy
   data.lifetimeModels[0].partialTokens = true;
   const dialog = await openUsage(page, data);
   const spendCard = dialog.getByRole("region", { name: "Total spend", exact: true });
-  await expect(spendCard.locator("strong")).toHaveText("$2.30 (partial)");
+  await expect(spendCard.locator("strong")).toHaveText("$2.30");
   await expect(spendCard).toContainText("No comparison available");
-  await expect(dialog.getByRole("region", { name: "Token volume", exact: true })).toContainText("308K (partial)");
+  await expect(dialog.getByRole("region", { name: "Token volume", exact: true }).locator("strong")).toHaveText("308K");
   await expect(dialog.locator("tbody tr").first()).toContainText("2.2M (partial)$16.10 (partial)");
   await spendCard.getByRole("slider").focus();
   await spendCard.getByRole("slider").press("Home");
-  await expect(spendCard.locator("strong")).toHaveText("$0.12 (partial)");
+  await expect(spendCard.locator("strong")).toHaveText("$0.12");
   await expect(spendCard.getByRole("slider")).toHaveAttribute("aria-valuetext", "Sep 3: $0.12 (partial)");
 });
 

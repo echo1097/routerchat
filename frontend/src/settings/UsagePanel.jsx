@@ -54,7 +54,6 @@ function UsageMetric({ metric, usage }) {
   const activeDay = activeIndex == null ? null : days[activeIndex];
   const activePoint = activeIndex == null ? null : points[activeIndex];
   const selectedTotals = activeDay || usage.current;
-  const partial = selectedTotals[metric.partialKey];
   const partialComparison = usage.current[metric.partialKey] || usage.previous[metric.partialKey];
 
   function selectDay(event) {
@@ -84,7 +83,7 @@ function UsageMetric({ metric, usage }) {
       <h3>{metric.label}</h3>
       <div className="usage-metric-value">
         <strong>
-          {formatUsage(selectedTotals[metric.key], metric.money, partial)}
+          {formatUsage(selectedTotals[metric.key], metric.money)}
         </strong>
         <svg
           className="usage-sparkline"

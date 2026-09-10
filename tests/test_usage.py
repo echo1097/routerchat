@@ -63,12 +63,12 @@ class UsageTest(unittest.TestCase):
         current = result["current"]
         self.assertEqual(current["cost"], 2)
         self.assertEqual(current["requests"], 4)
-        self.assertEqual(current["totalTokens"], 450)
-        self.assertEqual(current["promptTokens"], 300)
-        self.assertEqual(current["outputTokens"], 90)
-        self.assertEqual(current["reasoningTokens"], 60)
+        self.assertIsNone(current["totalTokens"])
+        self.assertIsNone(current["promptTokens"])
+        self.assertIsNone(current["outputTokens"])
+        self.assertIsNone(current["reasoningTokens"])
         self.assertEqual(current["missingTokens"], 1)
-        self.assertAlmostEqual(current["blendedCost"], 1.5 / 450 * 1_000_000)
+        self.assertIsNone(current["blendedCost"])
         self.assertEqual(result["models"][1]["id"], "unknown")
 
     def testDuplicateProviderGenerationIsNotDoubleCounted(self):
@@ -88,11 +88,29 @@ class UsageTest(unittest.TestCase):
         self.addRow(cost=0, total_tokens=None)
         self.addRow(id="partial", cost=None, prompt_tokens=100, completion_tokens=None, reasoning_tokens=None, total_tokens=None)
         current = self.summary()["current"]
+        self.assertIsNone(current["cost"])
+        self.assertIsNone(current["totalTokens"])
+        self.assertIsNone(current["promptTokens"])
+        self.assertIsNone(current["blendedCost"])
+        self.assertEqual(current["missingTokens"], 1)
+
+    def testMixedMissingUsageIsUnavailableAcrossAggregates(self):
+        self.addRow()
+        self.addRow(id="missing", cost=None, prompt_tokens=None, completion_tokens=None, total_tokens=None)
+        result = self.summary()
+        for totals in (result["current"], result["days"][-1], result["models"][0], result["lifetimeModels"][0]):
+            self.assertIsNone(totals["cost"])
+            self.assertIsNone(totals["totalTokens"])
+            self.assertIsNone(totals["promptTokens"])
+            self.assertEqual(totals["requests"], 2)
+        self.assertIsNone(result["days"][-1]["models"]["test/model"])
+
+    def testFreeUsageAndKnownTotalRemainAvailable(self):
+        self.addRow(cost=0, prompt_tokens=None, total_tokens=150)
+        current = self.summary()["current"]
         self.assertEqual(current["cost"], 0)
         self.assertEqual(current["totalTokens"], 150)
-        self.assertEqual(current["promptTokens"], 200)
-        self.assertEqual(current["blendedCost"], 0)
-        self.assertEqual(current["missingTokens"], 1)
+        self.assertIsNone(current["promptTokens"])
 
     def testLocalMidnightAndPreviousWeekBoundaries(self):
         self.addRow(id="previous", created_at="2026-09-03T06:59:59Z", cost=1)
@@ -109,7 +127,7 @@ class UsageTest(unittest.TestCase):
         current = self.summary()["current"]
         self.assertIsNone(current["cost"])
         self.assertIsNone(current["totalTokens"])
-        self.assertEqual(current["promptTokens"], 0)
+        self.assertIsNone(current["promptTokens"])
 
     def testLifetimeIncludesOldSourcesWithoutChangingWeeklyTotals(self):
         self.addRow(cost=2)

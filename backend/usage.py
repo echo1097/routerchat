@@ -55,10 +55,15 @@ def addUsage(totals, row):
 def finishTotals(totals):
     result = {key: value for key, value in totals.items() if key not in {"pricedTokens", "tokenCost", "knownTokens"}}
     result["blendedCost"] = totals["tokenCost"] / totals["pricedTokens"] * 1_000_000 if totals["pricedTokens"] else None
-    if totals["requests"] and totals["missingCost"] == totals["requests"]:
+    if totals["missingCost"]:
         result["cost"] = None
-    if totals["requests"] and not totals["knownTokens"]:
+    if totals["knownTokens"] < totals["requests"]:
         result["totalTokens"] = None
+    if totals["missingTokens"]:
+        for key in ("promptTokens", "outputTokens", "reasoningTokens"):
+            result[key] = None
+    if totals["missingCost"] or totals["knownTokens"] < totals["requests"]:
+        result["blendedCost"] = None
     return result
 
 
@@ -130,7 +135,9 @@ def getUsage(conn, offsetMinutes=0, now=None):
             if modelId not in modelTotals:
                 modelTotals[modelId] = emptyTotals()
             addUsage(modelTotals[modelId], row)
-            day["models"][modelId] = day["models"].get(modelId, 0) + (cleanNumber(row["cost"]) or 0)
+            modelCost = day["models"].get(modelId, 0)
+            rowCost = cleanNumber(row["cost"])
+            day["models"][modelId] = modelCost + rowCost if modelCost is not None and rowCost is not None else None
 
     return {
         "startDate": startDate.isoformat(),

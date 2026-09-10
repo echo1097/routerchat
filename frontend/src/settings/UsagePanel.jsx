@@ -160,7 +160,7 @@ function UsageChart({ title, days, series, getValue, money = false }) {
               <span className="usage-day-label">{dayLabel(day.date)}</span>
             </div>
           ))}
-          {!maxValue && <span className="usage-chart-empty">No recorded {money ? "spend" : "tokens"} this week</span>}
+          {!maxValue && <span className="usage-chart-empty">{days.some((day) => series.some((item) => getValue(day, item) === null)) ? "Usage details unavailable" : `No recorded ${money ? "spend" : "tokens"} this week`}</span>}
         </div>
       </div>
       <div className="usage-legend">
@@ -211,7 +211,11 @@ export function UsagePanel({ models }) {
   }));
   const topModels = modelSeries.slice(0, 5);
   const chartSeries = modelSeries.length > 5 ? [...topModels, { id: "other", name: "Other", color: chartColors[5] }] : topModels;
-  const getModelSpend = (day, item) => item.id === "other" ? modelSeries.slice(5).reduce((sum, model) => sum + (day.models[model.id] || 0), 0) : day.models[item.id] || 0;
+  const getModelSpend = (day, item) => {
+    const modelIds = item.id === "other" ? modelSeries.slice(5).map((model) => model.id) : [item.id];
+    const values = modelIds.map((modelId) => day.models[modelId]);
+    return values.some((value) => value === null) ? null : values.reduce((sum, value) => sum + (value || 0), 0);
+  };
   const metrics = [
     { key: "cost", label: "Total spend", money: true },
     { key: "requests", label: "Requests" },

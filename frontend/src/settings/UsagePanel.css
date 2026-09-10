@@ -20,7 +20,7 @@
   font-weight: 500;
 }
 
-.usage-period button, .usage-state button {
+.usage-state button {
   border: 1px solid #ffffff14;
   border-radius: 7px;
   padding: 4px 9px;
@@ -353,7 +353,7 @@
 
 }
 
-.usage-tooltip.usage-token-tooltip {
+.usage-tooltip.usage-detail-tooltip {
   width: 220px;
   max-width: 220px;
   padding: 0;
@@ -398,14 +398,18 @@
 
 .usage-tooltip-row span {
   margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .usage-tooltip-row .usage-tooltip-value {
   margin-left: auto;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
-.usage-day:nth-child(2) .usage-token-tooltip {
+.usage-day:nth-child(2) .usage-detail-tooltip {
   left: 0;
   transform: none;
 }

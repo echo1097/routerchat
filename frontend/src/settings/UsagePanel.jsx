@@ -77,32 +77,21 @@ function UsageChart({ title, days, series, getValue, money = false }) {
                     }}
                   />
                 ))}
-                <div className={`usage-tooltip${money ? "" : " usage-token-tooltip"}`}>
-                  {money ? (
-                    <>
-                      <strong>{day.date}</strong>
-                      {series.map((item) => (
-                        <span key={item.id}>{item.name}: {formatUsage(getValue(day, item), money)}</span>
-                      ))}
-                    </>
-                  ) : (
-                    <>
-                      <strong className="usage-tooltip-date">
-                        {new Date(`${day.date}T12:00:00`).toLocaleDateString("en-US", {
-                          month: "long", day: "numeric", year: "numeric",
-                        })}
-                      </strong>
-                      <div className="usage-tooltip-details">
-                        {series.map((item) => (
-                          <div className="usage-tooltip-row" key={item.id}>
-                            <i style={{ background: item.color }} />
-                            <span>{item.name}</span>
-                            <span className="usage-tooltip-value">{formatUsage(getValue(day, item))}</span>
-                          </div>
-                        ))}
+                <div className="usage-tooltip usage-detail-tooltip">
+                  <strong className="usage-tooltip-date">
+                    {new Date(`${day.date}T12:00:00`).toLocaleDateString("en-US", {
+                      month: "long", day: "numeric", year: "numeric",
+                    })}
+                  </strong>
+                  <div className="usage-tooltip-details">
+                    {series.map((item) => (
+                      <div className="usage-tooltip-row" key={item.id}>
+                        <i style={{ background: item.color }} />
+                        <span>{item.name}</span>
+                        <span className="usage-tooltip-value">{formatUsage(getValue(day, item), money)}</span>
                       </div>
-                    </>
-                  )}
+                    ))}
+                  </div>
                 </div>
               </div>
               <span className="usage-day-label">{dayLabel(day.date)}</span>
@@ -123,7 +112,7 @@ function UsageChart({ title, days, series, getValue, money = false }) {
 export function UsagePanel({ models }) {
   const [usage, setUsage] = useState(null);
   const [error, setError] = useState("");
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -135,12 +124,12 @@ export function UsagePanel({ models }) {
         if (!controller.signal.aborted) setError(requestError.message || "Usage could not be loaded.");
       });
     return () => controller.abort();
-  }, [refreshKey]);
+  }, [retryKey]);
 
   if (error) return (
     <div className="usage-state" role="alert">
       <p>Usage could not be loaded.</p>
-      <button onClick={() => setRefreshKey((value) => value + 1)}>Try again</button>
+      <button onClick={() => setRetryKey((value) => value + 1)}>Try again</button>
     </div>
   );
   if (!usage) return <div className="usage-state" role="status">Loading usage…</div>;
@@ -167,9 +156,6 @@ export function UsagePanel({ models }) {
       <div className="usage-period">
         <span>Last 7 days</span>
         <span>{dateRange}</span>
-        <button onClick={() => setRefreshKey((value) => value + 1)} aria-label="Refresh usage">
-          Refresh
-        </button>
       </div>
       <div className="usage-summary">
         {metrics.map((metric) => (

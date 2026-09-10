@@ -67,7 +67,7 @@ test("fits the empty usage page on a narrow screen", async ({ page }, testInfo) 
   await page.screenshot({ path: testInfo.outputPath("usage-mobile.png"), animations: "disabled" });
 });
 
-test("retries a failed request and refreshes usage", async ({ page }) => {
+test("retries a failed request and reloads usage when reopened", async ({ page }) => {
   const fixture = await installWriteApi(page);
   let requestCount = 0;
   await page.route("**/api/usage?**", (route) => {
@@ -81,7 +81,10 @@ test("retries a failed request and refreshes usage", async ({ page }) => {
   await expect(page.getByRole("alert")).toContainText("Usage could not be loaded.");
   await page.getByRole("button", { name: "Try again" }).click();
   await expect(page.getByRole("region", { name: "Recorded spend", exact: true })).toContainText("$2.30");
-  await page.getByRole("button", { name: "Refresh usage" }).click();
+  await expect(page.getByRole("button", { name: "Refresh usage" })).toHaveCount(0);
+  await page.getByRole("dialog", { name: "Usage", exact: true }).getByRole("button", { name: "Close settings" }).click();
+  await page.locator('[data-tour="model-button"]').click();
+  await page.getByRole("menuitem", { name: /Settings/ }).click();
   await expect.poll(() => requestCount).toBe(3);
 });
 

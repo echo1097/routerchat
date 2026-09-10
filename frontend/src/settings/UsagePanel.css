@@ -352,3 +352,60 @@
   }
 
 }
+
+.usage-tooltip.usage-token-tooltip {
+  width: 220px;
+  max-width: 220px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: 12px;
+}
+
+.usage-tooltip-date {
+  display: inline-block;
+  margin-bottom: 7px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  background: #f5f5f5;
+  color: #171717;
+  font-weight: 500;
+}
+
+.usage-tooltip-details {
+  border: 1px solid #ffffff14;
+  border-radius: 10px;
+  padding: 9px 11px;
+  background: #191919;
+  box-shadow: 0 6px 20px #0005;
+}
+
+.usage-tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 0;
+  color: #f5f5f5;
+}
+
+.usage-tooltip-row i {
+  width: 4px;
+  height: 16px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.usage-tooltip-row span {
+  margin: 0;
+}
+
+.usage-tooltip-row .usage-tooltip-value {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-day:nth-child(2) .usage-token-tooltip {
+  left: 0;
+  transform: none;
+}

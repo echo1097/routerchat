@@ -77,11 +77,32 @@ function UsageChart({ title, days, series, getValue, money = false }) {
                     }}
                   />
                 ))}
-                <div className="usage-tooltip">
-                  <strong>{day.date}</strong>
-                  {series.map((item) => (
-                    <span key={item.id}>{item.name}: {formatUsage(getValue(day, item), money)}</span>
-                  ))}
+                <div className={`usage-tooltip${money ? "" : " usage-token-tooltip"}`}>
+                  {money ? (
+                    <>
+                      <strong>{day.date}</strong>
+                      {series.map((item) => (
+                        <span key={item.id}>{item.name}: {formatUsage(getValue(day, item), money)}</span>
+                      ))}
+                    </>
+                  ) : (
+                    <>
+                      <strong className="usage-tooltip-date">
+                        {new Date(`${day.date}T12:00:00`).toLocaleDateString("en-US", {
+                          month: "long", day: "numeric", year: "numeric",
+                        })}
+                      </strong>
+                      <div className="usage-tooltip-details">
+                        {series.map((item) => (
+                          <div className="usage-tooltip-row" key={item.id}>
+                            <i style={{ background: item.color }} />
+                            <span>{item.name}</span>
+                            <span className="usage-tooltip-value">{formatUsage(getValue(day, item))}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
               <span className="usage-day-label">{dayLabel(day.date)}</span>

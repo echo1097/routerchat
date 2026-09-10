@@ -48,6 +48,7 @@ from backend.attachments import (
     user_content_with_attachments,
 )
 from backend.changelog_status import ChangelogStatusDeps, create_changelog_status_router
+from backend.usage import createUsageRouter
 from backend.brainstorm import BrainstormDeps, create_brainstorm_router
 from backend.lorebook import LorebookDeps, create_lorebook_router
 from backend.lorebook_generate import create_lorebook_generate_router
@@ -2827,6 +2828,7 @@ brainstormDeps = BrainstormDeps(
 
 webSearchDeps = WebSearchDeps(get_db=get_db, utc_now=utc_now)
 app.include_router(create_web_search_router(webSearchDeps))
+app.include_router(createUsageRouter(get_db))
 
 attachmentsDeps = AttachmentsDeps(
     get_db=get_db,

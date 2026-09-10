@@ -64,7 +64,9 @@ class UsageTest(unittest.TestCase):
         current = result["current"]
         self.assertEqual(current["cost"], 2)
         self.assertEqual(current["requests"], 4)
-        self.assertIsNone(current["totalTokens"])
+        self.assertEqual(current["totalTokens"], 450)
+        self.assertTrue(current["partialTokens"])
+        self.assertFalse(current["partialCost"])
         self.assertIsNone(current["promptTokens"])
         self.assertIsNone(current["outputTokens"])
         self.assertIsNone(current["reasoningTokens"])
@@ -89,19 +91,23 @@ class UsageTest(unittest.TestCase):
         self.addRow(cost=0, total_tokens=None)
         self.addRow(id="partial", cost=None, prompt_tokens=100, completion_tokens=None, reasoning_tokens=None, total_tokens=None)
         current = self.summary()["current"]
-        self.assertIsNone(current["cost"])
-        self.assertIsNone(current["totalTokens"])
+        self.assertEqual(current["cost"], 0)
+        self.assertEqual(current["totalTokens"], 150)
+        self.assertTrue(current["partialCost"])
+        self.assertTrue(current["partialTokens"])
         self.assertIsNone(current["promptTokens"])
         self.assertIsNone(current["blendedCost"])
         self.assertEqual(current["missingTokens"], 1)
 
-    def testMixedMissingUsageIsUnavailableAcrossAggregates(self):
+    def testMixedMissingUsageKeepsRecordedTotalsAcrossAggregates(self):
         self.addRow()
         self.addRow(id="missing", cost=None, prompt_tokens=None, completion_tokens=None, total_tokens=None)
         result = self.summary()
         for totals in (result["current"], result["days"][-1], result["models"][0], result["lifetimeModels"][0]):
-            self.assertIsNone(totals["cost"])
-            self.assertIsNone(totals["totalTokens"])
+            self.assertEqual(totals["cost"], 0.5)
+            self.assertEqual(totals["totalTokens"], 150)
+            self.assertTrue(totals["partialCost"])
+            self.assertTrue(totals["partialTokens"])
             self.assertIsNone(totals["promptTokens"])
             self.assertEqual(totals["requests"], 2)
         self.assertIsNone(result["days"][-1]["models"]["test/model"])

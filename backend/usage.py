@@ -57,9 +57,11 @@ def addUsage(totals, row):
 def finishTotals(totals):
     result = {key: value for key, value in totals.items() if key not in {"pricedTokens", "tokenCost", "knownTokens"}}
     result["blendedCost"] = totals["tokenCost"] / totals["pricedTokens"] * 1_000_000 if totals["pricedTokens"] else None
-    if totals["missingCost"]:
+    result["partialCost"] = 0 < totals["missingCost"] < totals["requests"]
+    result["partialTokens"] = 0 < totals["knownTokens"] < totals["requests"]
+    if totals["requests"] and totals["missingCost"] == totals["requests"]:
         result["cost"] = None
-    if totals["knownTokens"] < totals["requests"]:
+    if totals["requests"] and not totals["knownTokens"]:
         result["totalTokens"] = None
     if totals["missingTokens"]:
         for key in ("promptTokens", "outputTokens", "reasoningTokens"):

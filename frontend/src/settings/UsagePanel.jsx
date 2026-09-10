@@ -9,8 +9,9 @@ const tokenSeries = [
   { id: "reasoningTokens", name: "Reasoning", color: "#e68eb0" },
 ];
 
-export function formatUsage(value, money = false) {
+export function formatUsage(value, money = false, partial = false) {
   if (value == null) return "Unavailable";
+  if (partial) return `${formatUsage(value, money)} (partial)`;
   if (money) return new Intl.NumberFormat("en-US", {
     style: "currency", currency: "USD", minimumFractionDigits: 2,
     maximumFractionDigits: value > 0 && value < 0.01 ? 4 : 2,
@@ -52,6 +53,9 @@ function UsageMetric({ metric, usage }) {
   });
   const activeDay = activeIndex == null ? null : days[activeIndex];
   const activePoint = activeIndex == null ? null : points[activeIndex];
+  const selectedTotals = activeDay || usage.current;
+  const partial = selectedTotals[metric.partialKey];
+  const partialComparison = usage.current[metric.partialKey] || usage.previous[metric.partialKey];
 
   function selectDay(event) {
     const bounds = event.currentTarget.getBoundingClientRect();
@@ -80,7 +84,7 @@ function UsageMetric({ metric, usage }) {
       <h3>{metric.label}</h3>
       <div className="usage-metric-value">
         <strong>
-          {formatUsage(activeDay ? activeDay[metric.key] : usage.current[metric.key], metric.money)}
+          {formatUsage(selectedTotals[metric.key], metric.money, partial)}
         </strong>
         <svg
           className="usage-sparkline"
@@ -91,7 +95,7 @@ function UsageMetric({ metric, usage }) {
           aria-valuemin={0}
           aria-valuemax={days.length - 1}
           aria-valuenow={activeIndex ?? days.length - 1}
-          aria-valuetext={`${dateLabel((activeDay || days.at(-1)).date)}: ${formatUsage((activeDay || days.at(-1))[metric.key], metric.money)}`}
+          aria-valuetext={`${dateLabel((activeDay || days.at(-1)).date)}: ${formatUsage((activeDay || days.at(-1))[metric.key], metric.money, (activeDay || days.at(-1))[metric.partialKey])}`}
           onPointerMove={selectDay}
           onPointerDown={selectDay}
           onPointerLeave={() => setActiveIndex(null)}
@@ -109,7 +113,7 @@ function UsageMetric({ metric, usage }) {
         </svg>
       </div>
       <p>
-        {activeDay ? dateLabel(activeDay.date) : comparison(usage.current[metric.key], usage.previous[metric.key])}
+        {activeDay ? dateLabel(activeDay.date) : partialComparison ? "No comparison available" : comparison(usage.current[metric.key], usage.previous[metric.key])}
       </p>
     </section>
   );
@@ -224,9 +228,9 @@ export function UsagePanel({ models }) {
     return values.some((value) => value === null) ? null : values.reduce((sum, value) => sum + (value || 0), 0);
   };
   const metrics = [
-    { key: "cost", label: "Total spend", money: true },
+    { key: "cost", label: "Total spend", money: true, partialKey: "partialCost" },
     { key: "requests", label: "Requests" },
-    { key: "totalTokens", label: "Token volume" },
+    { key: "totalTokens", label: "Token volume", partialKey: "partialTokens" },
   ];
   const dateRange = `${dateLabel(usage.startDate)} – ${dateLabel(usage.endDate)}`;
 
@@ -259,8 +263,8 @@ export function UsagePanel({ models }) {
                   <tr key={model.id}>
                     <td><i style={{ background: model.color }} />{model.name}</td>
                     <td>{formatUsage(model.requests)}</td>
-                    <td>{formatUsage(model.totalTokens)}</td>
-                    <td>{formatUsage(model.cost, true)}</td>
+                    <td>{formatUsage(model.totalTokens, false, model.partialTokens)}</td>
+                    <td>{formatUsage(model.cost, true, model.partialCost)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -268,7 +272,7 @@ export function UsagePanel({ models }) {
           </div>
         ) : <p className="usage-muted">Your model usage will appear here.</p>}
       </section>
-      <p className="usage-note">Saved RouterChat history only, including imported history. Deleted history and requests without saved usage are not included. All amounts are USD.</p>
+      <p className="usage-note">Saved RouterChat history only, including imported history. Partial totals include recorded usage only; some requests are missing usage details. Deleted history and requests without saved usage are not included. All amounts are USD.</p>
     </div>
   );
 }

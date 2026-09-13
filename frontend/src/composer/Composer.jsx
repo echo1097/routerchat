@@ -7,7 +7,7 @@ import {
   effectiveThinkingEnabled,
   reasoningEffortLabel,
 } from "../modelReasoning.js";
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useLayoutEffect } from "react";
 import { promptModelName } from "../modelFormatting.js";
 import AttachmentChips from "../attachments/AttachmentChips.jsx";
 import AttachButton from "../attachments/AttachButton.jsx";
@@ -100,6 +100,11 @@ export function Composer({
     : "Instant";
   const textareaRef = useRef(null);
   const composerControlsRef = useRef(null);
+  const composerSurfaceRef = useRef(null);
+  const leftControlsRef = useRef(null);
+  const rightControlsRef = useRef(null);
+  const measureRef = useRef(null);
+  const [isMultiline, setIsMultiline] = useState(false);
   const tourUiRef = useRef(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [systemPromptOpen, setSystemPromptOpen] = useState(false);
@@ -107,15 +112,70 @@ export function Composer({
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const isEmptyVariant = variant === "empty";
 
-  useEffect(() => {
+  const isCompact = isEmptyVariant && !isMultiline;
+
+  useLayoutEffect(() => {
+    if (!isEmptyVariant) return;
+
+    function measureLines() {
+      const textarea = textareaRef.current;
+      const measure = measureRef.current;
+      const surface = composerSurfaceRef.current;
+      if (!textarea || !measure || !surface) return;
+
+      const textStyle = getComputedStyle(textarea);
+      const compactWidth = Math.max(24, surface.clientWidth
+        - leftControlsRef.current.offsetWidth
+        - rightControlsRef.current.offsetWidth - 40);
+      measure.style.width = compactWidth + "px";
+      measure.style.font = textStyle.font;
+      measure.style.letterSpacing = textStyle.letterSpacing;
+      measure.value = value;
+      setIsMultiline(measure.scrollHeight > parseFloat(textStyle.lineHeight) + 1);
+    }
+
+    measureLines();
+    let measureFrame;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(measureFrame);
+      measureFrame = requestAnimationFrame(measureLines);
+    });
+    [composerSurfaceRef.current, leftControlsRef.current, rightControlsRef.current].forEach((element) => {
+      if (element) observer.observe(element);
+    });
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(measureFrame);
+    };
+  }, [isEmptyVariant, value]);
+
+  useLayoutEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
-    textarea.style.height = "auto";
-    const maxHeight = isEmptyVariant ? 184 : 126;
-    const nextHeight = Math.min(textarea.scrollHeight, maxHeight);
-    textarea.style.height = `${nextHeight}px`;
-    textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
-  }, [isEmptyVariant, value]);
+
+    function resizeTextarea() {
+      textarea.style.height = "auto";
+      const maxHeight = isEmptyVariant ? 184 : 126;
+      const nextHeight = Math.min(textarea.scrollHeight, maxHeight);
+      textarea.style.height = `${nextHeight}px`;
+      textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
+    }
+
+    resizeTextarea();
+    let lastWidth = textarea.clientWidth;
+    let resizeFrame;
+    const observer = new ResizeObserver(() => {
+      if (textarea.clientWidth === lastWidth) return;
+      lastWidth = textarea.clientWidth;
+      cancelAnimationFrame(resizeFrame);
+      resizeFrame = requestAnimationFrame(resizeTextarea);
+    });
+    observer.observe(textarea);
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(resizeFrame);
+    };
+  }, [isEmptyVariant, isCompact, value]);
 
   useEffect(() => {
     function closeComposerMenus(event) {
@@ -182,14 +242,20 @@ export function Composer({
           </div>
         )}
         <div
+          ref={composerSurfaceRef}
           className={cx(
+            isEmptyVariant && "landing-composer",
+            isCompact && "landing-composer-compact",
             "voice-surface relative bg-[#141414]",
             isEmptyVariant
               ? "rounded-[30px]"
               : "rounded-[24px]",
           )}
         >
-          <div className={cx(isEmptyVariant ? "px-[18px] pt-[15px] sm:px-[21px] sm:pt-[18px]" : "px-4 pt-3")}>
+          {isEmptyVariant && (
+            <textarea ref={measureRef} aria-hidden="true" tabIndex={-1} rows={1} className="landing-composer-measure" />
+          )}
+          <div className={cx("composer-input", isEmptyVariant ? "px-[18px] pt-[15px] sm:px-[21px] sm:pt-[18px]" : "px-4 pt-3")}>
             <textarea
               ref={textareaRef}
               value={value}
@@ -229,13 +295,13 @@ export function Composer({
           <div
             ref={composerControlsRef}
             className={cx(
-              "flex items-center gap-2",
+              "composer-controls flex items-center gap-2",
               isEmptyVariant
                 ? "flex-wrap justify-between px-3 pb-[4.5px] pt-[3px] sm:flex-nowrap sm:px-[15px]"
                 : "justify-between px-4 pb-[5px] pt-[3px]",
             )}
             >
-            <div className="flex min-w-0 items-center gap-1.5">
+            <div ref={leftControlsRef} className="composer-left flex min-w-0 items-center gap-1.5">
               <div className="flex items-center gap-0.5">
               {canAttach && (
                 <AttachButton
@@ -315,7 +381,7 @@ export function Composer({
                 </div>
               )}
             </div>
-            <div className="ml-auto flex min-w-0 items-center gap-1.5">
+            <div ref={rightControlsRef} className="composer-right ml-auto flex min-w-0 items-center gap-1.5">
               <div className="flex min-w-0 items-center gap-0">
                 {showContextMeter && <span data-tour="write-context-meter"><ContextWindowMeter info={contextWindowInfo} /></span>}
                 <div className="relative min-w-0">

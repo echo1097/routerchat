@@ -2286,3 +2286,70 @@ typography exactly or the swap at the end of a generation shows a seam */
     animation: none !important;
   }
 }
+
+.landing-composer-measure {
+  position: absolute;
+  height: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  visibility: hidden;
+  pointer-events: none;
+  overflow: hidden;
+  resize: none;
+}
+
+.landing-composer-compact.voice-surface {
+  display: grid;
+  grid-template-columns: auto minmax(24px, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 999px;
+  background: #212121;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 6%);
+}
+
+.landing-composer-compact .composer-input {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+  padding: 0;
+}
+
+.landing-composer-compact .composer-input textarea {
+  min-height: 0;
+  padding: 0;
+  white-space: pre;
+  overflow-x: hidden;
+}
+
+.landing-composer-compact .composer-input textarea::placeholder {
+  color: #aaa;
+}
+
+.landing-composer-compact .composer-controls {
+  display: contents;
+}
+
+.landing-composer-compact .composer-left {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.landing-composer-compact .composer-right {
+  grid-column: 3;
+  grid-row: 1;
+  margin-left: 0;
+}
+
+@media (max-width: 639px) {
+  .landing-composer [data-tour="model-button"] {
+    max-width: 100px;
+    padding-inline: 6px;
+  }
+
+  .landing-composer .composer-right {
+    gap: 2px;
+  }
+}

@@ -36,38 +36,48 @@ To remove RouterChat, run **Uninstall RouterChat** from `~/Applications/RouterCh
 
 ## Features
 
-- **Chat Mode** — A local chat interface model selection, context, temporary chats, and chat history.
-- **Writing Mode** — A dedicated longform writing workspace. Create stories, organize them into chapters and make a lorebook for characters and world details.
+- **Chat Mode:** A local chat interface with model selection, web search, file attachments, temporary chats, and chat history.
+- **Writing Mode:** A dedicated longform writing workspace. Create stories, organize them into chapters, brainstorm ideas, and make a lorebook for characters and world details.
 
 ## Roadmap
 
 This project is gradually spinning down, will continue to work on updates around UI, bug fixes, and improving stability for the time being. **RouterChat is still in development** 
 
 ## Features added
+
 - One-click installer
-    - MacOS
-    - Windows
+    - macOS and Windows
 - UI improvements
-    - Nav bar
-    - Warn when context getting full
-    - Show model context
-    - Temporary chats
-    - Pin chats
+    - Navigation bar for moving through long chats
+    - Model context meter and warnings when context is getting full
+    - Guided tours for Chat and Write modes
 - Writing Mode improvements
-    - Brainstorming
-    - Better chapter history
-    - Redesign the History menu for chapter actions
-    - Import/export full stories
-    - More detailed diffs
-
+    - Brainstorming canvas with branching ideas, copy buttons, and prompt regeneration
+    - Create and edit chapters with a formatting toolbar
+    - Chapter history 
+    - Import and export full stories, including chapters and lorebooks
 - Chat Mode improvements
-    - Web search
-    - Attachments (files)
-    - Folders/Projects
-    - Generate chat names instead of just being first message
-
-- Memory
-    - Write mode
+    - Web search with sources and citations
+    - Image, PDF, text, and code attachments, including drag and drop
+    - Folders, pinned chats, and chat search
+    - Temporary chats
+    - Automatically generated chat names
+    - Chat import and export
+    - Edit prompts, regenerate replies, and view response token usage and costs
+- Memory for Write mode
+    - Lorebook entries for characters, locations, items, events, notes, chapter summaries, and timeline
+    - Manual and model-generated entries, with automatic or manual lorebook updates
+    - Lorebook and timeline repair tools
+- Voice input
+    - Record and transcribe speech in Chat, Write, and Brainstorm
+- Usage tracking
+    - Spending, request counts, and token usage for the last 7 days
+    - Lifetime totals per model
+- Model settings
+    - Model search and default model selection
+    - System prompts, temperature, output limits, and supported reasoning controls
+    - Fastest or lowest-priced provider preferences
+    - Privacy and Zero Data Retention routing options
 
 ## AI usage disclaimer
 

@@ -48,6 +48,7 @@ from backend.attachments import (
     user_content_with_attachments,
 )
 from backend.changelog_status import ChangelogStatusDeps, create_changelog_status_router
+from backend.transcription import createTranscriptionRouter, ensureTranscriptionUsageTable
 from backend.usage import createUsageRouter
 from backend.lorebook_usage import ensureLorebookUsageTable
 from backend.brainstorm import BrainstormDeps, create_brainstorm_router
@@ -377,6 +378,7 @@ class ChatPatchRequest(BaseModel):
 
 
 class AppSettingsPatchRequest(BaseModel):
+    transcription_model: str | None = Field(default=None, min_length=1, max_length=200)
     default_model: str | None = None
     generate_chat_name: bool | None = None
     hide_free_models: bool | None = None
@@ -794,6 +796,7 @@ def init_db() -> None:
         ensure_chapter_history_columns(conn)
         ensure_lorebook_run_usage_columns(conn)
         ensureLorebookUsageTable(conn)
+        ensureTranscriptionUsageTable(conn)
         clean_lorebook_categories(conn)
 
 
@@ -1306,6 +1309,7 @@ def tos_payload(tos: dict[str, Any]) -> dict[str, Any]:
 
 def app_settings_payload() -> dict[str, Any]:
     return {
+        "transcription_model": read_app_setting("transcription_model") or "openai/whisper-1",
         "default_model": default_model_id(),
         "generate_chat_name": bool(read_app_setting("generate_chat_name")),
         "hide_free_models": bool(read_app_setting("hide_free_models")),
@@ -1603,6 +1607,12 @@ def get_app_settings() -> dict[str, Any]:
 @app.patch("/api/settings")
 def update_app_settings(payload: AppSettingsPatchRequest) -> dict[str, Any]:
     patch_updates(payload)
+    if payload.transcription_model is not None:
+        modelId = payload.transcription_model.strip()
+        modelIds = {model["id"] for model in (read_app_setting("transcription_models") or [])}
+        if not modelId or modelId not in modelIds | {"openai/whisper-1"}:
+            raise HTTPException(400, "Choose an available transcription model.")
+        write_app_setting("transcription_model", modelId)
     if payload.default_model is not None:
         model_id = payload.default_model.strip()
         ids = {model["id"] for model in cached_models() if model.get("id")}
@@ -2833,7 +2843,7 @@ brainstormDeps = BrainstormDeps(
 
 webSearchDeps = WebSearchDeps(get_db=get_db, utc_now=utc_now)
 app.include_router(create_web_search_router(webSearchDeps))
-app.include_router(createUsageRouter(get_db))
+app.include_router(createUsageRouter(get_db, read_app_setting))
 
 attachmentsDeps = AttachmentsDeps(
     get_db=get_db,
@@ -2854,5 +2864,10 @@ app.include_router(create_lorebook_router(lorebookDeps))
 app.include_router(create_lorebook_repair_router(lorebookDeps))
 app.include_router(create_lorebook_generate_router(lorebookDeps))
 app.include_router(create_brainstorm_router(brainstormDeps))
+
+app.include_router(createTranscriptionRouter(
+    read_openrouter_key, read_app_setting, write_app_setting, headers_for_key, OPENROUTER_BASE_URL,
+    get_db, utc_now,
+))
 
 configure_static_files(app, STATIC_DIR)

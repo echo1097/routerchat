@@ -1,3 +1,4 @@
+import { VoiceInput } from "../transcription/VoiceInput.jsx";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
@@ -699,7 +700,7 @@ export default function StoryBrainstorm({
       </div>
 
       <form className="brainstorm-composer" onSubmit={submitPrompt}>
-        <div className="brainstorm-composer-surface">
+        <div className="brainstorm-composer-surface voice-surface">
           <textarea
             className="nowheel"
             ref={textareaRef}
@@ -841,6 +842,7 @@ export default function StoryBrainstorm({
                   </div>
                 )}
               </div>
+              <VoiceInput contextKey={story?.id} value={prompt} setValue={setPrompt} onSubmit={(text) => onGenerate(text, selectedIdeaIds, ideaCount)} disabled={disabled || isStreaming} />
               <button
                 type="submit"
                 className="brainstorm-send-button"

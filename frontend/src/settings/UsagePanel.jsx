@@ -209,13 +209,13 @@ export function UsagePanel({ models }) {
 
   const modelSeries = usage.models.map((item, index) => ({
     ...item,
-    name: models.find((model) => model.id === item.id)?.name
+    name: item.name || models.find((model) => model.id === item.id)?.name
       || (item.id === "unknown" ? "Unrecorded model" : item.id.split("/").at(-1)),
     color: chartColors[index % chartColors.length],
   }));
   const lifetimeModels = (usage.lifetimeModels || []).map((item, index) => ({
     ...item,
-    name: models.find((model) => model.id === item.id)?.name
+    name: item.name || models.find((model) => model.id === item.id)?.name
       || (item.id === "unknown" ? "Unrecorded model" : item.id.split("/").at(-1)),
     color: modelSeries.find((model) => model.id === item.id)?.color || chartColors[index % chartColors.length],
   }));
@@ -271,7 +271,7 @@ export function UsagePanel({ models }) {
           </div>
         ) : <p className="usage-muted">Your model usage will appear here.</p>}
       </section>
-      <p className="usage-note">Saved RouterChat history only, including imported history. Partial totals include recorded usage only; some requests are missing usage details. Deleted history and requests without saved usage are not included. All amounts are USD.</p>
+      <p className="usage-note">Saved RouterChat history and transcription usage, including imported history. Partial totals include recorded usage only; some requests are missing usage details. Deleted history and requests without saved usage are not included. All amounts are USD.</p>
     </div>
   );
 }

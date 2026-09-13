@@ -1,0 +1,55 @@
+.voice-mic {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: 50%;
+  color: #a3a3a3;
+}
+
+.voice-mic:hover { background: #ffffff14; }
+.voice-mic:disabled { opacity: 0.4; }
+.voice-mic:focus-visible, .voice-round:focus-visible { outline: 2px solid #a3a3a3; outline-offset: 3px; }
+
+.voice-recording {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid #ffffff0d;
+  border-radius: 999px;
+  background: #222;
+  visibility: visible;
+}
+
+.voice-round {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  place-items: center;
+  border: 1px solid #ffffff30;
+  border-radius: 50%;
+  color: #ddd;
+}
+
+.voice-round:hover { background: #ffffff0d; }
+.voice-round:disabled { opacity: 0.4; cursor: default; }
+.voice-send, .voice-send:hover { background: #fff; color: #111; border-color: #fff; }
+.voice-waveform { position: relative; flex: 1; min-width: 0; height: 64px; }
+.voice-waveform canvas { width: 100%; height: 100%; }
+.voice-status { position: absolute; inset: 0; display: grid; place-items: center; background: #222; text-align: center; font-size: 12px; color: #aaa; }
+.voice-error { position: absolute; bottom: calc(100% + 8px); left: 0; right: 0; z-index: 45; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-radius: 12px; padding: 12px 16px; background: #302424; color: #fecaca; font-size: 12px; }
+.voice-error button { flex-shrink: 0; }
+
+@media (max-width: 480px) {
+  .voice-recording { gap: 8px; padding: 10px; }
+  .voice-round { width: 36px; height: 36px; }
+}
+
+.voice-surface:has(.voice-recording) { background: transparent; }

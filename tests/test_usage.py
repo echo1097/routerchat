@@ -33,6 +33,7 @@ class UsageTest(unittest.TestCase):
             "story_generations": {"id": "story-row", "story_id": "story", "chapter_id": "chapter", "prompt": "Write", "generated_text": "Hello"},
             "brainstorm_generations": {"id": "brainstorm-row", "story_id": "story", "prompt_node_id": "node", "prompt": "Ideas"},
             "lorebook_update_runs": {"id": "lorebook-row", "story_id": "story", "chapter_id": "chapter", "raw_output": "{}", "applied_updates_json": "[]"},
+            "transcription_usage": {"id": "transcription-row"},
             "lorebook_usage": {"id": "usage-row", "story_id": "story", "action": "generate"},
         }
         row = {**defaults[table], "created_at": "2026-09-09T12:00:00Z", "cost": 0.5}
@@ -267,3 +268,34 @@ class UsageTest(unittest.TestCase):
             self.assertEqual(client.get("/api/usage?offsetMinutes=900").status_code, 422)
             self.assertEqual(client.get("/api/usage?timeZone=America%2FLos_Angeles").status_code, 200)
             self.assertEqual(client.get("/api/usage?timeZone=Invalid%2FZone").status_code, 422)
+
+    def testTranscriptionCountsInDailyWeeklyAndLifetimeSpend(self):
+        self.addRow("transcription_usage", model="openai/whisper-1", cost=0.03,
+                    prompt_tokens=None, completion_tokens=None, reasoning_tokens=None, total_tokens=None)
+        self.addRow("transcription_usage", id="older", model="openai/whisper-1", cost=0.02,
+                    created_at="2026-09-01T12:00:00Z")
+        self.addRow(cost=0.5)
+        result = self.summary()
+        self.assertAlmostEqual(result["current"]["cost"], 0.53)
+        self.assertEqual(result["current"]["requests"], 2)
+        self.assertEqual(result["previous"]["cost"], 0.02)
+        self.assertEqual(result["days"][-1]["models"]["openai/whisper-1"], 0.03)
+        weekly = next(model for model in result["models"] if model["id"] == "openai/whisper-1")
+        self.assertEqual(weekly["cost"], 0.03)
+        self.assertIsNone(weekly["totalTokens"])
+        lifetime = next(model for model in result["lifetimeModels"] if model["id"] == "openai/whisper-1")
+        self.assertAlmostEqual(lifetime["cost"], 0.05)
+        self.assertEqual(lifetime["requests"], 2)
+
+    def testTranscriptionCatalogNamesAreIncludedWithoutProviderRequests(self):
+        self.addRow("transcription_usage", model="openai/whisper-1")
+        def getDb():
+            conn = sqlite3.connect(self.dbPath)
+            conn.row_factory = sqlite3.Row
+            return conn
+
+        app = FastAPI()
+        app.include_router(createUsageRouter(getDb, lambda key: [{"id": "openai/whisper-1", "name": "Whisper"}]))
+        with TestClient(app) as client, patch("httpx.AsyncClient", side_effect=AssertionError("Provider call forbidden")):
+            result = client.get("/api/usage").json()
+        self.assertEqual(result["lifetimeModels"][0]["name"], "Whisper")

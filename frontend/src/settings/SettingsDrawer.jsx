@@ -1,3 +1,4 @@
+import { TranscriptionSettings } from "../transcription/TranscriptionSettings.jsx";
 import { MessageSquarePlus, SlidersHorizontal, X, Check } from "lucide-react";
 import { useState, useRef, useMemo, useEffect } from "react";
 import { cx, CONTROL_MOTION } from "../uiShared.js";
@@ -27,6 +28,7 @@ const REASONING_EFFORTS = [
 const SETTINGS_PAGES = [
   { id: "general", label: "API", iconClass: "fi fi-rr-key" },
   { id: "models", label: "Models", iconClass: "fi fi-rr-bulb" },
+  { id: "transcription", label: "Transcription", iconSrc: "/icons/mic.png" },
   { id: "system", label: "System", iconClass: "fi fi-rr-settings" },
   { id: "ui", label: "UI", iconClass: "fi fi-rr-apps-add" },
   { id: "cloud", label: "Chats", icon: MessageSquarePlus },
@@ -954,7 +956,7 @@ export function SettingsDrawer({
         aria-labelledby="settings-modal-title"
         aria-hidden={!open}
         className={cx(
-          "t-modal settings-modal relative z-10 grid w-full grid-cols-1 overflow-hidden rounded-[18px] bg-[#202020] text-neutral-100 [box-shadow:var(--shadow-surface)] md:grid-cols-[132px_minmax(0,1fr)]",
+          "t-modal settings-modal relative z-10 grid w-full grid-cols-1 overflow-hidden rounded-[18px] bg-[#202020] text-neutral-100 [box-shadow:var(--shadow-surface)] md:grid-cols-[148px_minmax(0,1fr)]",
           activePage === "usage" ? "h-[min(780px,calc(100dvh-2rem))] max-w-[980px]" : "h-[min(400px,calc(100vh-2rem))] max-w-[560px]",
           open ? "is-open" : "is-closing",
         )}
@@ -1058,16 +1060,19 @@ export function SettingsDrawer({
             >
               {modelList}
             </section>
+            <section className="t-page flex min-h-0 flex-col px-4 py-3 md:px-4 md:py-3" data-page-id="3" aria-label="Transcription settings">
+              {open && activePage === "transcription" && <TranscriptionSettings />}
+            </section>
             <section
               className="t-page flex min-h-0 flex-col px-4 py-3 md:px-4 md:py-3"
-              data-page-id="3"
+              data-page-id="4"
               aria-label="System settings"
             >
               {systemSection}
             </section>
             <section
               className="settings-scroll-page t-page space-y-0 overflow-y-auto px-4 py-3 md:px-4 md:py-3"
-              data-page-id="4"
+              data-page-id="5"
               aria-label="UI settings"
             >
               {promptNavigationSection}
@@ -1075,14 +1080,14 @@ export function SettingsDrawer({
             </section>
             <section
               className="t-page overflow-hidden px-4 py-3 md:px-4 md:py-3"
-              data-page-id="5"
+              data-page-id="6"
               aria-label="Chats settings"
             >
               {importExportSection}
             </section>
             <section
               className="settings-scroll-page t-page space-y-0 overflow-y-auto px-4 py-3 md:px-4 md:py-3"
-              data-page-id="6"
+              data-page-id="7"
               aria-label="Advanced settings"
             >
               {reasoningSection}
@@ -1090,14 +1095,14 @@ export function SettingsDrawer({
             </section>
             <section
               className="t-page flex min-h-0 flex-col px-4 py-3 md:px-4 md:py-3"
-              data-page-id="7"
+              data-page-id="8"
               aria-label="Lorebook settings"
             >
               {lorebookSection}
             </section>
             <section
               className="settings-scroll-page t-page overflow-y-auto px-4 py-3"
-              data-page-id="8"
+              data-page-id="9"
               aria-label="Usage settings"
             >
               {open && activePage === "usage" && <UsagePanel models={models} />}

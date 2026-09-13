@@ -3331,6 +3331,7 @@ function App() {
             <WriteLanding openingMessage={landingMessage} />
           ) : (
             <Composer
+              contextKey={`${activeChatId}:${activeStoryId}:${activeChapterId}`}
               value={prompt}
               setValue={setPrompt}
               disabled={!keyStatus.has_key}
@@ -3339,7 +3340,7 @@ function App() {
               models={models}
               contextWindowInfo={contextWindowInfo}
               modelLocked={activeModelLocked}
-              onSubmit={() => sendMessage()}
+              onSubmit={(text) => sendMessage(text)}
               onStop={stopStream}
               onOpenSettings={() => setSettingsOpen(true)}
               onToggleThinking={toggleThinking}
@@ -3357,6 +3358,7 @@ function App() {
           )
         ) : (
           <Composer
+              contextKey={`${activeChatId}:${activeStoryId}:${activeChapterId}`}
             value={prompt}
             setValue={setPrompt}
             disabled={!keyStatus.has_key}
@@ -3365,7 +3367,7 @@ function App() {
             models={models}
             contextWindowInfo={contextWindowInfo}
             modelLocked={activeModelLocked}
-            onSubmit={() => (isWritingMode ? generateStoryChapter() : sendMessage())}
+            onSubmit={(text) => (isWritingMode ? generateStoryChapter(text) : sendMessage(text))}
             onStop={stopStream}
             onOpenSettings={() => setSettingsOpen(true)}
             onToggleThinking={toggleThinking}

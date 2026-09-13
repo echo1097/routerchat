@@ -40,9 +40,10 @@ class TranscriptionTest(unittest.TestCase):
     def testSelectedModelAndTranscript(self):
         response = self.client.post("/api/transcription", json=self.payload)
         self.assertEqual(response.json(), {"text": "Hello world"})
-        sent = self.provider.request.call_args.kwargs["json"]
-        self.assertEqual(sent["model"], "test/transcribe")
-        self.assertEqual(sent["input_audio"], {"data": self.payload["audio"], "format": "webm"})
+        sent = self.provider.request.call_args.kwargs
+        self.assertEqual(sent["data"]["model"], "test/transcribe")
+        self.assertEqual(sent["files"]["file"], ("recording.webm", b"recorded audio", "audio/webm"))
+        self.assertNotIn("json", sent)
 
     def testRejectInvalidAudioWithoutProviderCall(self):
         response = self.client.post("/api/transcription", json={**self.payload, "audio": "not base64!"})
@@ -116,3 +117,28 @@ class TranscriptionTest(unittest.TestCase):
         self.assertEqual(len(rows), 2)
         self.assertIsNone(rows[0]["cost"])
         self.assertEqual(rows[1]["cost"], 0)
+
+
+    def testEncodedMultipartContainsAudioAndModelForEachFormat(self):
+        from email.parser import BytesParser
+        from email.policy import default
+
+        audioData = b"\x00\xffrecorded audio\r\n"
+        for audioFormat, mimeType in {"webm": "audio/webm", "m4a": "audio/mp4", "ogg": "audio/ogg", "wav": "audio/wav"}.items():
+            with self.subTest(audioFormat=audioFormat):
+                response = self.client.post("/api/transcription", json={
+                    "audio": base64.b64encode(audioData).decode(), "format": audioFormat,
+                })
+                self.assertEqual(response.status_code, 200)
+                request = httpx.Request(*self.provider.request.call_args.args, **self.provider.request.call_args.kwargs)
+                contentType = request.headers["content-type"]
+                self.assertTrue(contentType.startswith("multipart/form-data; boundary="))
+                message = BytesParser(policy=default).parsebytes(
+                    f"Content-Type: {contentType}\r\nMIME-Version: 1.0\r\n\r\n".encode() + request.read()
+                )
+                parts = {part.get_param("name", header="content-disposition"): part for part in message.iter_parts()}
+                self.assertEqual(set(parts), {"model", "file"})
+                self.assertEqual(parts["model"].get_payload(decode=True), b"test/transcribe")
+                self.assertEqual(parts["file"].get_payload(decode=True), audioData)
+                self.assertEqual(parts["file"].get_filename(), f"recording.{audioFormat}")
+                self.assertEqual(parts["file"].get_content_type(), mimeType)

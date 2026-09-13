@@ -77,10 +77,12 @@ def createTranscriptionRouter(readKey, readSetting, writeSetting, headersForKey,
                 "INSERT INTO transcription_usage (id, model, created_at) VALUES (?, ?, ?)",
                 (requestId, modelId, utcNow()),
             )
-        result = await providerRequest("POST", "audio/transcriptions", json={
-            "model": modelId,
-            "input_audio": {"data": payload.audio, "format": payload.format},
-        })
+        audioTypes = {"webm": "audio/webm", "m4a": "audio/mp4", "ogg": "audio/ogg", "wav": "audio/wav"}
+        result = await providerRequest(
+            "POST", "audio/transcriptions",
+            data={"model": modelId},
+            files={"file": (f"recording.{payload.format}", audioBytes, audioTypes[payload.format])},
+        )
         usage = result.get("usage") or {}
         promptTokens = cleanNumber(usage.get("input_tokens", usage.get("prompt_tokens")))
         completionTokens = cleanNumber(usage.get("output_tokens", usage.get("completion_tokens")))

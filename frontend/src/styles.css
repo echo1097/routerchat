@@ -2358,6 +2358,10 @@ typography exactly or the swap at the end of a generation shows a seam */
   --compact-spacing: 40;
 }
 
+.adaptive-composer .brainstorm-composer-right {
+  gap: 0;
+}
+
 .composer-tools-icon {
   display: none;
 }

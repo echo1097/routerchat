@@ -22,7 +22,7 @@
   gap: 12px;
   padding: 12px 16px;
   border: 1px solid #ffffff0d;
-  border-radius: inherit;
+  border-radius: 999px;
   background: #222;
   visibility: visible;
 }
@@ -51,3 +51,5 @@
   .voice-recording { gap: 8px; padding: 10px; }
   .voice-round { width: 36px; height: 36px; }
 }
+
+.voice-surface:has(.voice-recording) { background: transparent; }

@@ -112,7 +112,7 @@ export function VoiceInput({ value, setValue, onSubmit, disabled, contextKey }) 
     if (!canvas || sessionRef.current !== session) return;
     const context = canvas.getContext("2d");
     const samples = new Uint8Array(session.analyser.fftSize);
-    const levels = Array(90).fill(0);
+    const levels = Array(Math.max(12, Math.floor(canvas.clientWidth / 7))).fill(0);
     let lastTime = 0;
     function drawFrame(time) {
       if (sessionRef.current !== session || session.finishing) return;

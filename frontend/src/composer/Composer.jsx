@@ -183,7 +183,7 @@ export function Composer({
         )}
         <div
           className={cx(
-            "relative bg-[#141414]",
+            "voice-surface relative bg-[#141414]",
             isEmptyVariant
               ? "rounded-[30px]"
               : "rounded-[24px]",

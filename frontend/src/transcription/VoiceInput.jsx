@@ -196,7 +196,7 @@ export function VoiceInput({ value, setValue, onSubmit, disabled, contextKey }) 
   return (
     <>
       <button ref={micRef} type="button" className="voice-mic" aria-label="Record prompt" title="Record prompt" disabled={disabled || active} onClick={startRecording}>
-        <MaskIcon src="/icons/microphone.png" size={16.15} />
+        <MaskIcon src="/icons/microphone.png" size={14} />
       </button>
       {active && (
         <div className="voice-recording" role="dialog" aria-label="Record a prompt" aria-modal="true" onKeyDown={(event) => {

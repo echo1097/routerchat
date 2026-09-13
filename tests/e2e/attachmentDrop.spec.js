@@ -128,3 +128,47 @@ test("dragging a chat between folders does not open the drop target", async ({ p
 
   await expect(page.locator(".attachment-drop-overlay")).toBeHidden();
 });
+
+for (const width of [1280, 390]) {
+  test(`uploads sit above the compact prompt at ${width}px`, async ({ page }) => {
+    await installChatApi(page, []);
+    await page.route("**/api/attachments", (route) => json(route, {
+      attachments: [
+        { id: "image-1", filename: "reference.png", kind: "image", mime: "image/png", size_bytes: 1024 },
+        { id: "document-1", filename: "Story research notes.pdf", kind: "text", mime: "application/pdf", size_bytes: 572416 },
+      ],
+    }));
+    await page.route("**/api/attachments/image-1/**", (route) => route.fulfill({
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect width="80" height="80" fill="#46413c"/><circle cx="40" cy="36" r="22" fill="#968576"/></svg>',
+    }));
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/");
+    const surface = page.locator(".adaptive-composer");
+    const input = surface.locator("textarea");
+    await expect(input).toBeVisible();
+    await surface.locator('input[type="file"]').setInputFiles({ name: "reference.png", mimeType: "image/png", buffer: Buffer.from("mock upload") });
+    await expect(surface.locator(".attachment-chip")).toHaveCount(2);
+    const row = surface.locator(".composer-attachments");
+    const rowBounds = await row.boundingBox();
+    for (const part of await surface.locator(".composer-input, .composer-left, .composer-right").all()) {
+      const bounds = await part.boundingBox();
+      expect(bounds.y).toBeGreaterThanOrEqual(rowBounds.y + rowBounds.height);
+    }
+    const preview = row.locator("img");
+    const previewBounds = await preview.boundingBox();
+    expect(previewBounds.width).toBe(previewBounds.height);
+    await page.screenshot({ path: `/tmp/composer-uploads-${width}.png`, animations: "disabled" });
+    await input.fill("First line\nSecond line");
+    await expect(surface).not.toHaveClass(/compact-composer/);
+    const expandedRow = await row.boundingBox();
+    const expandedInput = await input.boundingBox();
+    expect(expandedInput.y).toBeGreaterThanOrEqual(expandedRow.y + expandedRow.height);
+    await row.getByRole("button", { name: "Remove reference.png" }).click();
+    await row.getByRole("button", { name: "Remove Story research notes.pdf" }).click();
+    await expect(row).toHaveCount(0);
+    await input.fill("");
+    await expect(surface).toHaveClass(/compact-composer/);
+    expect((await surface.boundingBox()).height).toBeLessThanOrEqual(54);
+  });
+}

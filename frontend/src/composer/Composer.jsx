@@ -177,6 +177,7 @@ export function Composer({
           ref={composerSurfaceRef}
           className={cx(
             "adaptive-composer",
+            canAttach && (attachments.length > 0 || attachmentsUploading) && "composer-has-attachments",
             isEmptyVariant && "landing-composer",
             isCompact && "compact-composer",
             isEmptyVariant && isCompact && "landing-composer-compact",
@@ -186,6 +187,14 @@ export function Composer({
               : "rounded-[24px]",
           )}
         >
+          {canAttach && (
+            <AttachmentChips
+              attachments={attachments}
+              uploading={attachmentsUploading}
+              onRemove={onRemoveAttachment}
+              className="composer-attachments"
+            />
+          )}
           <div ref={measureRef} aria-hidden="true" className="composer-measure" />
           <div className={cx("composer-input", isEmptyVariant ? "px-[18px] pt-[15px] sm:px-[21px] sm:pt-[18px]" : "px-4 pt-3")}>
             <textarea
@@ -214,15 +223,7 @@ export function Composer({
                   : "max-h-[126px] min-h-6 text-sm leading-6 placeholder:text-neutral-600",
               )}
             />
-            {canAttach && (
-              <AttachmentChips
-                attachments={attachments}
-                uploading={attachmentsUploading}
-                onRemove={onRemoveAttachment}
-                compact={!isEmptyVariant}
-                className={isEmptyVariant ? "mt-3" : "mt-2.5"}
-              />
-            )}
+
           </div>
           <div
             ref={composerControlsRef}

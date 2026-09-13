@@ -14,6 +14,7 @@ export function AttachmentChip({ attachment, onRemove, compact = false }) {
 
   return (
     <div
+      title={attachment.filename}
       className={cx(
         "attachment-chip group/chip relative flex min-w-0 items-center gap-2 rounded-2xl bg-white/[0.06] pl-2 pr-2",
         compact ? "h-9" : "h-11",

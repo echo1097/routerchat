@@ -1060,7 +1060,7 @@ export function SettingsDrawer({
             >
               {modelList}
             </section>
-            <section className="settings-scroll-page t-page overflow-y-auto px-4 py-3" data-page-id="3" aria-label="Transcription settings">
+            <section className="t-page flex min-h-0 flex-col px-4 py-3 md:px-4 md:py-3" data-page-id="3" aria-label="Transcription settings">
               {open && activePage === "transcription" && <TranscriptionSettings />}
             </section>
             <section

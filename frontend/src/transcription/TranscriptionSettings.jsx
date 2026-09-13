@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
+import { ModelPicker } from "../settings/ModelPicker.jsx";
 
 export function TranscriptionSettings() {
   const [models, setModels] = useState([]);
+  const [query, setQuery] = useState("");
   const [selectedModel, setSelectedModel] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -40,19 +42,32 @@ export function TranscriptionSettings() {
     }
   }
 
+  const searchText = query.trim().toLowerCase();
+  const filteredModels = models.filter((model) =>
+    `${model.name || ""} ${model.id}`.toLowerCase().includes(searchText),
+  );
+  const selectedName = models.find((model) => model.id === selectedModel)?.name || selectedModel;
+
   return (
-    <div className="space-y-4">
-      <p className="text-xs leading-5 text-neutral-400">Choose the transcription model for Chat, Write, and Brainstorm. Recordings use your OpenRouter key and the selected model’s rates.</p>
-      <label className="block text-sm text-neutral-200">
-        Transcription model
-        <select aria-label="Transcription model" value={selectedModel} disabled={loading || saving || !models.length} onChange={(event) => selectModel(event.target.value)} className="mt-2 w-full rounded-xl bg-[#303030] p-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-white/30">
-          {!models.some((model) => model.id === selectedModel) && <option value={selectedModel}>{loading ? "Loading models…" : selectedModel || "No models available"}</option>}
-          {models.map((model) => <option key={model.id} value={model.id}>{model.name || model.id}</option>)}
-        </select>
-      </label>
-      <p className="text-xs leading-5 text-neutral-500">The square adds your transcript to the prompt. The arrow transcribes and sends it. Cancel discards the recording. Privacy and ZDR must be off to use transcription.</p>
-      {saving && <p role="status" className="text-xs text-neutral-400">Saving…</p>}
-      {error && <p role="alert" className="text-xs text-red-300">{error}</p>}
-    </div>
+    <section className="flex min-h-0 flex-1 flex-col">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-neutral-100">Model</h2>
+          <p className="mt-0.5 truncate text-xs text-neutral-500">{selectedName || "Loading models…"}</p>
+        </div>
+      </div>
+      <ModelPicker
+        models={filteredModels}
+        query={query}
+        onQueryChange={setQuery}
+        selectedId={selectedModel}
+        onSelect={selectModel}
+        disabled={loading || saving}
+        activePage="transcription"
+        emptyMessage={loading ? "Loading models…" : models.length ? "No matching models." : "No transcription models available."}
+      />
+      {saving && <p role="status" className="mt-2 text-xs text-neutral-400">Saving…</p>}
+      {error && <p role="alert" className="mt-2 text-xs text-red-300">{error}</p>}
+    </section>
   );
 }

@@ -104,7 +104,10 @@ test("transcription model selection is saved independently", async ({ page }) =>
   await page.locator('[data-tour="model-button"]').click();
   await page.getByRole("menuitem", { name: /Settings/ }).click();
   await page.getByRole("button", { name: "Transcription", exact: true }).click();
-  await page.getByLabel("Transcription model", { exact: true }).selectOption("test/stt");
+  const transcriptionSettings = page.getByRole("region", { name: "Transcription settings", exact: true });
+  await transcriptionSettings.getByPlaceholder("Search models").fill("other");
+  await expect(transcriptionSettings.getByRole("button", { name: "Whisper" })).toHaveCount(0);
+  await transcriptionSettings.getByRole("button", { name: "Other transcription model test/stt", exact: true }).click();
   await expect.poll(() => state.settings.transcription_model).toBe("test/stt");
   expect(state.settings.default_model).toBe("test/model");
 });

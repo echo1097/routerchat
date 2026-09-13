@@ -111,16 +111,15 @@ AI was used to support development and documentation for this project. All code 
 Packaged installations keep the OpenRouter key and database outside the replaceable application directory. Git clone installations continue to use `.env` and `data/routerchat.sqlite3` inside the repository. RouterChat does not upload your chats or key anywhere.
 
 ## Media
-UI
-<img width="1501" height="805" alt="Screenshot 2026-07-09 at 7 09 51 PM" src="https://github.com/user-attachments/assets/2efc0365-3a73-49ae-beaa-d7255348eb91" />
 
-Settings
+Chat Mode
 
-<img width="597" height="434" alt="Screenshot 2026-07-01 at 12 49 30 AM" src="https://github.com/user-attachments/assets/557e1ba9-607b-4de6-8594-7a3940c94d30" />
+<img width="1000" alt="RouterChat Chat Mode" src="media/chat%20mode.png" />
 
-Model picker
+Lorebook
 
-<img width="624" height="454" alt="Screenshot 2026-07-01 at 12 49 45 AM" src="https://github.com/user-attachments/assets/6d829113-3bbf-4ec9-b631-9a8c0c2eca46" />
+<img width="1000" alt="RouterChat lorebook" src="media/lorebook.png" />
 
-Sample response
-<img width="1472" height="804" alt="Screenshot 2026-07-09 at 7 19 10 PM" src="https://github.com/user-attachments/assets/5627cc93-9054-4dfc-8397-c30c52ff12c0" />
+Lorebook entry
+
+<img width="1000" alt="RouterChat lorebook entry" src="media/lorebook%20entry.png" />

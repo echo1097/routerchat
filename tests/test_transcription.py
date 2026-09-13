@@ -10,7 +10,7 @@ import httpx
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from backend.transcription import createTranscriptionRouter, ensureTranscriptionUsageTable, readPriceLabel
+from backend.transcription import createTranscriptionRouter, ensureTranscriptionUsageTable
 
 
 class TranscriptionTest(unittest.TestCase):
@@ -30,7 +30,6 @@ class TranscriptionTest(unittest.TestCase):
         self.client = TestClient(app)
         self.provider = AsyncMock()
         self.provider.__aenter__.return_value = self.provider
-        self.provider.get.return_value = httpx.Response(404)
         self.provider.request.return_value = httpx.Response(200, json={"text": "  Hello world  "})
         self.clientPatch = patch("backend.transcription.httpx.AsyncClient", return_value=self.provider)
         self.clientPatch.start()
@@ -75,6 +74,8 @@ class TranscriptionTest(unittest.TestCase):
         self.assertEqual(self.client.get("/api/transcription/models").json(), {"models": [{"id": "test/stt"}]})
         self.assertEqual(self.provider.request.call_args.kwargs["params"], {"output_modalities": "transcription"})
         self.assertEqual(self.settings["transcription_models"], [{"id": "test/stt"}])
+        self.provider.request.assert_awaited_once()
+        self.provider.get.assert_not_called()
 
     def getDb(self):
         conn = sqlite3.connect(self.dbPath)
@@ -115,23 +116,3 @@ class TranscriptionTest(unittest.TestCase):
         self.assertEqual(len(rows), 2)
         self.assertIsNone(rows[0]["cost"])
         self.assertEqual(rows[1]["cost"], 0)
-
-
-    def testPagePricesKeepTheirBillingUnits(self):
-        for rate, unit in [("0.18", "hour"), ("0.006", "minute"), ("0.00000333", "second")]:
-            pageText = f'<meta name="description" content="Speech model. Priced at ${rate} per {unit}. 0 token context window.">'
-            self.assertEqual(readPriceLabel(pageText), f"${rate}/{unit}")
-        self.assertIsNone(readPriceLabel('<meta name="description" content="No pricing available">'))
-
-    def testCatalogIncludesAndCachesPublicPagePrice(self):
-        self.provider.request.return_value = httpx.Response(200, json={"data": [{"id": "meta/muse-voice-transcribe-1.0"}]})
-        self.provider.get.return_value = httpx.Response(200, text='<meta name="description" content="Priced at $0.18 per hour.">')
-        for attempt in range(2):
-            models = self.client.get("/api/transcription/models").json()["models"]
-            self.assertEqual(models[0]["priceLabel"], "$0.18/hour")
-        self.provider.get.assert_awaited_once_with("https://openrouter.ai/meta/muse-voice-transcribe-1.0")
-
-    def testPriceLookupFailureDoesNotBreakCatalog(self):
-        self.provider.request.return_value = httpx.Response(200, json={"data": [{"id": "test/stt"}]})
-        self.provider.get.side_effect = httpx.ConnectError("unavailable")
-        self.assertEqual(self.client.get("/api/transcription/models").json(), {"models": [{"id": "test/stt"}]})

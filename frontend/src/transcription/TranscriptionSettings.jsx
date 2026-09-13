@@ -64,9 +64,9 @@ export function TranscriptionSettings() {
             target="_blank"
             rel="noopener noreferrer"
             aria-label={`View pricing for ${model.name || model.id}`}
-            className="whitespace-nowrap hover:text-neutral-200"
+            className="whitespace-nowrap underline underline-offset-2 hover:text-neutral-200"
           >
-            {model.priceLabel || "View pricing"}
+            View pricing
           </a>
         )}
         models={filteredModels}

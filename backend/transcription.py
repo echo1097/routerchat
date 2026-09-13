@@ -1,7 +1,12 @@
+import asyncio
 import base64
+import re
+import time
 import binascii
 import uuid
 from contextlib import closing
+from html.parser import HTMLParser
+from urllib.parse import quote
 from typing import Literal
 
 import httpx
@@ -9,6 +14,26 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from backend.usage import cleanNumber
+
+
+class PriceParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.priceLabel = None
+
+    def handle_starttag(self, tag, attrs):
+        attributes = dict(attrs)
+        if tag != "meta" or attributes.get("name") != "description":
+            return
+        match = re.search(r"Priced at (\$[\d,.]+) per (second|minute|hour)\b", attributes.get("content", ""))
+        if match:
+            self.priceLabel = f"{match[1]}/{match[2]}"
+
+
+def readPriceLabel(pageText):
+    parser = PriceParser()
+    parser.feed(pageText)
+    return parser.priceLabel
 
 
 class TranscriptionRequest(BaseModel):
@@ -35,6 +60,24 @@ def ensureTranscriptionUsageTable(conn):
 
 def createTranscriptionRouter(readKey, readSetting, writeSetting, headersForKey, baseUrl, getDb, utcNow):
     router = APIRouter()
+    priceCache = {}
+    priceLimit = asyncio.Semaphore(4)
+
+    async def addModelPrice(client, model):
+        modelId = model["id"]
+        cachedPrice = priceCache.get(modelId)
+        if cachedPrice and cachedPrice[1] > time.monotonic():
+            return {**model, "priceLabel": cachedPrice[0]} if cachedPrice[0] else model
+        async with priceLimit:
+            try:
+                modelPath = "/".join(quote(part, safe="") for part in modelId.split("/"))
+                response = await client.get(f"https://openrouter.ai/{modelPath}")
+                priceLabel = readPriceLabel(response.text) if response.status_code == 200 else None
+            except httpx.HTTPError:
+                priceLabel = None
+        priceCache[modelId] = (priceLabel, time.monotonic() + (3600 if priceLabel else 60))
+        return {**model, "priceLabel": priceLabel} if priceLabel else model
+
 
     async def providerRequest(method, path, **options):
         apiKey = readKey()
@@ -55,6 +98,8 @@ def createTranscriptionRouter(readKey, readSetting, writeSetting, headersForKey,
     async def getModels():
         payload = await providerRequest("GET", "models", params={"output_modalities": "transcription"})
         models = [model for model in payload.get("data", []) if model.get("id")]
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            models = await asyncio.gather(*(addModelPrice(client, model) for model in models))
         writeSetting("transcription_models", models)
         return {"models": models}
 

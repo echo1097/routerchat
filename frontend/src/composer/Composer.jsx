@@ -1,3 +1,4 @@
+import { useCompactComposer } from "./useCompactComposer.js";
 import { VoiceInput } from "../transcription/VoiceInput.jsx";
 import { cx, PROMPT_BAR_CONTROL_MOTION } from "../uiShared.js";
 import {
@@ -7,13 +8,13 @@ import {
   effectiveThinkingEnabled,
   reasoningEffortLabel,
 } from "../modelReasoning.js";
-import { useRef, useState, useEffect, useLayoutEffect } from "react";
+import { useRef, useState, useEffect } from "react";
 import { promptModelName } from "../modelFormatting.js";
 import AttachmentChips from "../attachments/AttachmentChips.jsx";
 import AttachButton from "../attachments/AttachButton.jsx";
 import { MAX_FILES_PER_MESSAGE } from "../attachments/attachmentsApi.js";
 import { MaskIcon } from "../components/IconButton.jsx";
-import { ChevronDown, Square, Plus } from "lucide-react";
+import { ChevronDown, Square, Plus, SlidersHorizontal } from "lucide-react";
 import { ContextWindowMeter } from "../components/ContextWindowMeter.jsx";
 import { WriteHistoryModal } from "../writing/WriteHistoryModal.jsx";
 import { SystemPromptModal } from "../settings/SystemPromptModal.jsx";
@@ -98,13 +99,7 @@ export function Composer({
   const thinkingStateLabel = thinkingEnabled
     ? reasoningEffortLabel(models, settings.model, settings.reasoning_effort)
     : "Instant";
-  const textareaRef = useRef(null);
   const composerControlsRef = useRef(null);
-  const composerSurfaceRef = useRef(null);
-  const leftControlsRef = useRef(null);
-  const rightControlsRef = useRef(null);
-  const measureRef = useRef(null);
-  const [isMultiline, setIsMultiline] = useState(false);
   const tourUiRef = useRef(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [systemPromptOpen, setSystemPromptOpen] = useState(false);
@@ -112,70 +107,7 @@ export function Composer({
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const isEmptyVariant = variant === "empty";
 
-  const isCompact = isEmptyVariant && !isMultiline;
-
-  useLayoutEffect(() => {
-    if (!isEmptyVariant) return;
-
-    function measureLines() {
-      const textarea = textareaRef.current;
-      const measure = measureRef.current;
-      const surface = composerSurfaceRef.current;
-      if (!textarea || !measure || !surface) return;
-
-      const textStyle = getComputedStyle(textarea);
-      const compactWidth = Math.max(24, surface.clientWidth
-        - leftControlsRef.current.offsetWidth
-        - rightControlsRef.current.offsetWidth - 40);
-      measure.style.width = compactWidth + "px";
-      measure.style.font = textStyle.font;
-      measure.style.letterSpacing = textStyle.letterSpacing;
-      measure.value = value;
-      setIsMultiline(measure.scrollHeight > parseFloat(textStyle.lineHeight) + 1);
-    }
-
-    measureLines();
-    let measureFrame;
-    const observer = new ResizeObserver(() => {
-      cancelAnimationFrame(measureFrame);
-      measureFrame = requestAnimationFrame(measureLines);
-    });
-    [composerSurfaceRef.current, leftControlsRef.current, rightControlsRef.current].forEach((element) => {
-      if (element) observer.observe(element);
-    });
-    return () => {
-      observer.disconnect();
-      cancelAnimationFrame(measureFrame);
-    };
-  }, [isEmptyVariant, value]);
-
-  useLayoutEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    function resizeTextarea() {
-      textarea.style.height = "auto";
-      const maxHeight = isEmptyVariant ? 184 : 126;
-      const nextHeight = Math.min(textarea.scrollHeight, maxHeight);
-      textarea.style.height = `${nextHeight}px`;
-      textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
-    }
-
-    resizeTextarea();
-    let lastWidth = textarea.clientWidth;
-    let resizeFrame;
-    const observer = new ResizeObserver(() => {
-      if (textarea.clientWidth === lastWidth) return;
-      lastWidth = textarea.clientWidth;
-      cancelAnimationFrame(resizeFrame);
-      resizeFrame = requestAnimationFrame(resizeTextarea);
-    });
-    observer.observe(textarea);
-    return () => {
-      observer.disconnect();
-      cancelAnimationFrame(resizeFrame);
-    };
-  }, [isEmptyVariant, isCompact, value]);
+  const { textareaRef, composerSurfaceRef, leftControlsRef, rightControlsRef, measureRef, isCompact } = useCompactComposer(value, isEmptyVariant ? 184 : 126);
 
   useEffect(() => {
     function closeComposerMenus(event) {
@@ -235,7 +167,7 @@ export function Composer({
         !isEmptyVariant && writeGenerationMode && "write-composer",
       )}
     >
-      <div className={cx("mx-auto w-full", isEmptyVariant ? "pointer-events-auto max-w-[760px]" : "max-w-4xl")}>
+      <div className={cx("mx-auto w-full", isEmptyVariant ? "pointer-events-auto max-w-[760px]" : !writeGenerationMode && "max-w-4xl")}>
         {isEmptyVariant && openingMessage && (
           <div className="mb-8 text-center text-[22px] font-medium leading-tight text-neutral-200 sm:text-3xl">
             {openingMessage}
@@ -244,17 +176,17 @@ export function Composer({
         <div
           ref={composerSurfaceRef}
           className={cx(
+            "adaptive-composer",
             isEmptyVariant && "landing-composer",
-            isCompact && "landing-composer-compact",
+            isCompact && "compact-composer",
+            isEmptyVariant && isCompact && "landing-composer-compact",
             "voice-surface relative bg-[#141414]",
             isEmptyVariant
               ? "rounded-[30px]"
               : "rounded-[24px]",
           )}
         >
-          {isEmptyVariant && (
-            <textarea ref={measureRef} aria-hidden="true" tabIndex={-1} rows={1} className="landing-composer-measure" />
-          )}
+          <div ref={measureRef} aria-hidden="true" className="composer-measure" />
           <div className={cx("composer-input", isEmptyVariant ? "px-[18px] pt-[15px] sm:px-[21px] sm:pt-[18px]" : "px-4 pt-3")}>
             <textarea
               ref={textareaRef}
@@ -339,6 +271,7 @@ export function Composer({
                   <button
                     type="button"
                     data-tour="write-tools-button"
+                    aria-label={`Writing tools: ${WRITE_GENERATION_MODES[writeGenerationMode]}`}
                     onClick={() => {
                       setContextMenuOpen((open) => !open);
                       setModelMenuOpen(false);
@@ -350,8 +283,8 @@ export function Composer({
                       PROMPT_BAR_CONTROL_MOTION,
                     )}
                   >
-                    <span>Writing tools</span>
-                    <span className="text-neutral-500">{WRITE_GENERATION_MODES[writeGenerationMode]}</span>
+                    <SlidersHorizontal size={16} className="composer-tools-icon" />
+                    <span className="composer-tools-label">{WRITE_GENERATION_MODES[writeGenerationMode]}</span>
                     <ChevronDown size={14} className={cx("writing-tools-chevron transition-transform duration-200", contextMenuOpen && "rotate-180")} />
                   </button>
                   {contextMenuOpen && (

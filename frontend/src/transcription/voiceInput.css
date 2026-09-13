@@ -54,25 +54,25 @@
 
 .voice-surface:has(.voice-recording) { background: transparent; }
 
-.landing-composer-compact .voice-recording {
+.compact-composer .voice-recording {
   gap: 8px;
   padding: 9px 12px;
 }
 
-.landing-composer-compact .voice-round {
+.compact-composer .voice-round {
   width: 32px;
   height: 32px;
 }
 
-.landing-composer-compact .voice-round svg {
+.compact-composer .voice-round svg {
   max-width: 20px;
   max-height: 20px;
 }
 
-.landing-composer-compact .voice-waveform {
+.compact-composer .voice-waveform {
   height: 32px;
 }
 
-.landing-composer-compact .voice-status {
+.compact-composer .voice-status {
   line-height: 16px;
 }

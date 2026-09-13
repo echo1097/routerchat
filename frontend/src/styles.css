@@ -2287,7 +2287,9 @@ typography exactly or the swap at the end of a generation shows a seam */
   }
 }
 
-.landing-composer-measure {
+.adaptive-composer .composer-measure {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
   position: absolute;
   height: 0;
   min-height: 0;
@@ -2299,7 +2301,7 @@ typography exactly or the swap at the end of a generation shows a seam */
   resize: none;
 }
 
-.landing-composer-compact.voice-surface {
+.compact-composer.voice-surface {
   display: grid;
   grid-template-columns: auto minmax(24px, 1fr) auto;
   align-items: center;
@@ -2308,46 +2310,110 @@ typography exactly or the swap at the end of a generation shows a seam */
   border-radius: 999px;
 }
 
-.landing-composer-compact .composer-input {
+.compact-composer .composer-input {
   grid-column: 2;
   grid-row: 1;
   min-width: 0;
   padding: 0;
 }
 
-.landing-composer-compact .composer-input textarea {
+.compact-composer .composer-input textarea {
   min-height: 0;
   padding: 0;
   white-space: pre;
   overflow-x: hidden;
 }
 
-.landing-composer-compact .composer-input textarea::placeholder {
+.compact-composer .composer-input textarea::placeholder {
   color: #aaa;
 }
 
-.landing-composer-compact .composer-controls {
+.compact-composer .composer-controls {
   display: contents;
 }
 
-.landing-composer-compact .composer-left {
+.compact-composer .composer-left {
   grid-column: 1;
   grid-row: 1;
 }
 
-.landing-composer-compact .composer-right {
+.compact-composer .composer-right {
   grid-column: 3;
   grid-row: 1;
   margin-left: 0;
 }
 
 @media (max-width: 639px) {
-  .landing-composer [data-tour="model-button"] {
+  .adaptive-composer [data-tour="model-button"] {
     max-width: 100px;
     padding-inline: 6px;
   }
 
-  .landing-composer .composer-right {
+  .adaptive-composer .composer-right {
     gap: 2px;
+  }
+}
+
+.adaptive-composer {
+  --compact-spacing: 40;
+}
+
+.composer-tools-icon {
+  display: none;
+}
+
+@media (max-width: 639px) {
+  .adaptive-composer .composer-tools-label,
+  .adaptive-composer .writing-tools-chevron {
+    display: none;
+  }
+
+  .adaptive-composer .composer-tools-icon {
+    display: block;
+  }
+
+  .adaptive-composer [data-tour="write-tools-button"] {
+    width: 32px;
+    padding: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .adaptive-composer {
+    --compact-spacing: 24;
+  }
+
+  .compact-composer.voice-surface {
+    gap: 4px;
+    padding-inline: 8px;
+  }
+
+  .adaptive-composer [data-tour="model-button"] {
+    max-width: 64px;
+  }
+}
+
+@media (max-width: 639px) {
+  .adaptive-composer .brainstorm-branch-label,
+  .adaptive-composer .brainstorm-selection-label,
+  .adaptive-composer .brainstorm-thinking-state {
+    display: none;
+  }
+
+  .adaptive-composer .brainstorm-branch-trigger,
+  .adaptive-composer .brainstorm-selection-pill {
+    gap: 4px;
+    padding-inline: 6px;
+  }
+
+  .adaptive-composer .brainstorm-model-button {
+    max-width: 80px;
+    padding-inline: 6px;
+  }
+}
+
+@media (max-width: 480px) {
+  .adaptive-composer .brainstorm-model-button {
+    max-width: 64px;
   }
 }

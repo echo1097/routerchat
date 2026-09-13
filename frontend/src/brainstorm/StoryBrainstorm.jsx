@@ -1,3 +1,4 @@
+import { useCompactComposer } from "../composer/useCompactComposer.js";
 import { VoiceInput } from "../transcription/VoiceInput.jsx";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -370,7 +371,7 @@ export default function StoryBrainstorm({
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [flowInstance, setFlowInstance] = useState(null);
   const viewportAppliedRef = useRef(false);
-  const textareaRef = useRef(null);
+  const { textareaRef, composerSurfaceRef, leftControlsRef, rightControlsRef, measureRef, isCompact } = useCompactComposer(prompt);
   const ideaMenuRef = useRef(null);
   const modelMenuRef = useRef(null);
   const previousNodeIdsRef = useRef(null);
@@ -592,15 +593,6 @@ export default function StoryBrainstorm({
   }, [flowInstance, graphNodeIdsKey, nodes]);
 
   useEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    textarea.style.height = "auto";
-    const maxHeight = 126;
-    textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeight)}px`;
-    textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
-  }, [prompt]);
-
-  useEffect(() => {
     function closeModelMenu(event) {
       if (event.key === "Escape") {
         setIdeaMenuOpen(false);
@@ -700,7 +692,9 @@ export default function StoryBrainstorm({
       </div>
 
       <form className="brainstorm-composer" onSubmit={submitPrompt}>
-        <div className="brainstorm-composer-surface voice-surface">
+        <div ref={composerSurfaceRef} className={cx("brainstorm-composer-surface voice-surface adaptive-composer", isCompact && "compact-composer")}>
+          <div ref={measureRef} aria-hidden="true" className="composer-measure" />
+          <div className="composer-input">
           <textarea
             className="nowheel"
             ref={textareaRef}
@@ -714,8 +708,9 @@ export default function StoryBrainstorm({
             placeholder={selectedIdeaIds.length ? "Branch from the selected ideas" : "How could we continue the story?"}
             aria-label="Brainstorm prompt"
           />
-          <div className="brainstorm-composer-controls">
-            <div className="brainstorm-composer-left">
+          </div>
+          <div className="brainstorm-composer-controls composer-controls">
+            <div ref={leftControlsRef} className="brainstorm-composer-left composer-left">
               <div className="brainstorm-branch-count" ref={ideaMenuRef}>
                 <button
                   type="button"
@@ -786,13 +781,13 @@ export default function StoryBrainstorm({
                 )}
               </div>
               {selectedIdeaIds.length > 0 && (
-                <button type="button" className="brainstorm-selection-pill" onClick={clearSelection}>
-                  <span className="tabular-nums">{selectedIdeaIds.length}</span> selected
+                <button type="button" className="brainstorm-selection-pill" aria-label={`Clear ${selectedIdeaIds.length} selected ideas`} onClick={clearSelection}>
+                  <span className="tabular-nums">{selectedIdeaIds.length}</span><span className="brainstorm-selection-label">selected</span>
                   <X size={14} />
                 </button>
               )}
             </div>
-            <div className="brainstorm-composer-right">
+            <div ref={rightControlsRef} className="brainstorm-composer-right composer-right">
               {contextMeter}
               <div className="brainstorm-model-control" ref={modelMenuRef}>
                 <button

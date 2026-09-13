@@ -12,6 +12,8 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from backend.lorebook_usage import LorebookUsage
+
 
 OPENROUTER_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=10.0)
 LOREBOOK_CATEGORIES = {
@@ -1486,25 +1488,24 @@ async def run_lorebook_update(
     error_text: str | None = None
     applied: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
-    usage: dict[str, Any] | None = None
-    lorebook_generation_id: str | None = None
+    usageRun = LorebookUsage(deps, api_key, story_id, model, "update", chapter_id)
     generated_text: list[str] = []
     finish_reason: str | None = None
     receivedDone = False
     content_started = False
     try:
-        async with httpx.AsyncClient(timeout=OPENROUTER_TIMEOUT) as client:
+        async with httpx.AsyncClient(timeout=OPENROUTER_TIMEOUT) as client, usageRun:
             async with client.stream(
                 "POST",
                 f"{deps.openrouter_base_url}/chat/completions",
                 headers={**deps.headers_for_key(api_key), "Content-Type": "application/json"},
                 json=body,
             ) as response:
+                usageRun.generationId = response.headers.get("X-Generation-Id")
                 if response.status_code >= 400:
                     raw_error = (await response.aread()).decode("utf-8", errors="replace")
                     error_text = deps.openrouter_error_message(response.status_code, raw_error)
                 else:
-                    lorebook_generation_id = response.headers.get("X-Generation-Id")
                     async for line in response.aiter_lines():
                         if not line.startswith("data:"):
                             continue
@@ -1517,10 +1518,8 @@ async def run_lorebook_update(
                         except json.JSONDecodeError:
                             continue
 
-                        lorebook_generation_id = lorebook_generation_id or chunk.get("id")
-                        next_usage = deps.normalize_usage(chunk.get("usage"))
-                        if next_usage:
-                            usage = next_usage
+                        usageRun.generationId = usageRun.generationId or chunk.get("id")
+                        usageRun.addUsage(deps.normalize_usage(chunk.get("usage")))
 
                         choices = chunk.get("choices") or []
                         if not choices:
@@ -1559,15 +1558,6 @@ async def run_lorebook_update(
     except Exception as exc:  # noqa: BLE001
         error_text = str(exc)
 
-    #/generation is the only place cost reliably turns up, and this sits outside the try so a usage hiccup cant throw away updates we already committed
-    if lorebook_generation_id and not (usage or {}).get("cost"):
-        try:
-            fetched = await deps.fetch_generation_usage(api_key, lorebook_generation_id)
-            if fetched:
-                usage = {**(usage or {}), **fetched}
-        except Exception:  # noqa: BLE001
-            pass
-
     with deps.get_db() as conn:
         conn.execute(
             """
@@ -1578,15 +1568,15 @@ async def run_lorebook_update(
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                str(uuid.uuid4()),
+                usageRun.requestId,
                 story_id,
                 chapter_id,
                 generation_row_id,
-                lorebook_generation_id,
+                usageRun.generationId,
                 raw_output or "",
                 json.dumps(applied),
                 json.dumps(skipped),
-                (usage or {}).get("cost"),
+                usageRun.usage.get("cost"),
                 error_text,
                 deps.utc_now(),
             ),
@@ -1599,7 +1589,7 @@ async def run_lorebook_update(
             "skipped": skipped,
             "skipped_run": False,
             "error": error_text,
-            "cost": (usage or {}).get("cost"),
+            "cost": usageRun.usage.get("cost"),
         },
     }
 
@@ -1746,21 +1736,21 @@ def create_lorebook_router(deps: LorebookDeps) -> APIRouter:
 
         generatedText: list[str] = []
         finishReason: str | None = None
-        generationId: str | None = None
-        usage: dict[str, Any] | None = None
+        usageRun = LorebookUsage(deps, apiKey, story_id, lorebook_model_for(story), "timeline_repair")
         receivedDone = False
         announcedWriting = False
 
         yield deps.stream_event("status", "rebuilding")
 
         try:
-            async with httpx.AsyncClient(timeout=OPENROUTER_TIMEOUT) as client:
+            async with httpx.AsyncClient(timeout=OPENROUTER_TIMEOUT) as client, usageRun:
                 async with client.stream(
                     "POST",
                     f"{deps.openrouter_base_url}/chat/completions",
                     headers={**deps.headers_for_key(apiKey), "Content-Type": "application/json"},
                     json=body,
                 ) as response:
+                    usageRun.generationId = response.headers.get("X-Generation-Id")
                     if response.status_code >= 400:
                         rawError = (await response.aread()).decode("utf-8", errors="replace")
                         message = deps.openrouter_error_message(response.status_code, rawError)
@@ -1770,7 +1760,6 @@ def create_lorebook_router(deps: LorebookDeps) -> APIRouter:
                         )
                         return
 
-                    generationId = response.headers.get("X-Generation-Id") or generationId
                     async for line in response.aiter_lines():
                         if not line.startswith("data:"):
                             continue
@@ -1783,11 +1772,8 @@ def create_lorebook_router(deps: LorebookDeps) -> APIRouter:
                         except json.JSONDecodeError:
                             continue
 
-                        generationId = generationId or chunk.get("id")
-                        nextUsage = deps.normalize_usage(chunk.get("usage"))
-                        if nextUsage:
-                            usage = nextUsage
-                            continue
+                        usageRun.generationId = usageRun.generationId or chunk.get("id")
+                        usageRun.addUsage(deps.normalize_usage(chunk.get("usage")))
 
                         choices = chunk.get("choices") or []
                         if not choices:
@@ -1806,17 +1792,10 @@ def create_lorebook_router(deps: LorebookDeps) -> APIRouter:
                                 yield deps.stream_event("status", "writing")
                             generatedText.append(str(content))
 
-            if generationId:
-                try:
-                    generationUsage = await deps.fetch_generation_usage(apiKey, generationId)
-                    if generationUsage:
-                        usage = {**(usage or {}), **generationUsage}
-                except Exception:  # noqa: BLE001
-                    pass
-            if usage:
+            if usageRun.usage:
                 yield deps.stream_event(
                     "usage",
-                    {"generation_id": generationId, "model": lorebook_model_for(story), **usage},
+                    {"generation_id": usageRun.generationId, "model": usageRun.model, **usageRun.usage},
                 )
 
             if not receivedDone:

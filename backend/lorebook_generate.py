@@ -8,6 +8,8 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from backend.lorebook_usage import LorebookUsage
+
 from backend.lorebook import (
     LorebookDeps,
     OPENROUTER_TIMEOUT,
@@ -204,8 +206,10 @@ def create_lorebook_generate_router(deps: LorebookDeps) -> APIRouter:
 
         generatedText: list[str] = []
         finishReason: str | None = None
-        generationId: str | None = None
-        usage: dict[str, Any] | None = None
+        usageRun = LorebookUsage(
+            deps, apiKey, story["id"], lorebook_model_for(story), "generate",
+            chapter["id"] if chapter is not None else None,
+        )
         receivedDone = False
         announcedWriting = False
 
@@ -213,13 +217,14 @@ def create_lorebook_generate_router(deps: LorebookDeps) -> APIRouter:
         yield deps.stream_event("status", "thinking" if effectiveThinkingEnabled else "writing")
 
         try:
-            async with httpx.AsyncClient(timeout=OPENROUTER_TIMEOUT) as client:
+            async with httpx.AsyncClient(timeout=OPENROUTER_TIMEOUT) as client, usageRun:
                 async with client.stream(
                     "POST",
                     f"{deps.openrouter_base_url}/chat/completions",
                     headers={**deps.headers_for_key(apiKey), "Content-Type": "application/json"},
                     json=body,
                 ) as response:
+                    usageRun.generationId = response.headers.get("X-Generation-Id")
                     if response.status_code >= 400:
                         rawError = (await response.aread()).decode("utf-8", errors="replace")
                         message = deps.openrouter_error_message(response.status_code, rawError)
@@ -229,7 +234,6 @@ def create_lorebook_generate_router(deps: LorebookDeps) -> APIRouter:
                         )
                         return
 
-                    generationId = response.headers.get("X-Generation-Id") or generationId
                     async for line in response.aiter_lines():
                         if not line.startswith("data:"):
                             continue
@@ -242,11 +246,8 @@ def create_lorebook_generate_router(deps: LorebookDeps) -> APIRouter:
                         except json.JSONDecodeError:
                             continue
 
-                        generationId = generationId or chunk.get("id")
-                        nextUsage = deps.normalize_usage(chunk.get("usage"))
-                        if nextUsage:
-                            usage = nextUsage
-                            continue
+                        usageRun.generationId = usageRun.generationId or chunk.get("id")
+                        usageRun.addUsage(deps.normalize_usage(chunk.get("usage")))
 
                         choices = chunk.get("choices") or []
                         if not choices:
@@ -267,17 +268,10 @@ def create_lorebook_generate_router(deps: LorebookDeps) -> APIRouter:
                             #the editor renders the entry as it lands, so the raw delta goes out too
                             yield deps.stream_event("content", str(content))
 
-            if generationId:
-                try:
-                    generationUsage = await deps.fetch_generation_usage(apiKey, generationId)
-                    if generationUsage:
-                        usage = {**(usage or {}), **generationUsage}
-                except Exception:  # noqa: BLE001
-                    pass
-            if usage:
+            if usageRun.usage:
                 yield deps.stream_event(
                     "usage",
-                    {"generation_id": generationId, "model": lorebook_model_for(story), **usage},
+                    {"generation_id": usageRun.generationId, "model": usageRun.model, **usageRun.usage},
                 )
 
             if not receivedDone:

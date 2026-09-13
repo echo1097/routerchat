@@ -33,6 +33,7 @@ class UsageTest(unittest.TestCase):
             "story_generations": {"id": "story-row", "story_id": "story", "chapter_id": "chapter", "prompt": "Write", "generated_text": "Hello"},
             "brainstorm_generations": {"id": "brainstorm-row", "story_id": "story", "prompt_node_id": "node", "prompt": "Ideas"},
             "lorebook_update_runs": {"id": "lorebook-row", "story_id": "story", "chapter_id": "chapter", "raw_output": "{}", "applied_updates_json": "[]"},
+            "lorebook_usage": {"id": "usage-row", "story_id": "story", "action": "generate"},
         }
         row = {**defaults[table], "created_at": "2026-09-09T12:00:00Z", "cost": 0.5}
         if table != "lorebook_update_runs":
@@ -78,6 +79,56 @@ class UsageTest(unittest.TestCase):
         self.addRow(generation_id="generation-1")
         self.addRow(id="imported-copy", generation_id="generation-1")
         self.assertEqual(self.summary()["current"]["requests"], 1)
+
+    def testLorebookUsageIncludesEveryActionUnderItsModel(self):
+        for action in ("update", "generate", "repair", "timeline_repair"):
+            self.addRow("lorebook_usage", id=action, action=action)
+        result = self.summary()
+        for totals in (result["current"], result["days"][-1], result["models"][0], result["lifetimeModels"][0]):
+            self.assertEqual(totals["requests"], 4)
+            self.assertEqual(totals["cost"], 2)
+            self.assertEqual(totals["totalTokens"], 600)
+            self.assertEqual(totals["outputTokens"], 120)
+            self.assertEqual(totals["reasoningTokens"], 80)
+            self.assertFalse(totals["partialCost"])
+            self.assertFalse(totals["partialTokens"])
+        self.assertEqual(result["models"][0]["id"], "test/model")
+
+    def testLorebookHistoryIsCountedOnceEvenWithoutProviderId(self):
+        for generationId in (None, "provider-id"):
+            with self.subTest(generationId=generationId):
+                self.conn.execute("DELETE FROM lorebook_usage")
+                self.conn.execute("DELETE FROM lorebook_update_runs")
+                self.addRow("lorebook_update_runs", id="new-run", openrouter_generation_id=generationId)
+                self.addRow("lorebook_usage", id="new-run", generation_id=generationId)
+                self.addRow("lorebook_update_runs", id="legacy-run", cost=0.25)
+                result = self.summary()
+                self.assertEqual(result["current"]["requests"], 2)
+                self.assertEqual(result["current"]["cost"], 0.75)
+                self.assertEqual(result["current"]["totalTokens"], 150)
+                self.assertTrue(result["current"]["partialTokens"])
+                self.assertEqual({model["id"] for model in result["lifetimeModels"]}, {"test/model", "unknown"})
+
+    def testLorebookProviderIdsAreDeduplicatedAgainstOtherSources(self):
+        self.addRow(generation_id="shared-provider-id")
+        self.addRow("lorebook_usage", generation_id="shared-provider-id")
+        result = self.summary()
+        self.assertEqual(result["current"]["requests"], 1)
+        self.assertEqual(result["current"]["cost"], 0.5)
+
+    def testLorebookUsageRespectsDatesAndMissingValues(self):
+        self.addRow("lorebook_usage", id="complete")
+        self.addRow("lorebook_usage", id="failed", cost=None, prompt_tokens=None, completion_tokens=None, total_tokens=None)
+        self.addRow("lorebook_usage", id="old", created_at="2025-01-01T12:00:00Z", cost=2)
+        self.addRow("lorebook_usage", id="previous", created_at="2026-09-01T12:00:00Z", cost=1)
+        self.addRow("lorebook_usage", id="future", created_at="2027-01-01T12:00:00Z", cost=100)
+        result = self.summary()
+        self.assertEqual(result["current"]["requests"], 2)
+        self.assertTrue(result["current"]["partialCost"])
+        self.assertTrue(result["current"]["partialTokens"])
+        self.assertEqual(result["previous"]["cost"], 1)
+        self.assertEqual(result["lifetimeModels"][0]["cost"], 3.5)
+        self.assertEqual(result["lifetimeModels"][0]["requests"], 4)
 
     def testMissingUsageIsNotPresentedAsFree(self):
         self.addRow(cost=None, prompt_tokens=None, completion_tokens=None, reasoning_tokens=None, total_tokens=None)

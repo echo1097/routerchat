@@ -101,10 +101,14 @@ def getUsage(conn, offsetMinutes=0, now=None, timeZone=None):
         f"SELECT {usageColumns} FROM messages WHERE role = 'assistant'",
         f"SELECT {usageColumns} FROM story_generations WHERE 1 = 1",
         f"SELECT {usageColumns} FROM brainstorm_generations WHERE 1 = 1",
+        f"SELECT {usageColumns} FROM lorebook_usage WHERE 1 = 1",
         """SELECT NULL AS model, openrouter_generation_id AS generation_id,
                   NULL AS prompt_tokens, NULL AS completion_tokens,
                   NULL AS reasoning_tokens, NULL AS total_tokens, cost, created_at
-           FROM lorebook_update_runs WHERE 1 = 1""",
+           FROM lorebook_update_runs
+           WHERE NOT EXISTS (
+               SELECT 1 FROM lorebook_usage WHERE lorebook_usage.id = lorebook_update_runs.id
+           )""",
     ]
     for query in queries:
         rows = conn.execute(

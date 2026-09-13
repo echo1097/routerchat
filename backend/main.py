@@ -49,6 +49,7 @@ from backend.attachments import (
 )
 from backend.changelog_status import ChangelogStatusDeps, create_changelog_status_router
 from backend.usage import createUsageRouter
+from backend.lorebook_usage import ensureLorebookUsageTable
 from backend.brainstorm import BrainstormDeps, create_brainstorm_router
 from backend.lorebook import LorebookDeps, create_lorebook_router
 from backend.lorebook_generate import create_lorebook_generate_router
@@ -792,6 +793,7 @@ def init_db() -> None:
         ensure_brainstorm_generation_columns(conn)
         ensure_chapter_history_columns(conn)
         ensure_lorebook_run_usage_columns(conn)
+        ensureLorebookUsageTable(conn)
         clean_lorebook_categories(conn)
 
 
@@ -2381,23 +2383,26 @@ def normalize_usage(usage: dict[str, Any] | None) -> dict[str, Any] | None:
 def normalize_generation_usage(data: dict[str, Any] | None) -> dict[str, Any] | None:
     if not data:
         return None
-    prompt_tokens = int_or_none(
-        data.get("native_tokens_prompt") or data.get("tokens_prompt")
-    )
-    completion_tokens = int_or_none(
-        data.get("native_tokens_completion") or data.get("tokens_completion")
-    )
-    total_tokens = (
-        prompt_tokens + completion_tokens
-        if prompt_tokens is not None and completion_tokens is not None
+    promptTokens = int_or_none(data.get("native_tokens_prompt"))
+    if promptTokens is None:
+        promptTokens = int_or_none(data.get("tokens_prompt"))
+    completionTokens = int_or_none(data.get("native_tokens_completion"))
+    if completionTokens is None:
+        completionTokens = int_or_none(data.get("tokens_completion"))
+    cost = float_or_none(data.get("total_cost"))
+    if cost is None:
+        cost = float_or_none(data.get("usage"))
+    totalTokens = (
+        promptTokens + completionTokens
+        if promptTokens is not None and completionTokens is not None
         else None
     )
     return {
-        "prompt_tokens": prompt_tokens,
-        "completion_tokens": completion_tokens,
+        "prompt_tokens": promptTokens,
+        "completion_tokens": completionTokens,
         "reasoning_tokens": int_or_none(data.get("native_tokens_reasoning")),
-        "total_tokens": total_tokens,
-        "cost": float_or_none(data.get("total_cost") or data.get("usage")),
+        "total_tokens": totalTokens,
+        "cost": cost,
         "provider_name": data.get("provider_name"),
         "generation_time": float_or_none(data.get("generation_time")),
         "latency": float_or_none(data.get("latency")),

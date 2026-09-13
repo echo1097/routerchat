@@ -39,6 +39,7 @@ def fakeLorebookStream(
     reasoning="",
     complete=True,
     finishReason=None,
+    usage=None,
 ):
     class FakeLorebookStreamResponse:
         status_code = 200
@@ -51,6 +52,8 @@ def fakeLorebookStream(
             return False
 
         async def aiter_lines(self):
+            if usage is not None:
+                yield f"data: {json.dumps({'usage': usage})}"
             if reasoning:
                 yield f"data: {json.dumps({'choices': [{'delta': {'reasoning': reasoning}}]})}"
             yield f"data: {json.dumps({'choices': [{'delta': {'content': content}}]})}"
@@ -264,6 +267,7 @@ class StoryApiTest(unittest.TestCase):
         lorebookReasoning="",
         lorebookComplete=True,
         lorebookFinishReason=None,
+        lorebookUsage=None,
     ):
         chunks = output if isinstance(output, list) else [output]
         requestBody = {}
@@ -329,6 +333,7 @@ class StoryApiTest(unittest.TestCase):
                         lorebookReasoning,
                         complete=lorebookComplete,
                         finishReason=lorebookFinishReason,
+                        usage=lorebookUsage,
                     )
                 requestBody.update(body)
                 return FakeResponse()
@@ -647,8 +652,8 @@ class StoryApiTest(unittest.TestCase):
             )
         return response, requestBody
 
-    def storyWithChapter(self, title, content):
-        story = self.client.post("/api/stories", json={"title": title}).json()["story"]
+    def storyWithChapter(self, title, content, temporary=False):
+        story = self.client.post("/api/stories", json={"title": title, "temporary": temporary}).json()["story"]
         chapter = self.client.post(
             f"/api/stories/{story['id']}/chapters",
             json={"title": "Chapter 1", "content": content},
@@ -661,6 +666,205 @@ class StoryApiTest(unittest.TestCase):
                 "SELECT * FROM lorebook_entries WHERE story_id = ? AND lower(name) = lower(?)",
                 (story["id"], name),
             ).fetchone()
+
+    def callTrackedLorebook(self, story, chapter, action, *, rawOutput=None, finishReason="stop", complete=True, beforeDone=None, statusCode=200):
+        summary = {"name": chapter["title"], "category": "synopsis", "description": "A visitor arrives."}
+        entry = {"name": "Visitor", "category": "character", "description": "A visitor arrives.", "aliases": []}
+        outputs = {
+            "update": {"updates": [{"action": "create", **summary}]},
+            "update_stream": {"updates": [{"action": "create", **summary}]},
+            "generate": entry,
+            "generate_summary": entry,
+            "repair": {"entries": [entry], "summaries": {chapter["id"]: {"description": "A visitor arrives."}}},
+            "timeline_repair": {"timeline": "- A visitor arrives."},
+        }
+        endpoints = {
+            "update": ("update", {"chapter_id": chapter["id"]}),
+            "update_stream": ("update/stream", {"chapter_id": chapter["id"]}),
+            "generate": ("generate/stream", {"category": "character", "brief": "A visitor"}),
+            "generate_summary": ("generate/stream", {"category": "synopsis", "chapter_id": chapter["id"]}),
+            "repair": ("repair/stream", {}),
+            "timeline_repair": ("timeline/repair/stream", {"current_timeline": ""}),
+        }
+        content = json.dumps(outputs[action]) if rawOutput is None else rawOutput
+        requestBodies = []
+
+        class FakeResponse:
+            status_code = statusCode
+            headers = {"X-Generation-Id": "provider-" + str(uuid.uuid4())}
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_):
+                return False
+
+            async def aread(self):
+                return b'{"error":{"message":"Provider rejected the request"}}'
+
+            async def aiter_lines(self):
+                chunk = {
+                    "choices": [{"delta": {"content": content}, "finish_reason": finishReason}],
+                    "usage": {"prompt_tokens": 100, "completion_tokens": 30, "completion_tokens_details": {"reasoning_tokens": 10}, "cost": 0},
+                }
+                yield f"data: {json.dumps(chunk)}"
+                if beforeDone:
+                    beforeDone()
+                if complete:
+                    yield "data: [DONE]"
+
+        class FakeClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_):
+                return False
+
+            def stream(self, *args, **kwargs):
+                requestBodies.append(kwargs["json"])
+                return FakeResponse()
+
+            async def get(self, *args, **kwargs):
+                raise RuntimeError("Usage lookup unavailable")
+
+        endpoint, payload = endpoints[action]
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch("httpx.AsyncClient", FakeClient):
+            response = self.client.post(f"/api/stories/{story['id']}/lorebook/{endpoint}", json=payload)
+        return response, requestBodies
+
+    def testAllLorebookActionsSaveModelAndTokens(self):
+        for action in ("update", "update_stream", "generate", "generate_summary", "repair", "timeline_repair"):
+            with self.subTest(action=action):
+                story, chapter = self.storyWithChapter("Usage test", "A visitor arrives.")
+                main.cache_models([main.normalize_model({"id": "test/lorebook", "supported_parameters": []})])
+                self.client.patch(f"/api/stories/{story['id']}", json={"lorebook_model": "test/lorebook"})
+                response, requests = self.callTrackedLorebook(story, chapter, action)
+                self.assertEqual(response.status_code, 200)
+                if action == "update":
+                    self.assertIsNone(response.json()["error"])
+                else:
+                    events = [json.loads(line) for line in response.text.splitlines() if line]
+                    self.assertEqual(events[-1]["type"], "complete")
+                    self.assertFalse(events[-1]["value"].get("error"))
+                with main.get_db() as conn:
+                    rows = conn.execute("SELECT * FROM lorebook_usage WHERE story_id = ?", (story["id"],)).fetchall()
+                    history = conn.execute("SELECT id FROM lorebook_update_runs WHERE story_id = ?", (story["id"],)).fetchone()
+                self.assertEqual(len(rows), 1)
+                row = rows[0]
+                self.assertEqual(row["model"], requests[0]["model"])
+                self.assertEqual(row["model"], "test/lorebook")
+                self.assertEqual(row["action"], {"update_stream": "update", "generate_summary": "generate"}.get(action, action))
+                self.assertEqual(row["prompt_tokens"], 100)
+                self.assertEqual(row["completion_tokens"], 30)
+                self.assertEqual(row["reasoning_tokens"], 10)
+                self.assertEqual(row["total_tokens"], 130)
+                self.assertEqual(row["cost"], 0)
+                chapterId = chapter["id"] if action in ("update", "update_stream", "generate_summary") else None
+                self.assertEqual(row["chapter_id"], chapterId)
+                if history:
+                    self.assertEqual(history["id"], row["id"])
+                if action.startswith("generate"):
+                    self.assertIsNone(self.lorebookRow(story, "Visitor"))
+
+    def testFailedLorebookOutputsStillSaveUsage(self):
+        for action in ("update", "generate", "repair", "timeline_repair"):
+            for failure in ("invalid", "truncated", "incomplete", "provider_error"):
+                with self.subTest(action=action, failure=failure):
+                    story, chapter = self.storyWithChapter("Failed usage test", "A visitor arrives.")
+                    response, _ = self.callTrackedLorebook(
+                        story, chapter, action,
+                        rawOutput="{}" if failure == "invalid" else None,
+                        finishReason="length" if failure == "truncated" else "stop",
+                        complete=failure != "incomplete",
+                        statusCode=503 if failure == "provider_error" else 200,
+                    )
+                    if action == "update":
+                        self.assertTrue(response.json()["error"])
+                    else:
+                        events = [json.loads(line) for line in response.text.splitlines() if line]
+                        self.assertEqual(events[-1]["type"], "error")
+                    with main.get_db() as conn:
+                        rows = conn.execute("SELECT * FROM lorebook_usage WHERE story_id = ?", (story["id"],)).fetchall()
+                    self.assertEqual(len(rows), 1)
+                    self.assertEqual(rows[0]["total_tokens"], None if failure == "provider_error" else 130)
+                    self.assertEqual(rows[0]["cost"], None if failure == "provider_error" else 0)
+
+    def testLorebookConflictKeepsUsageAndManualChanges(self):
+        for action in ("repair", "timeline_repair"):
+            with self.subTest(action=action):
+                story, chapter = self.storyWithChapter("Conflict usage test", "A visitor arrives.")
+
+                def createTimeline():
+                    self.client.post(f"/api/stories/{story['id']}/lorebook", json={
+                        "name": "Timeline", "category": "timeline", "description": "- Manual timeline",
+                    })
+
+                response, _ = self.callTrackedLorebook(story, chapter, action, beforeDone=createTimeline)
+                events = [json.loads(line) for line in response.text.splitlines() if line]
+                expectedCode = "lorebook_repair_conflict" if action == "repair" else "timeline_repair_conflict"
+                self.assertEqual(events[-1]["value"]["code"], expectedCode)
+                self.assertEqual(self.lorebookRow(story, "Timeline")["description"], "- Manual timeline")
+                with main.get_db() as conn:
+                    row = conn.execute("SELECT total_tokens FROM lorebook_usage WHERE story_id = ?", (story["id"],)).fetchone()
+                self.assertEqual(row["total_tokens"], 130)
+
+    def testLorebookUsageIsRemovedWithDeletedHistory(self):
+        for cleanup in ("chapter", "story", "temporary_close", "startup"):
+            with self.subTest(cleanup=cleanup):
+                story, chapter = self.storyWithChapter(
+                    "Cleanup usage test", "A visitor arrives.",
+                    temporary=cleanup in ("temporary_close", "startup"),
+                )
+                self.callTrackedLorebook(story, chapter, "generate_summary")
+                self.callTrackedLorebook(story, chapter, "generate")
+                with main.get_db() as conn:
+                    self.assertEqual(conn.execute("SELECT COUNT(*) FROM lorebook_usage WHERE story_id = ?", (story["id"],)).fetchone()[0], 2)
+
+                if cleanup == "chapter":
+                    self.client.delete(f"/api/stories/{story['id']}/chapters/{chapter['id']}")
+                elif cleanup == "story":
+                    self.client.delete(f"/api/stories/{story['id']}")
+                else:
+                    if cleanup == "startup":
+                        main.on_startup()
+                    else:
+                        self.client.post(f"/api/stories/{story['id']}/close")
+
+                with main.get_db() as conn:
+                    rows = conn.execute("SELECT chapter_id FROM lorebook_usage WHERE story_id = ?", (story["id"],)).fetchall()
+                self.assertEqual(len(rows), 1 if cleanup == "chapter" else 0)
+                if rows:
+                    self.assertIsNone(rows[0]["chapter_id"])
+
+    def testLorebookUsageStartupMigrationPreservesLegacyRuns(self):
+        story, chapter = self.storyWithChapter("Migration usage test", "A visitor arrives.")
+        with main.get_db() as conn:
+            conn.execute("DROP TABLE lorebook_usage")
+            conn.execute(
+                """
+                INSERT INTO lorebook_update_runs (id, story_id, chapter_id, raw_output, applied_updates_json, cost, created_at)
+                VALUES ('legacy', ?, ?, '{}', '[]', 0.5, ?)
+                """,
+                (story["id"], chapter["id"], main.utc_now()),
+            )
+        main.init_db()
+        main.init_db()
+        with main.get_db() as conn:
+            self.assertEqual(conn.execute("SELECT cost FROM lorebook_update_runs WHERE id = 'legacy'").fetchone()[0], 0.5)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM lorebook_usage").fetchone()[0], 0)
+
+    def testLorebookPreflightRejectionDoesNotRecordUsage(self):
+        story, chapter = self.storyWithChapter("Blank usage test", "")
+        with patch("httpx.AsyncClient", side_effect=AssertionError("Provider call forbidden")):
+            self.client.post(f"/api/stories/{story['id']}/lorebook/update", json={"chapter_id": chapter["id"]})
+            self.client.post(f"/api/stories/{story['id']}/lorebook/generate/stream", json={"category": "character", "brief": ""})
+            self.client.post(f"/api/stories/{story['id']}/lorebook/repair/stream")
+            self.client.post(f"/api/stories/{story['id']}/lorebook/timeline/repair/stream", json={"current_timeline": ""})
+        with main.get_db() as conn:
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM lorebook_usage").fetchone()[0], 0)
 
     def test_manual_lorebook_update_applies_entries_and_records_the_run(self):
         story, chapter = self.storyWithChapter("Manual Lore", "Chloe walked the long hall.")
@@ -2325,6 +2529,7 @@ class StoryApiTest(unittest.TestCase):
             chapter,
             "She crossed the bridge at dusk.",
             mode="new",
+            lorebookUsage={"prompt_tokens": 100, "completion_tokens": 30, "cost": 0.2},
             lorebookUpdates=[
                 {
                     "action": "create",
@@ -2359,6 +2564,11 @@ class StoryApiTest(unittest.TestCase):
                 "SELECT * FROM lorebook_update_runs WHERE story_id = ?", (story["id"],)
             ).fetchone()
         self.assertIsNotNone(run["generation_id"]) #an auto run is tied to the generation that caused it
+        with main.get_db() as conn:
+            usageRow = conn.execute("SELECT * FROM lorebook_usage WHERE id = ?", (run["id"],)).fetchone()
+        self.assertEqual(usageRow["model"], self.lastLorebookCalls[0]["model"])
+        self.assertEqual(usageRow["total_tokens"], 130)
+        self.assertEqual(usageRow["cost"], 0.2)
 
     def test_story_chapter_and_lorebook_crud(self):
         storyResponse = self.client.post(

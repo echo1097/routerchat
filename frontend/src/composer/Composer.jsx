@@ -1,3 +1,4 @@
+import { VoiceInput } from "../transcription/VoiceInput.jsx";
 import { cx, PROMPT_BAR_CONTROL_MOTION } from "../uiShared.js";
 import {
   supportsThinking,
@@ -49,6 +50,7 @@ function ComposerMenuButton({ label, detail, active = false, dataTour, disabled 
 }
 
 export function Composer({
+  contextKey,
   value,
   setValue,
   disabled,
@@ -369,6 +371,7 @@ export function Composer({
                 </div>
               </div>
 
+            <VoiceInput value={value} setValue={setValue} onSubmit={onSubmit} disabled={disabled || isStreaming} contextKey={contextKey} />
             <button
               type="submit"
               data-tour="send-button"

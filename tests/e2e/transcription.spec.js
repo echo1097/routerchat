@@ -161,3 +161,42 @@ test("recording bar fits mobile and Escape releases the microphone", async ({ pa
   await expect(recording).not.toBeVisible();
   expect(await page.evaluate(() => window.stoppedTracks)).toBeGreaterThan(0);
 });
+
+for (const width of [1280, 390]) {
+  test(`compact transcription stays inside the composer at ${width}px`, async ({ page }) => {
+    await installChat(page);
+    await mockMicrophone(page);
+    await page.route("**/api/transcription", (route) => route.fulfill({
+      status: 502,
+      json: { detail: "Temporary failure" },
+    }));
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/");
+    const surface = page.locator(".landing-composer-compact");
+    await expect(surface).toBeVisible();
+    const surfaceBounds = await surface.boundingBox();
+    await page.getByRole("button", { name: "Record prompt", exact: true }).click();
+    const recording = page.getByRole("dialog", { name: "Record a prompt" });
+    await expect(recording).toBeVisible();
+
+    async function expectControlsToFit() {
+      const bounds = await recording.boundingBox();
+      expect(bounds.height).toBe(surfaceBounds.height);
+      for (const element of await recording.locator("button, .voice-waveform, .voice-status").all()) {
+        const elementBounds = await element.boundingBox();
+        expect(elementBounds.y).toBeGreaterThanOrEqual(bounds.y);
+        expect(elementBounds.y + elementBounds.height).toBeLessThanOrEqual(bounds.y + bounds.height);
+        expect(elementBounds.x).toBeGreaterThanOrEqual(bounds.x);
+        expect(elementBounds.x + elementBounds.width).toBeLessThanOrEqual(bounds.x + bounds.width);
+      }
+    }
+
+    await expectControlsToFit();
+    await page.getByRole("button", { name: "Transcribe to prompt", exact: true }).click();
+    await expect(recording.getByRole("status")).toHaveText("Try transcription again");
+    await expectControlsToFit();
+    await page.screenshot({ path: `/tmp/routerchat-compact-transcription-${width}.png`, animations: "disabled" });
+    await page.getByRole("button", { name: "Cancel recording" }).click();
+    await expect(recording).not.toBeVisible();
+  });
+}

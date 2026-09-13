@@ -2306,8 +2306,6 @@ typography exactly or the swap at the end of a generation shows a seam */
   gap: 8px;
   padding: 10px 12px;
   border-radius: 999px;
-  background: #212121;
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 6%);
 }
 
 .landing-composer-compact .composer-input {

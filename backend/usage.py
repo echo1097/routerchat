@@ -102,6 +102,7 @@ def getUsage(conn, offsetMinutes=0, now=None, timeZone=None):
         f"SELECT {usageColumns} FROM story_generations WHERE 1 = 1",
         f"SELECT {usageColumns} FROM brainstorm_generations WHERE 1 = 1",
         f"SELECT {usageColumns} FROM lorebook_usage WHERE 1 = 1",
+        f"SELECT {usageColumns} FROM transcription_usage WHERE 1 = 1",
         """SELECT NULL AS model, openrouter_generation_id AS generation_id,
                   NULL AS prompt_tokens, NULL AS completion_tokens,
                   NULL AS reasoning_tokens, NULL AS total_tokens, cost, created_at
@@ -163,7 +164,7 @@ def getUsage(conn, offsetMinutes=0, now=None, timeZone=None):
     }
 
 
-def createUsageRouter(getDb):
+def createUsageRouter(getDb, readSetting=None):
     router = APIRouter()
 
     @router.get("/api/usage")
@@ -174,6 +175,12 @@ def createUsageRouter(getDb):
             except (ZoneInfoNotFoundError, ValueError) as error:
                 raise HTTPException(status_code=422, detail="Invalid timezone") from error
         with closing(getDb()) as conn:
-            return getUsage(conn, offsetMinutes, timeZone=timeZone)
+            result = getUsage(conn, offsetMinutes, timeZone=timeZone)
+        catalog = readSetting("transcription_models") if readSetting else []
+        modelNames = {model["id"]: model.get("name") for model in (catalog or [])}
+        for model in result["models"] + result["lifetimeModels"]:
+            if modelNames.get(model["id"]):
+                model["name"] = modelNames[model["id"]]
+        return result
 
     return router

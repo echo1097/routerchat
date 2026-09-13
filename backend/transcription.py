@@ -1,10 +1,14 @@
 import base64
 import binascii
+import uuid
+from contextlib import closing
 from typing import Literal
 
 import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
+
+from backend.usage import cleanNumber
 
 
 class TranscriptionRequest(BaseModel):
@@ -12,7 +16,24 @@ class TranscriptionRequest(BaseModel):
     format: Literal["webm", "m4a", "ogg", "wav"]
 
 
-def createTranscriptionRouter(readKey, readSetting, writeSetting, headersForKey, baseUrl):
+def ensureTranscriptionUsageTable(conn):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS transcription_usage (
+            id TEXT PRIMARY KEY,
+            model TEXT NOT NULL,
+            generation_id TEXT,
+            prompt_tokens INTEGER,
+            completion_tokens INTEGER,
+            reasoning_tokens INTEGER,
+            total_tokens INTEGER,
+            audio_seconds REAL,
+            cost REAL,
+            created_at TEXT NOT NULL
+        )
+    """)
+
+
+def createTranscriptionRouter(readKey, readSetting, writeSetting, headersForKey, baseUrl, getDb, utcNow):
     router = APIRouter()
 
     async def providerRequest(method, path, **options):
@@ -48,10 +69,33 @@ def createTranscriptionRouter(readKey, readSetting, writeSetting, headersForKey,
         if readSetting("privacy_mode") or readSetting("zdr_mode"):
             raise HTTPException(400, "Transcription is unavailable with Privacy or ZDR enabled because this endpoint does not guarantee those routing settings.")
         modelId = readSetting("transcription_model") or "openai/whisper-1"
+        if not readKey():
+            raise HTTPException(401, "Add an OpenRouter API key first.")
+        requestId = str(uuid.uuid4())
+        with closing(getDb()) as conn, conn:
+            conn.execute(
+                "INSERT INTO transcription_usage (id, model, created_at) VALUES (?, ?, ?)",
+                (requestId, modelId, utcNow()),
+            )
         result = await providerRequest("POST", "audio/transcriptions", json={
             "model": modelId,
             "input_audio": {"data": payload.audio, "format": payload.format},
         })
+        usage = result.get("usage") or {}
+        promptTokens = cleanNumber(usage.get("input_tokens", usage.get("prompt_tokens")))
+        completionTokens = cleanNumber(usage.get("output_tokens", usage.get("completion_tokens")))
+        totalTokens = cleanNumber(usage.get("total_tokens"))
+        if totalTokens is None and promptTokens is not None and completionTokens is not None:
+            totalTokens = promptTokens + completionTokens
+        with closing(getDb()) as conn, conn:
+            conn.execute(
+                """UPDATE transcription_usage
+                   SET prompt_tokens = ?, completion_tokens = ?, total_tokens = ?,
+                       audio_seconds = ?, cost = ?
+                   WHERE id = ?""",
+                (promptTokens, completionTokens, totalTokens,
+                 cleanNumber(usage.get("seconds")), cleanNumber(usage.get("cost")), requestId),
+            )
         transcript = result.get("text")
         if not isinstance(transcript, str) or not transcript.strip():
             raise HTTPException(422, "No speech was detected. Try recording again.")

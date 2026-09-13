@@ -48,7 +48,7 @@ from backend.attachments import (
     user_content_with_attachments,
 )
 from backend.changelog_status import ChangelogStatusDeps, create_changelog_status_router
-from backend.transcription import createTranscriptionRouter
+from backend.transcription import createTranscriptionRouter, ensureTranscriptionUsageTable
 from backend.usage import createUsageRouter
 from backend.lorebook_usage import ensureLorebookUsageTable
 from backend.brainstorm import BrainstormDeps, create_brainstorm_router
@@ -796,6 +796,7 @@ def init_db() -> None:
         ensure_chapter_history_columns(conn)
         ensure_lorebook_run_usage_columns(conn)
         ensureLorebookUsageTable(conn)
+        ensureTranscriptionUsageTable(conn)
         clean_lorebook_categories(conn)
 
 
@@ -2842,7 +2843,7 @@ brainstormDeps = BrainstormDeps(
 
 webSearchDeps = WebSearchDeps(get_db=get_db, utc_now=utc_now)
 app.include_router(create_web_search_router(webSearchDeps))
-app.include_router(createUsageRouter(get_db))
+app.include_router(createUsageRouter(get_db, read_app_setting))
 
 attachmentsDeps = AttachmentsDeps(
     get_db=get_db,
@@ -2866,6 +2867,7 @@ app.include_router(create_brainstorm_router(brainstormDeps))
 
 app.include_router(createTranscriptionRouter(
     read_openrouter_key, read_app_setting, write_app_setting, headers_for_key, OPENROUTER_BASE_URL,
+    get_db, utc_now,
 ))
 
 configure_static_files(app, STATIC_DIR)

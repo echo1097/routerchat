@@ -1,5 +1,23 @@
+<div align="center">
+
 # RouterChat 1.1.5
-A 100% free local OpenRouter chat interface. Strictly BYOK. 
+
+**A free, local OpenRouter interface for chatting and longform writing.**
+
+Strictly BYOK. Available for macOS and Windows.
+
+<p>
+  <a href="#install-routerchat">Install</a> ·
+  <a href="#features">Features</a> ·
+  <a href="#media">Screenshots</a> ·
+  <a href="setup.md">Setup guide</a> ·
+  <a href="https://github.com/echo1097/routerchat/releases">Releases</a> ·
+  <a href="SUPPORT.md">Support</a>
+</p>
+
+<img width="1000" alt="RouterChat landing page" src="media/landing%20page.png" />
+
+</div>
 
 ## Disclaimer
 
@@ -54,7 +72,7 @@ This project is gradually spinning down, will continue to work on updates around
 - Writing Mode improvements
     - Brainstorming canvas with branching ideas, copy buttons, and prompt regeneration
     - Create and edit chapters with a formatting toolbar
-    - Chapter history 
+    - Chapter history
     - Import and export full stories, including chapters and lorebooks
 - Chat Mode improvements
     - Web search with sources and citations

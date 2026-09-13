@@ -105,6 +105,8 @@ test("transcription model selection is saved independently", async ({ page }) =>
   await page.getByRole("menuitem", { name: /Settings/ }).click();
   await page.getByRole("button", { name: "Transcription", exact: true }).click();
   const transcriptionSettings = page.getByRole("region", { name: "Transcription settings", exact: true });
+  await expect(transcriptionSettings.getByText("Price + Context", { exact: true })).toHaveCount(0);
+  await expect(transcriptionSettings.getByRole("link", { name: "View pricing for Whisper", exact: true })).toHaveAttribute("href", "https://openrouter.ai/openai/whisper-1");
   await transcriptionSettings.getByPlaceholder("Search models").fill("other");
   await expect(transcriptionSettings.getByRole("button", { name: "Whisper" })).toHaveCount(0);
   await transcriptionSettings.getByRole("button", { name: "Other transcription model test/stt", exact: true }).click();

@@ -11,6 +11,8 @@ export function ModelPicker({
   selectedId,
   onSelect,
   emptyMessage,
+  priceHeader = "Price + Context",
+  renderPrice = null,
   note = null,
   inheritOption = null,
   disabled = false,
@@ -43,7 +45,7 @@ export function ModelPicker({
     };
   }
 
-  function row({ key, name, subLabel, price, context, isSelected }) {
+  function row({ key, name, subLabel, price, context, isSelected, model }) {
     return (
       <div
         key={key}
@@ -67,8 +69,12 @@ export function ModelPicker({
           <span className="mt-0.5 block truncate text-xs text-neutral-600">{subLabel}</span>
         </button>
         <span className="flex min-w-0 flex-col items-center px-1 text-center text-xs leading-4 tabular-nums text-neutral-500">
-          <span className="whitespace-nowrap">{price}</span>
-          <span className="whitespace-nowrap">{context}</span>
+          {renderPrice && model ? renderPrice(model) : (
+            <>
+              <span className="whitespace-nowrap">{price}</span>
+              <span className="whitespace-nowrap">{context}</span>
+            </>
+          )}
         </span>
       </div>
     );
@@ -101,7 +107,7 @@ export function ModelPicker({
 
       <div className="grid grid-cols-[minmax(0,1fr)_104px] items-center px-1 pb-2 pt-1 text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-600">
         <span>Model</span>
-        <span className="whitespace-nowrap text-center">Price + Context</span>
+        <span className="whitespace-nowrap text-center">{priceHeader}</span>
       </div>
 
       <div className="relative min-h-0 flex-1">
@@ -125,6 +131,7 @@ export function ModelPicker({
           ) : (
             models.map((model) =>
               row({
+                model,
                 key: model.id,
                 name: model.name,
                 subLabel: model.id,

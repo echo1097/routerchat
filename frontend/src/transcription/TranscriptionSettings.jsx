@@ -57,6 +57,18 @@ export function TranscriptionSettings() {
         </div>
       </div>
       <ModelPicker
+        priceHeader="Price"
+        renderPrice={(model) => (
+          <a
+            href={`https://openrouter.ai/${model.id.split("/").map(encodeURIComponent).join("/")}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`View pricing for ${model.name || model.id}`}
+            className="whitespace-nowrap underline underline-offset-2 hover:text-neutral-200"
+          >
+            View pricing
+          </a>
+        )}
         models={filteredModels}
         query={query}
         onQueryChange={setQuery}

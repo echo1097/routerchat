@@ -112,33 +112,63 @@ export function VoiceInput({ value, setValue, onSubmit, disabled, contextKey }) 
     if (!canvas || sessionRef.current !== session) return;
     const context = canvas.getContext("2d");
     const samples = new Uint8Array(session.analyser.fftSize);
-    const levels = Array(Math.max(12, Math.floor(canvas.clientWidth / 7))).fill(0);
-    let lastTime = 0;
+    const sampleInterval = 55;
+    const barSpacing = 7;
+    let levels = [];
+    let lastTime = null;
+    let sampleTime = 0;
+    let smoothLevel = 0;
+
     function drawFrame(time) {
       if (sessionRef.current !== session || session.finishing) return;
-      if (time - lastTime > 55) {
-        lastTime = time;
-        session.analyser.getByteTimeDomainData(samples);
-        const energy = Math.sqrt(samples.reduce((sum, sample) => sum + ((sample - 128) / 128) ** 2, 0) / samples.length);
-        levels.push(Math.min(1, energy * 7));
-        levels.shift();
-        canvas.width = Math.max(1, canvas.clientWidth * devicePixelRatio);
-        canvas.height = Math.max(1, canvas.clientHeight * devicePixelRatio);
-        context.clearRect(0, 0, canvas.width, canvas.height);
-        const spacing = canvas.width / levels.length;
-        context.strokeStyle = "#8c8c8c";
-        context.lineWidth = Math.max(2, spacing * 0.45);
-        context.lineCap = "round";
-        levels.forEach((level, index) => {
-          const height = Math.max(1, level * canvas.height * 0.8);
-          context.beginPath();
-          context.moveTo((index + 0.5) * spacing, (canvas.height - height) / 2);
-          context.lineTo((index + 0.5) * spacing, (canvas.height + height) / 2);
-          context.stroke();
-        });
+      const elapsed = lastTime === null ? 0 : Math.min(time - lastTime, 100);
+      lastTime = time;
+
+      const pixelRatio = window.devicePixelRatio || 1;
+      const width = canvas.clientWidth;
+      const height = canvas.clientHeight;
+      const pixelWidth = Math.max(1, Math.round(width * pixelRatio));
+      const pixelHeight = Math.max(1, Math.round(height * pixelRatio));
+      if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+        canvas.width = pixelWidth;
+        canvas.height = pixelHeight;
       }
+      context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+
+      const barCount = Math.ceil(width / barSpacing) + 2;
+      if (levels.length < barCount) {
+        levels = Array(barCount - levels.length).fill(0).concat(levels);
+      } else if (levels.length > barCount) {
+        levels = levels.slice(-barCount);
+      }
+
+      session.analyser.getByteTimeDomainData(samples);
+      const energy = Math.sqrt(samples.reduce((sum, sample) => sum + ((sample - 128) / 128) ** 2, 0) / samples.length);
+      const targetLevel = Math.min(1, energy * 7);
+      smoothLevel += (targetLevel - smoothLevel) * (1 - Math.exp(-elapsed / 40));
+      sampleTime += elapsed;
+      while (sampleTime >= sampleInterval) {
+        levels.push(smoothLevel);
+        levels.shift();
+        sampleTime -= sampleInterval;
+      }
+
+      const scrollOffset = (sampleTime / sampleInterval) * barSpacing;
+      context.clearRect(0, 0, width, height);
+      context.strokeStyle = "#8c8c8c";
+      context.lineWidth = barSpacing * 0.45;
+      context.lineCap = "round";
+      context.beginPath();
+      levels.forEach((level, index) => {
+        const barHeight = Math.max(1, level * height * 0.8);
+        const positionX = (index - 0.5) * barSpacing - scrollOffset;
+        context.moveTo(positionX, (height - barHeight) / 2);
+        context.lineTo(positionX, (height + barHeight) / 2);
+      });
+      context.stroke();
       session.frame = requestAnimationFrame(drawFrame);
     }
+
     session.frame = requestAnimationFrame(drawFrame);
   }
 

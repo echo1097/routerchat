@@ -45,7 +45,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://echo1097.git
 
 See the [setup guide](setup.md) for starting, updating, repairing, data locations, and manual developer installation. 
 
-For support with any issues that arrise, see [SUPPORT.md](SUPPORT.md) and if necessary fill out [this form](https://forms.gle/oLGhkQ74KJC157Q8A).
+For support with any issues that arise, see [SUPPORT.md](SUPPORT.md) and if necessary fill out [this form](https://forms.gle/gTth2TcXLYAArvGm6).
 
 To remove RouterChat, run **Uninstall RouterChat** from `~/Applications/RouterChat` on macOS or the Start Menu on Windows. The uninstaller can save your database to Downloads before removing the app.
 
@@ -59,7 +59,7 @@ To remove RouterChat, run **Uninstall RouterChat** from `~/Applications/RouterCh
 
 ## Roadmap
 
-This project is gradually spinning down, will continue to work on updates around UI, bug fixes, and improving stability for the time being. **RouterChat is still in development** 
+RouterChat 1.1.5 is stable and the project is now in maintenance mode. New feature development is paused. Future updates are limited to critical bug fixes, security fixes, dependency compatibility, and release infrastructure issues.
 
 ## Features added
 
@@ -102,13 +102,13 @@ This project is gradually spinning down, will continue to work on updates around
 AI was used to support development and documentation for this project. All code and documentation were reviewed by myself before being published.
 
 ## Bug reporting, feedback, and contributing
-- To report a bug open an issue and provide as much context and information as you can so I can reproduce and fix it. Alternatively if you do not have a GitHub account and prefer not to create one, fill out [this form](https://forms.gle/oLGhkQ74KJC157Q8A) instead. 
-- To provide feedback fill out [this form](https://forms.gle/oLGhkQ74KJC157Q8A).
+- To report a bug open an issue and provide as much context and information as you can so I can reproduce and fix it. Alternatively if you do not have a GitHub account and prefer not to create one, fill out [this form](https://forms.gle/gTth2TcXLYAArvGm6) instead.
+- To provide feedback fill out [this form](https://forms.gle/gTth2TcXLYAArvGm6).
 - AI slop pull requests will not be merged. If you are using AI to assist your development, clean up and review the code manually and be transparent in your usage of AI.
 
 ## Local data
 
-Packaged installations keep the OpenRouter key and database outside the replaceable application directory. Git clone installations continue to use `.env` and `data/routerchat.sqlite3` inside the repository. RouterChat does not upload your chats or key anywhere.
+Packaged installations keep the OpenRouter key and database outside the replaceable application directory. Git clone installations continue to use `.env` and `data/routerchat.sqlite3` inside the repository. Saved chats and settings stay on your computer, and the project author never receives them or your API key. When you send a prompt, attachment, or voice recording, the relevant data is sent to OpenRouter so it can provide the requested service. See [TOS.md](TOS.md) for the complete list of connections.
 
 ## Media
 
@@ -123,3 +123,8 @@ Lorebook
 Lorebook entry
 
 <img width="1000" alt="RouterChat lorebook entry" src="media/lorebook%20entry.png" />
+
+Write Mode
+
+<img width="1000" alt="RouterChat lorebook entry" src="media/write%20mode.png" />
+

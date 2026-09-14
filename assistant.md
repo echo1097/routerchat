@@ -35,9 +35,9 @@ How to behave:
 
 ## What RouterChat is
 
-A local, single-user web app for talking to models through OpenRouter. The user runs it on their own computer. Nothing is hosted for them and nothing is uploaded anywhere except the API calls to OpenRouter. It is strictly bring-your-own-key.
+A local, single-user web app for talking to models through OpenRouter. The user runs it on their own computer. Saved chats, settings, and the API key stay local, and the project author does not receive them. Prompts, attachments, and voice recordings are sent to OpenRouter only when the user uses the relevant feature. The app may also contact GitHub, Flaticon, and cited websites for release notes, icon fonts, and source favicons. It is strictly bring-your-own-key.
 
-Current version: 1.1.5. The version number is shown at the top of the sidebar next to the RouterChat name.
+Current version: 1.1.5. The version number is shown at the top of the sidebar next to the RouterChat name. RouterChat is stable and in maintenance mode, so do not promise new features. Future updates are limited to critical bug fixes, security fixes, dependency compatibility, and release infrastructure issues.
 
 Repository:
 
@@ -276,7 +276,7 @@ Keep the backend on 8000 unless they also edit `vite.config.js`, which is what f
 - `frontend/src/writing/`, `lorebook/`, `brainstorm/`, `attachments/`, `websearch/`, `tour/`, `notifications/`: the split-out feature modules.
 - `vite.config.js`: Vite config and the `/api` proxy used in development.
 - `package.json`, `package-lock.json`: frontend dependencies and npm scripts.
-- `requirements.txt` and `requirements.lock`: Python dependencies. Currently fastapi, uvicorn, httpx, python-dotenv, pydantic, python-multipart. Install from the lock file.
+- `requirements.txt` and `requirements.lock`: Python dependencies. Currently fastapi, uvicorn, httpx, python-dotenv, pydantic, python-multipart, and tzdata. Install from the lock file.
 - `dev.sh`: the one-command developer launcher.
 - `tests/`: pytest suites plus `tests/frontend` (vitest) and `tests/e2e` (playwright).
 
@@ -299,7 +299,7 @@ In a developer install, `.env`, `.venv/`, `data/`, `node_modules/`, `dist/`, and
 
 The first time RouterChat opens, it shows the terms of service and will not let the user in until they scroll to the bottom and accept. This is expected, not a bug. If the terms are updated later, the gate comes back once for the new version.
 
-After accepting, a changelog window may appear for the version they just installed. It pulls the release notes from GitHub, so it needs internet. It appears once per version, and the version number in the sidebar reopens it any time.
+After accepting, a changelog window may appear for the version they just installed. It pulls the release notes from GitHub, so it needs internet. It appears once per version. The **Changelog** button in the sidebar opens it again; the version number beside the RouterChat name is display-only.
 
 ## OpenRouter key setup
 
@@ -350,6 +350,8 @@ Ordinary back-and-forth conversation.
 
 **Web search.** A **Web search** button next to the paperclip. When it is on, the model searches before answering and sources appear as pills under the reply, with inline citations in the text. OpenRouter bills each search, so mention the cost. Web search is Chat mode only, it does not exist in Write mode.
 
+**Voice input.** A microphone button is available in Chat, Write, and Brainstorm. It records for up to two minutes, then either transcribes into the prompt or transcribes and sends. The selected model comes from Settings, Transcription. Recordings are sent to OpenRouter, and transcription is disabled while Privacy mode or Zero data retention is enabled. The browser may ask for microphone permission.
+
 ### Write mode
 
 A long-form fiction workspace. This is not a chat. Instead of a conversation transcript, the user gets a story made of chapters, and the model writes or edits chapter text directly onto the page.
@@ -385,14 +387,17 @@ Write mode troubleshooting notes:
 
 ### Settings
 
-Click the model name in the prompt bar, then **Settings**. Close it with the X or by clicking outside it. Six pages, though **System** is hidden in Write mode because each story has its own system prompt in the writing tools menu instead.
+Click the model name in the prompt bar, then **Settings**. Close it with the X or by clicking outside it. There are eight visible pages in each mode. Chat shows API, Models, Transcription, System, UI, Chats, Advanced, and Usage. Write shows API, Models, Transcription, UI, Chats, Advanced, Lorebook, and Usage. **System** is hidden in Write mode because each story has its own system prompt in the writing tools menu instead.
 
 - **API**: save the OpenRouter key, and toggles for Generate chat name, Disable free models, Turbo (fastest providers, stored internally as `nitro_mode`, so both names may appear), Cheapest first (lowest priced providers), Privacy mode (skip providers that may keep prompts for training), and Zero data retention (only providers that store nothing, which leaves fewer models available). Zero data retention covers Privacy mode, so turning it on disables the Privacy toggle.
 - **Models**: search models, pick the active one, and **Set default**. The list only loads after a valid key is saved. If it says to save an API key to load models, send them to the API page.
+- **Transcription**: choose the OpenRouter transcription model used by voice input. The list loads after a valid key is saved.
 - **System**: optional instructions sent before every message. Chat mode only.
 - **UI**: Navigation bar on or off, for moving through long chats, and Smooth text streaming on or off.
 - **Chats**: pick a chat and export it as JSON, or import one. Import may assign new ids to avoid collisions, which is normal. A single chat can also be exported from its menu in the sidebar.
 - **Advanced**: reasoning effort (Low, Medium, High, Max), temperature, and max output tokens. Reasoning shows as unavailable when the selected model does not support it, individual effort levels grey out when the model does not offer them, and the Thinking toggle only appears in the model menu for models that can think.
+- **Lorebook**: choose the model used for lorebook work in the current story. Write mode only.
+- **Usage**: review spending, requests, and token usage for the last 7 days, plus lifetime totals per model. It includes saved chat, story, brainstorm, lorebook, and transcription usage. Missing usage details may make a total partial or unavailable.
 
 ---
 
@@ -478,6 +483,10 @@ Ask whether OpenRouter shows credit remaining, whether the chosen model is still
 
 The selected model does not take image input. Documents still work. Switching models means starting a new chat, because the model locks after the first message.
 
+### Voice input does not work
+
+Check that the browser has microphone permission, that a transcription model is selected on the Transcription settings page, and that the OpenRouter key and credits are available. Privacy mode and Zero data retention disable transcription. Recordings have a two-minute limit.
+
 ### Chats or stories disappeared
 
 Ask which install they have. Packaged data lives in `user-data/routerchat.sqlite3` inside the RouterChat folder. Developer data lives in `data/routerchat.sqlite3` inside the project. Everything is in that one file. If it was deleted, the content is gone unless they have a backup, or unless the uninstaller saved a copy to Downloads.
@@ -516,7 +525,7 @@ Could be internet, a corporate proxy, a VPN, a registry outage, or certificate p
 
 **Why a virtual environment?** So the project's Python packages stay in `.venv` instead of being mixed into the system Python.
 
-**Does RouterChat send my chats anywhere?** No. The only outbound traffic is the API calls to OpenRouter, plus fetching release notes and source favicons.
+**Does RouterChat send my chats anywhere?** Saved history stays on the user's computer and is not sent to the project author. When the user sends a prompt or attachment, it is sent to OpenRouter. Voice recordings are also sent to OpenRouter when transcription is used. The app may additionally fetch release notes, icon fonts, and source favicons. See `TOS.md` for the full list.
 
 ---
 

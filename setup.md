@@ -1,6 +1,6 @@
 # RouterChat Setup
 
-RouterChat runs entirely on your own computer. The only thing it needs from the outside world is an [OpenRouter API key](https://openrouter.ai/keys). RouterChat itself is free. The models you talk to may cost money.
+RouterChat runs on your own computer. Model features use an [OpenRouter API key](https://openrouter.ai/keys). RouterChat itself is free, but the models and searches you use may cost money. Installation, updates, release notes, and some optional UI features can also use the internet.
 
 **Contents**
 
@@ -118,26 +118,33 @@ RouterChat has two modes. The toggle sits at the top of the left sidebar.
 
 Write mode also keeps a **Lorebook**, a running file of your characters, places, and events. It fills itself in as you write so the AI remembers who everyone is fifty chapters later. There's also **Brainstorm** for spinning off ideas without touching the story. Both are in the menu next to the prompt box.
 
+Voice input is available from the microphone button beside the prompt box in Chat, Write, and Brainstorm. It records up to two minutes, then either puts the transcription into the prompt or transcribes and sends it. Recordings are sent to OpenRouter for transcription and voice input is unavailable while Privacy mode or Zero data retention is enabled.
+
 ### Chat basics
 
 - Type in the box at the bottom. **Enter** sends, **Shift + Enter** starts a new line.
 - The round button sends your message. Click it while the AI is typing and it stops the response.
+- The plus icon adds images, PDFs, text, and code files. You can add up to five files per message. Images and PDFs can be up to 10 MB each, and text or code files can be up to 256 KB. Images are available only with models that support image input.
+- The Web search button searches before the model answers and shows sources and citations. OpenRouter bills each search.
 - **New chat** is in the left sidebar. Click any old chat to reopen it.
 - Hover over things to reveal buttons. Chats can be renamed or deleted, your messages edited, and AI responses copied or regenerated.
 - Once a chat has messages, the model shows as **locked**. Start a new chat to switch models.
 
 ### Settings
 
-Clicking the model name opens settings, which has six pages:
+Clicking the model name opens settings. There are eight visible pages in each mode. Chat shows API, Models, Transcription, System, UI, Chats, Advanced, and Usage. Write shows API, Models, Transcription, UI, Chats, Advanced, Lorebook, and Usage.
 
 | Page | What it does |
 | --- | --- |
-| **API** | Your OpenRouter key, hiding free models, Turbo mode |
+| **API** | Your OpenRouter key, chat naming, free-model filtering, Turbo, Cheapest first, Privacy mode, and Zero data retention |
 | **Models** | Search models, pick one, set your default |
-| **System** | A standing instruction sent before every message |
-| **UI** | Smooth text streaming on or off |
+| **Transcription** | Choose the OpenRouter model used for voice input |
+| **System** | A standing instruction sent before every Chat message. Write mode uses a story-specific system prompt instead. |
+| **UI** | Navigation bar and smooth text streaming |
 | **Chats** | Export or import your chats as files |
 | **Advanced** | Reasoning effort, temperature, max response length |
+| **Lorebook** | Choose the model used for a story's lorebook work. Write mode only. |
+| **Usage** | Spending, requests, and token usage for the last 7 days, plus lifetime totals per model |
 
 ---
 

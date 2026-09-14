@@ -1,6 +1,6 @@
 <div align="center">
 
-# RouterChat 1.1.5
+# RouterChat 1.1.6
 
 **A free, local OpenRouter interface for chatting and longform writing.**
 
@@ -61,7 +61,7 @@ To remove RouterChat, run **Uninstall RouterChat** from `~/Applications/RouterCh
 
 ## Roadmap
 
-RouterChat 1.1.5 is stable and the project is now in maintenance mode. New feature development is paused. Future updates are limited to critical bug fixes, security fixes, dependency compatibility, and release infrastructure issues.
+RouterChat 1.1.6 is stable and the project is now in maintenance mode. New feature development is paused. Future updates are limited to critical bug fixes, security fixes, dependency compatibility, and release infrastructure issues.
 
 ## Features added
 

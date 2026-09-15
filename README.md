@@ -63,6 +63,8 @@ To remove RouterChat, run **Uninstall RouterChat** from `~/Applications/RouterCh
 
 RouterChat 1.1.6 is stable and the project is now in maintenance mode. New feature development is paused. Future updates are limited to critical bug fixes, security fixes, dependency compatibility, and release infrastructure issues.
 
+When development resumes in a few months, the top priority will be introducing support for more API providers. 
+
 ## Features added
 
 - One-click installer

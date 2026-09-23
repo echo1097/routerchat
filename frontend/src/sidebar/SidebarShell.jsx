@@ -128,7 +128,7 @@ export function SidebarShell({
               <span className="truncate text-[17px] font-semibold tracking-[-0.02em] text-white">
                 RouterChat
               </span>
-              <span className="shrink-0 text-[13px] font-medium tabular-nums text-neutral-500">
+              <span className="shrink-0 text-[17px] font-semibold tracking-[-0.02em] tabular-nums text-neutral-500">
                 {APP_VERSION}
               </span>
             </div>

@@ -178,7 +178,9 @@ export function SidebarShell({
             />
           </div>
 
-          {actions}
+          <div className="mb-3">
+            {actions}
+          </div>
 
           <div className="relative min-h-0 flex-1">
             <nav

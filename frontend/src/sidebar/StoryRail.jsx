@@ -109,10 +109,10 @@ export function StoryRail({
         closeLabel="Close stories"
         listClassName="space-y-3"
         actions={(
-          <div className="mb-4">
+          <div>
             <SidebarActionButton
               tourId="write-home-button"
-              icon={<i className="fi fi-rr-home text-[17px] leading-none" />}
+              icon={<i className="fi fi-rr-home text-[16px] leading-none" />}
               label="Home"
               disabled={navigationLocked}
               onClick={() => {
@@ -122,7 +122,7 @@ export function StoryRail({
               }}
             />
             <SidebarActionButton
-              icon={<MaskIcon src="/icons/newbook.png" size={20} />}
+              icon={<MaskIcon src="/icons/newbook.png" size={18} />}
               label="New story"
               disabled={navigationLocked}
               onClick={() => {
@@ -132,7 +132,7 @@ export function StoryRail({
               }}
             />
             <SidebarActionButton
-              icon={<MaskIcon src="/icons/file-import.png" size={17} />}
+              icon={<MaskIcon src="/icons/file-import.png" size={16} />}
               label={importingStory ? "Importing story" : "Import story"}
               disabled={navigationLocked || importingStory}
               onClick={() => importInputRef.current?.click()}

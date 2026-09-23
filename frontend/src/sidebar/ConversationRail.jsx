@@ -395,7 +395,7 @@ export function ConversationRail({
         actions={(
           <div>
             <SidebarActionButton
-              icon={<MaskIcon src="/icons/new-message.png" size={20} />}
+              icon={<MaskIcon src="/icons/new-message.png" size={18} />}
               label="New chat"
               onClick={() => {
                 onNewChat();
@@ -403,7 +403,7 @@ export function ConversationRail({
               }}
             />
             <SidebarActionButton
-              icon={<MaskIcon src="/icons/folder.png" size={20} />}
+              icon={<MaskIcon src="/icons/folder.png" size={18} />}
               label="New folder"
               onClick={() => setNewFolderOpen(true)}
             />

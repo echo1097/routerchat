@@ -12,7 +12,7 @@ export function SidebarActionButton({ icon, label, onClick, disabled = false, to
         CONTROL_MOTION,
       )}
     >
-      <span aria-hidden="true" className="grid h-5 w-5 shrink-0 place-items-center text-neutral-300">
+      <span className="grid h-5 w-5 shrink-0 place-items-center text-neutral-300">
         {icon}
       </span>
       {label}

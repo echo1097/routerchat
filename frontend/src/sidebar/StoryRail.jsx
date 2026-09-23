@@ -119,7 +119,7 @@ export function StoryRail({
           <div>
             <SidebarActionButton
               tourId="write-home-button"
-              icon={<i className="fi fi-rr-home text-[16px] leading-none" />}
+              icon={<i aria-hidden="true" className="fi fi-rr-home text-[16px] leading-none" />}
               label="Home"
               disabled={navigationLocked}
               onClick={() => {

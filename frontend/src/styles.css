@@ -1064,6 +1064,9 @@ textarea::placeholder {
 }
 
 .chat-history-group-items {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
   padding-top: 2px;
 }
 

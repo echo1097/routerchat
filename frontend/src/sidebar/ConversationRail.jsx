@@ -6,6 +6,13 @@ import { MaskIcon } from "../components/IconButton.jsx";
 import { SidebarGroup } from "./SidebarGroup.jsx";
 import { SidebarShell } from "./SidebarShell.jsx";
 import { SidebarActionButton } from "./SidebarActionButton.jsx";
+import {
+  SIDEBAR_ROW,
+  SIDEBAR_ROW_ACTIVE,
+  SIDEBAR_ROW_IDLE,
+  SIDEBAR_ROW_BUTTON,
+  SIDEBAR_RENAME_INPUT,
+} from "./sidebarStyles.js";
 import { SidebarSearchModal } from "./SidebarSearchModal.jsx";
 import { NamePromptModal } from "../components/NamePromptModal.jsx";
 
@@ -155,15 +162,13 @@ export function ConversationRail({
             setRecentsDropActive(false);
           }}
           className={cx(
-            "group relative grid select-none grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-2xl border border-transparent px-2 py-1 transition-[background-color,border-color,box-shadow] duration-150 ease-out",
-            chat.id === activeChatId
-              ? "bg-white/[0.08] shadow-[var(--shadow-border)]"
-              : "hover:bg-white/[0.045] hover:shadow-[var(--shadow-border)]",
+            SIDEBAR_ROW,
+            chat.id === activeChatId ? SIDEBAR_ROW_ACTIVE : SIDEBAR_ROW_IDLE,
             dragChatId === chat.id && "opacity-45",
           )}
         >
           {renaming ? (
-            <div className="min-h-8 min-w-0 rounded-xl px-1 py-0.5">
+            <div className="min-w-0 px-1 py-1.5">
               <input
                 autoFocus
                 value={renameDraft}
@@ -177,9 +182,9 @@ export function ConversationRail({
                     cancelRename();
                   }
                 }}
-                className="block h-6 w-full min-w-0 rounded-md bg-white/[0.06] px-1.5 text-sm font-medium text-neutral-100 outline-none shadow-[var(--shadow-border)]"
+                className={cx(SIDEBAR_RENAME_INPUT, "h-[18px] text-[14px]")}
               />
-              <div className="truncate text-[11px] leading-3 text-neutral-500">
+              <div className="truncate pl-1.5 text-[12px] leading-4 text-[#858585]">
                 {promptModelName(models, chat.model)}
               </div>
             </div>
@@ -190,15 +195,19 @@ export function ConversationRail({
                 onLoadChat(chat.id);
                 onCloseMobile();
               }}
-              className={cx(
-                "min-h-8 min-w-0 rounded-xl px-1 py-0.5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15",
-                CONTROL_MOTION,
-              )}
+              className={cx(SIDEBAR_ROW_BUTTON, "py-1.5")}
             >
-              <div className="truncate text-balance text-sm font-medium leading-4 text-neutral-100">
+              <div
+                className={cx(
+                  "truncate text-[14px] leading-[18px]",
+                  chat.id === activeChatId
+                    ? "text-white"
+                    : "text-neutral-300 group-hover:text-neutral-100",
+                )}
+              >
                 {chat.title}
               </div>
-              <div className="truncate text-[11px] leading-3 text-neutral-500">
+              <div className="truncate text-[12px] leading-4 text-[#858585]">
                 {promptModelName(models, chat.model)}
               </div>
             </button>

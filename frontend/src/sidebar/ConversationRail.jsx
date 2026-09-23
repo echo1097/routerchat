@@ -336,7 +336,7 @@ export function ConversationRail({
 
   const historyItems =
     chats.length === 0 ? (
-      <div className="space-y-4">
+      <div className="space-y-3">
         {folderGroup}
         <div className="px-3 py-8 text-pretty text-sm leading-6 text-neutral-500">
           {chatMode === "write"
@@ -345,7 +345,7 @@ export function ConversationRail({
         </div>
       </div>
     ) : (
-      <div className="space-y-4">
+      <div className="space-y-3">
         {pinnedChats.length > 0 && renderHistoryGroup(
           "Pinned",
           pinnedChats,

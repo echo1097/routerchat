@@ -353,7 +353,7 @@ export function ConversationRail({
     chats.length === 0 ? (
       <div className="space-y-3">
         {folderGroup}
-        <div className="px-3 py-8 text-pretty text-sm leading-6 text-neutral-500">
+        <div className="px-2.5 py-6 text-pretty text-[13px] leading-5 text-[#858585]">
           {chatMode === "write"
             ? "Your stories will appear here."
             : "Your conversations will appear here."}

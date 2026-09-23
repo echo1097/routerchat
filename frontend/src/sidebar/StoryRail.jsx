@@ -5,6 +5,12 @@ import { EyeOff } from "lucide-react";
 import { SidebarGroup } from "./SidebarGroup.jsx";
 import { SidebarShell } from "./SidebarShell.jsx";
 import { SidebarActionButton } from "./SidebarActionButton.jsx";
+import {
+  SIDEBAR_ROW,
+  SIDEBAR_ROW_IDLE,
+  SIDEBAR_ROW_BUTTON,
+  SIDEBAR_RENAME_INPUT,
+} from "./sidebarStyles.js";
 import { StoryHistoryActions, ChapterHistoryActions } from "./HistoryActions.jsx";
 import { SidebarSearchModal } from "./SidebarSearchModal.jsx";
 
@@ -149,7 +155,7 @@ export function StoryRail({
         )}
       >
         {stories.length === 0 ? (
-          <div className="px-3 py-8 text-pretty text-sm leading-6 text-neutral-500">
+          <div className="px-2.5 py-6 text-pretty text-[13px] leading-5 text-[#858585]">
             Your stories will appear here.
           </div>
         ) : (
@@ -163,16 +169,13 @@ export function StoryRail({
               const renamingStory =
                 renameTarget?.entityType === "story" && renameTarget.id === story.id;
               return (
-                <div key={story.id} className="space-y-1">
+                <div key={story.id} className="flex flex-col gap-px">
                   <div
                     data-tour={active ? "write-story-rail" : undefined}
-                    className={cx(
-                      "group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-2xl border border-transparent px-2 py-1",
-                      active ? "bg-white/[0.08] shadow-[var(--shadow-border)]" : "hover:bg-white/[0.045]",
-                    )}
+                    className={cx(SIDEBAR_ROW, SIDEBAR_ROW_IDLE)}
                   >
                     {renamingStory ? (
-                      <div className="min-h-8 min-w-0 rounded-xl px-1 py-0.5">
+                      <div className="flex h-9 min-w-0 items-center px-1">
                         <input
                           ref={renameInputRef}
                           autoFocus
@@ -188,23 +191,31 @@ export function StoryRail({
                               cancelRename();
                             }
                           }}
-                          className="block h-7 w-full min-w-0 rounded-md bg-white/[0.06] px-1.5 text-sm font-medium text-neutral-100 outline-none shadow-[var(--shadow-border)]"
+                          className={cx(SIDEBAR_RENAME_INPUT, "h-6 text-[14px]")}
                         />
                       </div>
                     ) : (
                       <button
                         type="button"
+                        aria-current={active ? "true" : undefined}
                         onClick={() => {
                           if (navigationLocked) return;
                           onSelectStory(story.id);
                           onCloseMobile();
                         }}
                         disabled={navigationLocked}
-                        className="min-w-0 rounded-xl px-1 py-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
+                        className={cx(SIDEBAR_ROW_BUTTON, "flex h-9 items-center")}
                       >
-                        <div className="truncate text-sm font-medium leading-4 text-neutral-100">
+                        <span
+                          className={cx(
+                            "truncate text-[14px] leading-[18px]",
+                            active
+                              ? "font-medium text-white"
+                              : "text-neutral-300 group-hover:text-neutral-100",
+                          )}
+                        >
                           {story.title}
-                        </div>
+                        </span>
                       </button>
                     )}
                     <StoryHistoryActions

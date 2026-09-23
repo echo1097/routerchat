@@ -5,6 +5,7 @@ import { ChatHistoryActions, FolderActions } from "./HistoryActions.jsx";
 import { MaskIcon } from "../components/IconButton.jsx";
 import { SidebarGroup } from "./SidebarGroup.jsx";
 import { SidebarShell } from "./SidebarShell.jsx";
+import { SidebarActionButton } from "./SidebarActionButton.jsx";
 import { SidebarSearchModal } from "./SidebarSearchModal.jsx";
 import { NamePromptModal } from "../components/NamePromptModal.jsx";
 
@@ -393,32 +394,19 @@ export function ConversationRail({
         listClassName="space-y-1"
         actions={(
           <div>
-            <button
-              type="button"
+            <SidebarActionButton
+              icon={<MaskIcon src="/icons/new-message.png" size={20} />}
+              label="New chat"
               onClick={() => {
                 onNewChat();
                 onCloseMobile();
               }}
-              className={cx(
-                "flex h-9 w-full items-center gap-3 rounded-xl bg-transparent px-2 text-[15px] font-medium text-white hover:bg-white/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
-                CONTROL_MOTION,
-              )}
-            >
-              <MaskIcon src="/icons/new-message.png" size={20} className="text-neutral-200" />
-              New chat
-            </button>
-
-            <button
-              type="button"
+            />
+            <SidebarActionButton
+              icon={<MaskIcon src="/icons/folder.png" size={20} />}
+              label="New folder"
               onClick={() => setNewFolderOpen(true)}
-              className={cx(
-                "flex h-9 w-full items-center gap-3 rounded-xl bg-transparent px-2 text-[15px] font-medium text-white hover:bg-white/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
-                CONTROL_MOTION,
-              )}
-            >
-              <MaskIcon src="/icons/folder.png" size={20} className="text-neutral-200" />
-              New folder
-            </button>
+            />
           </div>
         )}
       >

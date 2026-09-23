@@ -1,9 +1,10 @@
 import { useState, useRef } from "react";
-import { cx, CONTROL_MOTION } from "../uiShared.js";
+import { cx } from "../uiShared.js";
 import { MaskIcon } from "../components/IconButton.jsx";
 import { EyeOff } from "lucide-react";
 import { SidebarGroup } from "./SidebarGroup.jsx";
 import { SidebarShell } from "./SidebarShell.jsx";
+import { SidebarActionButton } from "./SidebarActionButton.jsx";
 import { StoryHistoryActions, ChapterHistoryActions } from "./HistoryActions.jsx";
 import { SidebarSearchModal } from "./SidebarSearchModal.jsx";
 
@@ -109,60 +110,33 @@ export function StoryRail({
         listClassName="space-y-3"
         actions={(
           <div className="mb-4">
-            <button
-              type="button"
-              data-tour="write-home-button"
+            <SidebarActionButton
+              tourId="write-home-button"
+              icon={<i className="fi fi-rr-home text-[17px] leading-none" />}
+              label="Home"
+              disabled={navigationLocked}
               onClick={() => {
                 if (navigationLocked) return;
                 onGoHome();
                 onCloseMobile();
               }}
+            />
+            <SidebarActionButton
+              icon={<MaskIcon src="/icons/newbook.png" size={20} />}
+              label="New story"
               disabled={navigationLocked}
-              className={cx(
-                "flex h-9 w-full items-center gap-3 rounded-xl bg-transparent px-2 text-[15px] font-medium text-white hover:bg-white/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:cursor-not-allowed disabled:opacity-55",
-                CONTROL_MOTION,
-              )}
-            >
-              <span
-                aria-hidden="true"
-                className="grid h-5 w-5 shrink-0 place-items-center text-[17px] leading-none text-neutral-200"
-              >
-                <i className="fi fi-rr-home" />
-              </span>
-              Home
-            </button>
-
-            <button
-              type="button"
               onClick={() => {
                 if (navigationLocked) return;
                 onNewStory();
                 onCloseMobile();
               }}
-              disabled={navigationLocked}
-              className={cx(
-                "flex h-9 w-full items-center gap-3 rounded-xl bg-transparent px-2 text-[15px] font-medium text-white hover:bg-white/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:cursor-not-allowed disabled:opacity-55",
-                CONTROL_MOTION,
-              )}
-            >
-              <MaskIcon src="/icons/newbook.png" size={20} className="text-neutral-200" />
-              New story
-            </button>
-
-            <button
-              type="button"
-              onClick={() => importInputRef.current?.click()}
+            />
+            <SidebarActionButton
+              icon={<MaskIcon src="/icons/file-import.png" size={17} />}
+              label={importingStory ? "Importing story" : "Import story"}
               disabled={navigationLocked || importingStory}
-              className={cx(
-                "flex h-9 w-full items-center gap-3 rounded-xl bg-transparent px-2 text-[15px] font-medium text-white hover:bg-white/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:cursor-not-allowed disabled:opacity-55",
-                CONTROL_MOTION,
-              )}
-            >
-              <span className="grid h-5 w-5 shrink-0 place-items-center">
-                <MaskIcon src="/icons/file-import.png" size={17} className="text-neutral-200" />
-              </span>
-              {importingStory ? "Importing story" : "Import story"}
-            </button>
+              onClick={() => importInputRef.current?.click()}
+            />
             <input
               ref={importInputRef}
               type="file"

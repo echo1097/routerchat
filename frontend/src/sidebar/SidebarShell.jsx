@@ -7,6 +7,11 @@ import { SlidingTabs } from "../components/SlidingTabs.jsx";
 import { CHAT_MODES } from "../settings/settingsDefaults.js";
 import { FeedbackLink } from "./FeedbackLink.jsx";
 
+const headerButtonClass = cx(
+  "h-9 w-9 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:bg-white/[0.06] hover:text-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
+  CONTROL_MOTION,
+);
+
 function useRailEdges() {
   const [railScrolling, setRailScrolling] = useState(false);
   const [railScrolled, setRailScrolled] = useState(false);
@@ -112,34 +117,31 @@ export function SidebarShell({
       >
         <div
           className={cx(
-            "chat-sidebar-content flex h-full w-[292px] flex-col p-4 lg:w-[276px]",
+            "chat-sidebar-content flex h-full w-[292px] flex-col px-3 pb-3 pt-3.5 lg:w-[276px]",
             collapsed
               ? "lg:-translate-x-8 lg:opacity-0"
               : "lg:translate-x-0 lg:opacity-100",
           )}
         >
-          <div className="mb-4 flex items-center justify-between gap-2 pl-2">
+          <div className="mb-3 flex h-9 items-center justify-between gap-2 pl-2.5">
             <div className="flex min-w-0 items-baseline gap-1.5">
-              <span className="truncate text-[19px] font-bold tracking-[-0.015em] text-white">
+              <span className="truncate text-[17px] font-semibold tracking-[-0.02em] text-white">
                 RouterChat
               </span>
-              <span className="shrink-0 text-[19px] font-bold tracking-[-0.015em] text-neutral-500">
+              <span className="shrink-0 text-[13px] font-medium tabular-nums text-neutral-500">
                 {APP_VERSION}
               </span>
             </div>
 
-            <div className="flex shrink-0 items-center">
+            <div className="flex shrink-0 items-center gap-0.5">
               <button
                 type="button"
                 aria-label={searchLabel}
                 title={searchLabel}
                 onClick={onSearch}
-                className={cx(
-                  "hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:bg-white/[0.08] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 lg:inline-flex",
-                  CONTROL_MOTION,
-                )}
+                className={cx(headerButtonClass, "hidden lg:inline-flex")}
               >
-                <MaskIcon src="/icons/search.png" size={19} />
+                <MaskIcon src="/icons/search.png" size={17} />
               </button>
               <button
                 type="button"
@@ -147,29 +149,23 @@ export function SidebarShell({
                 title="Collapse sidebar"
                 data-tour={collapseTourId}
                 onClick={onCollapse}
-                className={cx(
-                  "hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:bg-white/[0.08] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 lg:inline-flex",
-                  CONTROL_MOTION,
-                )}
+                className={cx(headerButtonClass, "hidden lg:inline-flex")}
               >
-                <MaskIcon src="/icons/sidebar.png" size={15.5} />
+                <MaskIcon src="/icons/sidebar.png" size={15} />
               </button>
               <button
                 type="button"
                 aria-label={closeLabel}
                 title={closeLabel}
                 onClick={onCloseMobile}
-                className={cx(
-                  "inline-flex h-10 w-9 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 lg:hidden",
-                  CONTROL_MOTION,
-                )}
+                className={cx(headerButtonClass, "inline-flex lg:hidden")}
               >
-                <X size={19} />
+                <X size={18} />
               </button>
             </div>
           </div>
 
-          <div className="mb-3.5 flex justify-center">
+          <div className="mb-3 flex justify-center">
             <SlidingTabs
               options={CHAT_MODES}
               value={mode}

@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { cx, CONTROL_MOTION } from "../uiShared.js";
+import { cx } from "../uiShared.js";
 import { promptModelName } from "../modelFormatting.js";
 import { ChatHistoryActions, FolderActions } from "./HistoryActions.jsx";
 import { MaskIcon } from "../components/IconButton.jsx";
@@ -237,82 +237,88 @@ export function ConversationRail({
 
       return (
         <div key={folder.id}>
-        <div
-          onDragOver={(event) => {
-            if (!dragChatId) return;
-            event.preventDefault();
-            event.dataTransfer.dropEffect = "move";
-            setDropFolderId(folder.id);
-          }}
-          onDragLeave={() => setDropFolderId((current) => (current === folder.id ? null : current))}
-          onDrop={(event) => {
-            event.preventDefault();
-            handleChatDrop(folder.id);
-          }}
-          className={cx(
-            "group relative grid select-none grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-2xl border border-transparent px-2 py-1 transition-[background-color,border-color,box-shadow] duration-150 ease-out hover:bg-white/[0.045] hover:shadow-[var(--shadow-border)]",
-            dropFolderId === folder.id && "border-white/20 bg-white/[0.07]",
-          )}
-        >
-          {renaming ? (
-            <div className="flex min-h-8 min-w-0 items-center gap-2 rounded-xl px-1 py-0.5">
-              <MaskIcon src="/icons/folder.png" size={16} className="text-neutral-300" />
-              <input
-                autoFocus
-                value={folderRenameDraft}
-                onChange={(event) => setFolderRenameDraft(event.target.value)}
-                data-1p-ignore="true"
-                onBlur={() => commitFolderRename(folder)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") event.currentTarget.blur();
-                  if (event.key === "Escape") {
-                    event.preventDefault();
-                    cancelFolderRename();
-                  }
-                }}
-                className="block h-6 w-full min-w-0 rounded-md bg-white/[0.06] px-1.5 text-sm font-medium text-neutral-100 outline-none shadow-[var(--shadow-border)]"
-              />
-            </div>
-          ) : (
-            <button
-              type="button"
-              aria-expanded={expanded}
-              onClick={() => toggleFolderExpanded(folder.id)}
-              className={cx(
-                "flex min-h-8 min-w-0 items-center gap-2 rounded-xl px-1 py-0.5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15",
-                CONTROL_MOTION,
-              )}
-            >
-              <MaskIcon src="/icons/folder.png" size={16} className="text-neutral-300" />
-              <span className="truncate text-sm font-medium leading-4 text-neutral-100">
-                {folder.name}
-              </span>
-              {folderChats.length > 0 && (
-                <span className="shrink-0 text-[11px] leading-3 text-neutral-500">
-                  {folderChats.length}
-                </span>
-              )}
-            </button>
-          )}
-          <FolderActions
-            folder={folder}
-            onRename={startFolderRename}
-            onDelete={onDeleteFolder}
-            onNewChat={onNewChatInFolder}
-          />
-        </div>
-
-        {expanded && (
-          <div className="mt-1 space-y-1 border-l border-white/10 pl-2">
-            {folderChats.length > 0 ? (
-              renderChatRows(folderChats, 1)
-            ) : (
-              <div className="px-2 py-2 text-[12px] leading-4 text-neutral-500">
-                Drag a chat here, or use New chat in this folder.
-              </div>
+          <div
+            onDragOver={(event) => {
+              if (!dragChatId) return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "move";
+              setDropFolderId(folder.id);
+            }}
+            onDragLeave={() => setDropFolderId((current) => (current === folder.id ? null : current))}
+            onDrop={(event) => {
+              event.preventDefault();
+              handleChatDrop(folder.id);
+            }}
+            className={cx(
+              SIDEBAR_ROW,
+              dropFolderId === folder.id
+                ? "bg-white/[0.07] ring-1 ring-inset ring-white/15"
+                : SIDEBAR_ROW_IDLE,
             )}
+          >
+            {renaming ? (
+              <div className="flex h-9 min-w-0 items-center gap-2 pl-2.5 pr-1">
+                <MaskIcon src="/icons/folder.png" size={16} className="text-neutral-400" />
+                <input
+                  autoFocus
+                  value={folderRenameDraft}
+                  onChange={(event) => setFolderRenameDraft(event.target.value)}
+                  data-1p-ignore="true"
+                  onBlur={() => commitFolderRename(folder)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") event.currentTarget.blur();
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      cancelFolderRename();
+                    }
+                  }}
+                  className={cx(SIDEBAR_RENAME_INPUT, "h-6 text-[14px]")}
+                />
+              </div>
+            ) : (
+              <button
+                type="button"
+                aria-expanded={expanded}
+                onClick={() => toggleFolderExpanded(folder.id)}
+                className={cx(SIDEBAR_ROW_BUTTON, "flex h-9 items-center gap-2")}
+              >
+                <MaskIcon
+                  src="/icons/folder.png"
+                  size={16}
+                  className={cx(
+                    "transition-colors duration-150 ease-out",
+                    expanded ? "text-neutral-200" : "text-neutral-400 group-hover:text-neutral-300",
+                  )}
+                />
+                <span className="truncate text-[14px] leading-[18px] text-neutral-200 group-hover:text-neutral-100">
+                  {folder.name}
+                </span>
+                {folderChats.length > 0 && (
+                  <span className="shrink-0 text-[12px] leading-4 tabular-nums text-[#858585]">
+                    {folderChats.length}
+                  </span>
+                )}
+              </button>
+            )}
+            <FolderActions
+              folder={folder}
+              onRename={startFolderRename}
+              onDelete={onDeleteFolder}
+              onNewChat={onNewChatInFolder}
+            />
           </div>
-        )}
+
+          {expanded && (
+            <div className="ml-[18px] mt-px flex flex-col gap-px border-l border-white/[0.08] pl-1.5">
+              {folderChats.length > 0 ? (
+                renderChatRows(folderChats, 1)
+              ) : (
+                <div className="px-2.5 py-2 text-pretty text-[12px] leading-4 text-[#858585]">
+                  Drag a chat here, or use New chat in this folder.
+                </div>
+              )}
+            </div>
+          )}
         </div>
       );
     });

@@ -211,7 +211,7 @@ export function SidebarShell({
             />
           </div>
 
-          <footer className="mt-1 -mb-2">
+          <footer className="mt-2 border-t border-white/[0.06] pt-2">
             <FeedbackLink />
           </footer>
         </div>

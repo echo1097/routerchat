@@ -1037,12 +1037,7 @@ export function SettingsDrawer({
           </nav>
         </aside>
 
-        <div
-          className={cx(
-            "settings-page-panel flex min-h-0 min-w-0 flex-col overflow-hidden",
-            activePage === "usage" && "is-wide",
-          )}
-        >
+        <div className="settings-page-panel flex min-h-0 min-w-0 flex-col overflow-hidden">
           <header className="settings-inline pt-4 md:pt-7">
             <div className="border-b border-white/10 pb-3 md:pb-4">
               <div className="flex items-center justify-between gap-4">

@@ -6,7 +6,7 @@
 
 **A free, local OpenRouter interface for chatting and longform writing.**
 
-Strictly BYOK. Available for macOS and Windows.
+Bring your own key. Available for macOS and Windows.
 
 <p>
   <a href="#install-routerchat">Install</a> ·
@@ -23,15 +23,13 @@ Strictly BYOK. Available for macOS and Windows.
 
 ## Disclaimer
 
-RouterChat is provided as-is. You are responsible for how you use it, including your use of third-party models, API keys, generated content, and any costs or consequences from that use. By using RouterChat you agree to abide by [the terms of service](TOS.md).
+RouterChat is provided as-is. You are responsible for how you use it, including third-party models, API keys, generated content, and any resulting costs or consequences. By using RouterChat you agree to the [terms of service](TOS.md).
 
-As of August 3, 2026, RouterChat is distributed under the [Apache License 2.0](LICENSE). Releases up to and including 0.3.5 remain available under the MIT License.
+RouterChat is licensed under the [Apache License 2.0](LICENSE) as of August 3, 2026. Releases up to and including 0.3.5 remain available under the MIT License.
 
 ## Install RouterChat
 
-RouterChat runs locally and only needs an [OpenRouter API key](https://openrouter.ai/keys). 
-
-You can inspect the open-source [macOS installer](https://github.com/echo1097/get-routerchat/blob/main/install.sh) or [Windows installer](https://github.com/echo1097/get-routerchat/blob/main/install.ps1) before running it.
+All you need is an [OpenRouter API key](https://openrouter.ai/keys). Both installers are open source, so you can read the [macOS installer](https://github.com/echo1097/get-routerchat/blob/main/install.sh) or [Windows installer](https://github.com/echo1097/get-routerchat/blob/main/install.ps1) before running it.
 
 **macOS (Apple Silicon or Intel):**
 
@@ -45,23 +43,21 @@ curl -fsSL https://echo1097.github.io/get-routerchat/install.sh | sh
 powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://echo1097.github.io/get-routerchat/install.ps1 | iex"
 ```
 
-See the [setup guide](setup.md) for starting, updating, repairing, data locations, and manual developer installation. 
-
-For support with any issues that arise, see [SUPPORT.md](SUPPORT.md) and if necessary fill out [this form](https://forms.gle/gTth2TcXLYAArvGm6).
-
-To remove RouterChat, run **Uninstall RouterChat** from `~/Applications/RouterChat` on macOS or the Start Menu on Windows. The uninstaller can save your database to Downloads before removing the app.
+- **Setup:** The [setup guide](setup.md) covers starting, updating, repairing, data locations, and manual developer installation.
+- **Help:** See [SUPPORT.md](SUPPORT.md), or fill out [this form](https://forms.gle/gTth2TcXLYAArvGm6) if you still need help.
+- **Uninstall:** Run **Uninstall RouterChat** from `~/Applications/RouterChat` on macOS or the Start Menu on Windows. It can save your database to Downloads before removing the app.
 
 > [!WARNING]
-> Tested locally on macOS Apple Silicon and on Windows 11 x64 using a sandbox VM. macOS Intel has not yet been tested.
+> Tested on macOS Apple Silicon and on Windows 11 x64 in a sandbox VM. macOS Intel has not been tested yet.
 
 ## Features
 
-- **Chat Mode:** A local chat interface with model selection, web search, file attachments, temporary chats, and chat history.
-- **Writing Mode:** A dedicated longform writing workspace. Create stories, organize them into chapters, brainstorm ideas, and make a lorebook for characters and world details.
+- **Chat Mode:** Chat with any OpenRouter model, with web search, file attachments, temporary chats, and chat history.
+- **Writing Mode:** A longform writing workspace. Write stories in chapters, brainstorm ideas, and keep a lorebook of characters and world details.
 
 ## Roadmap
 
-The top priority right now is introducing support for more API providers.
+The top priority right now is support for more API providers.
 
 ## Features added
 
@@ -69,48 +65,51 @@ The top priority right now is introducing support for more API providers.
     - macOS and Windows
 - UI improvements
     - Navigation bar for moving through long chats
-    - Model context meter and warnings when context is getting full
+    - Context meter with warnings when a model's context is almost full
     - Guided tours for Chat and Write modes
 - Writing Mode improvements
     - Brainstorming canvas with branching ideas, copy buttons, and prompt regeneration
-    - Create and edit chapters with a formatting toolbar
+    - Chapter editor with a formatting toolbar
     - Chapter history
     - Import and export full stories, including chapters and lorebooks
 - Chat Mode improvements
     - Web search with sources and citations
-    - Image, PDF, text, and code attachments, including drag and drop
+    - Image, PDF, text, and code attachments, with drag and drop
     - Folders, pinned chats, and chat search
     - Temporary chats
-    - Automatically generated chat names
+    - Automatic chat names
     - Chat import and export
-    - Edit prompts, regenerate replies, and view response token usage and costs
+    - Edit prompts, regenerate replies, and see token usage and cost for each response
 - Memory for Write mode
-    - Lorebook entries for characters, locations, items, events, notes, chapter summaries, and timeline
-    - Manual and model-generated entries, with automatic or manual lorebook updates
-    - Lorebook and timeline repair tools
+    - Lorebook entries for characters, locations, items, events, notes, chapter summaries, and a timeline
+    - Write entries yourself or let the model generate them, with automatic or manual lorebook updates
+    - Repair tools for the lorebook and timeline
 - Voice input
     - Record and transcribe speech in Chat, Write, and Brainstorm
 - Usage tracking
     - Spending, request counts, and token usage for the last 7 days
     - Lifetime totals per model
 - Model settings
-    - Model search and default model selection
-    - System prompts, temperature, output limits, and supported reasoning controls
-    - Fastest or lowest-priced provider preferences
+    - Model search and a default model
+    - System prompts, temperature, output limits, and reasoning controls where supported
+    - Provider preference for fastest or lowest price
     - Privacy and Zero Data Retention routing options
 
 ## AI usage disclaimer
 
-AI was used to support development and documentation for this project. All code and documentation were reviewed by myself before being published.
+AI helped with development and documentation for this project. I reviewed all code and documentation before publishing it.
 
 ## Bug reporting, feedback, and contributing
-- To report a bug open an issue and provide as much context and information as you can so I can reproduce and fix it. Alternatively if you do not have a GitHub account and prefer not to create one, fill out [this form](https://forms.gle/gTth2TcXLYAArvGm6) instead.
-- To provide feedback fill out [this form](https://forms.gle/gTth2TcXLYAArvGm6).
-- AI slop pull requests will not be merged. If you are using AI to assist your development, clean up and review the code manually and be transparent in your usage of AI.
+
+- **Bugs:** Open an issue with as much detail as you can so I can reproduce and fix it. If you don't have a GitHub account, use [this form](https://forms.gle/gTth2TcXLYAArvGm6) instead.
+- **Feedback:** Fill out [this form](https://forms.gle/gTth2TcXLYAArvGm6).
+- **Pull requests:** AI slop pull requests will not be merged. If you use AI, review and clean up the code yourself and say how you used it.
 
 ## Local data
 
-Packaged installations keep the OpenRouter key and database outside the replaceable application directory. Git clone installations continue to use `.env` and `data/routerchat.sqlite3` inside the repository. Saved chats and settings stay on your computer, and the project author never receives them or your API key. When you send a prompt, attachment, or voice recording, the relevant data is sent to OpenRouter so it can provide the requested service. See [TOS.md](TOS.md) for the complete list of connections.
+Your chats, settings, and API key stay on your computer, and the project author never receives them. Packaged installs keep the OpenRouter key and database outside the app folder, so updates don't replace them. Git clone installs keep using `.env` and `data/routerchat.sqlite3` inside the repository.
+
+When you send a prompt, attachment, or voice recording, that data goes to OpenRouter so it can handle the request. See [TOS.md](TOS.md) for the full list of connections.
 
 ## Media
 
@@ -128,5 +127,4 @@ Lorebook entry
 
 Write Mode
 
-<img width="1000" alt="RouterChat lorebook entry" src="media/write%20mode.png" />
-
+<img width="1000" alt="RouterChat Write Mode" src="media/write%20mode.png" />

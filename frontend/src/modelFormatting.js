@@ -1,16 +1,22 @@
+export function stripClaude(name) {
+  return String(name || "").replace(/^(Anthropic:\s*)?Claude\s+/i, "$1");
+}
+
 function modelName(models, id) {
   return models.find((model) => model.id === id)?.name || id || "No model";
 }
 
 export function promptModelName(models, id) {
-  return modelName(models, id)
-    .replace(/^[^:]+:\s*/, "")
-    .replace(/^[^/]+\//, "");
+  return stripClaude(
+    modelName(models, id)
+      .replace(/^[^:]+:\s*/, "")
+      .replace(/^[^/]+\//, ""),
+  );
 }
 
 export function modelDisplayName(model) {
   const name = String(model.name || model.id || "");
-  return name.includes(": ") ? name.slice(name.indexOf(": ") + 2) : name;
+  return stripClaude(name.includes(": ") ? name.slice(name.indexOf(": ") + 2) : name);
 }
 
 export function modelMaker(model) {

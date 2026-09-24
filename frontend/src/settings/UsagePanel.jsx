@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { cx } from "../uiShared.js";
+import { stripClaude } from "../modelFormatting.js";
 import "./UsagePanel.css";
 
 const chartColors = ["#c59af5", "#e5ae78", "#7dc7ba", "#e68eb0", "#aebad1", "#b9c984"];
@@ -266,14 +267,14 @@ export function UsagePanel({ models }) {
 
   const modelSeries = usage.models.map((item, index) => ({
     ...item,
-    name: item.name || models.find((model) => model.id === item.id)?.name
-      || (item.id === "unknown" ? "Unrecorded model" : item.id.split("/").at(-1)),
+    name: stripClaude(item.name || models.find((model) => model.id === item.id)?.name
+      || (item.id === "unknown" ? "Unrecorded model" : item.id.split("/").at(-1))),
     color: chartColors[index % chartColors.length],
   }));
   const lifetimeModels = (usage.lifetimeModels || []).map((item, index) => ({
     ...item,
-    name: item.name || models.find((model) => model.id === item.id)?.name
-      || (item.id === "unknown" ? "Unrecorded model" : item.id.split("/").at(-1)),
+    name: stripClaude(item.name || models.find((model) => model.id === item.id)?.name
+      || (item.id === "unknown" ? "Unrecorded model" : item.id.split("/").at(-1))),
     color: modelSeries.find((model) => model.id === item.id)?.color || chartColors[index % chartColors.length],
   }));
   const topModels = modelSeries.slice(0, 5);

@@ -217,6 +217,7 @@
   flex-direction: column;
   justify-content: space-between;
   pointer-events: none;
+  z-index: 1;
 }
 
 .usage-grid-lines i {
@@ -237,6 +238,15 @@
   padding: 0 3px;
 }
 
+.usage-day::before {
+  content: "";
+  position: absolute;
+  inset: 1px 3px 25px;
+  border-radius: 7px;
+  z-index: 0;
+  transition: background-color 150ms ease-out;
+}
+
 .usage-bar {
   position: relative;
   display: flex;
@@ -245,12 +255,11 @@
   height: calc(100% - 24px);
   border-radius: 7px;
   outline: none;
-  transition: background-color 150ms ease-out;
-  z-index: 1;
+  z-index: 2;
 }
 
-.usage-day:hover .usage-bar,
-.usage-bar:focus-visible {
+.usage-day:hover::before,
+.usage-day:has(.usage-bar:focus-visible)::before {
   background: rgba(255, 255, 255, 0.04);
 }
 
@@ -367,10 +376,6 @@
     opacity 120ms ease-out,
     transform 160ms var(--usage-ease),
     visibility 0s;
-}
-
-.usage-day:hover, .usage-day:has(.usage-bar:focus-visible) {
-  z-index: 5;
 }
 
 .usage-detail-tooltip {

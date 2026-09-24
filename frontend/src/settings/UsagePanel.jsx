@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { cx } from "../uiShared.js";
 import "./UsagePanel.css";
@@ -53,7 +53,6 @@ function niceCeiling(value) {
 
 function UsageMetric({ metric, usage }) {
   const [activeIndex, setActiveIndex] = useState(null);
-  const gradientId = `usage-spark-${useId().replace(/:/g, "")}`;
   const days = usage.days;
   const maxValue = Math.max(...days.map((day) => day[metric.key] || 0), 0.000001);
   const plotWidth = sparkWidth - sparkPad * 2;
@@ -118,25 +117,8 @@ function UsageMetric({ metric, usage }) {
         onBlur={() => setActiveIndex(null)}
         onKeyDown={navigateDays}
       >
-        <defs>
-          <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.16" />
-            <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
-          </linearGradient>
-        </defs>
         {drawnSegments.map((segment, index) => (
-          <g key={index}>
-            <polygon
-              className="usage-sparkline-area"
-              fill={`url(#${gradientId})`}
-              points={[
-                `${segment[0].x},${sparkHeight}`,
-                ...segment.map((point) => `${point.x},${point.y}`),
-                `${segment.at(-1).x},${sparkHeight}`,
-              ].join(" ")}
-            />
-            <polyline points={segment.map((point) => `${point.x},${point.y}`).join(" ")} />
-          </g>
+          <polyline key={index} points={segment.map((point) => `${point.x},${point.y}`).join(" ")} />
         ))}
         {activePoint && (
           <g className="usage-sparkline-marker" style={{ transform: `translateX(${activePoint.x}px)` }}>

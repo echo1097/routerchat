@@ -41,6 +41,7 @@ import {
   toFiniteNumber,
   getContextWindowInfo,
   isFreeModel,
+  isBatchModel,
   promptModelName,
 } from "./modelFormatting.js";
 import { api, responseErrorDetail } from "./api.js";
@@ -117,6 +118,7 @@ function App() {
   );
   const [namingChatId, setNamingChatId] = useState(null);
   const [hideFreeModels, setHideFreeModels] = useState(Boolean(localAppSettings.hide_free_models));
+  const [hideBatchModels, setHideBatchModels] = useState(Boolean(localAppSettings.hide_batch_models));
   const [nitroMode, setNitroMode] = useState(Boolean(localAppSettings.nitro_mode));
   const [cheapestMode, setCheapestMode] = useState(Boolean(localAppSettings.cheapest_mode));
   const [privacyMode, setPrivacyMode] = useState(Boolean(localAppSettings.privacy_mode));
@@ -763,15 +765,20 @@ function App() {
         const currentModel = loaded.find((model) => model.id === current.model);
         if (
           currentModel &&
-          (activeChatId || activeStoryId || !hideFreeModels || !isFreeModel(currentModel))
+          (activeChatId ||
+            activeStoryId ||
+            ((!hideFreeModels || !isFreeModel(currentModel)) &&
+              (!hideBatchModels || !isBatchModel(currentModel))))
         ) {
           return requiresThinking(loaded, current.model)
             ? { ...current, thinking_enabled: true }
             : current;
         }
-        const selectableModels = hideFreeModels
-          ? loaded.filter((model) => !isFreeModel(model))
-          : loaded;
+        const selectableModels = loaded.filter(
+          (model) =>
+            (!hideFreeModels || !isFreeModel(model)) &&
+            (!hideBatchModels || !isBatchModel(model)),
+        );
         const savedDefaultModel = defaultModelRef.current;
         const fallbackModel = selectableModels.some((model) => model.id === savedDefaultModel)
           ? savedDefaultModel
@@ -787,7 +794,7 @@ function App() {
     } catch (error) {
       setStatus(error.message);
     }
-  }, [activeChatId, activeStoryId, defaultModel, hideFreeModels]);
+  }, [activeChatId, activeStoryId, defaultModel, hideBatchModels, hideFreeModels]);
 
   const loadAppSettings = useCallback(async () => {
     try {
@@ -797,6 +804,10 @@ function App() {
         typeof payload.hide_free_models === "boolean"
           ? payload.hide_free_models
           : Boolean(readLocalAppSettings().hide_free_models);
+      const nextHideBatchModels =
+        typeof payload.hide_batch_models === "boolean"
+          ? payload.hide_batch_models
+          : Boolean(readLocalAppSettings().hide_batch_models);
       const nextGenerateChatName =
         typeof payload.generate_chat_name === "boolean"
           ? payload.generate_chat_name
@@ -825,6 +836,7 @@ function App() {
       defaultModelRef.current = nextDefaultModel;
       setGenerateChatName(nextGenerateChatName);
       setHideFreeModels(nextHideFreeModels);
+      setHideBatchModels(nextHideBatchModels);
       setNitroMode(nextNitroMode);
       setSmoothStreaming(nextSmoothStreaming);
       setCheapestMode(nextCheapestMode);
@@ -833,6 +845,7 @@ function App() {
       writeLocalAppSettings({
         generate_chat_name: nextGenerateChatName,
         hide_free_models: nextHideFreeModels,
+        hide_batch_models: nextHideBatchModels,
         nitro_mode: nextNitroMode,
         smooth_streaming: nextSmoothStreaming,
         cheapest_mode: nextCheapestMode,
@@ -1123,6 +1136,28 @@ function App() {
       showToast("Default model updated");
     } catch (error) {
       setStatus(error.message);
+    }
+  }
+
+  async function updateHideBatchModels(value) {
+    setHideBatchModels(value);
+    writeLocalAppSettings({ hide_batch_models: value });
+    try {
+      const payload = await api("/api/settings", {
+        method: "PATCH",
+        body: JSON.stringify({ hide_batch_models: value }),
+      });
+      const nextValue =
+        typeof payload.hide_batch_models === "boolean"
+          ? payload.hide_batch_models
+          : value;
+      setHideBatchModels(nextValue);
+      writeLocalAppSettings({ hide_batch_models: nextValue });
+      showToast(value ? "Batch models hidden" : "Batch models shown");
+    } catch (error) {
+      setHideBatchModels(value);
+      writeLocalAppSettings({ hide_batch_models: value });
+      setStatus(`Saved locally. Restart the server to sync this setting. ${error.message}`);
     }
   }
 
@@ -3416,6 +3451,7 @@ function App() {
         defaultModel={defaultModel}
         generateChatName={generateChatName}
         hideFreeModels={hideFreeModels}
+        hideBatchModels={hideBatchModels}
         nitroMode={nitroMode}
         cheapestMode={cheapestMode}
         privacyMode={privacyMode}
@@ -3428,6 +3464,7 @@ function App() {
         onSetDefaultModel={updateDefaultModel}
         onToggleGenerateChatName={updateGenerateChatName}
         onToggleHideFreeModels={updateHideFreeModels}
+        onToggleHideBatchModels={updateHideBatchModels}
         onToggleNitroMode={updateNitroMode}
         onToggleCheapestMode={updateCheapestMode}
         onTogglePrivacyMode={updatePrivacyMode}

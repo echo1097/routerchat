@@ -60,6 +60,10 @@ export function priceLabel(model) {
   )}`;
 }
 
+export function isBatchModel(model) {
+  return String(model.id || "").endsWith(":batch");
+}
+
 export function isFreeModel(model) {
   if (String(model.id || "").endsWith(":free")) return true;
   const prompt = Number(model.pricing?.prompt || 0);

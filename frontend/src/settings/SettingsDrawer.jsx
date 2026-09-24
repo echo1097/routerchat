@@ -9,6 +9,7 @@ import {
   getModelContextLimit,
   formatTokens,
   isFreeModel,
+  isBatchModel,
 } from "../modelFormatting.js";
 import { SearchClearField } from "../components/SearchClearField.jsx";
 import { ModelPicker } from "./ModelPicker.jsx";
@@ -95,6 +96,7 @@ export function SettingsDrawer({
   defaultModel,
   generateChatName,
   hideFreeModels,
+  hideBatchModels,
   nitroMode,
   cheapestMode,
   privacyMode,
@@ -107,6 +109,7 @@ export function SettingsDrawer({
   onSetDefaultModel,
   onToggleGenerateChatName,
   onToggleHideFreeModels,
+  onToggleHideBatchModels,
   onToggleNitroMode,
   onToggleCheapestMode,
   onTogglePrivacyMode,
@@ -180,24 +183,26 @@ export function SettingsDrawer({
     return models
       .filter((model) => {
         if (hideFreeModels && isFreeModel(model)) return false;
+        if (hideBatchModels && isBatchModel(model)) return false;
         if (!normalized) return true;
         return [model.name, model.id, model.description]
           .filter(Boolean)
           .some((value) => value.toLowerCase().includes(normalized));
       });
-  }, [hideFreeModels, models, query]);
+  }, [hideBatchModels, hideFreeModels, models, query]);
 
   const filteredLorebookModels = useMemo(() => {
     const normalized = lorebookQuery.trim().toLowerCase();
     return models
       .filter((model) => {
         if (hideFreeModels && isFreeModel(model)) return false;
+        if (hideBatchModels && isBatchModel(model)) return false;
         if (!normalized) return true;
         return [model.name, model.id, model.description]
           .filter(Boolean)
           .some((value) => value.toLowerCase().includes(normalized));
       });
-  }, [hideFreeModels, lorebookQuery, models]);
+  }, [hideBatchModels, hideFreeModels, lorebookQuery, models]);
 
   const lorebookInherits = !settings.lorebook_model;
   const lorebookModelId = settings.lorebook_model || settings.model;
@@ -471,6 +476,21 @@ export function SettingsDrawer({
           checked={hideFreeModels}
           onChange={onToggleHideFreeModels}
           label="Hide free models"
+        />
+      </SettingRow>
+    </section>
+  );
+
+  const batchFilterSection = (
+    <section className="border-b border-white/[0.08] py-3">
+      <SettingRow
+        title="Disable batch models"
+        description="Don't show batch OpenRouter models in the model picker"
+      >
+        <SettingSwitch
+          checked={hideBatchModels}
+          onChange={onToggleHideBatchModels}
+          label="Hide batch models"
         />
       </SettingRow>
     </section>
@@ -1062,6 +1082,7 @@ export function SettingsDrawer({
               {keySection}
               {chatNameSection}
               {modelFilterSection}
+              {batchFilterSection}
               {turboSection}
               {cheapestSection}
               {privacySection}

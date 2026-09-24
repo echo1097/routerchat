@@ -530,7 +530,6 @@
 }
 
 .usage-note {
-  max-width: 72ch;
   margin: 4px 2px 0;
   color: var(--usage-soft);
   font-size: 11px;

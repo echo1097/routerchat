@@ -68,7 +68,7 @@ export function ModelPicker({
           <span className="block truncate text-sm font-medium text-neutral-100">{name}</span>
           <span className="mt-0.5 block truncate text-xs text-neutral-600">{subLabel}</span>
         </button>
-        <span className="flex min-w-0 flex-col items-center px-1 text-center text-xs leading-4 tabular-nums text-neutral-500">
+        <span className="flex min-w-0 flex-col items-end px-1 text-right text-xs leading-4 tabular-nums text-neutral-500">
           {renderPrice && model ? renderPrice(model) : (
             <>
               <span className="whitespace-nowrap">{price}</span>
@@ -105,9 +105,9 @@ export function ModelPicker({
         {note}
       </div>
 
-      <div className="grid grid-cols-[minmax(0,1fr)_104px] items-center px-1 pb-2 pt-1 text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-600">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-1 pb-2 pt-1 text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-600">
         <span>Model</span>
-        <span className="whitespace-nowrap text-center">{priceHeader}</span>
+        <span className="whitespace-nowrap px-1 text-right">{priceHeader}</span>
       </div>
 
       <div className="relative min-h-0 flex-1">

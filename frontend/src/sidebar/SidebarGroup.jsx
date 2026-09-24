@@ -6,7 +6,7 @@ export function SidebarGroup({ label, open, onToggle, children, dropProps = {}, 
   return (
     <section
       className={cx(
-        "t-acc chat-history-group rounded-2xl border border-transparent px-1 transition-[background-color,border-color,box-shadow] duration-150 ease-out",
+        "t-acc chat-history-group rounded-xl border border-transparent transition-[background-color,border-color,box-shadow] duration-150 ease-out",
         dropActive && "border-white/20 bg-white/[0.07]",
       )}
       data-open={String(open)}

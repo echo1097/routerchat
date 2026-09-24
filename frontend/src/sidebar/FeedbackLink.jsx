@@ -159,12 +159,12 @@ export function FeedbackLink() {
 
   return (
     <>
-      <div className="flex w-full items-center justify-center gap-2">
+      <div className="flex w-full items-center justify-center gap-1">
         <button
           type="button"
           onClick={() => setChangelogOpen(true)}
           className={cx(
-            "flex h-9 flex-1 items-center justify-center rounded-xl px-2 text-[13px] font-medium text-neutral-500 hover:bg-white/[0.045] hover:text-neutral-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
+            "flex h-8 flex-1 items-center justify-center rounded-lg px-2 text-[12.5px] font-medium text-[#858585] hover:bg-white/[0.04] hover:text-neutral-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
             CONTROL_MOTION,
           )}
         >
@@ -175,7 +175,7 @@ export function FeedbackLink() {
           target="_blank"
           rel="noreferrer"
           className={cx(
-            "flex h-9 flex-1 items-center justify-center rounded-xl px-2 text-[13px] font-medium text-neutral-500 hover:bg-white/[0.045] hover:text-neutral-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
+            "flex h-8 flex-1 items-center justify-center rounded-lg px-2 text-[12.5px] font-medium text-[#858585] hover:bg-white/[0.04] hover:text-neutral-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
             CONTROL_MOTION,
           )}
         >

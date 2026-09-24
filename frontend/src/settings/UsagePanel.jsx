@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
+import { cx } from "../uiShared.js";
 import "./UsagePanel.css";
 
 const chartColors = ["#c59af5", "#e5ae78", "#7dc7ba", "#e68eb0", "#aebad1", "#b9c984"];
@@ -38,19 +39,33 @@ function comparison(value, previous) {
   return `${change > 0 ? "↑" : "↓"} ${Math.abs(change).toFixed(1)}% vs last week`;
 }
 
+const sparkWidth = 240;
+const sparkHeight = 48;
+const sparkPad = 8;
+
+function niceCeiling(value) {
+  if (!(value > 0)) return 0;
+  const magnitude = 10 ** Math.floor(Math.log10(value));
+  const fraction = value / magnitude;
+  const step = [1, 2, 2.5, 5, 10].find((candidate) => fraction <= candidate);
+  return step * magnitude;
+}
+
 function UsageMetric({ metric, usage }) {
   const [activeIndex, setActiveIndex] = useState(null);
   const days = usage.days;
   const maxValue = Math.max(...days.map((day) => day[metric.key] || 0), 0.000001);
+  const plotWidth = sparkWidth - sparkPad * 2;
   const points = days.map((day, index) => ({
-    x: 4 + index / Math.max(days.length - 1, 1) * 88,
-    y: 30 - (day[metric.key] || 0) / maxValue * 26,
+    x: sparkPad + index / Math.max(days.length - 1, 1) * plotWidth,
+    y: sparkHeight - 3 - (day[metric.key] || 0) / maxValue * (sparkHeight - 12),
   }));
   const segments = [[]];
   points.forEach((point, index) => {
     if (days[index][metric.key] == null) segments.push([]);
-    else segments.at(-1).push(`${point.x},${point.y}`);
+    else segments.at(-1).push(point);
   });
+  const drawnSegments = segments.filter((segment) => segment.length > 1);
   const activeDay = activeIndex == null ? null : days[activeIndex];
   const activePoint = activeIndex == null ? null : points[activeIndex];
   const selectedTotals = activeDay || usage.current;
@@ -58,7 +73,7 @@ function UsageMetric({ metric, usage }) {
 
   function selectDay(event) {
     const bounds = event.currentTarget.getBoundingClientRect();
-    const position = ((event.clientX - bounds.left) / bounds.width * 96 - 4) / 88;
+    const position = ((event.clientX - bounds.left) / bounds.width * sparkWidth - sparkPad) / plotWidth;
     setActiveIndex(Math.max(0, Math.min(days.length - 1, Math.round(position * (days.length - 1)))));
   }
 
@@ -79,75 +94,84 @@ function UsageMetric({ metric, usage }) {
   }
 
   return (
-    <section className="usage-metric" aria-label={metric.label}>
+    <section className={cx("usage-metric", activeDay && "is-inspecting")} aria-label={metric.label}>
       <h3>{metric.label}</h3>
-      <div className="usage-metric-value">
-        <strong>
-          {formatUsage(selectedTotals[metric.key], metric.money)}
-        </strong>
-        <svg
-          className="usage-sparkline"
-          viewBox="0 0 96 34"
-          role="slider"
-          tabIndex={0}
-          aria-label={`${metric.label} by day`}
-          aria-valuemin={0}
-          aria-valuemax={days.length - 1}
-          aria-valuenow={activeIndex ?? days.length - 1}
-          aria-valuetext={`${dateLabel((activeDay || days.at(-1)).date)}: ${formatUsage((activeDay || days.at(-1))[metric.key], metric.money, (activeDay || days.at(-1))[metric.partialKey])}`}
-          onPointerMove={selectDay}
-          onPointerDown={selectDay}
-          onPointerLeave={() => setActiveIndex(null)}
-          onFocus={() => setActiveIndex(days.length - 1)}
-          onBlur={() => setActiveIndex(null)}
-          onKeyDown={navigateDays}
-        >
-          {segments.map((segment, index) => <polyline key={index} points={segment.join(" ")} />)}
-          {activePoint && (
-            <g className="usage-sparkline-marker" style={{ transform: `translateX(${activePoint.x}px)` }}>
-              <line x1={0} x2={0} y1={0} y2={34} />
-              {activeDay[metric.key] != null && <circle cx={0} cy={0} r={3} style={{ transform: `translateY(${activePoint.y}px)` }} />}
-            </g>
-          )}
-        </svg>
-      </div>
+      <strong>{formatUsage(selectedTotals[metric.key], metric.money)}</strong>
       <p>
         {activeDay ? dateLabel(activeDay.date) : partialComparison ? "No comparison available" : comparison(usage.current[metric.key], usage.previous[metric.key])}
       </p>
+      <svg
+        className="usage-sparkline"
+        viewBox={`0 0 ${sparkWidth} ${sparkHeight}`}
+        role="slider"
+        tabIndex={0}
+        aria-label={`${metric.label} by day`}
+        aria-valuemin={0}
+        aria-valuemax={days.length - 1}
+        aria-valuenow={activeIndex ?? days.length - 1}
+        aria-valuetext={`${dateLabel((activeDay || days.at(-1)).date)}: ${formatUsage((activeDay || days.at(-1))[metric.key], metric.money, (activeDay || days.at(-1))[metric.partialKey])}`}
+        onPointerMove={selectDay}
+        onPointerDown={selectDay}
+        onPointerLeave={() => setActiveIndex(null)}
+        onFocus={() => setActiveIndex(days.length - 1)}
+        onBlur={() => setActiveIndex(null)}
+        onKeyDown={navigateDays}
+      >
+        {drawnSegments.map((segment, index) => (
+          <polyline key={index} points={segment.map((point) => `${point.x},${point.y}`).join(" ")} />
+        ))}
+        {activePoint && (
+          <g className="usage-sparkline-marker" style={{ transform: `translateX(${activePoint.x}px)` }}>
+            <line x1={0} x2={0} y1={0} y2={sparkHeight} />
+            {activeDay[metric.key] != null && <circle cx={0} cy={0} r={3.5} style={{ transform: `translateY(${activePoint.y}px)` }} />}
+          </g>
+        )}
+      </svg>
     </section>
   );
 }
 
 function UsageChart({ title, days, series, getValue, money = false }) {
   const maxValue = Math.max(...days.map((day) => series.reduce((sum, item) => sum + getValue(day, item), 0)), 0);
+  const scaleMax = niceCeiling(maxValue);
   return (
     <section className="usage-chart-card" aria-label={title}>
       <div className="usage-section-heading">
         <h3>{title}</h3>
-        <span>{money ? "USD" : "Tokens"}</span>
       </div>
       <div className="usage-chart">
         <div className="usage-axis">
-          <span>{formatUsage(maxValue, money)}</span>
-          <span>{formatUsage(maxValue / 2, money)}</span>
+          <span>{scaleMax ? formatUsage(scaleMax, money) : ""}</span>
+          <span>{scaleMax ? formatUsage(scaleMax / 2, money) : ""}</span>
           <span>0</span>
         </div>
         <div className="usage-plot">
           <div className="usage-grid-lines" aria-hidden="true">
             <i /><i /><i />
           </div>
-          {days.map((day) => (
-            <div className="usage-day" key={day.date}>
-              <div className="usage-bar" tabIndex={0} aria-label={`${day.date}: ${series.map((item) => `${item.name} ${formatUsage(getValue(day, item), money)}`).join(", ")}`}>
-                {series.map((item) => (
+          {days.map((day, dayIndex) => {
+            const dayTotal = series.reduce((sum, item) => sum + (getValue(day, item) || 0), 0);
+            return (
+              <div className="usage-day" key={day.date}>
+                <div className="usage-bar" tabIndex={0} aria-label={`${day.date}: ${series.map((item) => `${item.name} ${formatUsage(getValue(day, item), money)}`).join(", ")}`}>
                   <div
-                    key={item.id}
+                    className={cx("usage-stack", dayTotal > 0 && "has-value")}
                     style={{
-                      height: `${maxValue ? getValue(day, item) / maxValue * 100 : 0}%`,
-                      background: item.color,
+                      height: `${scaleMax ? dayTotal / scaleMax * 100 : 0}%`,
+                      "--day-index": dayIndex,
                     }}
-                  />
-                ))}
+                  >
+                    {series.map((item) => (
+                      <div
+                        key={item.id}
+                        style={{
+                          height: `${dayTotal ? (getValue(day, item) || 0) / dayTotal * 100 : 0}%`,
+                          background: item.color,
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
                 <div className="usage-tooltip usage-detail-tooltip">
                   <strong className="usage-tooltip-date">
                     {new Date(`${day.date}T12:00:00`).toLocaleDateString("en-US", {
@@ -164,10 +188,10 @@ function UsageChart({ title, days, series, getValue, money = false }) {
                     ))}
                   </div>
                 </div>
+                <span className="usage-day-label">{dayLabel(day.date)}</span>
               </div>
-              <span className="usage-day-label">{dayLabel(day.date)}</span>
-            </div>
-          ))}
+            );
+          })}
           {!maxValue && <span className="usage-chart-empty">{days.some((day) => series.some((item) => getValue(day, item) === null)) ? "Usage details unavailable" : `No recorded ${money ? "spend" : "tokens"} this week`}</span>}
         </div>
       </div>
@@ -177,6 +201,39 @@ function UsageChart({ title, days, series, getValue, money = false }) {
         ))}
       </div>
     </section>
+  );
+}
+
+function UsageSkeleton() {
+  return (
+    <div className="usage-panel usage-skeleton" role="status">
+      <span className="usage-visually-hidden">Loading usage…</span>
+      <div className="usage-period" aria-hidden="true">
+        <i className="usage-skeleton-line is-title" />
+        <i className="usage-skeleton-line is-short" />
+      </div>
+      <div className="usage-summary" aria-hidden="true">
+        {[0, 1, 2].map((index) => (
+          <div className="usage-metric" key={index}>
+            <i className="usage-skeleton-line is-label" />
+            <i className="usage-skeleton-line is-value" />
+            <i className="usage-skeleton-line is-note" />
+          </div>
+        ))}
+      </div>
+      <div className="usage-charts" aria-hidden="true">
+        {[0, 1].map((chart) => (
+          <div className="usage-chart-card" key={chart}>
+            <i className="usage-skeleton-line is-label" />
+            <div className="usage-skeleton-bars">
+              {[46, 72, 30, 90, 58, 22, 66].map((height, index) => (
+                <i key={index} style={{ height: `${height}%` }} />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -202,10 +259,10 @@ export function UsagePanel({ models }) {
   if (error) return (
     <div className="usage-state" role="alert">
       <p>Usage could not be loaded.</p>
-      <button onClick={() => setRetryKey((value) => value + 1)}>Try again</button>
+      <button type="button" onClick={() => setRetryKey((value) => value + 1)}>Try again</button>
     </div>
   );
-  if (!usage) return <div className="usage-state" role="status">Loading usage…</div>;
+  if (!usage) return <UsageSkeleton />;
 
   const modelSeries = usage.models.map((item, index) => ({
     ...item,
@@ -232,6 +289,7 @@ export function UsagePanel({ models }) {
     { key: "totalTokens", label: "Token volume", partialKey: "partialTokens" },
   ];
   const dateRange = `${dateLabel(usage.startDate)} – ${dateLabel(usage.endDate)}`;
+  const topLifetimeSpend = Math.max(...lifetimeModels.map((model) => model.cost || 0), 0);
 
   return (
     <div className="usage-panel">
@@ -244,12 +302,13 @@ export function UsagePanel({ models }) {
           <UsageMetric key={metric.key} metric={metric} usage={usage} />
         ))}
       </div>
-      <UsageChart title="Usage by model" days={usage.days} series={chartSeries} getValue={getModelSpend} money />
-      <UsageChart title="Token breakdown" days={usage.days} series={tokenSeries} getValue={(day, item) => day[item.id]} />
+      <div className="usage-charts">
+        <UsageChart title="Usage by model" days={usage.days} series={chartSeries} getValue={getModelSpend} money />
+        <UsageChart title="Token breakdown" days={usage.days} series={tokenSeries} getValue={(day, item) => day[item.id]} />
+      </div>
       <section className="usage-models" aria-label="Lifetime model totals">
         <div className="usage-section-heading">
           <h3>Lifetime model totals</h3>
-          <span>All time</span>
         </div>
         {lifetimeModels.length ? (
           <div className="usage-table-wrap">
@@ -260,7 +319,14 @@ export function UsagePanel({ models }) {
               <tbody>
                 {lifetimeModels.map((model) => (
                   <tr key={model.id}>
-                    <td><i style={{ background: model.color }} />{model.name}</td>
+                    <td>
+                      <span className="usage-model-name"><i style={{ background: model.color }} /><span>{model.name}</span></span>
+                      {topLifetimeSpend > 0 && (
+                        <span className="usage-share" aria-hidden="true">
+                          <span style={{ width: `${(model.cost || 0) / topLifetimeSpend * 100}%`, background: model.color }} />
+                        </span>
+                      )}
+                    </td>
                     <td>{formatUsage(model.requests)}</td>
                     <td>{formatUsage(model.totalTokens, false, model.partialTokens)}</td>
                     <td>{formatUsage(model.cost, true, model.partialCost)}</td>

@@ -1,14 +1,18 @@
-import { useState, useRef, useEffect } from "react";
-import { cx, CONTROL_MOTION } from "../uiShared.js";
+import { useState, useRef } from "react";
+import { cx } from "../uiShared.js";
 import { promptModelName } from "../modelFormatting.js";
 import { ChatHistoryActions, FolderActions } from "./HistoryActions.jsx";
 import { MaskIcon } from "../components/IconButton.jsx";
 import { SidebarGroup } from "./SidebarGroup.jsx";
-import { APP_VERSION } from "../appInfo.js";
-import { X } from "lucide-react";
-import { SlidingTabs } from "../components/SlidingTabs.jsx";
-import { CHAT_MODES } from "../settings/settingsDefaults.js";
-import { FeedbackLink } from "./FeedbackLink.jsx";
+import { SidebarShell } from "./SidebarShell.jsx";
+import { SidebarActionButton } from "./SidebarActionButton.jsx";
+import {
+  SIDEBAR_ROW,
+  SIDEBAR_ROW_ACTIVE,
+  SIDEBAR_ROW_IDLE,
+  SIDEBAR_ROW_BUTTON,
+  SIDEBAR_RENAME_INPUT,
+} from "./sidebarStyles.js";
 import { SidebarSearchModal } from "./SidebarSearchModal.jsx";
 import { NamePromptModal } from "../components/NamePromptModal.jsx";
 
@@ -38,9 +42,6 @@ export function ConversationRail({
   previousChatMode,
   onChatModeChange,
 }) {
-  const [railScrolling, setRailScrolling] = useState(false);
-  const [railScrolled, setRailScrolled] = useState(false);
-  const [railHasMoreBelow, setRailHasMoreBelow] = useState(false);
   const [renamingChatId, setRenamingChatId] = useState(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [pinnedOpen, setPinnedOpen] = useState(true);
@@ -54,51 +55,8 @@ export function ConversationRail({
   const [dragChatId, setDragChatId] = useState(null);
   const [dropFolderId, setDropFolderId] = useState(null);
   const [recentsDropActive, setRecentsDropActive] = useState(false);
-  const railScrollTimeoutRef = useRef(null);
-  const railRef = useRef(null);
   const skipRenameCommitRef = useRef(false);
   const skipFolderRenameCommitRef = useRef(false);
-
-  useEffect(
-    () => () => {
-      if (railScrollTimeoutRef.current) {
-        window.clearTimeout(railScrollTimeoutRef.current);
-      }
-    },
-    [],
-  );
-
-  function updateRailEdges(element) {
-    const bottomOffset = element.scrollHeight - element.clientHeight - element.scrollTop;
-    setRailScrolled(element.scrollTop > 2);
-    setRailHasMoreBelow(bottomOffset > 2);
-  }
-
-  useEffect(() => {
-    const rail = railRef.current;
-    if (!rail) return;
-
-    const frameId = requestAnimationFrame(() => updateRailEdges(rail));
-    const resizeObserver = typeof ResizeObserver === "undefined"
-      ? null
-      : new ResizeObserver(() => updateRailEdges(rail));
-    resizeObserver?.observe(rail);
-
-    return () => {
-      cancelAnimationFrame(frameId);
-      resizeObserver?.disconnect();
-    };
-  }, [chats.length, folders.length, pinnedOpen, recentsOpen, foldersOpen, expandedFolderIds]);
-
-  function handleRailScroll(event) {
-    updateRailEdges(event.currentTarget);
-    setRailScrolling(true);
-    window.clearTimeout(railScrollTimeoutRef.current);
-    railScrollTimeoutRef.current = window.setTimeout(
-      () => setRailScrolling(false),
-      650,
-    );
-  }
 
   function startRename(chat) {
     if (chat.id === namingChatId) return;
@@ -204,15 +162,13 @@ export function ConversationRail({
             setRecentsDropActive(false);
           }}
           className={cx(
-            "group relative grid select-none grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-2xl border border-transparent px-2 py-1 transition-[background-color,border-color,box-shadow] duration-150 ease-out",
-            chat.id === activeChatId
-              ? "bg-white/[0.08] shadow-[var(--shadow-border)]"
-              : "hover:bg-white/[0.045] hover:shadow-[var(--shadow-border)]",
+            SIDEBAR_ROW,
+            chat.id === activeChatId ? SIDEBAR_ROW_ACTIVE : SIDEBAR_ROW_IDLE,
             dragChatId === chat.id && "opacity-45",
           )}
         >
           {renaming ? (
-            <div className="min-h-8 min-w-0 rounded-xl px-1 py-0.5">
+            <div className="min-w-0 px-1 py-1.5">
               <input
                 autoFocus
                 value={renameDraft}
@@ -226,9 +182,9 @@ export function ConversationRail({
                     cancelRename();
                   }
                 }}
-                className="block h-6 w-full min-w-0 rounded-md bg-white/[0.06] px-1.5 text-sm font-medium text-neutral-100 outline-none shadow-[var(--shadow-border)]"
+                className={cx(SIDEBAR_RENAME_INPUT, "h-[18px] text-[14px]")}
               />
-              <div className="truncate text-[11px] leading-3 text-neutral-500">
+              <div className="truncate pl-1.5 text-[12px] leading-4 text-[#858585]">
                 {promptModelName(models, chat.model)}
               </div>
             </div>
@@ -239,15 +195,19 @@ export function ConversationRail({
                 onLoadChat(chat.id);
                 onCloseMobile();
               }}
-              className={cx(
-                "min-h-8 min-w-0 rounded-xl px-1 py-0.5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15",
-                CONTROL_MOTION,
-              )}
+              className={cx(SIDEBAR_ROW_BUTTON, "py-1.5")}
             >
-              <div className="truncate text-balance text-sm font-medium leading-4 text-neutral-100">
+              <div
+                className={cx(
+                  "truncate text-[14px] leading-[18px]",
+                  chat.id === activeChatId
+                    ? "text-white"
+                    : "text-neutral-300 group-hover:text-neutral-100",
+                )}
+              >
                 {chat.title}
               </div>
-              <div className="truncate text-[11px] leading-3 text-neutral-500">
+              <div className="truncate text-[12px] leading-4 text-[#858585]">
                 {promptModelName(models, chat.model)}
               </div>
             </button>
@@ -277,82 +237,88 @@ export function ConversationRail({
 
       return (
         <div key={folder.id}>
-        <div
-          onDragOver={(event) => {
-            if (!dragChatId) return;
-            event.preventDefault();
-            event.dataTransfer.dropEffect = "move";
-            setDropFolderId(folder.id);
-          }}
-          onDragLeave={() => setDropFolderId((current) => (current === folder.id ? null : current))}
-          onDrop={(event) => {
-            event.preventDefault();
-            handleChatDrop(folder.id);
-          }}
-          className={cx(
-            "group relative grid select-none grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-2xl border border-transparent px-2 py-1 transition-[background-color,border-color,box-shadow] duration-150 ease-out hover:bg-white/[0.045] hover:shadow-[var(--shadow-border)]",
-            dropFolderId === folder.id && "border-white/20 bg-white/[0.07]",
-          )}
-        >
-          {renaming ? (
-            <div className="flex min-h-8 min-w-0 items-center gap-2 rounded-xl px-1 py-0.5">
-              <MaskIcon src="/icons/folder.png" size={16} className="text-neutral-300" />
-              <input
-                autoFocus
-                value={folderRenameDraft}
-                onChange={(event) => setFolderRenameDraft(event.target.value)}
-                data-1p-ignore="true"
-                onBlur={() => commitFolderRename(folder)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") event.currentTarget.blur();
-                  if (event.key === "Escape") {
-                    event.preventDefault();
-                    cancelFolderRename();
-                  }
-                }}
-                className="block h-6 w-full min-w-0 rounded-md bg-white/[0.06] px-1.5 text-sm font-medium text-neutral-100 outline-none shadow-[var(--shadow-border)]"
-              />
-            </div>
-          ) : (
-            <button
-              type="button"
-              aria-expanded={expanded}
-              onClick={() => toggleFolderExpanded(folder.id)}
-              className={cx(
-                "flex min-h-8 min-w-0 items-center gap-2 rounded-xl px-1 py-0.5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15",
-                CONTROL_MOTION,
-              )}
-            >
-              <MaskIcon src="/icons/folder.png" size={16} className="text-neutral-300" />
-              <span className="truncate text-sm font-medium leading-4 text-neutral-100">
-                {folder.name}
-              </span>
-              {folderChats.length > 0 && (
-                <span className="shrink-0 text-[11px] leading-3 text-neutral-500">
-                  {folderChats.length}
-                </span>
-              )}
-            </button>
-          )}
-          <FolderActions
-            folder={folder}
-            onRename={startFolderRename}
-            onDelete={onDeleteFolder}
-            onNewChat={onNewChatInFolder}
-          />
-        </div>
-
-        {expanded && (
-          <div className="mt-1 space-y-1 border-l border-white/10 pl-2">
-            {folderChats.length > 0 ? (
-              renderChatRows(folderChats, 1)
-            ) : (
-              <div className="px-2 py-2 text-[12px] leading-4 text-neutral-500">
-                Drag a chat here, or use New chat in this folder.
-              </div>
+          <div
+            onDragOver={(event) => {
+              if (!dragChatId) return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "move";
+              setDropFolderId(folder.id);
+            }}
+            onDragLeave={() => setDropFolderId((current) => (current === folder.id ? null : current))}
+            onDrop={(event) => {
+              event.preventDefault();
+              handleChatDrop(folder.id);
+            }}
+            className={cx(
+              SIDEBAR_ROW,
+              dropFolderId === folder.id
+                ? "bg-white/[0.07] ring-1 ring-inset ring-white/15"
+                : SIDEBAR_ROW_IDLE,
             )}
+          >
+            {renaming ? (
+              <div className="flex h-9 min-w-0 items-center gap-2 pl-2.5 pr-1">
+                <MaskIcon src="/icons/folder.png" size={16} className="text-neutral-400" />
+                <input
+                  autoFocus
+                  value={folderRenameDraft}
+                  onChange={(event) => setFolderRenameDraft(event.target.value)}
+                  data-1p-ignore="true"
+                  onBlur={() => commitFolderRename(folder)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") event.currentTarget.blur();
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      cancelFolderRename();
+                    }
+                  }}
+                  className={cx(SIDEBAR_RENAME_INPUT, "h-6 text-[14px]")}
+                />
+              </div>
+            ) : (
+              <button
+                type="button"
+                aria-expanded={expanded}
+                onClick={() => toggleFolderExpanded(folder.id)}
+                className={cx(SIDEBAR_ROW_BUTTON, "flex h-9 items-center gap-2")}
+              >
+                <MaskIcon
+                  src="/icons/folder.png"
+                  size={16}
+                  className={cx(
+                    "transition-colors duration-150 ease-out",
+                    expanded ? "text-neutral-200" : "text-neutral-400 group-hover:text-neutral-300",
+                  )}
+                />
+                <span className="truncate text-[14px] leading-[18px] text-neutral-200 group-hover:text-neutral-100">
+                  {folder.name}
+                </span>
+                {folderChats.length > 0 && (
+                  <span className="shrink-0 text-[12px] leading-4 tabular-nums text-[#858585]">
+                    {folderChats.length}
+                  </span>
+                )}
+              </button>
+            )}
+            <FolderActions
+              folder={folder}
+              onRename={startFolderRename}
+              onDelete={onDeleteFolder}
+              onNewChat={onNewChatInFolder}
+            />
           </div>
-        )}
+
+          {expanded && (
+            <div className="ml-[18px] mt-px flex flex-col gap-px border-l border-white/[0.08] pl-1.5">
+              {folderChats.length > 0 ? (
+                renderChatRows(folderChats, 1)
+              ) : (
+                <div className="px-2.5 py-2 text-pretty text-[12px] leading-4 text-[#858585]">
+                  Drag a chat here, or use New chat in this folder.
+                </div>
+              )}
+            </div>
+          )}
         </div>
       );
     });
@@ -385,16 +351,16 @@ export function ConversationRail({
 
   const historyItems =
     chats.length === 0 ? (
-      <div className="space-y-4">
+      <div className="space-y-3">
         {folderGroup}
-        <div className="px-3 py-8 text-pretty text-sm leading-6 text-neutral-500">
+        <div className="px-2.5 py-6 text-pretty text-[13px] leading-5 text-[#858585]">
           {chatMode === "write"
             ? "Your stories will appear here."
             : "Your conversations will appear here."}
         </div>
       </div>
     ) : (
-      <div className="space-y-4">
+      <div className="space-y-3">
         {pinnedChats.length > 0 && renderHistoryGroup(
           "Pinned",
           pinnedChats,
@@ -428,155 +394,39 @@ export function ConversationRail({
 
   return (
     <>
-      <div
-        className={cx(
-          "fixed inset-0 z-30 bg-black/55 opacity-0 backdrop-blur-sm transition-[opacity,backdrop-filter] duration-200 ease-out lg:hidden",
-          mobileOpen ? "pointer-events-auto opacity-100" : "pointer-events-none",
-        )}
-        onClick={onCloseMobile}
-      />
-      <aside
-        className={cx(
-          "chat-sidebar t-resize fixed inset-y-0 left-0 z-40 flex w-[292px] flex-col overflow-hidden border-r border-line bg-[#080808] lg:static lg:z-auto lg:translate-x-0",
-          collapsed
-            ? "lg:w-0 lg:-translate-x-3 lg:border-r-0 lg:border-transparent lg:opacity-0"
-            : "lg:w-[276px] lg:opacity-100",
-          mobileOpen ? "translate-x-0" : "-translate-x-full",
-        )}
-      >
-        <div
-          className={cx(
-            "chat-sidebar-content flex h-full w-[292px] flex-col p-4 lg:w-[276px]",
-            collapsed
-              ? "lg:-translate-x-8 lg:opacity-0"
-              : "lg:translate-x-0 lg:opacity-100",
-          )}
-        >
-          <div className="mb-4 flex items-center justify-between gap-2 pl-2">
-            <div className="flex min-w-0 items-baseline gap-1.5">
-              <span className="truncate text-[19px] font-bold tracking-[-0.015em] text-white">
-                RouterChat
-              </span>
-              <span className="shrink-0 text-[19px] font-bold tracking-[-0.015em] text-neutral-500">
-                {APP_VERSION}
-              </span>
-            </div>
-
-            <div className="flex shrink-0 items-center">
-              <button
-                type="button"
-                aria-label="Search chats"
-                title="Search chats"
-                onClick={() => setSearchOpen(true)}
-                className={cx(
-                  "hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:bg-white/[0.08] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 lg:inline-flex",
-                  CONTROL_MOTION,
-                )}
-              >
-                <MaskIcon src="/icons/search.png" size={19} />
-              </button>
-              <button
-                type="button"
-                aria-label="Collapse sidebar"
-                title="Collapse sidebar"
-                data-tour="collapse-sidebar-button"
-                onClick={onCollapse}
-                className={cx(
-                  "hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:bg-white/[0.08] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 lg:inline-flex",
-                  CONTROL_MOTION,
-                )}
-              >
-                <MaskIcon src="/icons/sidebar.png" size={15.5} />
-              </button>
-              <button
-                type="button"
-                aria-label="Close chats"
-                title="Close chats"
-                onClick={onCloseMobile}
-                className={cx(
-                  "inline-flex h-10 w-9 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 lg:hidden",
-                  CONTROL_MOTION,
-                )}
-              >
-                <X size={19} />
-              </button>
-            </div>
-          </div>
-
-          <div className="mb-3.5 flex justify-center">
-            <SlidingTabs
-              options={CHAT_MODES}
-              value={chatMode}
-              fromValue={previousChatMode}
-              onChange={onChatModeChange}
-              getValue={(mode) => mode.value}
-              getLabel={(mode) => mode.label}
-              ariaLabel="Interaction mode"
-              className="sidebar-mode-tabs"
-            />
-          </div>
-
+      <SidebarShell
+        mode={chatMode}
+        previousChatMode={previousChatMode}
+        onChatModeChange={onChatModeChange}
+        mobileOpen={mobileOpen}
+        onCloseMobile={onCloseMobile}
+        collapsed={collapsed}
+        onCollapse={onCollapse}
+        onSearch={() => setSearchOpen(true)}
+        searchLabel="Search chats"
+        closeLabel="Close chats"
+        collapseTourId="collapse-sidebar-button"
+        listClassName="space-y-1"
+        actions={(
           <div>
-            <button
-              type="button"
+            <SidebarActionButton
+              icon={<MaskIcon src="/icons/new-message.png" size={18} />}
+              label="New chat"
               onClick={() => {
                 onNewChat();
                 onCloseMobile();
               }}
-              className={cx(
-                "flex h-9 w-full items-center gap-3 rounded-xl bg-transparent px-2 text-[15px] font-medium text-white hover:bg-white/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
-                CONTROL_MOTION,
-              )}
-            >
-              <MaskIcon src="/icons/new-message.png" size={20} className="text-neutral-200" />
-              New chat
-            </button>
-
-            <button
-              type="button"
+            />
+            <SidebarActionButton
+              icon={<MaskIcon src="/icons/folder.png" size={18} />}
+              label="New folder"
               onClick={() => setNewFolderOpen(true)}
-              className={cx(
-                "flex h-9 w-full items-center gap-3 rounded-xl bg-transparent px-2 text-[15px] font-medium text-white hover:bg-white/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45",
-                CONTROL_MOTION,
-              )}
-            >
-              <MaskIcon src="/icons/folder.png" size={20} className="text-neutral-200" />
-              New folder
-            </button>
-          </div>
-
-          <div className="relative min-h-0 flex-1">
-            <nav
-              ref={railRef}
-              onScroll={handleRailScroll}
-              className={cx(
-                "chat-rail-scrollbar h-full space-y-1 overflow-y-auto pr-1",
-                railScrolling && "is-scrolling",
-              )}
-            >
-              {historyItems}
-            </nav>
-            <div
-              aria-hidden="true"
-              className={cx(
-                "sidebar-list-fade pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-[#080808]/95 to-transparent transition-opacity duration-150 ease-out",
-                railScrolled ? "opacity-100" : "opacity-0",
-              )}
-            />
-            <div
-              aria-hidden="true"
-              className={cx(
-                "sidebar-list-fade pointer-events-none absolute inset-x-0 bottom-0 h-7 bg-gradient-to-t from-[#080808]/95 to-transparent transition-opacity duration-150 ease-out",
-                railHasMoreBelow ? "opacity-100" : "opacity-0",
-              )}
             />
           </div>
-
-          <footer className="mt-1 -mb-2">
-            <FeedbackLink />
-          </footer>
-        </div>
-      </aside>
+        )}
+      >
+        {historyItems}
+      </SidebarShell>
 
       <SidebarSearchModal
         open={searchOpen}

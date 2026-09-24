@@ -331,7 +331,7 @@ export function UsagePanel({ models }) {
           </div>
         ) : <p className="usage-muted">Your model usage will appear here.</p>}
       </section>
-      <p className="usage-note">Saved RouterChat history and transcription usage, including imported history. Partial totals include recorded usage only; some requests are missing usage details. Deleted history and requests without saved usage are not included. All amounts are USD.</p>
+      <p className="usage-note">Saved RouterChat history and transcription usage, including imported history. Partial totals include recorded usage only; some requests may be missing usage details. Deleted history and requests without saved usage are not included. All amounts are USD.</p>
     </div>
   );
 }

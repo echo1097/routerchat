@@ -331,7 +331,7 @@ export function SettingsDrawer({
         ? true
         : settings.thinking_enabled,
     });
-    onModelSelected(model.name || model.id);
+    onModelSelected(promptModelName(models, model.id));
   }
 
   function setSelectedModelAsDefault() {

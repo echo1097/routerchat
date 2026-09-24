@@ -1,5 +1,5 @@
 import { TranscriptionSettings } from "../transcription/TranscriptionSettings.jsx";
-import { MessageSquarePlus, SlidersHorizontal, X, Check } from "lucide-react";
+import { ArrowLeft, MessageSquarePlus, SlidersHorizontal, X, Check } from "lucide-react";
 import { useState, useRef, useMemo, useEffect } from "react";
 import { cx, CONTROL_MOTION } from "../uiShared.js";
 import { supportsThinking, resolveReasoningEffort, supportsReasoningEffort } from "../modelReasoning.js";
@@ -343,6 +343,18 @@ export function SettingsDrawer({
   const transcriptionPage = useLingeringPage(open, activePage === "transcription");
   const usagePage = useLingeringPage(open, activePage === "usage");
 
+  useEffect(() => {
+    if (!open) return undefined;
+
+    function handleKeyDown(event) {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      onClose();
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [open, onClose]);
+
   function choosePage(pageId) {
     setActivePage(pageId);
   }
@@ -596,7 +608,7 @@ export function SettingsDrawer({
 
   const importExportSection = (
     <section className="flex h-full min-h-0 flex-col">
-      <section className="flex min-h-0 flex-1 flex-col px-1 py-3">
+      <section className="flex min-h-0 flex-initial flex-col px-1 py-3">
         <h2 className="shrink-0 text-balance text-sm font-semibold text-neutral-100">
           Select Chat
         </h2>
@@ -607,11 +619,11 @@ export function SettingsDrawer({
             placeholder="Search chats"
           />
         </div>
-        <div className="relative mt-2 min-h-0 flex-1">
+        <div className="relative mt-2 flex min-h-0 flex-initial flex-col">
           <div
             ref={chatListRef}
             onScroll={handleChatListScroll}
-            className="settings-chat-list h-full space-y-1 overflow-y-auto"
+            className="settings-chat-list min-h-0 flex-initial space-y-1 overflow-y-auto"
           >
               {filteredCloudChats.length === 0 ? (
                 <div className="grid min-h-10 w-full grid-cols-[18px_minmax(0,1fr)_14px] items-center gap-2 rounded-xl bg-black/15 px-3 py-3 text-pretty text-xs leading-5 text-neutral-500 shadow-[var(--shadow-border)]">
@@ -940,44 +952,34 @@ export function SettingsDrawer({
   return (
     <div
       className={cx(
-        "modal-interaction-guard fixed inset-0 z-50 grid place-items-center px-3 py-4 sm:px-6",
-        !open && "is-inert pointer-events-none",
+        "modal-interaction-guard settings-page fixed inset-0 z-50 bg-[#202020]",
+        open ? "is-open" : "is-closing is-inert pointer-events-none",
       )}
       inert={open ? undefined : ""}
     >
-      <button
-        type="button"
-        aria-label="Close settings"
-        className={cx(
-          "absolute inset-0 bg-black/55 transition-[opacity,backdrop-filter] duration-200 ease-out",
-          open ? "pointer-events-auto opacity-100 backdrop-blur-sm" : "pointer-events-none opacity-0 backdrop-blur-none",
-        )}
-        onClick={onClose}
-      />
       <section
         role="dialog"
         aria-modal="true"
         aria-labelledby="settings-modal-title"
         aria-hidden={!open}
-        className={cx(
-          "t-modal settings-modal relative z-10 grid w-full grid-cols-1 overflow-hidden rounded-[18px] bg-[#202020] text-neutral-100 [box-shadow:var(--shadow-surface)] md:grid-cols-[148px_minmax(0,1fr)]",
-          activePage === "usage" ? "h-[min(780px,calc(100dvh-2rem))] max-w-[980px]" : "h-[min(400px,calc(100vh-2rem))] max-w-[560px]",
-          open ? "is-open" : "is-closing",
-        )}
+        className="grid h-full w-full grid-cols-1 text-neutral-100 md:grid-cols-[232px_minmax(0,1fr)]"
       >
-        <aside className="hidden min-h-0 border-r border-white/10 p-2 md:flex md:flex-col">
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close settings"
-            className={cx(
-              "mb-2.5 grid h-10 w-10 place-items-center rounded-xl bg-white/[0.06] text-neutral-100 hover:bg-white/[0.09] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
-              CONTROL_MOTION,
-            )}
-          >
-            <X size={20} strokeWidth={1.9} />
-          </button>
-          <nav className="space-y-1.5 overflow-y-auto" aria-label="Settings sections">
+        <aside className="settings-page-rail hidden min-h-0 flex-col border-r border-white/10 px-3 pb-3 pt-4 md:flex">
+          <div className="mb-5 flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close settings"
+              className={cx(
+                "grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white/[0.06] text-neutral-100 hover:bg-white/[0.1] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+                CONTROL_MOTION,
+              )}
+            >
+              <ArrowLeft size={18} strokeWidth={1.9} />
+            </button>
+            <span className="text-[15px] font-semibold text-neutral-50">Settings</span>
+          </div>
+          <nav className="space-y-1 overflow-y-auto" aria-label="Settings sections">
             {visibleSettingsPages.map((page) => {
               const Icon = page.icon;
               const selected = activePage === page.id;
@@ -986,12 +988,13 @@ export function SettingsDrawer({
                   key={page.id}
                   type="button"
                   onClick={() => choosePage(page.id)}
+                  aria-current={selected ? "page" : undefined}
                   className={cx(
-                    "flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-xs font-medium leading-none focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+                    "flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] font-medium leading-none focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
                     CONTROL_MOTION,
                     selected
                       ? "bg-white/[0.08] text-neutral-50"
-                      : "text-neutral-200 hover:bg-white/[0.045] hover:text-neutral-50",
+                      : "text-neutral-400 hover:bg-white/[0.045] hover:text-neutral-100",
                     )}
                 >
                   <span
@@ -1014,12 +1017,17 @@ export function SettingsDrawer({
           </nav>
         </aside>
 
-        <div className="flex min-h-0 min-w-0 flex-col">
-          <header className="border-b border-white/10 px-4 py-2.5 md:px-4 md:py-2.5">
+        <div
+          className={cx(
+            "settings-page-panel flex min-h-0 min-w-0 flex-col overflow-hidden",
+            activePage === "usage" && "is-wide",
+          )}
+        >
+          <header className="settings-inline border-b border-white/10 pb-3 pt-4 md:pb-4 md:pt-7">
             <div className="flex items-center justify-between gap-4">
               <h1
                 id="settings-modal-title"
-                className="text-lg font-medium tracking-normal text-neutral-50 md:text-xl"
+                className="text-balance text-xl font-semibold tracking-[-0.01em] text-neutral-50 md:text-2xl"
               >
                 {visibleSettingsPages.find((page) => page.id === activePage)?.label || "Settings"}
               </h1>
@@ -1045,7 +1053,7 @@ export function SettingsDrawer({
             data-page={String(activePageIndex)}
           >
             <section
-              className="settings-scroll-page t-page space-y-0 overflow-y-auto px-4 py-3 md:px-4 md:py-3"
+              className="settings-scroll-page t-page space-y-0 overflow-y-auto settings-inline py-4 md:py-5"
               data-page-id="1"
               aria-label="API settings"
             >
@@ -1058,24 +1066,24 @@ export function SettingsDrawer({
               {zdrSection}
             </section>
             <section
-              className="t-page flex min-h-0 flex-col px-4 py-3 md:px-4 md:py-3"
+              className="t-page flex min-h-0 flex-col settings-inline py-4 md:py-5"
               data-page-id="2"
               aria-label="Model settings"
             >
               {modelList}
             </section>
-            <section className="t-page flex min-h-0 flex-col px-4 py-3 md:px-4 md:py-3" data-page-id="3" aria-label="Transcription settings">
+            <section className="t-page flex min-h-0 flex-col settings-inline py-4 md:py-5" data-page-id="3" aria-label="Transcription settings">
               {transcriptionPage.mounted && <TranscriptionSettings key={transcriptionPage.session} />}
             </section>
             <section
-              className="t-page flex min-h-0 flex-col px-4 py-3 md:px-4 md:py-3"
+              className="t-page flex min-h-0 flex-col settings-inline py-4 md:py-5"
               data-page-id="4"
               aria-label="System settings"
             >
               {systemSection}
             </section>
             <section
-              className="settings-scroll-page t-page space-y-0 overflow-y-auto px-4 py-3 md:px-4 md:py-3"
+              className="settings-scroll-page t-page space-y-0 overflow-y-auto settings-inline py-4 md:py-5"
               data-page-id="5"
               aria-label="UI settings"
             >
@@ -1083,14 +1091,14 @@ export function SettingsDrawer({
               {smoothTextSection}
             </section>
             <section
-              className="t-page overflow-hidden px-4 py-3 md:px-4 md:py-3"
+              className="t-page overflow-hidden settings-inline py-4 md:py-5"
               data-page-id="6"
               aria-label="Chats settings"
             >
               {importExportSection}
             </section>
             <section
-              className="settings-scroll-page t-page space-y-0 overflow-y-auto px-4 py-3 md:px-4 md:py-3"
+              className="settings-scroll-page t-page space-y-0 overflow-y-auto settings-inline py-4 md:py-5"
               data-page-id="7"
               aria-label="Advanced settings"
             >
@@ -1098,14 +1106,14 @@ export function SettingsDrawer({
               {generationSection}
             </section>
             <section
-              className="t-page flex min-h-0 flex-col px-4 py-3 md:px-4 md:py-3"
+              className="t-page flex min-h-0 flex-col settings-inline py-4 md:py-5"
               data-page-id="8"
               aria-label="Lorebook settings"
             >
               {lorebookSection}
             </section>
             <section
-              className="settings-scroll-page t-page overflow-y-auto px-4 py-3"
+              className="settings-scroll-page t-page settings-inline overflow-y-auto py-4 md:py-5"
               data-page-id="9"
               aria-label="Usage settings"
             >

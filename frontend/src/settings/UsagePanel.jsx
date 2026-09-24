@@ -289,7 +289,6 @@ export function UsagePanel({ models }) {
     { key: "totalTokens", label: "Token volume", partialKey: "partialTokens" },
   ];
   const dateRange = `${dateLabel(usage.startDate)} – ${dateLabel(usage.endDate)}`;
-  const topLifetimeSpend = Math.max(...lifetimeModels.map((model) => model.cost || 0), 0);
 
   return (
     <div className="usage-panel">
@@ -321,11 +320,6 @@ export function UsagePanel({ models }) {
                   <tr key={model.id}>
                     <td>
                       <span className="usage-model-name"><i style={{ background: model.color }} /><span>{model.name}</span></span>
-                      {topLifetimeSpend > 0 && (
-                        <span className="usage-share" aria-hidden="true">
-                          <span style={{ width: `${(model.cost || 0) / topLifetimeSpend * 100}%`, background: model.color }} />
-                        </span>
-                      )}
                     </td>
                     <td>{formatUsage(model.requests)}</td>
                     <td>{formatUsage(model.totalTokens, false, model.partialTokens)}</td>

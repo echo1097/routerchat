@@ -368,7 +368,6 @@ function App() {
     if (tour.isActive) {
       previousRailStateRef.current = { collapsed: railCollapsed, open: railOpen };
       setRailCollapsed(false);
-      setRailOpen(true);
       if (chats.length === 0) setTourSampleChatActive(true);
       return;
     }
@@ -386,6 +385,7 @@ function App() {
 
   useEffect(() => {
     setTourForceThinking(Boolean(tour.currentStep?.forceThinkingVisible));
+    if (tour.currentStep) setRailOpen(Boolean(tour.currentStep.needsSampleChat));
   }, [tour.currentStep]);
 
   useEffect(() => {
@@ -3347,6 +3347,7 @@ function App() {
               openingMessage={landingMessage}
               variant="empty"
               forceShowThinking={tourForceThinking}
+              tourUi={tour.currentStep?.composerUi || null}
               attachments={promptAttachments.attachments}
               attachmentsUploading={promptAttachments.uploading}
               onAttachFiles={promptAttachments.addFiles}

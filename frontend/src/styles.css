@@ -2004,8 +2004,21 @@ sticky header veil and reads as clipping through the blur */
   }
 
   .tour-spotlight,
-  .tour-popover {
+  .tour-popover,
+  .tour-popover-arrow,
+  .tour-progress-segment,
+  .tour-next-icon {
     transition: none !important;
+  }
+
+  .tour-spotlight,
+  .tour-popover,
+  .tour-body {
+    animation: none !important;
+  }
+
+  .tour-spotlight-ping {
+    display: none;
   }
 }
 
@@ -2078,15 +2091,25 @@ sticky header veil and reads as clipping through the blur */
 .tour-spotlight {
   position: fixed;
   pointer-events: none;
-  border-radius: 16px;
-  outline: 2px solid rgba(255, 255, 255, 0.35);
-  outline-offset: 2px;
-  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.62);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.32),
+    0 0 0 9999px rgba(4, 4, 4, 0.82);
+  animation: tour-scrim-in 320ms var(--modal-ease) both;
   transition:
-    top var(--modal-open-dur) var(--modal-ease),
-    left var(--modal-open-dur) var(--modal-ease),
-    width var(--modal-open-dur) var(--modal-ease),
-    height var(--modal-open-dur) var(--modal-ease);
+    top 420ms var(--modal-ease),
+    left 420ms var(--modal-ease),
+    width 420ms var(--modal-ease),
+    height 420ms var(--modal-ease),
+    border-radius 420ms var(--modal-ease);
+}
+
+.tour-spotlight-ping {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.55);
+  opacity: 0;
+  animation: tour-ping 900ms cubic-bezier(0.16, 1, 0.3, 1) 260ms both;
 }
 
 .tour-popover {
@@ -2095,13 +2118,147 @@ sticky header veil and reads as clipping through the blur */
   /* column so a long step body can scroll on its own instead of shoving the buttons off screen */
   display: flex;
   flex-direction: column;
-  border-radius: 18px;
-  background: #181818;
-  box-shadow: var(--shadow-popover);
-  padding: 16px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, #1d1d1d 0%, #171717 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.075),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 2px 6px rgba(0, 0, 0, 0.35),
+    0 18px 40px -10px rgba(0, 0, 0, 0.75);
+  padding: 14px 16px 16px;
+  transform-origin: var(--tour-arrow-left, 50%) 0;
+  animation: tour-card-in 340ms var(--modal-ease) 60ms both;
   transition:
-    top var(--modal-open-dur) var(--modal-ease),
-    left var(--modal-open-dur) var(--modal-ease);
+    top 420ms var(--modal-ease),
+    left 420ms var(--modal-ease);
+}
+
+.tour-popover-above {
+  transform-origin: var(--tour-arrow-left, 50%) 100%;
+  animation-name: tour-card-in-above;
+}
+
+.tour-popover-arrow {
+  position: absolute;
+  left: var(--tour-arrow-left, 50%);
+  top: -6px;
+  width: 12px;
+  height: 12px;
+  margin-left: -6px;
+  border-top-left-radius: 3px;
+  background: #1d1d1d;
+  box-shadow:
+    inset 1px 1px 0 rgba(255, 255, 255, 0.075);
+  transform: rotate(45deg);
+  transition: left 420ms var(--modal-ease);
+}
+
+.tour-popover-above .tour-popover-arrow {
+  top: auto;
+  bottom: -6px;
+  border-top-left-radius: 0;
+  border-bottom-right-radius: 3px;
+  background: #171717;
+  box-shadow: inset -1px -1px 0 rgba(255, 255, 255, 0.075);
+}
+
+.tour-progress {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: center;
+  gap: 3px;
+}
+
+.tour-progress-segment {
+  flex: 1 1 0;
+  height: 3px;
+  min-width: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  transition:
+    background-color 300ms var(--modal-ease),
+    flex-grow 420ms var(--modal-ease);
+}
+
+.tour-progress-segment.is-done {
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.tour-progress-segment.is-current {
+  flex-grow: 2.4;
+  background: #f5f5f5;
+}
+
+.tour-next-icon {
+  transition: transform 200ms var(--modal-ease);
+}
+
+.tour-next:hover .tour-next-icon,
+.tour-next:focus-visible .tour-next-icon {
+  transform: translateX(2px);
+}
+
+.tour-body {
+  animation: tour-body-in 280ms var(--modal-ease) both;
+}
+
+.tour-body::selection,
+.tour-popover ::selection {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+.tour-popover .tour-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.tour-popover .tour-body::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+@keyframes tour-scrim-in {
+  from {
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0),
+      0 0 0 9999px rgba(4, 4, 4, 0);
+  }
+}
+
+@keyframes tour-ping {
+  0% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.12);
+  }
+}
+
+@keyframes tour-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.96);
+    filter: blur(3px);
+  }
+}
+
+@keyframes tour-card-in-above {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+    filter: blur(3px);
+  }
+}
+
+@keyframes tour-body-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+    filter: blur(2px);
+  }
 }
 
 /* streamed model output: words rest visible and resolve one at a time through a small blur, the

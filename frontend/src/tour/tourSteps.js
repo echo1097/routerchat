@@ -10,6 +10,7 @@ export const CHAT_TOUR_STEPS = [
     id: "thinking",
     selector: '[data-tour="thinking-button"]',
     body: "If the selected model supports thinking use this to toggle it on or off.",
+    composerUi: "model",
     forceThinkingVisible: true,
   },
   {

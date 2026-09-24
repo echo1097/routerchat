@@ -1,13 +1,15 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { ArrowLeft, ArrowRight, Check, X } from "lucide-react";
 import { cx, CONTROL_MOTION } from "../uiShared.js";
 
 const spotlightPadding = 8;
-const popoverWidth = 300;
+const popoverWidth = 312;
 //only the opening guess, the real height gets measured once the card is on screen because a long step body blows straight past this
 const estimatedPopoverHeight = 210;
-const popoverGap = 14;
+const popoverGap = 16;
 const viewportMargin = 12;
+const arrowInset = 22;
 
 function measureTarget(selector) {
   if (typeof document === "undefined") return null;
@@ -17,14 +19,72 @@ function measureTarget(selector) {
   const rect = element.getBoundingClientRect();
   if (rect.width === 0 && rect.height === 0) return null;
 
-  return rect;
+  let spotLeft = rect.left - spotlightPadding;
+  let spotTop = rect.top - spotlightPadding;
+  let spotRight = rect.right + spotlightPadding;
+  let spotBottom = rect.bottom + spotlightPadding;
+
+  const container = element.closest('[role="menu"]');
+  const containerRect = container?.getBoundingClientRect();
+
+  if (containerRect) {
+    spotLeft = Math.max(spotLeft, containerRect.left);
+    spotTop = Math.max(spotTop, containerRect.top);
+    spotRight = Math.min(spotRight, containerRect.right);
+    spotBottom = Math.min(spotBottom, containerRect.bottom);
+  }
+
+  const paddingUsed = Math.min(
+    rect.left - spotLeft,
+    rect.top - spotTop,
+    spotRight - rect.right,
+    spotBottom - rect.bottom,
+  );
+
+  const cornerRadius = parseFloat(getComputedStyle(element).borderTopLeftRadius) || 0;
+  let radius = Math.min(cornerRadius + paddingUsed, (spotBottom - spotTop) / 2);
+
+  if (container) {
+    const containerRadius = parseFloat(getComputedStyle(container).borderTopLeftRadius) || 0;
+    radius = Math.min(radius, containerRadius);
+  }
+
+  return {
+    left: rect.left,
+    top: rect.top,
+    width: rect.width,
+    height: rect.height,
+    bottom: rect.bottom,
+    spotLeft,
+    spotTop,
+    spotWidth: spotRight - spotLeft,
+    spotHeight: spotBottom - spotTop,
+    radius,
+  };
 }
 
+
+function sameTarget(first, second) {
+  if (!first || !second) return false;
+
+  return (
+    Math.abs(first.left - second.left) < 0.5 &&
+    Math.abs(first.top - second.top) < 0.5 &&
+    Math.abs(first.width - second.width) < 0.5 &&
+    Math.abs(first.height - second.height) < 0.5 &&
+    Math.abs(first.spotLeft - second.spotLeft) < 0.5 &&
+    Math.abs(first.spotTop - second.spotTop) < 0.5 &&
+    Math.abs(first.spotWidth - second.spotWidth) < 0.5 &&
+    Math.abs(first.spotHeight - second.spotHeight) < 0.5 &&
+    first.radius === second.radius
+  );
+}
 
 
 function placePopover(rect, popoverHeight) {
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
+  const width = Math.min(popoverWidth, viewportWidth - viewportMargin * 2);
 
   //never taller than the screen it has to sit on, the card scrolls its own body if it comes to that
   const height = Math.min(popoverHeight, viewportHeight - viewportMargin * 2);
@@ -33,10 +93,11 @@ function placePopover(rect, popoverHeight) {
   const roomAbove = rect.top;
   const placeAbove = roomBelow < height + popoverGap && roomAbove >= height + popoverGap;
 
-  const rawLeft = rect.left + rect.width / 2 - popoverWidth / 2;
+  const targetCenter = rect.left + rect.width / 2;
+  const rawLeft = targetCenter - width / 2;
   const left = Math.min(
     Math.max(rawLeft, viewportMargin),
-    viewportWidth - popoverWidth - viewportMargin,
+    viewportWidth - width - viewportMargin,
   );
   const rawTop = placeAbove ? rect.top - height - popoverGap : rect.bottom + popoverGap;
   const top = Math.min(
@@ -44,15 +105,45 @@ function placePopover(rect, popoverHeight) {
     Math.max(viewportMargin, viewportHeight - height - viewportMargin),
   );
 
-  return { left, top, placeAbove, maxHeight: viewportHeight - viewportMargin * 2 };
+  const arrowLeft = Math.min(Math.max(targetCenter - left, arrowInset), width - arrowInset);
+  const showArrow = placeAbove ? top + height <= rect.top : top >= rect.bottom;
+
+  return {
+    left,
+    top,
+    width,
+    placeAbove,
+    arrowLeft,
+    showArrow,
+    maxHeight: viewportHeight - viewportMargin * 2,
+  };
 }
+
+
+function TourProgress({ stepNumber, stepCount }) {
+  return (
+    <div className="tour-progress" aria-hidden="true">
+      {Array.from({ length: stepCount }, (_, index) => (
+        <span
+          key={index}
+          className={cx(
+            "tour-progress-segment",
+            index < stepNumber - 1 && "is-done",
+            index === stepNumber - 1 && "is-current",
+          )}
+        />
+      ))}
+    </div>
+  );
+}
+
 
 function TourOverlay({ step, stepNumber, stepCount, isLastStep, onNext, onPrevious, onClose }) {
   const [targetRect, setTargetRect] = useState(null);
-  const [popoverPosition, setPopoverPosition] = useState(null);
-  const [placeAbove, setPlaceAbove] = useState(false);
+  const [placement, setPlacement] = useState(null);
   const [popoverHeight, setPopoverHeight] = useState(estimatedPopoverHeight);
   const popoverRef = useRef(null);
+  const nextButtonRef = useRef(null);
 
   //a new step means new body text, so drop back to the guess and let it get measured again
   useLayoutEffect(() => {
@@ -63,30 +154,27 @@ function TourOverlay({ step, stepNumber, stepCount, isLastStep, onNext, onPrevio
     if (!step) return undefined;
 
     let frameId = null;
+    let lastRect = null;
+    let lastViewport = "";
 
     function measure() {
       const rect = measureTarget(step.selector);
+      const viewport = `${window.innerWidth}x${window.innerHeight}`;
 
-      if (!rect) {
-        frameId = requestAnimationFrame(measure);
-        return;
+      if (rect && (!sameTarget(rect, lastRect) || viewport !== lastViewport)) {
+        lastRect = rect;
+        lastViewport = viewport;
+        setTargetRect(rect);
+        setPlacement(placePopover(rect, popoverHeight));
       }
 
-      setTargetRect(rect);
-      const placement = placePopover(rect, popoverHeight);
-      setPopoverPosition({ left: placement.left, top: placement.top, maxHeight: placement.maxHeight });
-      setPlaceAbove(placement.placeAbove);
+      frameId = requestAnimationFrame(measure);
     }
 
     measure();
 
-    window.addEventListener("resize", measure);
-    window.addEventListener("scroll", measure, true);
-
     return () => {
       if (frameId) cancelAnimationFrame(frameId);
-      window.removeEventListener("resize", measure);
-      window.removeEventListener("scroll", measure, true);
     };
   }, [step, popoverHeight]);
 
@@ -108,7 +196,13 @@ function TourOverlay({ step, stepNumber, stepCount, isLastStep, onNext, onPrevio
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
 
-  if (!step || !targetRect || !popoverPosition || typeof document === "undefined") return null;
+  const isReady = Boolean(step && targetRect && placement);
+
+  useEffect(() => {
+    if (isReady) nextButtonRef.current?.focus({ preventScroll: true });
+  }, [isReady, step]);
+
+  if (!isReady || typeof document === "undefined") return null;
 
   return createPortal(
     <div className="tour-layer" role="dialog" aria-modal="true" aria-label="Help tour">
@@ -119,39 +213,57 @@ function TourOverlay({ step, stepNumber, stepCount, isLastStep, onNext, onPrevio
       <div
         className="tour-spotlight"
         style={{
-          left: `${targetRect.left - spotlightPadding}px`,
-          top: `${targetRect.top - spotlightPadding}px`,
-          width: `${targetRect.width + spotlightPadding * 2}px`,
-          height: `${targetRect.height + spotlightPadding * 2}px`,
+          left: `${targetRect.spotLeft}px`,
+          top: `${targetRect.spotTop}px`,
+          width: `${targetRect.spotWidth}px`,
+          height: `${targetRect.spotHeight}px`,
+          borderRadius: `${targetRect.radius}px`,
         }}
-      />
+      >
+        <span key={step.id} className="tour-spotlight-ping" />
+      </div>
 
       <div
         ref={popoverRef}
-        className={cx("tour-popover", placeAbove && "tour-popover-above")}
+        className={cx("tour-popover", placement.placeAbove && "tour-popover-above")}
         style={{
-          left: `${popoverPosition.left}px`,
-          top: `${popoverPosition.top}px`,
-          width: `${popoverWidth}px`,
-          maxHeight: `${popoverPosition.maxHeight}px`,
+          left: `${placement.left}px`,
+          top: `${placement.top}px`,
+          width: `${placement.width}px`,
+          maxHeight: `${placement.maxHeight}px`,
+          "--tour-arrow-left": `${placement.arrowLeft}px`,
         }}
       >
-        <div className="mb-2 flex shrink-0 items-center justify-between gap-3">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
-            Step {stepNumber} of {stepCount}
+        {placement.showArrow && <span className="tour-popover-arrow" aria-hidden="true" />}
+
+        <div className="flex shrink-0 items-center gap-3">
+          <span className="shrink-0 text-[12px] font-medium tabular-nums text-neutral-400">
+            <span className="text-neutral-100">{stepNumber}</span>
+            <span className="px-[3px] text-neutral-600">/</span>
+            {stepCount}
           </span>
+
+          <TourProgress stepNumber={stepNumber} stepCount={stepCount} />
+
           <button
             type="button"
             aria-label="Close tour"
             onClick={onClose}
-            className={cx("text-neutral-500 hover:text-neutral-200", CONTROL_MOTION)}
+            className={cx(
+              "-mr-1.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-neutral-500 hover:bg-white/[0.07] hover:text-neutral-100 focus:outline-none focus-visible:bg-white/[0.07] focus-visible:text-neutral-100",
+              CONTROL_MOTION,
+            )}
           >
-            <i className="fi fi-br-cross-small" aria-hidden="true" />
+            <X size={15} strokeWidth={2.25} aria-hidden="true" />
           </button>
         </div>
 
         {/* the body is the only part allowed to scroll, the step counter and the buttons stay put */}
-        <p className="mb-4 min-h-0 overflow-y-auto text-pretty text-sm leading-6 text-neutral-200">
+        <p
+          key={step.id}
+          aria-live="polite"
+          className="tour-body mb-4 mt-3 min-h-0 overflow-y-auto text-pretty text-[14px] leading-[1.6] text-neutral-100"
+        >
           {step.body}
         </p>
 
@@ -161,21 +273,28 @@ function TourOverlay({ step, stepNumber, stepCount, isLastStep, onNext, onPrevio
             disabled={stepNumber === 1}
             onClick={onPrevious}
             className={cx(
-              "flex-1 rounded-full border border-line px-3 py-1.5 text-[12px] font-medium text-neutral-300 hover:text-white disabled:cursor-not-allowed disabled:opacity-40",
+              "inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-full bg-white/[0.05] px-3 text-[13px] font-medium text-neutral-300 hover:bg-white/[0.09] hover:text-white focus:outline-none focus-visible:bg-white/[0.09] focus-visible:text-white disabled:pointer-events-none disabled:opacity-35",
               CONTROL_MOTION,
             )}
           >
+            <ArrowLeft size={14} strokeWidth={2.25} aria-hidden="true" />
             Previous
           </button>
           <button
+            ref={nextButtonRef}
             type="button"
             onClick={onNext}
             className={cx(
-              "flex-1 rounded-full bg-accent px-3 py-1.5 text-[12px] font-semibold text-neutral-950 hover:bg-white",
+              "tour-next inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-full bg-neutral-100 px-3 text-[13px] font-semibold text-neutral-950 hover:bg-neutral-300 focus:outline-none focus-visible:bg-neutral-300",
               CONTROL_MOTION,
             )}
           >
             {isLastStep ? "Finish tour" : "Next"}
+            {isLastStep ? (
+              <Check size={14} strokeWidth={2.5} aria-hidden="true" className="tour-next-icon" />
+            ) : (
+              <ArrowRight size={14} strokeWidth={2.25} aria-hidden="true" className="tour-next-icon" />
+            )}
           </button>
         </div>
       </div>

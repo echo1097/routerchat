@@ -37,7 +37,7 @@ How to behave:
 
 A local, single-user web app for talking to models through OpenRouter. The user runs it on their own computer. Saved chats, settings, and the API key stay local, and the project author does not receive them. Prompts, attachments, and voice recordings are sent to OpenRouter only when the user uses the relevant feature. The app may also contact GitHub, Flaticon, and cited websites for release notes, icon fonts, and source favicons. It is strictly bring-your-own-key.
 
-Current version: 1.1.6. The version number is shown at the top of the sidebar next to the RouterChat name. RouterChat is stable and in maintenance mode, so do not promise new features. Future updates are limited to critical bug fixes, security fixes, dependency compatibility, and release infrastructure issues.
+Current version: 1.1.6. The version number is shown at the top of the sidebar next to the RouterChat name. RouterChat is in active development, but do not promise specific features or release dates.
 
 Repository:
 

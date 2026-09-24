@@ -1,12 +1,10 @@
 # RouterChat Support
 
-## Maintenance and support
-
-RouterChat is in maintenance mode. New feature development is paused. Future updates are limited to critical bug fixes, security fixes, dependency compatibility, and release infrastructure issues.
+## Getting help
 
 Start with the [setup guide](setup.md). For guided troubleshooting, you can optionally use the [support assistant prompt](assistant.md) with an AI assistant.
 
-Issue reports are still welcome, but responses and fixes are not guaranteed.
+Issue reports are welcome.
 
 ## Installation problems
 

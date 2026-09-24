@@ -25,8 +25,6 @@ RouterChat is provided as-is. You are responsible for how you use it, including 
 
 As of August 3, 2026, RouterChat is distributed under the [Apache License 2.0](LICENSE). Releases up to and including 0.3.5 remain available under the MIT License.
 
-**As of September 13, 2026, RouterChat is in maintenance mode. Future updates are limited to critical bug fixes, security fixes, dependency compatibility, and release infrastructure issues.**
-
 ## Install RouterChat
 
 RouterChat runs locally and only needs an [OpenRouter API key](https://openrouter.ai/keys). 
@@ -61,9 +59,7 @@ To remove RouterChat, run **Uninstall RouterChat** from `~/Applications/RouterCh
 
 ## Roadmap
 
-RouterChat 1.1.6 is stable and the project is now in maintenance mode. New feature development is paused. Future updates are limited to critical bug fixes, security fixes, dependency compatibility, and release infrastructure issues.
-
-When development resumes in a few months, the top priority will be introducing support for more API providers. 
+The top priority right now is introducing support for more API providers.
 
 ## Features added
 

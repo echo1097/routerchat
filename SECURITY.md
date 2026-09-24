@@ -2,8 +2,6 @@
 
 RouterChat is a local, bring-your-own-key app maintained by one person. This policy covers the app, the installers, and the updater in [get-routerchat](https://github.com/echo1097/get-routerchat).
 
-RouterChat is in maintenance mode. New feature development is paused. Future updates are limited to critical bug fixes, security fixes, dependency compatibility, and release infrastructure issues.
-
 ## Reporting
 
 Report security issues ONLY through GitHub private vulnerability reporting:
@@ -18,7 +16,7 @@ Include the affected component, your version, your OS, and steps to reproduce. O
 
 ## What to expect
 
-Security reports remain welcome during maintenance mode. Reports are reviewed on a best effort basis, but response times, fixes, and release dates are not guaranteed. Credit will be given if you want it. Please allow a reasonable window before disclosing publicly.
+Reports are reviewed on a best effort basis, but response times, fixes, and release dates are not guaranteed. Credit will be given if you want it. Please allow a reasonable window before disclosing publicly.
 
 ## Scope
 

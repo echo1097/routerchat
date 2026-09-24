@@ -65,12 +65,15 @@ The top priority right now is support for more API providers.
     - macOS and Windows
 - UI improvements
     - Navigation bar for moving through long chats
-    - Context meter with warnings when a model's context is almost full
+    - Context meter that shows how full a model's context is
     - Guided tours for Chat and Write modes
+    - In-app changelog
+    - Feedback button
 - Writing Mode improvements
     - Brainstorming canvas with branching ideas, copy buttons, and prompt regeneration
     - Chapter editor with a formatting toolbar
     - Chapter history
+    - Remove chapters from the context
     - Import and export full stories, including chapters and lorebooks
 - Chat Mode improvements
     - Web search with sources and citations
@@ -80,18 +83,22 @@ The top priority right now is support for more API providers.
     - Automatic chat names
     - Chat import and export
     - Edit prompts, regenerate replies, and see token usage and cost for each response
+    - Copy buttons on prompts
 - Memory for Write mode
     - Lorebook entries for characters, locations, items, events, notes, chapter summaries, and a timeline
     - Write entries yourself or let the model generate them, with automatic or manual lorebook updates
     - Repair tools for the lorebook and timeline
 - Voice input
     - Record and transcribe speech in Chat, Write, and Brainstorm
+    - Choose which transcription model to use
 - Usage tracking
     - Spending, request counts, and token usage for the last 7 days
     - Lifetime totals per model
 - Model settings
     - Model search and a default model
+    - Option to hide batch models
     - System prompts, temperature, output limits, and reasoning controls where supported
+    - Reasoning level shown on the model button
     - Provider preference for fastest or lowest price
     - Privacy and Zero Data Retention routing options
 

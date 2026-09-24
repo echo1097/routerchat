@@ -17,6 +17,7 @@ import { Accordion } from "../components/Accordion.jsx";
 import { SlidingTabs } from "../components/SlidingTabs.jsx";
 import { MaskIcon, IconButton } from "../components/IconButton.jsx";
 import { UsagePanel } from "./UsagePanel.jsx";
+import { useLingeringPage } from "./useLingeringPage.js";
 
 const REASONING_EFFORTS = [
   { value: "low", label: "Low" },
@@ -338,6 +339,9 @@ export function SettingsDrawer({
     if (visibleSettingsPages.some((page) => page.id === activePage)) return;
     setActivePage("general");
   }, [activePage, visibleSettingsPages]);
+
+  const transcriptionPage = useLingeringPage(open, activePage === "transcription");
+  const usagePage = useLingeringPage(open, activePage === "usage");
 
   function choosePage(pageId) {
     setActivePage(pageId);
@@ -1061,7 +1065,7 @@ export function SettingsDrawer({
               {modelList}
             </section>
             <section className="t-page flex min-h-0 flex-col px-4 py-3 md:px-4 md:py-3" data-page-id="3" aria-label="Transcription settings">
-              {open && activePage === "transcription" && <TranscriptionSettings />}
+              {transcriptionPage.mounted && <TranscriptionSettings key={transcriptionPage.session} />}
             </section>
             <section
               className="t-page flex min-h-0 flex-col px-4 py-3 md:px-4 md:py-3"
@@ -1105,7 +1109,7 @@ export function SettingsDrawer({
               data-page-id="9"
               aria-label="Usage settings"
             >
-              {open && activePage === "usage" && <UsagePanel models={models} />}
+              {usagePage.mounted && <UsagePanel key={usagePage.session} models={models} />}
             </section>
           </div>
         </div>

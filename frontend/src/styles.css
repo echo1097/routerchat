@@ -2741,3 +2741,19 @@ typography exactly or the swap at the end of a generation shows a seam */
     max-width: 64px;
   }
 }
+
+.tos-still-blocked {
+  animation: tos-still-blocked 420ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes tos-still-blocked {
+  from {
+    opacity: 0;
+    filter: blur(3px);
+    transform: translateY(3px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tos-still-blocked {
+    animation: none;
+  }
+}

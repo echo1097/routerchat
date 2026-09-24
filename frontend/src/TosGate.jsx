@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { FileWarning, Loader2 } from "lucide-react";
+import { FileWarning, Loader2, LockKeyhole, Unplug } from "lucide-react";
 
 import { cx, CONTROL_MOTION } from "./uiShared.js";
 import { MARKDOWN_IMAGE_COMPONENT } from "./markdownImage.jsx";
@@ -63,45 +63,95 @@ export function TosLoadingScreen() {
   );
 }
 
-export function TosUnavailableScreen({ message, onRetry, retrying }) {
+const UNAVAILABLE_REASONS = {
+  auth: {
+    icon: LockKeyhole,
+    title: "This browser isn't authorized",
+    detail: "RouterChat only talks to the window its launcher opens, so this tab can't load the Terms of Service.",
+    fix: "Close and relaunch RouterChat then try again.",
+    code: "api_auth_required",
+  },
+  missing: {
+    icon: FileWarning,
+    title: "Terms of Service missing",
+    detail: "RouterChat can't run without its terms, and TOS.md couldn't be read.",
+    fix: (
+      <>
+        Put <code className="rounded-md bg-white/[0.07] px-1.5 py-0.5 font-mono text-[0.9em] text-neutral-100">TOS.md</code> back in the project root, then try again.
+      </>
+    ),
+    code: "tos_missing",
+  },
+  offline: {
+    icon: Unplug,
+    title: "Can't reach RouterChat",
+    detail: "The RouterChat backend isn't responding, so the Terms of Service couldn't load.",
+    fix: "Make sure RouterChat is running, then try again.",
+    code: "backend_unreachable",
+  },
+};
+
+function checkedTime(failedAt) {
+  return new Date(failedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+export function TosUnavailableScreen({ reason, onRetry, retrying, failedAt }) {
+  const content = UNAVAILABLE_REASONS[reason] || UNAVAILABLE_REASONS.offline;
+  const Icon = content.icon;
+
   return (
     <FullScreen>
       <section
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="tos-unavailable-title"
-        className="w-full max-w-lg rounded-3xl bg-panel p-8 [box-shadow:var(--shadow-surface)]"
+        aria-describedby="tos-unavailable-detail"
+        className="w-full max-w-md overflow-hidden rounded-3xl bg-panel [box-shadow:var(--shadow-surface)]"
       >
-        <div className="flex items-start gap-4">
-          <span className="mt-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-full bg-amber-500/10 text-amber-400">
-            <FileWarning className="h-5 w-5" strokeWidth={1.75} />
+        <div className="px-6 pb-6 pt-7 sm:px-8 sm:pt-8">
+          <span className="grid h-11 w-11 place-items-center rounded-2xl bg-amber-400/[0.09] text-amber-300 ring-1 ring-inset ring-amber-300/15">
+            <Icon className="h-[22px] w-[22px]" strokeWidth={1.75} aria-hidden="true" />
           </span>
-          <div className="min-w-0">
-            <h1 id="tos-unavailable-title" className="text-lg font-semibold">
-              Terms of Service unavailable
-            </h1>
-            <p className="mt-3 text-sm leading-6 text-muted">
-              {message ||
-                "TOS.md could not be read. Restore it from the repository to use RouterChat."}
-            </p>
-            <p className="mt-3 text-sm leading-6 text-muted">
-              RouterChat cannot run without its terms. Put <code className="rounded bg-white/[0.07] px-1.5 py-0.5 text-[0.92em] text-neutral-100">TOS.md</code>{" "}
-              back in the project root and try again.
-            </p>
-          </div>
+
+          <h1
+            id="tos-unavailable-title"
+            className="mt-5 text-balance text-xl font-semibold tracking-[-0.01em] text-ink"
+          >
+            {content.title}
+          </h1>
+
+          <p id="tos-unavailable-detail" className="mt-2 text-pretty text-sm leading-6 text-muted">
+            {content.detail}
+          </p>
+
+          <p className="mt-4 text-pretty text-sm font-medium leading-6 text-neutral-100">
+            {content.fix}
+          </p>
         </div>
 
-        <div className="mt-8 flex justify-end">
+        <div className="flex items-center justify-between gap-4 border-t border-line bg-white/[0.015] px-6 py-4 sm:px-8">
+          <p className="min-w-0 truncate text-xs text-neutral-400" aria-live="polite">
+            {retrying ? (
+              "Checking again"
+            ) : failedAt ? (
+              <span key={failedAt} className="tos-still-blocked">Still blocked at {checkedTime(failedAt)}</span>
+            ) : (
+              <span className="font-mono">{content.code}</span>
+            )}
+          </p>
+
           <button
             type="button"
             onClick={onRetry}
             disabled={retrying}
             className={cx(
-              "rounded-full bg-white/[0.06] px-5 py-2.5 text-sm font-medium text-ink",
-              "hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-50",
+              "inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-full bg-white px-5 text-sm font-medium text-black",
+              "hover:bg-white/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-2 focus-visible:ring-offset-panel",
+              "disabled:cursor-default disabled:bg-white/80",
               CONTROL_MOTION,
             )}
           >
+            {retrying && <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} aria-hidden="true" />}
             {retrying ? "Checking" : "Try again"}
           </button>
         </div>

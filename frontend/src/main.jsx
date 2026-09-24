@@ -3515,31 +3515,39 @@ function App() {
 }
 
 function Root() {
-  const [gate, setGate] = useState({ status: "loading", tos: null, message: "" });
+  const [gate, setGate] = useState({ status: "loading", tos: null, reason: "", retrying: false, failedAt: null });
   const [acceptError, setAcceptError] = useState("");
 
   const loadTos = useCallback(async () => {
-    setGate((current) => ({ ...current, status: "loading" }));
+    setGate((current) =>
+      current.status === "unavailable"
+        ? { ...current, retrying: true }
+        : { ...current, status: "loading" },
+    );
 
     try {
       const tos = await api("/api/tos");
       setGate({
         status: tos.accepted ? "accepted" : "blocked",
         tos,
-        message: "",
+        reason: "",
+        retrying: false,
+        failedAt: null,
       });
     } catch (error) {
       //anything that isnt a clean "accepted" answer keeps the app shut, including the backend being down
-      setGate({
+      setGate((current) => ({
         status: "unavailable",
         tos: null,
-        message:
+        reason:
           error?.code === "api_auth_required"
-            ? "Open RouterChat through its launcher to authorize this browser."
+            ? "auth"
             : error?.code === "tos_missing"
-              ? error.message
-              : "Could not reach the RouterChat backend to load the Terms of Service.",
-      });
+              ? "missing"
+              : "offline",
+        retrying: false,
+        failedAt: current.retrying ? Date.now() : null,
+      }));
     }
   }, []);
 
@@ -3555,7 +3563,7 @@ function Root() {
         method: "POST",
         body: JSON.stringify({ hash: gate.tos.hash }),
       });
-      setGate({ status: "accepted", tos: accepted, message: "" });
+      setGate({ status: "accepted", tos: accepted, reason: "", retrying: false, failedAt: null });
     } catch (error) {
       if (error?.code === "tos_stale") {
         //TOS.md changed underneath us, pull the new text instead of letting them through
@@ -3573,7 +3581,14 @@ function Root() {
   }
 
   if (gate.status === "unavailable") {
-    return <TosUnavailableScreen message={gate.message} onRetry={loadTos} />;
+    return (
+      <TosUnavailableScreen
+        reason={gate.reason}
+        retrying={gate.retrying}
+        failedAt={gate.failedAt}
+        onRetry={loadTos}
+      />
+    );
   }
 
   if (gate.status === "blocked") {

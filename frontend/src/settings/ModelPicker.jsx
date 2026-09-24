@@ -11,7 +11,7 @@ export function ModelPicker({
   selectedId,
   onSelect,
   emptyMessage,
-  priceHeader = "Price + Context",
+  priceHeader = "Price",
   renderPrice = null,
   note = null,
   inheritOption = null,
@@ -21,6 +21,8 @@ export function ModelPicker({
   searchInputRef,
 }) {
   const listRef = useRef(null);
+  const showContext = !renderPrice;
+  const columns = showContext ? "grid-cols-[minmax(0,1fr)_96px_64px]" : "grid-cols-[minmax(0,1fr)_104px]";
   const [listScrolled, setListScrolled] = useState(false);
   const [listHasMoreBelow, setListHasMoreBelow] = useState(false);
 
@@ -41,7 +43,7 @@ export function ModelPicker({
     const contextLimit = getModelContextLimit(model);
     return {
       price: priceLabel(model) || "-",
-      context: Number.isFinite(contextLimit) ? `${formatTokens(contextLimit)} context` : "—",
+      context: Number.isFinite(contextLimit) ? formatTokens(contextLimit) : "-",
     };
   }
 
@@ -50,7 +52,8 @@ export function ModelPicker({
       <div
         key={key}
         className={cx(
-          "grid min-h-[52px] grid-cols-[minmax(0,1fr)_104px] items-center rounded-lg px-1 py-2 transition-colors duration-150 ease-out",
+          "grid min-h-[52px] items-center gap-3 rounded-lg px-1 py-2 transition-colors duration-150 ease-out",
+          columns,
           isSelected ? "bg-white/[0.035]" : "hover:bg-white/[0.02]",
           disabled && !isSelected && "opacity-45",
         )}
@@ -68,14 +71,14 @@ export function ModelPicker({
           <span className="block truncate text-sm font-medium text-neutral-100">{name}</span>
           <span className="mt-0.5 block truncate text-xs text-neutral-600">{subLabel}</span>
         </button>
-        <span className="flex min-w-0 flex-col items-end px-1 text-right text-xs leading-4 tabular-nums text-neutral-500">
-          {renderPrice && model ? renderPrice(model) : (
-            <>
-              <span className="whitespace-nowrap">{price}</span>
-              <span className="whitespace-nowrap">{context}</span>
-            </>
-          )}
+        <span className="min-w-0 whitespace-nowrap px-1 text-right text-xs tabular-nums text-neutral-500">
+          {renderPrice && model ? renderPrice(model) : price}
         </span>
+        {showContext && (
+          <span className="min-w-0 whitespace-nowrap px-1 text-right text-xs tabular-nums text-neutral-500">
+            {context}
+          </span>
+        )}
       </div>
     );
   }
@@ -105,9 +108,10 @@ export function ModelPicker({
         {note}
       </div>
 
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-1 pb-2 pt-1 text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-600">
+      <div className={cx("grid items-center gap-3 px-1 pb-2 pt-1 text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-600", columns)}>
         <span>Model</span>
         <span className="whitespace-nowrap px-1 text-right">{priceHeader}</span>
+        {showContext && <span className="whitespace-nowrap px-1 text-right">Context</span>}
       </div>
 
       <div className="relative min-h-0 flex-1">

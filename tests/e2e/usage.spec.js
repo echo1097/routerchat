@@ -57,7 +57,7 @@ test("shows weekly spending and model details without provider requests", async 
   await expect(dialog.getByRole("table")).toContainText("Test model");
   await expect(dialog.getByRole("table")).toContainText("$16.10");
   await expect(dialog.getByRole("table")).toContainText("retired-model");
-  await expect(dialog.getByRole("region", { name: "Lifetime model totals" })).toContainText("All time");
+  await expect(dialog.getByRole("region", { name: "Lifetime model totals" })).not.toContainText("All time");
   await page.screenshot({ path: testInfo.outputPath("usage-desktop.png"), animations: "disabled" });
   await dialog.getByRole("button", { name: "API", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "API", exact: true })).toBeVisible();

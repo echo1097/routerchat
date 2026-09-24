@@ -138,7 +138,6 @@ function UsageChart({ title, days, series, getValue, money = false }) {
     <section className="usage-chart-card" aria-label={title}>
       <div className="usage-section-heading">
         <h3>{title}</h3>
-        <span>{money ? "USD" : "Tokens"}</span>
       </div>
       <div className="usage-chart">
         <div className="usage-axis">
@@ -310,7 +309,6 @@ export function UsagePanel({ models }) {
       <section className="usage-models" aria-label="Lifetime model totals">
         <div className="usage-section-heading">
           <h3>Lifetime model totals</h3>
-          <span>All time</span>
         </div>
         {lifetimeModels.length ? (
           <div className="usage-table-wrap">

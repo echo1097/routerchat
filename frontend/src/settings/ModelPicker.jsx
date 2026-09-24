@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from "react";
-import { getModelContextLimit, priceLabel, formatTokens } from "../modelFormatting.js";
+import { getModelContextLimit, priceLabel, formatTokens, modelDisplayName, modelMaker } from "../modelFormatting.js";
 import { cx, CONTROL_MOTION } from "../uiShared.js";
 import { Search } from "lucide-react";
 import { LOREBOOK_MODEL_INHERIT } from "./settingsDefaults.js";
@@ -137,8 +137,8 @@ export function ModelPicker({
               row({
                 model,
                 key: model.id,
-                name: model.name,
-                subLabel: model.id,
+                name: modelDisplayName(model),
+                subLabel: modelMaker(model),
                 ...modelRowValues(model),
                 isSelected: model.id === selectedId,
               }),

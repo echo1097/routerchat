@@ -962,9 +962,9 @@ export function SettingsDrawer({
         aria-modal="true"
         aria-labelledby="settings-modal-title"
         aria-hidden={!open}
-        className="grid h-full w-full grid-cols-1 text-neutral-100 md:grid-cols-[232px_minmax(0,1fr)]"
+        className="settings-page-frame mx-auto grid h-full w-full grid-cols-1 text-neutral-100 md:grid-cols-[200px_minmax(0,1fr)]"
       >
-        <aside className="settings-page-rail hidden min-h-0 flex-col border-r border-white/10 px-3 pb-3 pt-4 md:flex">
+        <aside className="settings-page-rail hidden min-h-0 flex-col px-3 pb-3 pt-4 md:flex">
           <div className="mb-5 flex items-center gap-2.5">
             <button
               type="button"
@@ -1023,29 +1023,31 @@ export function SettingsDrawer({
             activePage === "usage" && "is-wide",
           )}
         >
-          <header className="settings-inline border-b border-white/10 pb-3 pt-4 md:pb-4 md:pt-7">
-            <div className="flex items-center justify-between gap-4">
-              <h1
-                id="settings-modal-title"
-                className="text-balance text-xl font-semibold tracking-[-0.01em] text-neutral-50 md:text-2xl"
-              >
-                {visibleSettingsPages.find((page) => page.id === activePage)?.label || "Settings"}
-              </h1>
-              <div className="md:hidden">
-                <IconButton label="Close settings" onClick={onClose}>
-                  <X size={17} />
-                </IconButton>
+          <header className="settings-inline pt-4 md:pt-7">
+            <div className="border-b border-white/10 pb-3 md:pb-4">
+              <div className="flex items-center justify-between gap-4">
+                <h1
+                  id="settings-modal-title"
+                  className="text-balance text-xl font-semibold tracking-[-0.01em] text-neutral-50 md:text-2xl"
+                >
+                  {visibleSettingsPages.find((page) => page.id === activePage)?.label || "Settings"}
+                </h1>
+                <div className="md:hidden">
+                  <IconButton label="Close settings" onClick={onClose}>
+                    <X size={17} />
+                  </IconButton>
+                </div>
               </div>
+              <SlidingTabs
+                options={visibleSettingsPages}
+                value={activePage}
+                onChange={choosePage}
+                getValue={(page) => page.id}
+                getLabel={(page) => page.label}
+                ariaLabel="Settings sections"
+                className="settings-mobile-tabs mt-3 flex w-full md:hidden"
+              />
             </div>
-            <SlidingTabs
-              options={visibleSettingsPages}
-              value={activePage}
-              onChange={choosePage}
-              getValue={(page) => page.id}
-              getLabel={(page) => page.label}
-              ariaLabel="Settings sections"
-              className="settings-mobile-tabs mt-3 flex w-full md:hidden"
-            />
           </header>
 
           <div

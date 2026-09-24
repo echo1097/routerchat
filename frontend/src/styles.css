@@ -478,12 +478,19 @@ textarea::placeholder {
 .settings-page-panel.is-wide {
   --settings-measure: 1040px;
 }
+.settings-page-frame {
+  max-width: 960px;
+}
 .settings-inline {
-  padding-inline: max(16px, calc((100% - var(--settings-measure)) / 2));
+  padding-inline: 16px;
 }
 @media (min-width: 768px) {
   .settings-inline {
-    padding-inline: max(32px, calc((100% - var(--settings-measure)) / 2));
+    padding-left: 40px;
+    padding-right: max(32px, calc(100% - var(--settings-measure) - 40px));
+  }
+  .settings-page-panel.is-wide {
+    margin-right: min(0px, max(-360px, calc(496px - 50vw)));
   }
 }
 .settings-page .t-page-slide .t-page:not([data-page-id="9"]) {

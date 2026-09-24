@@ -984,7 +984,7 @@ export function SettingsDrawer({
         aria-hidden={!open}
         className="settings-page-frame mx-auto grid h-full w-full grid-cols-1 text-neutral-100 md:grid-cols-[200px_minmax(0,1fr)]"
       >
-        <aside className="settings-page-rail hidden min-h-0 flex-col px-3 pb-3 pt-4 md:flex">
+        <aside className="settings-page-rail hidden min-h-0 flex-col px-3 pb-3 pt-7 md:flex">
           <div className="mb-5 flex items-center gap-2.5">
             <button
               type="button"
@@ -1040,7 +1040,7 @@ export function SettingsDrawer({
         <div className="settings-page-panel flex min-h-0 min-w-0 flex-col overflow-hidden">
           <header className="settings-inline pt-4 md:pt-7">
             <div className="border-b border-white/10 pb-3 md:pb-4">
-              <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center justify-between gap-4 md:h-9">
                 <h1
                   id="settings-modal-title"
                   className="text-balance text-xl font-semibold tracking-[-0.01em] text-neutral-50 md:text-2xl"

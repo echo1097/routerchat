@@ -451,30 +451,53 @@ textarea::placeholder {
     opacity   var(--modal-close-dur) var(--modal-ease);
 }
 
-.t-modal.settings-modal.is-open {
-  transition:
-    transform var(--modal-open-dur) var(--modal-ease),
-    opacity var(--modal-open-dur) var(--modal-ease),
-    max-width 340ms cubic-bezier(0.22, 1, 0.36, 1),
-    height 340ms cubic-bezier(0.22, 1, 0.36, 1);
+.settings-page {
+  opacity: 0;
+  transition: opacity var(--modal-close-dur) var(--modal-ease);
 }
-
-.settings-modal {
-  --settings-gutter: 24px;
-  --settings-rail: 0px;
+.settings-page.is-open {
+  opacity: 1;
+  transition-duration: var(--modal-open-dur);
 }
-@media (min-width: 640px) {
-  .settings-modal { --settings-gutter: 48px; }
+.settings-page-rail,
+.settings-page-panel {
+  transition: transform var(--modal-close-dur) var(--modal-ease);
+}
+.settings-page-rail {
+  transform: translateX(-8px);
+}
+.settings-page-panel {
+  --settings-measure: 680px;
+  transform: translateY(10px);
+}
+.settings-page.is-open .settings-page-rail,
+.settings-page.is-open .settings-page-panel {
+  transform: none;
+  transition-duration: var(--modal-open-dur);
+}
+.settings-page-panel.is-wide {
+  --settings-measure: 1040px;
+}
+.settings-page-frame {
+  max-width: 960px;
+}
+.settings-inline {
+  padding-inline: 16px;
 }
 @media (min-width: 768px) {
-  .settings-modal { --settings-rail: 148px; }
+  .settings-inline {
+    padding-left: 40px;
+    padding-right: max(32px, calc(100% - var(--settings-measure) - 40px));
+  }
+  .settings-page-panel.is-wide {
+    margin-right: min(0px, max(-360px, calc(496px - 50vw)));
+  }
 }
-.settings-modal .t-page-slide .t-page {
-  right: auto;
-  width: calc(min(560px, 100vw - var(--settings-gutter)) - var(--settings-rail));
+.settings-page .t-page-slide .t-page:not([data-page-id="9"]) {
+  --settings-measure: 680px;
 }
-.settings-modal .t-page-slide .t-page[data-page-id="9"] {
-  width: calc(min(980px, 100vw - var(--settings-gutter)) - var(--settings-rail));
+.settings-page .t-page-slide .t-page[data-page-id="9"] {
+  --settings-measure: 1040px;
 }
 
 .modal-interaction-guard.is-inert,
@@ -1966,6 +1989,9 @@ sticky header veil and reads as clipping through the blur */
 @media (prefers-reduced-motion: reduce) {
   .t-resize { transition: none !important; }
   .t-modal { transition: none !important; }
+  .settings-page,
+  .settings-page-rail,
+  .settings-page-panel { transition: none !important; }
   .t-page-slide .t-page { transition: none !important; }
   .t-tabs-pill, .t-tab { transition: none !important; }
   .t-icon-swap .t-icon { transition: none !important; }

@@ -8,6 +8,17 @@ export function promptModelName(models, id) {
     .replace(/^[^/]+\//, "");
 }
 
+export function modelDisplayName(model) {
+  const name = String(model.name || model.id || "");
+  return name.includes(": ") ? name.slice(name.indexOf(": ") + 2) : name;
+}
+
+export function modelMaker(model) {
+  const name = String(model.name || "");
+  if (name.includes(": ")) return name.slice(0, name.indexOf(": "));
+  return String(model.id || "").split("/")[0];
+}
+
 export function toFiniteNumber(value) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string" && value.trim()) {
@@ -58,6 +69,10 @@ export function priceLabel(model) {
   return `$${prompt.toFixed(prompt >= 1 ? 0 : 2)} / $${completion.toFixed(
     completion >= 1 ? 0 : 2,
   )}`;
+}
+
+export function isBatchModel(model) {
+  return String(model.id || "").endsWith(":batch");
 }
 
 export function isFreeModel(model) {

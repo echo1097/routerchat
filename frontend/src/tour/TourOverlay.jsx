@@ -10,21 +10,31 @@ const estimatedPopoverHeight = 210;
 const popoverGap = 16;
 const viewportMargin = 12;
 const arrowInset = 22;
+const largeSpotRadius = 18;
+const missingTargetDelay = 300;
 
-function measureTarget(selector) {
+function measureTarget(step) {
   if (typeof document === "undefined") return null;
-  const element = document.querySelector(selector);
+  const element = document.querySelector(step.selector);
   if (!element) return null;
 
   const rect = element.getBoundingClientRect();
   if (rect.width === 0 && rect.height === 0) return null;
 
-  let spotLeft = rect.left - spotlightPadding;
-  let spotTop = rect.top - spotlightPadding;
-  let spotRight = rect.right + spotlightPadding;
-  let spotBottom = rect.bottom + spotlightPadding;
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
 
-  const container = element.closest('[role="menu"]');
+  const container = element.getAttribute("role") === "menuitem" ? element.closest('[role="menu"]') : null;
+  const isMenu = element.getAttribute("role") === "menu";
+  const isDialog = element.getAttribute("role") === "dialog";
+  const isLarge = !isDialog && (rect.height > viewportHeight * 0.45 || rect.width * rect.height > viewportWidth * viewportHeight * 0.3);
+  const padding = isDialog || isLarge || isMenu || container ? 0 : step.spotlightPadding ?? spotlightPadding;
+
+  let spotLeft = Math.max(rect.left - padding, isLarge ? 6 : -Infinity);
+  let spotTop = Math.max(rect.top - padding, isLarge ? 6 : -Infinity);
+  let spotRight = Math.min(rect.right + padding, isLarge ? viewportWidth - 6 : Infinity);
+  let spotBottom = Math.min(rect.bottom + padding, isLarge ? viewportHeight - 6 : Infinity);
+
   const containerRect = container?.getBoundingClientRect();
 
   if (containerRect) {
@@ -34,20 +44,24 @@ function measureTarget(selector) {
     spotBottom = Math.min(spotBottom, containerRect.bottom);
   }
 
-  const paddingUsed = Math.min(
+  const paddingUsed = Math.max(0, Math.min(
     rect.left - spotLeft,
     rect.top - spotTop,
     spotRight - rect.right,
     spotBottom - rect.bottom,
-  );
+  ));
 
   const cornerRadius = parseFloat(getComputedStyle(element).borderTopLeftRadius) || 0;
-  let radius = Math.min(cornerRadius + paddingUsed, (spotBottom - spotTop) / 2);
+  let radius = isLarge
+    ? largeSpotRadius
+    : Math.min(cornerRadius + paddingUsed, (spotBottom - spotTop) / 2);
 
   if (container) {
     const containerRadius = parseFloat(getComputedStyle(container).borderTopLeftRadius) || 0;
     radius = Math.min(radius, containerRadius);
   }
+
+  const avoid = containerRect || rect;
 
   return {
     left: rect.left,
@@ -60,6 +74,12 @@ function measureTarget(selector) {
     spotWidth: spotRight - spotLeft,
     spotHeight: spotBottom - spotTop,
     radius,
+    avoidLeft: Math.min(avoid.left, spotLeft),
+    avoidTop: Math.min(avoid.top, spotTop),
+    avoidRight: Math.max(avoid.right, spotRight),
+    avoidBottom: Math.max(avoid.bottom, spotBottom),
+    isLarge,
+    beside: Boolean(container) || isMenu,
   };
 }
 
@@ -76,46 +96,105 @@ function sameTarget(first, second) {
     Math.abs(first.spotTop - second.spotTop) < 0.5 &&
     Math.abs(first.spotWidth - second.spotWidth) < 0.5 &&
     Math.abs(first.spotHeight - second.spotHeight) < 0.5 &&
+    Math.abs(first.avoidTop - second.avoidTop) < 0.5 &&
+    Math.abs(first.avoidBottom - second.avoidBottom) < 0.5 &&
     first.radius === second.radius
   );
 }
 
 
-function placePopover(rect, popoverHeight) {
+function clamp(value, low, high) {
+  return Math.min(Math.max(value, low), Math.max(low, high));
+}
+
+
+function missingTarget() {
+  const centerX = window.innerWidth / 2;
+  const centerY = window.innerHeight / 2;
+
+  return {
+    left: centerX,
+    top: centerY,
+    width: 0,
+    height: 0,
+    bottom: centerY,
+    spotLeft: centerX,
+    spotTop: centerY,
+    spotWidth: 0,
+    spotHeight: 0,
+    radius: 0,
+    isMissing: true,
+  };
+}
+
+
+function placePopover(rect, popoverHeight, preferredSide) {
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
   const width = Math.min(popoverWidth, viewportWidth - viewportMargin * 2);
 
   //never taller than the screen it has to sit on, the card scrolls its own body if it comes to that
   const height = Math.min(popoverHeight, viewportHeight - viewportMargin * 2);
+  const maxHeight = viewportHeight - viewportMargin * 2;
 
-  const roomBelow = viewportHeight - rect.bottom;
-  const roomAbove = rect.top;
-  const placeAbove = roomBelow < height + popoverGap && roomAbove >= height + popoverGap;
+  if (rect.isMissing || rect.isLarge) {
+    const centerX = rect.isMissing ? viewportWidth / 2 : rect.spotLeft + rect.spotWidth / 2;
+    const top = rect.isMissing
+      ? (viewportHeight - height) / 2
+      : rect.spotTop + (rect.spotHeight - height) * 0.62;
 
-  const targetCenter = rect.left + rect.width / 2;
-  const rawLeft = targetCenter - width / 2;
-  const left = Math.min(
-    Math.max(rawLeft, viewportMargin),
-    viewportWidth - width - viewportMargin,
-  );
-  const rawTop = placeAbove ? rect.top - height - popoverGap : rect.bottom + popoverGap;
-  const top = Math.min(
-    Math.max(rawTop, viewportMargin),
-    Math.max(viewportMargin, viewportHeight - height - viewportMargin),
-  );
+    return {
+      side: "inside",
+      left: clamp(centerX - width / 2, viewportMargin, viewportWidth - width - viewportMargin),
+      top: clamp(top, viewportMargin, viewportHeight - height - viewportMargin),
+      width,
+      maxHeight,
+      showArrow: false,
+    };
+  }
 
-  const arrowLeft = Math.min(Math.max(targetCenter - left, arrowInset), width - arrowInset);
-  const showArrow = placeAbove ? top + height <= rect.top : top >= rect.bottom;
+  const fits = {
+    right: rect.avoidRight + popoverGap + width <= viewportWidth - viewportMargin,
+    left: rect.avoidLeft - popoverGap - width >= viewportMargin,
+    above: rect.avoidTop - popoverGap - height >= viewportMargin,
+    below: rect.avoidBottom + popoverGap + height <= viewportHeight - viewportMargin,
+  };
+
+  let order = ["below", "above"];
+  if (rect.beside) order = ["right", "left", "above", "below"];
+  else if (preferredSide) order = [preferredSide, "below", "above"];
+
+  const side = order.find((option) => fits[option]) || (fits.above || rect.avoidTop > viewportHeight - rect.avoidBottom ? "above" : "below");
+  const targetCenterX = rect.left + rect.width / 2;
+  const targetCenterY = rect.top + rect.height / 2;
+
+  if (side === "right" || side === "left") {
+    const left = side === "right" ? rect.avoidRight + popoverGap : rect.avoidLeft - popoverGap - width;
+    const top = clamp(targetCenterY - height / 2, viewportMargin, viewportHeight - height - viewportMargin);
+
+    return {
+      side,
+      left,
+      top,
+      width,
+      maxHeight,
+      arrowTop: clamp(targetCenterY - top, arrowInset, height - arrowInset),
+      showArrow: true,
+    };
+  }
+
+  const left = clamp(targetCenterX - width / 2, viewportMargin, viewportWidth - width - viewportMargin);
+  const rawTop = side === "above" ? rect.avoidTop - popoverGap - height : rect.avoidBottom + popoverGap;
+  const top = clamp(rawTop, viewportMargin, viewportHeight - height - viewportMargin);
 
   return {
+    side,
     left,
     top,
     width,
-    placeAbove,
-    arrowLeft,
-    showArrow,
-    maxHeight: viewportHeight - viewportMargin * 2,
+    maxHeight,
+    arrowLeft: clamp(targetCenterX - left, arrowInset, width - arrowInset),
+    showArrow: side === "above" ? top + height <= rect.spotTop : top >= rect.spotTop + rect.spotHeight,
   };
 }
 
@@ -156,16 +235,19 @@ function TourOverlay({ step, stepNumber, stepCount, isLastStep, onNext, onPrevio
     let frameId = null;
     let lastRect = null;
     let lastViewport = "";
+    const startedAt = performance.now();
 
     function measure() {
-      const rect = measureTarget(step.selector);
       const viewport = `${window.innerWidth}x${window.innerHeight}`;
+      let rect = measureTarget(step);
 
-      if (rect && (!sameTarget(rect, lastRect) || viewport !== lastViewport)) {
+      if (!rect && performance.now() - startedAt > missingTargetDelay) rect = missingTarget();
+
+      if (rect && (!sameTarget(rect, lastRect) || viewport !== lastViewport || rect.isMissing !== lastRect?.isMissing)) {
         lastRect = rect;
         lastViewport = viewport;
         setTargetRect(rect);
-        setPlacement(placePopover(rect, popoverHeight));
+        setPlacement(placePopover(rect, popoverHeight, step.placement));
       }
 
       frameId = requestAnimationFrame(measure);
@@ -211,7 +293,7 @@ function TourOverlay({ step, stepNumber, stepCount, isLastStep, onNext, onPrevio
       <div className="tour-backdrop" />
 
       <div
-        className="tour-spotlight"
+        className={cx("tour-spotlight", targetRect.isMissing && "tour-spotlight-empty")}
         style={{
           left: `${targetRect.spotLeft}px`,
           top: `${targetRect.spotTop}px`,
@@ -225,13 +307,14 @@ function TourOverlay({ step, stepNumber, stepCount, isLastStep, onNext, onPrevio
 
       <div
         ref={popoverRef}
-        className={cx("tour-popover", placement.placeAbove && "tour-popover-above")}
+        className={cx("tour-popover", `tour-popover-${placement.side}`)}
         style={{
           left: `${placement.left}px`,
           top: `${placement.top}px`,
           width: `${placement.width}px`,
           maxHeight: `${placement.maxHeight}px`,
-          "--tour-arrow-left": `${placement.arrowLeft}px`,
+          "--tour-arrow-left": placement.arrowLeft === undefined ? "50%" : `${placement.arrowLeft}px`,
+          "--tour-arrow-top": placement.arrowTop === undefined ? "50%" : `${placement.arrowTop}px`,
         }}
       >
         {placement.showArrow && <span className="tour-popover-arrow" aria-hidden="true" />}

@@ -393,6 +393,8 @@ function App() {
     const nextView = writeTour.currentStep?.workspaceView;
     if (!writeTour.isActive || !storyId || !nextView) return;
 
+    setRailOpen(Boolean(writeTour.currentStep.needsRail));
+
     setStoryWorkspaceView(nextView);
     writeRoute(storyRoute(storyId, activeChapterId, nextView), { replace: true });
   }, [writeTour.currentStep]);

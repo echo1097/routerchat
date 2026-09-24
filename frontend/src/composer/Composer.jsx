@@ -118,6 +118,8 @@ export function Composer({
     }
 
     function closeOnOutsidePress(event) {
+      if (tourUiRef.current) return;
+
       if (!composerControlsRef.current?.contains(event.target)) {
         setContextMenuOpen(false);
         setModelMenuOpen(false);
@@ -289,7 +291,7 @@ export function Composer({
                     <ChevronDown size={14} className={cx("writing-tools-chevron transition-transform duration-200", contextMenuOpen && "rotate-180")} />
                   </button>
                   {contextMenuOpen && (
-                    <div role="menu" className="absolute bottom-[calc(100%+8px)] -left-4 z-30 w-72 rounded-2xl bg-[#292929] p-1.5">
+                    <div role="menu" data-tour="write-tools-menu" className="absolute bottom-[calc(100%+8px)] -left-4 z-30 w-72 rounded-2xl bg-[#292929] p-1.5">
                       <ComposerMenuButton label="Lorebook" detail="Story knowledge" onClick={() => { onOpenLorebook(); setContextMenuOpen(false); }} />
                       <ComposerMenuButton label="Brainstorm" detail="Branch story ideas" onClick={() => { onOpenBrainstorm(); setContextMenuOpen(false); }} />
                       <ComposerMenuButton label="System Prompt" detail={systemPrompt.trim() ? "Custom instructions" : "Default instructions"} onClick={() => { setSystemPromptOpen(true); setContextMenuOpen(false); }} active={Boolean(systemPrompt.trim())} />
@@ -317,7 +319,7 @@ export function Composer({
             </div>
             <div ref={rightControlsRef} className="composer-right ml-auto flex min-w-0 items-center gap-1.5">
               <div className="flex min-w-0 items-center gap-0">
-                {showContextMeter && <span data-tour="write-context-meter"><ContextWindowMeter info={contextWindowInfo} /></span>}
+                {showContextMeter && <span data-tour="write-context-meter" className="rounded-full"><ContextWindowMeter info={contextWindowInfo} /></span>}
                 <div className="relative min-w-0">
                 <button
                   type="button"

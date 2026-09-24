@@ -42,7 +42,7 @@
   --toggle-ov1: 1px;
   --toggle-ov2: 0px;
   --toggle-track: 200ms;
-  --toggle-ease: cubic-bezier(0.34, 1.35, 0.64, 1);
+  --toggle-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --shimmer-dur: 2000ms;
   --shimmer-base: #737373;
   --shimmer-highlight: #e5e5e5;
@@ -61,7 +61,7 @@
   --digit-distance: 8px;
   --digit-stagger: 70ms;
   --digit-blur: 2px;
-  --digit-ease: cubic-bezier(0.34, 1.45, 0.64, 1);
+  --digit-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --digit-dir-x: 0;
   --digit-dir-y: 1;
   --icon-swap-dur: 250ms;
@@ -2138,6 +2138,29 @@ sticky header veil and reads as clipping through the blur */
   animation-name: tour-card-in-above;
 }
 
+.tour-popover-right {
+  transform-origin: 0 var(--tour-arrow-top, 50%);
+  animation-name: tour-card-in-right;
+}
+
+.tour-popover-left {
+  transform-origin: 100% var(--tour-arrow-top, 50%);
+  animation-name: tour-card-in-left;
+}
+
+.tour-popover-inside {
+  transform-origin: 50% 50%;
+  animation-name: tour-card-in-inside;
+}
+
+.tour-spotlight-empty {
+  box-shadow: 0 0 0 9999px rgba(4, 4, 4, 0.82);
+}
+
+.tour-spotlight-empty .tour-spotlight-ping {
+  display: none;
+}
+
 .tour-popover-arrow {
   position: absolute;
   left: var(--tour-arrow-left, 50%);
@@ -2160,6 +2183,29 @@ sticky header veil and reads as clipping through the blur */
   border-bottom-right-radius: 3px;
   background: #171717;
   box-shadow: inset -1px -1px 0 rgba(255, 255, 255, 0.075);
+}
+
+.tour-popover-right .tour-popover-arrow,
+.tour-popover-left .tour-popover-arrow {
+  top: var(--tour-arrow-top, 50%);
+  margin-left: 0;
+  margin-top: -6px;
+  border-radius: 0;
+  background: #1a1a1a;
+  transition: top 420ms var(--modal-ease);
+}
+
+.tour-popover-right .tour-popover-arrow {
+  left: -6px;
+  border-bottom-left-radius: 3px;
+  box-shadow: inset 1px -1px 0 rgba(255, 255, 255, 0.075);
+}
+
+.tour-popover-left .tour-popover-arrow {
+  left: auto;
+  right: -6px;
+  border-top-right-radius: 3px;
+  box-shadow: inset -1px 1px 0 rgba(255, 255, 255, 0.075);
 }
 
 .tour-progress {
@@ -2249,6 +2295,30 @@ sticky header veil and reads as clipping through the blur */
   from {
     opacity: 0;
     transform: translateY(6px) scale(0.96);
+    filter: blur(3px);
+  }
+}
+
+@keyframes tour-card-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(-6px) scale(0.96);
+    filter: blur(3px);
+  }
+}
+
+@keyframes tour-card-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(6px) scale(0.96);
+    filter: blur(3px);
+  }
+}
+
+@keyframes tour-card-in-inside {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
     filter: blur(3px);
   }
 }

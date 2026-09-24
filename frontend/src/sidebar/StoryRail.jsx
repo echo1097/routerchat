@@ -170,9 +170,12 @@ export function StoryRail({
               const renamingStory =
                 renameTarget?.entityType === "story" && renameTarget.id === story.id;
               return (
-                <div key={story.id} className="flex flex-col gap-px">
+                <div
+                  key={story.id}
+                  data-tour={active ? "write-story-rail" : undefined}
+                  className="flex flex-col gap-px"
+                >
                   <div
-                    data-tour={active ? "write-story-rail" : undefined}
                     className={cx(SIDEBAR_ROW, SIDEBAR_ROW_IDLE)}
                   >
                     {renamingStory ? (

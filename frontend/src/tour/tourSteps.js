@@ -39,19 +39,31 @@ export const CHAT_TOUR_STEPS = [
 
 export const WRITE_TOUR_STEPS = [
   {
-    id: "storyRail",
-    selector: '[data-tour="write-story-rail"]',
-    body: "Your stories live here.",
-  },
-  {
     id: "storyHome",
     selector: '[data-tour="write-home-button"]',
     body: "Home returns you to the landing page, where you can start or continue a story.",
+    workspaceView: "chapter",
+    needsRail: true,
+    placement: "right",
+    spotlightPadding: 0,
+  },
+  {
+    id: "storyRail",
+    selector: '[data-tour="write-story-rail"]',
+    body: "Your stories live here.",
+    workspaceView: "chapter",
+    needsRail: true,
+    placement: "right",
+    spotlightPadding: 0,
   },
   {
     id: "newChapter",
     selector: '[data-tour="write-new-chapter-button"]',
     body: "Add a chapter to the current story.",
+    workspaceView: "chapter",
+    needsRail: true,
+    placement: "right",
+    spotlightPadding: 0,
   },
   {
     id: "chapterCanvas",
@@ -64,7 +76,20 @@ export const WRITE_TOUR_STEPS = [
     selector: '[data-tour="write-tools-button"]',
     body: "Writing tools opens controls for things like switching to brainstorming and viewing history.",
     workspaceView: "chapter",
+  },
+  {
+    id: "writingToolsMenu",
+    selector: '[data-tour="write-tools-menu"]',
+    body: "All writing tools live in this menu.",
+    workspaceView: "chapter",
     composerUi: "tools",
+  },
+  {
+    id: "generationMode",
+    selector: '[data-tour="write-generation-mode"]',
+    body: "Switch between editing the current chapter and creating a new chapter with the next prompt.",
+    workspaceView: "chapter",
+    composerUi: "generationMode",
   },
   {
     id: "lorebook",
@@ -73,18 +98,18 @@ export const WRITE_TOUR_STEPS = [
     workspaceView: "lorebook",
   },
   {
-    id: "lorebookUpdate",
-    selector: '[data-tour="write-lorebook-update"]',
-    body: "Update Lorebook reads the current chapter and records anything new it finds, adding entries and correcting ones that the story has moved past.",
-    workspaceView: "chapter",
-    composerUi: "lorebookUpdate",
-  },
-  {
     id: "lorebookMode",
     selector: '[data-tour="write-lorebook-mode"]',
     body: "This switches between Auto and Manual. On Auto the Lorebook updates itself after every generation. On Manual nothing changes until you press Update Lorebook yourself.",
     workspaceView: "chapter",
     composerUi: "lorebookMode",
+  },
+  {
+    id: "lorebookUpdate",
+    selector: '[data-tour="write-lorebook-update"]',
+    body: "Update Lorebook reads the current chapter and records anything new it finds, adding entries and correcting ones that the story has moved past.",
+    workspaceView: "chapter",
+    composerUi: "lorebookUpdate",
   },
   {
     id: "brainstorm",
@@ -105,13 +130,6 @@ export const WRITE_TOUR_STEPS = [
     body: "History records prompts and actions taken by the model.",
     workspaceView: "chapter",
     composerUi: "history",
-  },
-  {
-    id: "generationMode",
-    selector: '[data-tour="write-generation-mode"]',
-    body: "Switch between editing the current chapter and creating a new chapter with the next prompt.",
-    workspaceView: "chapter",
-    composerUi: "generationMode",
   },
   {
     id: "contextMeter",

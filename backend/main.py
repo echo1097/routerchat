@@ -1349,6 +1349,12 @@ def openrouter_provider_options() -> dict[str, Any] | None:
     return provider or None
 
 
+def prompt_cache_control() -> dict[str, Any] | None:
+    if bool(read_app_setting("disable_prompt_caching")):
+        return None
+    return {"type": "ephemeral"}
+
+
 async def fetch_models_from_openrouter(api_key: str) -> list[dict[str, Any]]:
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -2480,6 +2486,10 @@ async def stream_openrouter_response(
     providerOptions = openrouter_provider_options()
     if providerOptions:
         body["provider"] = providerOptions
+
+    cacheControl = prompt_cache_control()
+    if cacheControl:
+        body["cache_control"] = cacheControl
 
     with get_db() as conn:
         needsPdfParser = chat_has_pdf_attachment(conn, chat_id)

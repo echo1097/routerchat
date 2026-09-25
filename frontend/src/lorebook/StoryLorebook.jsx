@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Eye,
@@ -868,6 +868,33 @@ function ContextIcons({ size = 16 }) {
   );
 }
 
+function ContextChipLabel({ hidden }) {
+  const [labelWidth, setLabelWidth] = useState(null);
+  const inRef = useRef(null);
+  const hiddenRef = useRef(null);
+
+  useLayoutEffect(() => {
+    function measureLabel() {
+      const activeLabel = hidden ? hiddenRef.current : inRef.current;
+      if (activeLabel) setLabelWidth(activeLabel.scrollWidth);
+    }
+
+    measureLabel();
+    document.fonts?.ready.then(measureLabel);
+  }, [hidden]);
+
+  return (
+    <span className="lorebook-context-chip-label" style={labelWidth === null ? undefined : { width: labelWidth }}>
+      <span ref={inRef} className={cx("lorebook-context-chip-text", !hidden && "is-active")} aria-hidden={hidden}>
+        In context
+      </span>
+      <span ref={hiddenRef} className={cx("lorebook-context-chip-text", hidden && "is-active")} aria-hidden={!hidden}>
+        Hidden from context
+      </span>
+    </span>
+  );
+}
+
 function LorebookRow({ entry, selected, onSelect, onToggleContext, toggling, contextBusy, locked }) {
   const preview = entry.description.trim() || "No description yet.";
 
@@ -1017,7 +1044,7 @@ function LorebookEntryPage({
                 <span className="lorebook-context-chip-icon">
                   <ContextIcons size={14} />
                 </span>
-                {entry.disabled ? "Hidden from context" : "In context"}
+                <ContextChipLabel hidden={entry.disabled} />
               </button>
             )}
           </div>

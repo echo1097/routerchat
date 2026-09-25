@@ -676,6 +676,35 @@
   place-items: center;
 }
 
+.lorebook-context-chip-label {
+  display: inline-grid;
+  justify-items: start;
+  overflow: hidden;
+  transition: width 280ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.lorebook-context-chip-text {
+  grid-area: 1 / 1;
+  opacity: 0;
+  filter: blur(2px);
+  transition:
+    opacity 200ms ease-out,
+    filter 200ms ease-out;
+}
+
+.lorebook-context-chip-text.is-active {
+  opacity: 1;
+  filter: blur(0);
+  transition-delay: 60ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lorebook-context-chip-label,
+  .lorebook-context-chip-text {
+    transition: none;
+  }
+}
+
 .lorebook-category-row {
   padding: 18px 0 8px;
 }

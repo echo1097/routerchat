@@ -33,6 +33,17 @@ from backend.writing import (
 )
 
 
+def messageText(message):
+    content = message["content"]
+    if isinstance(content, str):
+        return content
+    return "\n".join(part.get("text", "") for part in content)
+
+
+def storyContext(messages):
+    return "\n\n".join(messageText(message) for message in messages[:-2] if message["role"] == "user")
+
+
 #the lorebook update streams now, so the fakes hand back an sse style response instead of one json blob
 def fakeLorebookStream(
     content,
@@ -2391,7 +2402,7 @@ class StoryApiTest(unittest.TestCase):
                 "SELECT * FROM lorebook_entries WHERE story_id = ?", (story["id"],)
             ).fetchall()
 
-        context = build_story_messages(storyRow, chapterRow, loreRows, "continue", "")[-2]["content"]
+        context = storyContext(build_story_messages(storyRow, chapterRow, loreRows, "continue", ""))
         self.assertNotIn("still stands", context)
 
     def test_manual_lorebook_update_refuses_to_delete_the_timeline(self):
@@ -4151,7 +4162,7 @@ class StoryApiTest(unittest.TestCase):
             ).fetchall()
 
         messages = build_story_messages(storyRow, chapterRow, loreRows, "continue", "")
-        context = messages[-2]["content"]
+        context = storyContext(messages)
         self.assertIn("Mara (character): remembered", context)
         self.assertNotIn("keep this out", context)
 
@@ -4164,11 +4175,11 @@ class StoryApiTest(unittest.TestCase):
             generation_mode="edit",
             blocks=chapter_blocks(chapterRow["content"]),
         )
-        editContext = editMessages[-2]["content"]
+        editContext = storyContext(editMessages)
         self.assertIn("chapter revision: 0", editContext)
         self.assertNotIn("startChar", editContext)
         self.assertNotIn("endChar", editContext)
-        self.assertNotIn("replaceBlocks", editMessages[-3]["content"])
+        self.assertNotIn("replaceBlocks", editMessages[-2]["content"])
 
     def test_multi_line_lorebook_entries_stay_nested_in_context(self):
         story = self.client.post("/api/stories", json={"title": "Nested Lore"}).json()["story"]
@@ -4199,7 +4210,7 @@ class StoryApiTest(unittest.TestCase):
                 (story["id"],),
             ).fetchall()
 
-        context = build_story_messages(storyRow, chapterRow, loreRows, "continue", "")[-2]["content"]
+        context = storyContext(build_story_messages(storyRow, chapterRow, loreRows, "continue", ""))
 
         #every top level bullet must be a real entry, timeline bullets stay indented under theirs
         topLevel = [

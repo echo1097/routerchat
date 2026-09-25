@@ -1598,35 +1598,39 @@ def build_story_messages(
         for index, row in enumerate(visiblePrevious)
     )
 
-    context_parts = [
+    storyParts = [
         f"story title: {story['title']}",
         f"author: {story['author'] or 'unknown'}",
         f"language: {story['language'] or 'English'}",
         f"synopsis: {story['synopsis'] or 'none yet'}",
     ]
     if previousText:
-        context_parts.append(f"previous chapters:\n{previousText}")
+        storyParts.append(f"previous chapters:\n{previousText}")
 
-    context_parts.extend([
+    chapterParts = [
         f"chapter title: {chapter['title']}",
         f"chapter revision: {chapter['revision']}",
         f"current chapter draft:\n{chapter['content'] or 'empty chapter'}",
-    ])
+    ]
     if generation_mode == "edit":
-        context_parts.append(
+        chapterParts.append(
             "chapter block map:\n"
             + json.dumps(block_map_for_prompt(blocks or []), ensure_ascii=False, indent=2)
         )
-    if lorebook_text:
-        context_parts.append(f"lorebook:\n{lorebook_text}")
 
     messages: list[dict[str, Any]] = []
     if system_prompt.strip():
         messages.append({"role": "system", "content": system_prompt.strip()})
+
+    messages.append({"role": "user", "content": "\n\n".join(storyParts)})
+    if lorebook_text:
+        messages.append({"role": "user", "content": f"lorebook:\n{lorebook_text}"})
+    messages.append({"role": "user", "content": "\n\n".join(chapterParts)})
+
     if generation_mode == "edit":
         messages.append(
             {
-                "role": "system",
+                "role": "user",
                 "content": (
                     "You are editing the active chapter. Return only one JSON object with no "
                     "Markdown fence, explanation, or wrapper text, shaped as {\"chapterRevision\": N, "
@@ -1661,14 +1665,13 @@ def build_story_messages(
     else:
         messages.append(
             {
-                "role": "system",
+                "role": "user",
                 "content": (
                     "You are writing prose for the active chapter. Return only the prose "
                     "to insert into the chapter, with no analysis or wrapper text."
                 ),
             }
         )
-    messages.append({"role": "user", "content": "\n\n".join(context_parts)})
 
     if attachment_parts:
         promptContent = list(attachment_parts)
@@ -3023,7 +3026,7 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                     },
                 )
             lorebook_rows = conn.execute(
-                "SELECT * FROM lorebook_entries WHERE story_id = ? ORDER BY updated_at DESC",
+                "SELECT * FROM lorebook_entries WHERE story_id = ? ORDER BY created_at ASC",
                 (story_id,),
             ).fetchall()
             orderedChapters = conn.execute(

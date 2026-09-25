@@ -6,8 +6,9 @@ import "./UsagePanel.css";
 
 const chartColors = ["#c59af5", "#e5ae78", "#7dc7ba", "#e68eb0", "#aebad1", "#b9c984"];
 const tokenSeries = [
-  { id: "promptTokens", name: "Prompt", color: "#aebad1" },
-  { id: "outputTokens", name: "Completion", color: "#c59af5" },
+  { id: "promptTokens", name: "Input", color: "#aebad1" },
+  { id: "cachedTokens", name: "Cached read", color: "#7dc7ba" },
+  { id: "outputTokens", name: "Output", color: "#c59af5" },
   { id: "reasoningTokens", name: "Reasoning", color: "#e68eb0" },
 ];
 

@@ -11,7 +11,8 @@ function makeUsage(empty = false) {
     return {
       date: `2026-09-0${index + 3}`, cost, requests: empty ? 0 : index + 2,
       totalTokens: empty ? 0 : 20000 + index * 8000,
-      promptTokens: empty ? 0 : 15000 + index * 6000,
+      promptTokens: empty ? 0 : 5000 + index * 2000,
+      cachedTokens: empty ? 0 : 10000 + index * 4000,
       outputTokens: empty ? 0 : 4000 + index * 1500,
       reasoningTokens: empty ? 0 : 1000 + index * 500,
       blendedCost: empty ? null : 1.8,
@@ -54,6 +55,9 @@ test("shows weekly spending and model details without provider requests", async 
   await expect(dialog.getByRole("region", { name: "Requests", exact: true })).toContainText("35");
   await expect(dialog.getByRole("region", { name: "Usage by model", exact: true })).toBeVisible();
   await expect(dialog.getByRole("region", { name: "Token breakdown", exact: true })).toBeVisible();
+  for (const label of ["Input", "Cached read", "Output", "Reasoning"]) {
+    await expect(dialog.getByRole("region", { name: "Token breakdown", exact: true })).toContainText(label);
+  }
   await expect(dialog.getByRole("table")).toContainText("Test model");
   await expect(dialog.getByRole("table")).toContainText("$16.10");
   await expect(dialog.getByRole("table")).toContainText("retired-model");

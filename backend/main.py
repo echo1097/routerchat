@@ -2810,6 +2810,7 @@ writingDeps = WritingDeps(
     write_system_prompt=writeSystemPrompt,
     openrouter_request_model=openrouter_request_model,
     openrouter_provider_options=openrouter_provider_options,
+    prompt_cache_control=prompt_cache_control,
     model_supports_reasoning=model_supports_reasoning,
     effective_thinking_enabled=effective_thinking_enabled,
     enabled_reasoning_config=enabled_reasoning_config,

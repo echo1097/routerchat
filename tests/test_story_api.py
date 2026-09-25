@@ -2795,6 +2795,89 @@ class StoryApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
         self.assertEqual(response.json()["detail"], "chapter_revision is required.")
 
+    def storyForCaching(self):
+        story, _ = self.storyWithChapter("Cached Story", "The bells rang at dawn.")
+        currentChapter = self.client.post(
+            f"/api/stories/{story['id']}/chapters",
+            json={"title": "Chapter 2", "content": "Mara waited by the gate."},
+        ).json()["chapter"]
+        self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={"name": "Mara", "category": "character", "description": "A gatekeeper."},
+        )
+        second = self.client.post(
+            f"/api/stories/{story['id']}/lorebook",
+            json={"name": "Bells", "category": "note", "description": "They ring at dawn."},
+        ).json()["entry"]
+        return story, currentChapter, second
+
+    def test_write_requests_mark_the_stable_context_for_caching(self):
+        story, chapter, _ = self.storyForCaching()
+
+        response, requestBody = self.streamChapterGeneration(story, chapter, "More rain.", mode="new")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(requestBody["session_id"], story["id"])
+        self.assertNotIn("cache_control", requestBody)
+
+        marked = [message for message in requestBody["messages"] if isinstance(message["content"], list)]
+        self.assertEqual(len(marked), 2)
+        self.assertTrue(marked[0]["content"][0]["text"].startswith("story title: Cached Story"))
+        self.assertIn("The bells rang at dawn.", marked[0]["content"][0]["text"])
+        self.assertTrue(marked[1]["content"][0]["text"].startswith("lorebook:"))
+        for message in marked:
+            self.assertEqual(message["content"][0]["cache_control"], {"type": "ephemeral"})
+
+    def test_write_requests_put_stable_context_before_the_draft(self):
+        story, chapter, _ = self.storyForCaching()
+
+        _, requestBody = self.streamChapterGeneration(story, chapter, "More rain.", mode="new")
+
+        texts = [messageText(message) for message in requestBody["messages"]]
+        storyIndex = next(index for index, text in enumerate(texts) if text.startswith("story title:"))
+        lorebookIndex = next(index for index, text in enumerate(texts) if text.startswith("lorebook:"))
+        chapterIndex = next(index for index, text in enumerate(texts) if text.startswith("chapter title:"))
+        instructionIndex = next(index for index, text in enumerate(texts) if text.startswith("You are writing prose"))
+
+        self.assertLess(storyIndex, lorebookIndex)
+        self.assertLess(lorebookIndex, chapterIndex)
+        self.assertLess(chapterIndex, instructionIndex)
+        self.assertEqual(instructionIndex, len(texts) - 2)
+        self.assertIn("Mara waited by the gate.", texts[chapterIndex])
+        self.assertNotIn("Mara waited by the gate.", texts[storyIndex])
+
+    def test_write_requests_keep_lorebook_order_after_an_edit(self):
+        story, chapter, second = self.storyForCaching()
+        edited = self.client.patch(
+            f"/api/stories/{story['id']}/lorebook/{second['id']}",
+            json={
+                "name": "Bells",
+                "category": "note",
+                "description": "They ring twice at dawn.",
+                "revision": second.get("revision"),
+            },
+        )
+        self.assertEqual(edited.status_code, 200)
+
+        _, requestBody = self.streamChapterGeneration(story, chapter, "More rain.", mode="new")
+
+        lorebook = next(
+            messageText(message) for message in requestBody["messages"]
+            if messageText(message).startswith("lorebook:")
+        )
+        self.assertIn("They ring twice at dawn.", lorebook)
+        self.assertLess(lorebook.index("Mara"), lorebook.index("Bells"))
+
+    def test_write_requests_skip_caching_when_disabled(self):
+        story, chapter, _ = self.storyForCaching()
+        self.client.patch("/api/settings", json={"disable_prompt_caching": True})
+
+        _, requestBody = self.streamChapterGeneration(story, chapter, "More rain.", mode="new")
+
+        self.assertNotIn("session_id", requestBody)
+        self.assertNotIn("cache_control", requestBody)
+        self.assertTrue(all(isinstance(message["content"], str) for message in requestBody["messages"]))
+
     def test_empty_chapter_edit_request_generates_plain_prose(self):
         story = self.client.post("/api/stories", json={"title": "Blank Opening"}).json()["story"]
         chapter = self.client.post(
@@ -2819,7 +2902,7 @@ class StoryApiTest(unittest.TestCase):
         self.assertNotIn("response_format", requestBody)
         self.assertIn(
             "Return only the prose",
-            "\n".join(message["content"] for message in requestBody["messages"]),
+            "\n".join(messageText(message) for message in requestBody["messages"]),
         )
         self.assertEqual(effective_generation_mode("edit", "  \n"), "new")
 
@@ -3079,7 +3162,7 @@ class StoryApiTest(unittest.TestCase):
             repairContext=repairContext,
         )
 
-        prompts = "\n".join(message["content"] for message in requestBody["messages"])
+        prompts = "\n".join(messageText(message) for message in requestBody["messages"])
         self.assertIn("could not be applied", prompts)
         self.assertIn("missing fields: newText", prompts)
         self.assertIn("1 of your edits did apply", prompts)

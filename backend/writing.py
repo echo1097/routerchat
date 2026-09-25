@@ -182,6 +182,7 @@ class WritingDeps:
     write_system_prompt: Callable[[Any], str]
     openrouter_request_model: Callable[[str, bool], str]
     openrouter_provider_options: Callable[[], dict[str, Any] | None]
+    prompt_cache_control: Callable[[], dict[str, Any] | None]
     model_supports_reasoning: Callable[[str], bool]
     effective_thinking_enabled: Callable[[str, bool], bool]
     enabled_reasoning_config: Callable[[str, bool, str], dict[str, Any] | None]
@@ -1691,6 +1692,33 @@ def build_story_messages(
     return messages
 
 
+def mark_story_cache_points(
+    messages: list[dict[str, Any]],
+    cache_control: dict[str, Any],
+) -> list[dict[str, Any]]:
+    marked: list[dict[str, Any]] = []
+    remainingPrefixes = ["story title:", "lorebook:"]
+
+    for message in messages:
+        content = message["content"]
+        prefix = next(
+            (
+                prefix for prefix in remainingPrefixes
+                if message["role"] == "user" and isinstance(content, str) and content.startswith(prefix)
+            ),
+            None,
+        )
+        if prefix:
+            remainingPrefixes.remove(prefix)
+            message = {
+                **message,
+                "content": [{"type": "text", "text": content, "cache_control": cache_control}],
+            }
+        marked.append(message)
+
+    return marked
+
+
 def repair_instructions(repair_context: dict[str, Any]) -> str:
     errors = [str(error) for error in (repair_context.get("errors") or []) if str(error).strip()]
     failed = [edit for edit in (repair_context.get("failed_edits") or []) if isinstance(edit, dict)]
@@ -1850,6 +1878,10 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
             attachmentParts,
             previous_chapters,
         )
+        cacheControl = deps.prompt_cache_control()
+        if cacheControl:
+            messages = mark_story_cache_points(messages, cacheControl)
+
         body: dict[str, Any] = {
             "model": deps.openrouter_request_model(payload.model, payload.nitro_mode),
             "messages": messages,
@@ -1857,6 +1889,8 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
             "max_tokens": payload.max_tokens,
             "stream": True,
         }
+        if cacheControl:
+            body["session_id"] = story_id
         providerOptions = deps.openrouter_provider_options()
         if providerOptions:
             body["provider"] = providerOptions

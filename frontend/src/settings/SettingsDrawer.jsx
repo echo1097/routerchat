@@ -486,7 +486,7 @@ export function SettingsDrawer({
     <section className="border-b border-white/[0.08] py-3">
       <SettingRow
         title="Disable prompt caching"
-        description="Don't ask models to cache the conversation to save on repeat tokens"
+        description="Don't cache chats and stories to save on repeat tokens"
       >
         <SettingSwitch
           checked={disablePromptCaching}

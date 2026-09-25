@@ -530,6 +530,9 @@ def create_brainstorm_router(deps: BrainstormDeps) -> APIRouter:
         prompt_edges: list[sqlite3.Row],
     ) -> AsyncIterator[bytes]:
         api_key = deps.read_openrouter_key()
+        if not api_key:
+            raise HTTPException(status_code=401, detail="Add an OpenRouter API key first.")
+
         prompt_node_id = prompt_node["id"]
         generation_row_id = str(uuid.uuid4())
         messages = build_brainstorm_messages(

@@ -750,7 +750,7 @@ def apply_legacy_lorebook_updates(
             if beforeSnapshot == afterSnapshot and not nameChanged:
                 continue
 
-            result = conn.execute(
+            conn.execute(
                 """
                 UPDATE lorebook_entries
                 SET name = ?, category = ?, description = ?, aliases_json = ?, tags_json = ?,

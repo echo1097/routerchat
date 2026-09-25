@@ -126,7 +126,7 @@ When you send a prompt, attachment, or voice recording, that data goes to OpenRo
 
 Chat Mode
 
-<img width="1000" alt="RouterChat Chat Mode" src="media/chat%20mode.png" />
+<img width="1000" alt="RouterChat Chat Mode" src="media/chatmode.png" />
 
 Lorebook
 

@@ -97,11 +97,11 @@ The top priority right now is support for more API providers.
     - Lifetime totals per model
 - Prompt caching
     - On by default in Chat and Write modes to save on repeat tokens
+    - Cache is kept for 1 hour by default on models that support it, or 5 minutes if you turn that off
+    - Write mode keeps the cache when you move to a new chapter
     - Can be turned off in API settings
 - Model settings
-    - Model search and a default model
     - Option to hide batch models
-    - System prompts, temperature, output limits, and reasoning controls where supported
     - Reasoning level shown on the model button
     - Provider preference for fastest or lowest price
     - Privacy and Zero Data Retention routing options

@@ -144,7 +144,7 @@ def open_bootstrap_page(
             self.end_headers()
             self.wfile.write(page)
 
-        def log_message(self, _format: str, *_args: object) -> None:
+        def log_message(self, format: str, *args: object) -> None:
             return
 
     server = HTTPServer(("127.0.0.1", 0), BootstrapHandler)
@@ -182,6 +182,9 @@ def serve_local_app(
     os.environ["ROUTERCHAT_TRUSTED_ORIGINS"] = ",".join(origins)
 
     port = urlsplit(baseUrl).port
+    if port is None:
+        raise RuntimeError("RouterChat base URL must include a port.")
+
     try:
         import uvicorn
 

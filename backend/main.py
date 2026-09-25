@@ -23,6 +23,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse,
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.types import Scope
 
 from backend.websearch import (
     WEB_SEARCH_MAX_RESULTS,
@@ -303,7 +304,7 @@ async def bootstrap_local_session(request: Request) -> Response:
 
 
 class FrontendStaticFiles(StaticFiles):
-    async def get_response(self, path: str, scope: dict[str, Any]) -> Any:
+    async def get_response(self, path: str, scope: Scope) -> Any:
         try:
             response = await super().get_response(path, scope)
         except StarletteHTTPException as exc:

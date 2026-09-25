@@ -114,7 +114,7 @@ class PromptCachingTest(unittest.TestCase):
             response.read()
 
         self.assertEqual(response.status_code, 200)
-        return calls
+        return chat, calls
 
     def test_the_setting_is_off_by_default_and_round_trips(self):
         self.assertFalse(self.client.get("/api/settings").json()["disable_prompt_caching"])
@@ -125,16 +125,18 @@ class PromptCachingTest(unittest.TestCase):
         self.assertTrue(self.client.get("/api/settings").json()["disable_prompt_caching"])
 
     def test_chat_requests_ask_for_caching_by_default(self):
-        calls = self.sendMessage()
+        chat, calls = self.sendMessage()
 
         self.assertEqual(calls[0]["cache_control"], {"type": "ephemeral"})
+        self.assertEqual(calls[0]["session_id"], chat["id"])
 
     def test_chat_requests_skip_caching_when_disabled(self):
         self.client.patch("/api/settings", json={"disable_prompt_caching": True})
 
-        calls = self.sendMessage()
+        _, calls = self.sendMessage()
 
         self.assertNotIn("cache_control", calls[0])
+        self.assertNotIn("session_id", calls[0])
 
 
 if __name__ == "__main__":

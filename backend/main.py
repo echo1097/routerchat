@@ -2490,6 +2490,7 @@ async def stream_openrouter_response(
     cacheControl = prompt_cache_control()
     if cacheControl:
         body["cache_control"] = cacheControl
+        body["session_id"] = chat_id
 
     with get_db() as conn:
         needsPdfParser = chat_has_pdf_attachment(conn, chat_id)

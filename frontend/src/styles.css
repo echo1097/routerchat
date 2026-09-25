@@ -608,6 +608,31 @@ textarea::placeholder {
   background: var(--tabs-bar-bg);
 }
 
+[data-scroll-fade] {
+  --scroll-fade-size: 28px;
+  --scroll-fade-start: #000;
+  --scroll-fade-end: #000;
+}
+
+[data-scroll-fade][data-fade-start],
+[data-scroll-fade][data-fade-end] {
+  mask-image: linear-gradient(
+    to right,
+    var(--scroll-fade-start),
+    #000 var(--scroll-fade-size),
+    #000 calc(100% - var(--scroll-fade-size)),
+    var(--scroll-fade-end)
+  );
+}
+
+[data-scroll-fade][data-fade-start] {
+  --scroll-fade-start: transparent;
+}
+
+[data-scroll-fade][data-fade-end] {
+  --scroll-fade-end: transparent;
+}
+
 .settings-mobile-tabs {
   overflow-x: auto;
   scrollbar-width: none;

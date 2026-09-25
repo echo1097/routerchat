@@ -12,6 +12,7 @@ import { useTextSwap } from "../textSwap.js";
 import RepairModal, { repairDurationParts } from "./RepairModal.jsx";
 import RepairLorebookButton from "./RepairLorebookButton.jsx";
 import GenerateEntryModal from "./GenerateEntryModal.jsx";
+import { useScrollFade } from "../components/useScrollFade.js";
 import "./StoryLorebook.css";
 
 const CATEGORY_OPTIONS = [
@@ -160,6 +161,8 @@ function useSlidingTabs(activeCategory, tabCount, active = true) {
   const tabsRef = useRef(null);
   const pillRef = useRef(null);
   const measuredRef = useRef(false);
+
+  useScrollFade(tabsRef, activeCategory);
 
   useEffect(() => {
     const tabsBar = tabsRef.current;

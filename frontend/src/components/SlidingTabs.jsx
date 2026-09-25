@@ -1,5 +1,6 @@
 import { useRef, useEffect, useLayoutEffect } from "react";
 import { cx } from "../uiShared.js";
+import { useScrollFade } from "./useScrollFade.js";
 
 const SLIDING_TAB_ANIMATION_MS = 320;
 
@@ -24,6 +25,8 @@ export function SlidingTabs({
   const barWidthRef = useRef(null);
   const animatingRef = useRef(false);
   const animationTimeoutRef = useRef(null);
+
+  useScrollFade(barRef, value);
 
   useEffect(() => {
     fromValueRef.current = fromValue;

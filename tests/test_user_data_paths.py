@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import backend.main as main
+import backend.providers.openrouter.apiKey as apiKey
 import backend.core.paths as paths
 
 
@@ -66,7 +67,7 @@ class UserDataPathsTest(unittest.TestCase):
 
             with patch.dict(os.environ, {}, clear=False):
                 os.environ.pop("OPENROUTER_API_KEY", None)
-                main.write_openrouter_key("saved-test-key")
+                apiKey.write_openrouter_key("saved-test-key")
                 os.environ.pop("OPENROUTER_API_KEY", None)
 
                 self.assertEqual(main.read_openrouter_key(), "saved-test-key")

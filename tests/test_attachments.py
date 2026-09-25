@@ -10,15 +10,17 @@ from starlette.datastructures import UploadFile
 
 import backend.attachments as attachments
 import backend.main as main
+import backend.tos.loadTos as loadTos
+import backend.tos.tosAcceptance as tosAcceptance
 import backend.core.paths as paths
 from backend.local_access import create_secret_file
 
 
 def acceptCurrentTos():
-    tos = main.load_tos()
+    tos = loadTos.load_tos()
     if not tos:
         raise RuntimeError("TOS.md is missing, restore it before running the tests")
-    main.record_tos_acceptance(tos["hash"], tos["date"])
+    tosAcceptance.record_tos_acceptance(tos["hash"], tos["date"])
 
 
 PNG_BYTES = bytes.fromhex(

@@ -8,16 +8,19 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 import backend.main as main
+import backend.tos.loadTos as loadTos
+import backend.tos.tosAcceptance as tosAcceptance
 import backend.providers.openrouter.models as models
+import backend.providers.openrouter.requestOptions as requestOptions
 import backend.core.paths as paths
 from backend.local_access import create_secret_file
 
 
 def acceptCurrentTos():
-    tos = main.load_tos()
+    tos = loadTos.load_tos()
     if not tos:
         raise RuntimeError("TOS.md is missing, restore it before running the tests")
-    main.record_tos_acceptance(tos["hash"], tos["date"])
+    tosAcceptance.record_tos_acceptance(tos["hash"], tos["date"])
 
 
 def fakeChatStream(content):
@@ -216,7 +219,9 @@ class ChatTitleTest(unittest.TestCase):
         chat = self.createChat()
         self.sendFirstMessage(chat)
 
-        with patch.object(models, "model_metadata", lambda _: {"supported_parameters": ["reasoning"]}):
+        metadata = {"supported_parameters": ["reasoning"]}
+        with patch.object(models, "model_metadata", lambda _: metadata), \
+             patch.object(requestOptions, "model_metadata", lambda _: metadata):
             _, calls = self.nameChat(chat, FakeTitleResponse("Borrow Checker Help"))
 
         self.assertEqual(calls[0]["reasoning"], {"enabled": False, "exclude": True})
@@ -229,7 +234,8 @@ class ChatTitleTest(unittest.TestCase):
         self.sendFirstMessage(chat)
 
         metadata = {"supported_parameters": ["reasoning"], "reasoning": {"mandatory": True}}
-        with patch.object(models, "model_metadata", lambda _: metadata):
+        with patch.object(models, "model_metadata", lambda _: metadata), \
+             patch.object(requestOptions, "model_metadata", lambda _: metadata):
             _, calls = self.nameChat(chat, FakeTitleResponse("Borrow Checker Help"))
 
         self.assertTrue(calls[0]["reasoning"]["enabled"])

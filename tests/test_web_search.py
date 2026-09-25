@@ -9,6 +9,8 @@ import httpx
 from fastapi.testclient import TestClient
 
 import backend.main as main
+import backend.tos.loadTos as loadTos
+import backend.tos.tosAcceptance as tosAcceptance
 import backend.core.migrations as migrations
 import backend.core.paths as paths
 import backend.websearch as websearch
@@ -16,10 +18,10 @@ from backend.local_access import create_secret_file
 
 
 def acceptCurrentTos():
-    tos = main.load_tos()
+    tos = loadTos.load_tos()
     if not tos:
         raise RuntimeError("TOS.md is missing, restore it before running the tests")
-    main.record_tos_acceptance(tos["hash"], tos["date"])
+    tosAcceptance.record_tos_acceptance(tos["hash"], tos["date"])
 
 
 PDF_BYTES = b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n"

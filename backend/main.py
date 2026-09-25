@@ -1,31 +1,16 @@
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
-import os
 import re
 import sqlite3
 import uuid
-from collections.abc import Mapping
-from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, AsyncIterator
-from urllib.parse import parse_qs
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import (
-    JSONResponse,
-    PlainTextResponse,
-    RedirectResponse,
-    StreamingResponse,
-)
-from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from starlette.exceptions import HTTPException as StarletteHTTPException
-from starlette.types import Scope
 
 from backend.attachments import (
     AttachmentsDeps,
@@ -45,12 +30,11 @@ from backend.changelog_status import ChangelogStatusDeps, create_changelog_statu
 from backend.core import paths
 from backend.core.appSettings import (
     globalChatSystemPrompt,
-    hourPromptCacheEnabled,
     read_app_setting,
     write_app_setting,
 )
 from backend.core.database import get_db, message_order_clause, next_message_order
-from backend.core.paths import APP_VERSION, TOS_PATH
+from backend.core.paths import APP_VERSION
 from backend.core.reasoningEffort import ReasoningEffort, coerce_reasoning_effort
 from backend.core.schema import init_db
 from backend.core.streamEvents import stream_event
@@ -61,16 +45,11 @@ from backend.core.utils import (
     patch_updates,
     utc_now,
 )
-from backend.local_access import read_secret_file, validate_base_url
+from backend.frontend.staticFiles import configure_static_files
 from backend.lorebook import LorebookDeps, create_lorebook_router
 from backend.lorebook_generate import create_lorebook_generate_router
 from backend.lorebook_repair import create_lorebook_repair_router
-from backend.providers.openrouter.apiKey import (
-    normalize_key_status,
-    read_openrouter_key,
-    validate_key,
-    write_openrouter_key,
-)
+from backend.providers.openrouter.apiKey import read_openrouter_key
 from backend.providers.openrouter.client import (
     DEFAULT_MAX_TOKENS,
     OPENROUTER_BASE_URL,
@@ -79,10 +58,7 @@ from backend.providers.openrouter.client import (
 )
 from backend.providers.openrouter.errors import openrouter_error_message
 from backend.providers.openrouter.models import (
-    cache_models,
-    cached_models,
     default_model_id,
-    fetch_models_from_openrouter,
     model_supports_reasoning,
     model_supports_structured_output,
 )
@@ -94,6 +70,11 @@ from backend.providers.openrouter.requestOptions import (
     prompt_cache_control,
 )
 from backend.providers.openrouter.usage import fetch_generation_usage, normalize_usage
+from backend.security import bootstrapRoutes
+from backend.security.apiSecurity import enforce_local_api_security
+from backend.security.localAccessConfig import local_access_config
+from backend.settings import settingsRoutes
+from backend.tos import tosRoutes
 from backend.transcription import createTranscriptionRouter
 from backend.usage import createUsageRouter
 from backend.websearch import (
@@ -113,78 +94,9 @@ from backend.writing import (
     word_diff_counts,
 )
 
-API_SECRET_FILE_ENV_VAR = "ROUTERCHAT_API_SECRET_FILE"
-BASE_URL_ENV_VAR = "ROUTERCHAT_BASE_URL"
-TRUSTED_ORIGINS_ENV_VAR = "ROUTERCHAT_TRUSTED_ORIGINS"
-DEFAULT_BASE_URL = "http://127.0.0.1:8000"
-SESSION_COOKIE_NAME = "routerchat_session"
-BOOTSTRAP_PATH = "/api/bootstrap"
-HEALTH_PATH = "/api/health"
-TOS_DATE_PATTERN = re.compile(r"^\*\*Last updated:\s*(.+?)\s*\*\*$", re.MULTILINE)
-TOS_EXEMPT_PATHS = {HEALTH_PATH, BOOTSTRAP_PATH, "/api/tos", "/api/tos/accept"}
-MUTATION_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
-API_AUTH_REQUIRED_DETAIL = {
-    "code": "api_auth_required",
-    "message": "Open RouterChat through its launcher to authorize this browser.",
-}
-INVALID_REQUEST_HOST_DETAIL = {
-    "code": "invalid_request_host",
-    "message": "The request Host is not allowed.",
-}
-INVALID_REQUEST_ORIGIN_DETAIL = {
-    "code": "invalid_request_origin",
-    "message": "The request origin is not allowed.",
-}
-TOS_MISSING_DETAIL = {
-    "code": "tos_missing",
-    "message": "TOS.md could not be read. Restore it from the repository to use RouterChat.",
-}
-TOS_REQUIRED_DETAIL = {
-    "code": "tos_required",
-    "message": "The current Terms of Service have not been accepted.",
-}
-
-
 load_dotenv(paths.ENV_PATH)
 
 app = FastAPI(title="RouterChat", version=APP_VERSION)
-
-
-@dataclass(frozen=True)
-class LocalAccessConfig:
-    baseUrl: str
-    allowedHost: str
-    trustedOrigins: frozenset[str]
-    secret: str
-
-
-def load_local_access_config(
-    environment: Mapping[str, str] | None = None,
-) -> LocalAccessConfig:
-    environment = os.environ if environment is None else environment
-    baseUrl = validate_base_url(environment.get(BASE_URL_ENV_VAR, DEFAULT_BASE_URL))
-    allowedHost = baseUrl.removeprefix("http://")
-
-    secretFileValue = environment.get(API_SECRET_FILE_ENV_VAR, "").strip()
-    if not secretFileValue:
-        raise RuntimeError(f"{API_SECRET_FILE_ENV_VAR} must point to a protected credential file.")
-    secret = read_secret_file(Path(secretFileValue).expanduser())
-
-    trustedValue = environment.get(TRUSTED_ORIGINS_ENV_VAR, baseUrl)
-    trustedOrigins = frozenset(
-        validate_base_url(value.strip())
-        for value in trustedValue.split(",")
-        if value.strip()
-    )
-    if not trustedOrigins:
-        raise RuntimeError(f"{TRUSTED_ORIGINS_ENV_VAR} cannot be empty.")
-
-    return LocalAccessConfig(
-        baseUrl=baseUrl,
-        allowedHost=allowedHost,
-        trustedOrigins=trustedOrigins,
-        secret=secret,
-    )
 
 
 def reset_local_access_config() -> None:
@@ -192,150 +104,10 @@ def reset_local_access_config() -> None:
         delattr(app.state, "localAccessConfig")
 
 
-def local_access_config(targetApp: FastAPI) -> LocalAccessConfig:
-    config = getattr(targetApp.state, "localAccessConfig", None)
-    if config is None:
-        config = load_local_access_config()
-        targetApp.state.localAccessConfig = config
-    return config
-
-
-def request_header_values(request: Request, name: bytes) -> list[str]:
-    values = []
-    for headerName, headerValue in request.scope.get("headers", []):
-        if headerName.lower() != name:
-            continue
-        try:
-            values.append(headerValue.decode("ascii"))
-        except UnicodeDecodeError:
-            values.append("")
-    return values
-
-
-def security_error(statusCode: int, detail: dict[str, str]) -> JSONResponse:
-    return JSONResponse(
-        status_code=statusCode,
-        content={"detail": detail},
-        headers={"Cache-Control": "no-store"},
-    )
-
-
-def is_api_path(path: str) -> bool:
-    return path == "/api" or path.startswith("/api/")
-
-
-@app.middleware("http")
-async def enforce_local_api_security(request: Request, call_next: Any) -> Response:
-    config = local_access_config(request.app)
-    hostValues = request_header_values(request, b"host")
-    if len(hostValues) != 1 or hostValues[0] != config.allowedHost:
-        return security_error(400, INVALID_REQUEST_HOST_DETAIL)
-
-    path = request.url.path
-    if not is_api_path(path) or path in {HEALTH_PATH, BOOTSTRAP_PATH}:
-        return await call_next(request)
-
-    sessionSecret = request.cookies.get(SESSION_COOKIE_NAME, "")
-    if not hmac.compare_digest(sessionSecret, config.secret):
-        return security_error(401, API_AUTH_REQUIRED_DETAIL)
-
-    if request.method in MUTATION_METHODS:
-        originValues = request_header_values(request, b"origin")
-        if len(originValues) != 1 or originValues[0] not in config.trustedOrigins:
-            return security_error(403, INVALID_REQUEST_ORIGIN_DETAIL)
-
-        fetchSiteValues = request_header_values(request, b"sec-fetch-site")
-        if len(fetchSiteValues) > 1 or (
-            fetchSiteValues and fetchSiteValues[0].lower() != "same-origin"
-        ):
-            return security_error(403, INVALID_REQUEST_ORIGIN_DETAIL)
-
-    #guard every api route rather than the handful that talk to openrouter, so a new endpoint cant quietly skip the gate
-    if path in TOS_EXEMPT_PATHS:
-        return await call_next(request)
-
-    tos = load_tos()
-    if not tos:
-        return JSONResponse(status_code=503, content={"detail": TOS_MISSING_DETAIL})
-
-    if not latest_tos_acceptance(tos["hash"]):
-        return JSONResponse(status_code=403, content={"detail": TOS_REQUIRED_DETAIL})
-
-    return await call_next(request)
-
-
-@app.post(BOOTSTRAP_PATH, include_in_schema=False)
-async def bootstrap_local_session(request: Request) -> Response:
-    contentType = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
-    contentLength = request.headers.get("content-length", "")
-    try:
-        declaredLength = int(contentLength) if contentLength else 0
-    except ValueError:
-        declaredLength = 513
-
-    suppliedSecret = ""
-    if contentType == "application/x-www-form-urlencoded" and declaredLength <= 512:
-        body = await request.body()
-        if len(body) <= 512:
-            try:
-                fields = parse_qs(body.decode("ascii"), keep_blank_values=True)
-                secretsFound = fields.get("secret", [])
-                if len(secretsFound) == 1:
-                    suppliedSecret = secretsFound[0]
-            except (UnicodeDecodeError, ValueError):
-                suppliedSecret = ""
-
-    config = local_access_config(request.app)
-    if not hmac.compare_digest(suppliedSecret, config.secret):
-        return security_error(401, API_AUTH_REQUIRED_DETAIL)
-
-    response = RedirectResponse(url="/", status_code=303)
-    response.headers["Cache-Control"] = "no-store"
-    response.set_cookie(
-        SESSION_COOKIE_NAME,
-        config.secret,
-        httponly=True,
-        secure=False,
-        samesite="strict",
-        path="/api",
-    )
-    return response
-
-
-class FrontendStaticFiles(StaticFiles):
-    async def get_response(self, path: str, scope: Scope) -> Any:
-        try:
-            response = await super().get_response(path, scope)
-        except StarletteHTTPException as exc:
-            if exc.status_code == 404:
-                response = await super().get_response("index.html", scope)
-            else:
-                raise
-
-        if response.media_type == "text/html":
-            response.headers["Cache-Control"] = "no-store, max-age=0"
-            response.headers["Pragma"] = "no-cache"
-        elif path.startswith("assets/"):
-            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
-
-        return response
-
-
-def configure_static_files(target_app: FastAPI, static_dir: Path) -> None:
-    if static_dir.is_dir():
-        target_app.mount("/", FrontendStaticFiles(directory=static_dir, html=True), name="static")
-        return
-
-    @target_app.get("/", include_in_schema=False)
-    def missing_frontend_build() -> PlainTextResponse:
-        return PlainTextResponse(
-            "frontend build missing, run npm run build",
-            status_code=503,
-        )
-
-
-class ApiKeyRequest(BaseModel):
-    api_key: str = Field(min_length=1)
+app.middleware("http")(enforce_local_api_security)
+app.include_router(bootstrapRoutes.router)
+app.include_router(tosRoutes.router)
+app.include_router(settingsRoutes.router)
 
 
 class ChatCreateRequest(BaseModel):
@@ -375,26 +147,6 @@ class ChatPatchRequest(BaseModel):
     web_search_enabled: bool | None = None
     pinned: bool | None = None
     folder_id: str | None = None
-
-
-class AppSettingsPatchRequest(BaseModel):
-    transcription_model: str | None = Field(default=None, min_length=1, max_length=200)
-    default_model: str | None = None
-    generate_chat_name: bool | None = None
-    hide_free_models: bool | None = None
-    hide_batch_models: bool | None = None
-    disable_prompt_caching: bool | None = None
-    nitro_mode: bool | None = None
-    cheapest_mode: bool | None = None
-    privacy_mode: bool | None = None
-    zdr_mode: bool | None = None
-    smooth_streaming: bool | None = None
-    chat_system_prompt: str | None = None
-    hour_prompt_cache: bool | None = None
-
-
-class TosAcceptRequest(BaseModel):
-    hash: str = Field(min_length=1)
 
 
 class ChapterRepairContext(BaseModel):
@@ -453,48 +205,6 @@ def writeSystemPrompt(payload: ChatCreateRequest | ChatPatchRequest | StreamMess
     )
 
 
-#cache the parsed TOS keyed on mtime+size so the guard middleware isnt re-hashing a file on every single request
-_tos_cache: dict[str, Any] = {"stamp": None, "value": None}
-
-
-def load_tos() -> dict[str, Any] | None:
-    try:
-        stat = TOS_PATH.stat()
-    except OSError:
-        _tos_cache["stamp"] = None
-        _tos_cache["value"] = None
-        return None
-
-    stamp = (stat.st_mtime_ns, stat.st_size)
-    if _tos_cache["stamp"] == stamp:
-        return _tos_cache["value"]
-
-    try:
-        raw = TOS_PATH.read_bytes()
-    except OSError:
-        _tos_cache["stamp"] = None
-        _tos_cache["value"] = None
-        return None
-
-    markdown = raw.decode("utf-8", errors="replace")
-    if not markdown.strip():
-        #an empty terms file is the same as no terms file, dont let it through
-        _tos_cache["stamp"] = stamp
-        _tos_cache["value"] = None
-        return None
-
-    match = TOS_DATE_PATTERN.search(markdown)
-    value = {
-        "markdown": markdown,
-        "hash": hashlib.sha256(raw).hexdigest(),
-        "date": match.group(1) if match else None,
-    }
-
-    _tos_cache["stamp"] = stamp
-    _tos_cache["value"] = value
-    return value
-
-
 @app.on_event("startup")
 def on_startup() -> None:
     local_access_config(app)
@@ -524,85 +234,6 @@ def on_startup() -> None:
             conn.execute("DELETE FROM lorebook_entries WHERE story_id = ?", (storyId,))
             conn.execute("DELETE FROM chapters WHERE story_id = ?", (storyId,))
             conn.execute("DELETE FROM stories WHERE id = ?", (storyId,))
-
-
-def latest_tos_acceptance(tos_hash: str | None = None) -> dict[str, Any] | None:
-    query = "SELECT id, tos_hash, tos_date, accepted_at FROM tos_acceptances"
-    params: tuple[Any, ...] = ()
-
-    if tos_hash is not None:
-        query += " WHERE tos_hash = ?"
-        params = (tos_hash,)
-
-    query += " ORDER BY accepted_at DESC, rowid DESC LIMIT 1"
-
-    with get_db() as conn:
-        row = conn.execute(query, params).fetchone()
-
-    return dict(row) if row else None
-
-
-def previous_tos_acceptance(current_hash: str) -> dict[str, Any] | None:
-    #the newest acceptance of some *other* version, which is what the "terms changed" banner shows
-    with get_db() as conn:
-        row = conn.execute(
-            """
-            SELECT tos_hash, tos_date, accepted_at
-            FROM tos_acceptances
-            WHERE tos_hash != ?
-            ORDER BY accepted_at DESC, rowid DESC
-            LIMIT 1
-            """,
-            (current_hash,),
-        ).fetchone()
-
-    if not row:
-        return None
-
-    #same key names as the current-version payload so the frontend can render either one the same way
-    return {
-        "hash": row["tos_hash"],
-        "date": row["tos_date"],
-        "accepted_at": row["accepted_at"],
-    }
-
-
-def record_tos_acceptance(tos_hash: str, tos_date: str | None) -> None:
-    with get_db() as conn:
-        conn.execute(
-            "INSERT INTO tos_acceptances (id, tos_hash, tos_date, accepted_at) VALUES (?, ?, ?, ?)",
-            (str(uuid.uuid4()), tos_hash, tos_date, utc_now()),
-        )
-
-
-def tos_payload(tos: dict[str, Any]) -> dict[str, Any]:
-    accepted = latest_tos_acceptance(tos["hash"])
-    return {
-        "hash": tos["hash"],
-        "date": tos["date"],
-        "markdown": tos["markdown"],
-        "accepted": bool(accepted),
-        "accepted_at": accepted["accepted_at"] if accepted else None,
-        "previous": previous_tos_acceptance(tos["hash"]) if not accepted else None,
-    }
-
-
-def app_settings_payload() -> dict[str, Any]:
-    return {
-        "transcription_model": read_app_setting("transcription_model") or "openai/whisper-1",
-        "default_model": default_model_id(),
-        "generate_chat_name": bool(read_app_setting("generate_chat_name")),
-        "hide_free_models": bool(read_app_setting("hide_free_models")),
-        "hide_batch_models": bool(read_app_setting("hide_batch_models")),
-        "disable_prompt_caching": bool(read_app_setting("disable_prompt_caching")),
-        "nitro_mode": bool(read_app_setting("nitro_mode")),
-        "cheapest_mode": bool(read_app_setting("cheapest_mode")),
-        "privacy_mode": bool(read_app_setting("privacy_mode")),
-        "zdr_mode": bool(read_app_setting("zdr_mode")),
-        "smooth_streaming": bool(read_app_setting("smooth_streaming")),
-        "chat_system_prompt": globalChatSystemPrompt(),
-        "hour_prompt_cache": hourPromptCacheEnabled(),
-    }
 
 
 def row_to_chat(row: sqlite3.Row) -> dict[str, Any]:
@@ -719,133 +350,6 @@ def chat_title_from_model_output(raw: str | None) -> str | None:
     title = " ".join(title_case_word(word) for word in title.split(" "))
 
     return title or None
-
-
-@app.get("/api/health")
-def health() -> dict[str, Any]:
-    return {
-        "ok": True,
-        "version": APP_VERSION,
-    }
-
-
-@app.get("/api/tos")
-def get_tos() -> dict[str, Any]:
-    tos = load_tos()
-    if not tos:
-        raise HTTPException(status_code=503, detail=TOS_MISSING_DETAIL)
-    return tos_payload(tos)
-
-
-@app.post("/api/tos/accept")
-def accept_tos(payload: TosAcceptRequest) -> dict[str, Any]:
-    tos = load_tos()
-    if not tos:
-        raise HTTPException(status_code=503, detail=TOS_MISSING_DETAIL)
-
-    if payload.hash.strip().lower() != tos["hash"]:
-        #client was holding a stale copy, make it re-read whatever is on disk now
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "code": "tos_stale",
-                "message": "The terms changed while you were reading them. Please read and accept the current version.",
-            },
-        )
-
-    if not latest_tos_acceptance(tos["hash"]):
-        record_tos_acceptance(tos["hash"], tos["date"])
-
-    return tos_payload(tos)
-
-
-@app.get("/api/settings/key-status")
-async def key_status() -> dict[str, Any]:
-    api_key = read_openrouter_key()
-    if not api_key:
-        return normalize_key_status(None, False)
-    try:
-        return normalize_key_status(await validate_key(api_key), True)
-    except HTTPException:
-        return {"has_key": True, "label": None, "limit_remaining": None, "usage": None}
-
-
-@app.post("/api/settings/openrouter-key")
-async def save_openrouter_key(payload: ApiKeyRequest) -> dict[str, Any]:
-    api_key = payload.api_key.strip()
-    data = await validate_key(api_key)
-    write_openrouter_key(api_key)
-    return normalize_key_status(data, True)
-
-
-@app.get("/api/settings")
-def get_app_settings() -> dict[str, Any]:
-    return app_settings_payload()
-
-
-@app.patch("/api/settings")
-def update_app_settings(payload: AppSettingsPatchRequest) -> dict[str, Any]:
-    patch_updates(payload)
-    if payload.transcription_model is not None:
-        modelId = payload.transcription_model.strip()
-        modelIds = {model["id"] for model in (read_app_setting("transcription_models") or [])}
-        if not modelId or modelId not in modelIds | {"openai/whisper-1"}:
-            raise HTTPException(400, "Choose an available transcription model.")
-        write_app_setting("transcription_model", modelId)
-    if payload.default_model is not None:
-        model_id = payload.default_model.strip()
-        ids = {model["id"] for model in cached_models() if model.get("id")}
-        if ids and model_id not in ids:
-            raise HTTPException(status_code=400, detail="Unknown model.")
-        write_app_setting("default_model", model_id)
-    if payload.generate_chat_name is not None:
-        write_app_setting("generate_chat_name", payload.generate_chat_name)
-    if payload.hide_free_models is not None:
-        write_app_setting("hide_free_models", payload.hide_free_models)
-    if payload.hide_batch_models is not None:
-        write_app_setting("hide_batch_models", payload.hide_batch_models)
-    if payload.disable_prompt_caching is not None:
-        write_app_setting("disable_prompt_caching", payload.disable_prompt_caching)
-    if payload.nitro_mode is not None:
-        write_app_setting("nitro_mode", payload.nitro_mode)
-        if payload.nitro_mode and payload.cheapest_mode is None:
-            write_app_setting("cheapest_mode", False)
-    if payload.cheapest_mode is not None:
-        write_app_setting("cheapest_mode", payload.cheapest_mode)
-        if payload.cheapest_mode and payload.nitro_mode is None:
-            write_app_setting("nitro_mode", False)
-    if payload.privacy_mode is not None:
-        write_app_setting("privacy_mode", payload.privacy_mode)
-    if payload.zdr_mode is not None:
-        write_app_setting("zdr_mode", payload.zdr_mode)
-    if payload.smooth_streaming is not None:
-        write_app_setting("smooth_streaming", payload.smooth_streaming)
-    if payload.chat_system_prompt is not None:
-        write_app_setting("chat_system_prompt", payload.chat_system_prompt)
-    if payload.hour_prompt_cache is not None:
-        write_app_setting("hour_prompt_cache", payload.hour_prompt_cache)
-    return app_settings_payload()
-
-
-@app.get("/api/models")
-async def get_models(response: Response) -> dict[str, Any]:
-    response.headers["Cache-Control"] = "no-store"
-    api_key = read_openrouter_key()
-    if not api_key:
-        models = cached_models()
-        if models:
-            return {"models": models, "cached": True}
-        raise HTTPException(status_code=401, detail="Add an OpenRouter API key first.")
-
-    try:
-        models = await fetch_models_from_openrouter(api_key)
-        cache_models(models)
-        return {"models": models, "cached": False}
-    except HTTPException:
-        models = cached_models()
-        if models:
-            return {"models": models, "cached": True}
-        raise
 
 
 def folder_or_404(conn: sqlite3.Connection, folder_id: str) -> sqlite3.Row:

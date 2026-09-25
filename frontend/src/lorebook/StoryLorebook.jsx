@@ -278,13 +278,9 @@ export default function StoryLorebook({
     return nextCounts;
   }, [localEntries]);
 
-  const entryTotals = useMemo(() => {
-    const storyEntries = localEntries.filter((entry) => entry.category !== "timeline");
-    return {
-      total: storyEntries.length,
-      hidden: storyEntries.filter((entry) => entry.disabled).length,
-    };
-  }, [localEntries]);
+  const hiddenCount = useMemo(() => (
+    localEntries.filter((entry) => entry.category !== "timeline" && entry.disabled).length
+  ), [localEntries]);
 
   const categoryEntries = useMemo(() => (
     localEntries
@@ -682,7 +678,6 @@ export default function StoryLorebook({
   const activeCategoryLabel = activeCategoryOption?.plural.toLowerCase() || "entries";
   const activeSingularLabel = activeCategoryOption?.label.toLowerCase() || "entry";
   const searching = Boolean(searchTerm.trim());
-  const entryUnit = entryTotals.total === 1 ? "entry" : "entries";
 
   return (
     <>
@@ -705,10 +700,11 @@ export default function StoryLorebook({
             </div>
 
             <div className="lorebook-header-actions">
-              <p className="lorebook-totals">
-                <span>{entryTotals.total} {entryUnit}</span>
-                {entryTotals.hidden > 0 && <span>{entryTotals.hidden} hidden from context</span>}
-              </p>
+              {hiddenCount > 0 && (
+                <p className="lorebook-totals">
+                  <span>{hiddenCount} hidden from context</span>
+                </p>
+              )}
               {!isTimelineTab && (
                 <button
                   type="button"

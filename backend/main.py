@@ -389,6 +389,8 @@ class AppSettingsPatchRequest(BaseModel):
     privacy_mode: bool | None = None
     zdr_mode: bool | None = None
     smooth_streaming: bool | None = None
+    chat_system_prompt: str | None = None
+    hour_prompt_cache: bool | None = None
 
 
 class TosAcceptRequest(BaseModel):
@@ -1330,7 +1332,17 @@ def app_settings_payload() -> dict[str, Any]:
         "privacy_mode": bool(read_app_setting("privacy_mode")),
         "zdr_mode": bool(read_app_setting("zdr_mode")),
         "smooth_streaming": bool(read_app_setting("smooth_streaming")),
+        "chat_system_prompt": globalChatSystemPrompt(),
+        "hour_prompt_cache": hourPromptCacheEnabled(),
     }
+
+
+def hourPromptCacheEnabled() -> bool:
+    return read_app_setting("hour_prompt_cache") is not False
+
+
+def globalChatSystemPrompt() -> str:
+    return str(read_app_setting("chat_system_prompt") or "")
 
 
 def openrouter_request_model(model_id: str, nitro_mode: bool) -> str:
@@ -1360,6 +1372,8 @@ def openrouter_provider_options() -> dict[str, Any] | None:
 def prompt_cache_control() -> dict[str, Any] | None:
     if bool(read_app_setting("disable_prompt_caching")):
         return None
+    if hourPromptCacheEnabled():
+        return {"type": "ephemeral", "ttl": "1h"}
     return {"type": "ephemeral"}
 
 
@@ -1660,6 +1674,10 @@ def update_app_settings(payload: AppSettingsPatchRequest) -> dict[str, Any]:
         write_app_setting("zdr_mode", payload.zdr_mode)
     if payload.smooth_streaming is not None:
         write_app_setting("smooth_streaming", payload.smooth_streaming)
+    if payload.chat_system_prompt is not None:
+        write_app_setting("chat_system_prompt", payload.chat_system_prompt)
+    if payload.hour_prompt_cache is not None:
+        write_app_setting("hour_prompt_cache", payload.hour_prompt_cache)
     return app_settings_payload()
 
 
@@ -2485,7 +2503,7 @@ async def stream_openrouter_response(
 
     messages = build_openrouter_messages(
         chat_id,
-        chatSystemPrompt(payload),
+        globalChatSystemPrompt(),
         payload.regenerate_message_id,
         payload.message.strip(),
     )

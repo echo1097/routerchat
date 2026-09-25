@@ -112,6 +112,7 @@ function App() {
   const [temporaryChat, setTemporaryChat] = useState(false);
   const [tempChatId, setTempChatId] = useState(null);
   const [settings, setSettings] = useState(newSettings);
+  const [chatSystemPrompt, setChatSystemPrompt] = useState("");
   const [defaultModel, setDefaultModel] = useState(DEFAULT_MODEL);
   const [generateChatName, setGenerateChatName] = useState(
     Boolean(localAppSettings.generate_chat_name),
@@ -122,6 +123,7 @@ function App() {
   const [disablePromptCaching, setDisablePromptCaching] = useState(
     Boolean(localAppSettings.disable_prompt_caching),
   );
+  const [hourPromptCache, setHourPromptCache] = useState(localAppSettings.hour_prompt_cache !== false);
   const [nitroMode, setNitroMode] = useState(Boolean(localAppSettings.nitro_mode));
   const [cheapestMode, setCheapestMode] = useState(Boolean(localAppSettings.cheapest_mode));
   const [privacyMode, setPrivacyMode] = useState(Boolean(localAppSettings.privacy_mode));
@@ -190,7 +192,6 @@ function App() {
   const chapterContentRef = useRef("");
   const chaptersRef = useRef([]);
   const activeStoryIdRef = useRef(null);
-  const activeChatIdRef = useRef(null);
   const activeChapterIdRef = useRef(null);
   const chapterCanvasScrollPositionsRef = useRef(new Map());
   const storyWorkspaceViewRef = useRef("chapter");
@@ -339,10 +340,6 @@ function App() {
     chaptersRef.current = chapters;
     storyWorkspaceViewRef.current = storyWorkspaceView;
   }, [activeStoryId, activeChapterId, chapters, storyWorkspaceView]);
-
-  useEffect(() => {
-    activeChatIdRef.current = activeChatId;
-  }, [activeChatId]);
 
   useEffect(() => {
     function handlePageHide() {
@@ -820,6 +817,10 @@ function App() {
         typeof payload.disable_prompt_caching === "boolean"
           ? payload.disable_prompt_caching
           : Boolean(readLocalAppSettings().disable_prompt_caching);
+      const nextHourPromptCache =
+        typeof payload.hour_prompt_cache === "boolean"
+          ? payload.hour_prompt_cache
+          : readLocalAppSettings().hour_prompt_cache !== false;
       const nextGenerateChatName =
         typeof payload.generate_chat_name === "boolean"
           ? payload.generate_chat_name
@@ -850,28 +851,32 @@ function App() {
       setHideFreeModels(nextHideFreeModels);
       setHideBatchModels(nextHideBatchModels);
       setDisablePromptCaching(nextDisablePromptCaching);
+      setHourPromptCache(nextHourPromptCache);
       setNitroMode(nextNitroMode);
       setSmoothStreaming(nextSmoothStreaming);
       setCheapestMode(nextCheapestMode);
       setPrivacyMode(nextPrivacyMode);
       setZdrMode(nextZdrMode);
+      setChatSystemPrompt(typeof payload.chat_system_prompt === "string" ? payload.chat_system_prompt : "");
       writeLocalAppSettings({
         generate_chat_name: nextGenerateChatName,
         hide_free_models: nextHideFreeModels,
         hide_batch_models: nextHideBatchModels,
         disable_prompt_caching: nextDisablePromptCaching,
+        hour_prompt_cache: nextHourPromptCache,
         nitro_mode: nextNitroMode,
         smooth_streaming: nextSmoothStreaming,
         cheapest_mode: nextCheapestMode,
         privacy_mode: nextPrivacyMode,
         zdr_mode: nextZdrMode,
       });
-      setSettings((current) => (
-        activeChatId || activeStoryId || appSettingsLoadedRef.current
-          ? { ...current, nitro_mode: nextNitroMode }
-          : { ...current, model: nextDefaultModel, nitro_mode: nextNitroMode }
-      ));
+      const applyDefaultModel = !appSettingsLoadedRef.current && parseRoute().page === "home";
       appSettingsLoadedRef.current = true;
+      setSettings((current) => (
+        applyDefaultModel
+          ? { ...current, model: nextDefaultModel, nitro_mode: nextNitroMode }
+          : { ...current, nitro_mode: nextNitroMode }
+      ));
     } catch (error) {
       setStatus(error.message);
     }
@@ -1028,22 +1033,15 @@ function App() {
   }
 
   async function saveChatSystemPrompt(systemPrompt) {
-    const chatId = activeChatId;
-    if (!chatId) {
-      writeLocalAppSettings({ chat_system_prompt_draft: systemPrompt });
-      setSettings((current) => ({ ...current, system_prompt: systemPrompt }));
-      return;
-    }
-
     try {
-      await api(`/api/chats/${chatId}`, {
+      const payload = await api("/api/settings", {
         method: "PATCH",
         body: JSON.stringify({ chat_system_prompt: systemPrompt }),
       });
-      if (activeChatIdRef.current === chatId) {
-        setSettings((current) => ({ ...current, system_prompt: systemPrompt }));
+      if (payload.chat_system_prompt !== systemPrompt) {
+        throw new Error("Chat system prompt did not save. Restart the backend and try again.");
       }
-      await loadChats();
+      setChatSystemPrompt(payload.chat_system_prompt);
     } catch (error) {
       setStatus(error.message);
       throw error;
@@ -1112,7 +1110,6 @@ function App() {
       ...newSettings,
       model: current.model || defaultModel,
       nitro_mode: nitroMode,
-      system_prompt: nextMode === "chat" ? readLocalAppSettings().chat_system_prompt_draft || "" : "",
     }));
     setPrompt("");
     setStatus("");
@@ -1131,12 +1128,6 @@ function App() {
       void loadStoryRoute(route, { replace: true, fromRoute: true });
     } else {
       setChatMode(route.mode || "chat");
-      if ((route.mode || "chat") === "chat") {
-        setSettings((current) => ({
-          ...current,
-          system_prompt: readLocalAppSettings().chat_system_prompt_draft || "",
-        }));
-      }
       writeRoute({ page: "home", mode: route.mode || "chat" }, { replace: true });
     }
   }, []);
@@ -1223,6 +1214,28 @@ function App() {
     } catch (error) {
       setDisablePromptCaching(value);
       writeLocalAppSettings({ disable_prompt_caching: value });
+      setStatus(`Saved locally. Restart the server to sync this setting. ${error.message}`);
+    }
+  }
+
+  async function updateHourPromptCache(value) {
+    setHourPromptCache(value);
+    writeLocalAppSettings({ hour_prompt_cache: value });
+    try {
+      const payload = await api("/api/settings", {
+        method: "PATCH",
+        body: JSON.stringify({ hour_prompt_cache: value }),
+      });
+      const nextValue =
+        typeof payload.hour_prompt_cache === "boolean"
+          ? payload.hour_prompt_cache
+          : value;
+      setHourPromptCache(nextValue);
+      writeLocalAppSettings({ hour_prompt_cache: nextValue });
+      showToast(value ? "Cache kept for 1 hour" : "Cache kept for 5 minutes");
+    } catch (error) {
+      setHourPromptCache(value);
+      writeLocalAppSettings({ hour_prompt_cache: value });
       setStatus(`Saved locally. Restart the server to sync this setting. ${error.message}`);
     }
   }
@@ -1380,11 +1393,10 @@ function App() {
       method: "POST",
       body: JSON.stringify({
         ...settings,
-        chat_system_prompt: settings.system_prompt,
+        chat_system_prompt: chatSystemPrompt,
         ...(temporary ? { title: "Temporary chat", temporary: true } : {}),
       }),
     });
-    writeLocalAppSettings({ chat_system_prompt_draft: "" });
     applyChat(payload.chat, []);
     await navigateToChat(payload.chat);
     if (!temporary) {
@@ -1607,11 +1619,10 @@ function App() {
         method: "POST",
         body: JSON.stringify({
           ...settings,
-          chat_system_prompt: settings.system_prompt,
+          chat_system_prompt: chatSystemPrompt,
           folder_id: folderId,
         }),
       });
-      writeLocalAppSettings({ chat_system_prompt_draft: "" });
       applyChat(payload.chat, []);
       await navigateToChat(payload.chat);
       await loadChats();
@@ -1839,7 +1850,7 @@ function App() {
         signal: abortRef.current.signal,
         body: JSON.stringify({
           ...settings,
-          chat_system_prompt: settings.system_prompt,
+          chat_system_prompt: chatSystemPrompt,
           message: text,
           regenerate_message_id: regenerateMessageId,
           attachment_ids: sentAttachmentIds,
@@ -3521,6 +3532,7 @@ function App() {
         hideFreeModels={hideFreeModels}
         hideBatchModels={hideBatchModels}
         disablePromptCaching={disablePromptCaching}
+        hourPromptCache={hourPromptCache}
         nitroMode={nitroMode}
         cheapestMode={cheapestMode}
         privacyMode={privacyMode}
@@ -3529,6 +3541,7 @@ function App() {
         showPromptNavigationRail={showPromptNavigationRail}
         modelLocked={activeModelLocked}
         onPersist={persistSettings}
+        chatSystemPrompt={chatSystemPrompt}
         onSaveChatSystemPrompt={saveChatSystemPrompt}
         onModelSelected={(name) => showToast(`Model selected: ${name}`)}
         onSetDefaultModel={updateDefaultModel}
@@ -3536,6 +3549,7 @@ function App() {
         onToggleHideFreeModels={updateHideFreeModels}
         onToggleHideBatchModels={updateHideBatchModels}
         onToggleDisablePromptCaching={updateDisablePromptCaching}
+        onToggleHourPromptCache={updateHourPromptCache}
         onToggleNitroMode={updateNitroMode}
         onToggleCheapestMode={updateCheapestMode}
         onTogglePrivacyMode={updatePrivacyMode}

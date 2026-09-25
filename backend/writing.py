@@ -1594,10 +1594,10 @@ def build_story_messages(
         if not bool(row["disabled"]) and row["description"].strip()
     )
     visiblePrevious = [row for row in (previous_chapters or []) if not bool(row["disabled"])]
-    previousText = "\n\n".join(
-        f"chapter {index + 1}: {row['title']}\n{row['content'] or 'empty chapter'}"
+    previousChapterTexts = [
+        f"previous chapter {index + 1}: {row['title']}\n{row['content'] or 'empty chapter'}"
         for index, row in enumerate(visiblePrevious)
-    )
+    ]
 
     storyParts = [
         f"story title: {story['title']}",
@@ -1605,8 +1605,6 @@ def build_story_messages(
         f"language: {story['language'] or 'English'}",
         f"synopsis: {story['synopsis'] or 'none yet'}",
     ]
-    if previousText:
-        storyParts.append(f"previous chapters:\n{previousText}")
 
     chapterParts = [
         f"chapter title: {chapter['title']}",
@@ -1626,6 +1624,9 @@ def build_story_messages(
     messages.append({"role": "user", "content": "\n\n".join(storyParts)})
     if lorebook_text:
         messages.append({"role": "user", "content": f"lorebook:\n{lorebook_text}"})
+
+    for previousChapterText in previousChapterTexts:
+        messages.append({"role": "user", "content": previousChapterText})
 
     if generation_mode == "edit":
         messages.append(
@@ -1699,27 +1700,29 @@ def mark_story_cache_points(
     messages: list[dict[str, Any]],
     cache_control: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    marked: list[dict[str, Any]] = []
-    remainingPrefixes = ["story title:", "lorebook:"]
+    stableIndex = lastUserMessageIndex(messages, ("story title:", "lorebook:"))
+    previousChapterIndex = lastUserMessageIndex(messages, ("previous chapter ",))
+    markedIndexes = {index for index in (stableIndex, previousChapterIndex) if index is not None}
 
-    for message in messages:
-        content = message["content"]
-        prefix = next(
-            (
-                prefix for prefix in remainingPrefixes
-                if message["role"] == "user" and isinstance(content, str) and content.startswith(prefix)
-            ),
-            None,
-        )
-        if prefix:
-            remainingPrefixes.remove(prefix)
+    marked: list[dict[str, Any]] = []
+    for index, message in enumerate(messages):
+        if index in markedIndexes:
             message = {
                 **message,
-                "content": [{"type": "text", "text": content, "cache_control": cache_control}],
+                "content": [{"type": "text", "text": message["content"], "cache_control": cache_control}],
             }
         marked.append(message)
 
     return marked
+
+
+def lastUserMessageIndex(messages: list[dict[str, Any]], prefixes: tuple[str, ...]) -> int | None:
+    found = None
+    for index, message in enumerate(messages):
+        content = message["content"]
+        if message["role"] == "user" and isinstance(content, str) and content.startswith(prefixes):
+            found = index
+    return found
 
 
 def repair_instructions(repair_context: dict[str, Any]) -> str:

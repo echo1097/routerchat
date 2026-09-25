@@ -129,8 +129,23 @@ class PromptCachingTest(unittest.TestCase):
     def test_chat_requests_ask_for_caching_by_default(self):
         chat, calls = self.sendMessage()
 
-        self.assertEqual(calls[0]["cache_control"], {"type": "ephemeral"})
+        self.assertEqual(calls[0]["cache_control"], {"type": "ephemeral", "ttl": "1h"})
         self.assertEqual(calls[0]["session_id"], chat["id"])
+
+    def test_the_hour_cache_is_on_by_default_and_round_trips(self):
+        self.assertTrue(self.client.get("/api/settings").json()["hour_prompt_cache"])
+
+        patched = self.client.patch("/api/settings", json={"hour_prompt_cache": False})
+
+        self.assertFalse(patched.json()["hour_prompt_cache"])
+        self.assertFalse(self.client.get("/api/settings").json()["hour_prompt_cache"])
+
+    def test_chat_requests_use_the_short_cache_when_the_hour_cache_is_off(self):
+        self.client.patch("/api/settings", json={"hour_prompt_cache": False})
+
+        _, calls = self.sendMessage()
+
+        self.assertEqual(calls[0]["cache_control"], {"type": "ephemeral"})
 
     def test_cached_reads_are_read_from_both_usage_shapes(self):
         streamUsage = main.normalize_usage({"prompt_tokens": 900, "prompt_tokens_details": {"cached_tokens": 700}})

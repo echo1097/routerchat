@@ -1764,7 +1764,9 @@ class ChapterStreamingResponse(StreamingResponse):
         try:
             await super().__call__(scope, receive, send)
         finally:
-            await self.body_iterator.aclose()
+            closeStream = getattr(self.body_iterator, "aclose", None)
+            if closeStream:
+                await closeStream()
             self.onClose()
 
 

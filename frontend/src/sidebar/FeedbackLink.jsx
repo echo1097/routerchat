@@ -100,7 +100,7 @@ function ChangelogModal({ open, onClose }) {
         aria-label="Changelog"
         tabIndex={-1}
         className={cx(
-          "t-modal relative z-10 flex max-h-[min(640px,calc(100dvh-2rem))] w-full max-w-[560px] flex-col overflow-hidden rounded-[26px] bg-[#191919] text-neutral-100 outline-none [box-shadow:var(--shadow-surface)]",
+          "t-modal relative z-10 flex max-h-[min(640px,calc(100dvh-2rem))] w-full max-w-[560px] flex-col overflow-hidden rounded-[26px] bg-[#181818] text-neutral-100 outline-none [box-shadow:var(--shadow-surface)]",
           isOpen ? "is-open" : "is-closing",
         )}
       >

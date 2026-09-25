@@ -8,6 +8,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 import backend.main as main
+import backend.providers.openrouter.models as models
 import backend.core.paths as paths
 from backend.local_access import create_secret_file
 
@@ -215,7 +216,7 @@ class ChatTitleTest(unittest.TestCase):
         chat = self.createChat()
         self.sendFirstMessage(chat)
 
-        with patch.object(main, "model_metadata", lambda _: {"supported_parameters": ["reasoning"]}):
+        with patch.object(models, "model_metadata", lambda _: {"supported_parameters": ["reasoning"]}):
             _, calls = self.nameChat(chat, FakeTitleResponse("Borrow Checker Help"))
 
         self.assertEqual(calls[0]["reasoning"], {"enabled": False, "exclude": True})
@@ -228,7 +229,7 @@ class ChatTitleTest(unittest.TestCase):
         self.sendFirstMessage(chat)
 
         metadata = {"supported_parameters": ["reasoning"], "reasoning": {"mandatory": True}}
-        with patch.object(main, "model_metadata", lambda _: metadata):
+        with patch.object(models, "model_metadata", lambda _: metadata):
             _, calls = self.nameChat(chat, FakeTitleResponse("Borrow Checker Help"))
 
         self.assertTrue(calls[0]["reasoning"]["enabled"])

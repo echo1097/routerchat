@@ -12,6 +12,8 @@ from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 
 import backend.main as main
+import backend.providers.openrouter.models as models
+import backend.providers.openrouter.requestOptions as requestOptions
 import backend.core.migrations as migrations
 import backend.core.paths as paths
 from backend.brainstorm import (
@@ -472,7 +474,7 @@ class StoryApiTest(unittest.TestCase):
         supportedParameters=None,
     ):
         modelId = "test/brainstorm-guards"
-        main.cache_models([main.normalize_model({
+        main.cache_models([models.normalize_model({
             "id": modelId,
             "supported_parameters": list(supportedParameters or []),
         })])
@@ -753,7 +755,7 @@ class StoryApiTest(unittest.TestCase):
         for action in ("update", "update_stream", "generate", "generate_summary", "repair", "timeline_repair"):
             with self.subTest(action=action):
                 story, chapter = self.storyWithChapter("Usage test", "A visitor arrives.")
-                main.cache_models([main.normalize_model({"id": "test/lorebook", "supported_parameters": []})])
+                main.cache_models([models.normalize_model({"id": "test/lorebook", "supported_parameters": []})])
                 self.client.patch(f"/api/stories/{story['id']}", json={"lorebook_model": "test/lorebook"})
                 response, requests = self.callTrackedLorebook(story, chapter, action)
                 self.assertEqual(response.status_code, 200)
@@ -1207,11 +1209,11 @@ class StoryApiTest(unittest.TestCase):
         supportedModel = "test/lorebook-structured"
         unsupportedModel = "test/lorebook-plain"
         main.cache_models([
-            main.normalize_model({
+            models.normalize_model({
                 "id": supportedModel,
                 "supported_parameters": ["structured_outputs"],
             }),
-            main.normalize_model({
+            models.normalize_model({
                 "id": unsupportedModel,
                 "supported_parameters": [],
             }),
@@ -1239,8 +1241,8 @@ class StoryApiTest(unittest.TestCase):
         storyModel = "test/story-writer"
         lorebookModel = "test/lorebook-keeper"
         main.cache_models([
-            main.normalize_model({"id": storyModel, "supported_parameters": []}),
-            main.normalize_model({"id": lorebookModel, "supported_parameters": []}),
+            models.normalize_model({"id": storyModel, "supported_parameters": []}),
+            models.normalize_model({"id": lorebookModel, "supported_parameters": []}),
         ])
         story, chapter = self.storyWithChapter("Own Model", "Mara opens the gate.")
         self.client.patch(f"/api/stories/{story['id']}", json={"model": storyModel})
@@ -1262,8 +1264,8 @@ class StoryApiTest(unittest.TestCase):
         storyModel = "test/story-writer"
         lorebookModel = "test/lorebook-keeper"
         main.cache_models([
-            main.normalize_model({"id": storyModel, "supported_parameters": []}),
-            main.normalize_model({"id": lorebookModel, "supported_parameters": []}),
+            models.normalize_model({"id": storyModel, "supported_parameters": []}),
+            models.normalize_model({"id": lorebookModel, "supported_parameters": []}),
         ])
         story, chapter = self.storyWithChapter("Back To Global", "Mara opens the gate.")
         self.client.patch(
@@ -1693,7 +1695,7 @@ class StoryApiTest(unittest.TestCase):
     def test_timeline_repair_streams_reasoning_and_rebuilds_from_visible_story(self):
         modelId = "test/timeline-repair"
         main.cache_models([
-            main.normalize_model({
+            models.normalize_model({
                 "id": modelId,
                 "name": "Timeline repair model",
                 "supported_parameters": ["reasoning", "structured_outputs"],
@@ -4006,7 +4008,7 @@ class StoryApiTest(unittest.TestCase):
         )
 
     def test_model_reasoning_metadata_round_trips_and_drives_capabilities(self):
-        mandatoryModel = main.normalize_model({
+        mandatoryModel = models.normalize_model({
             "id": "test/mandatory",
             "name": "Mandatory model",
             "supported_parameters": ["reasoning"],
@@ -4017,12 +4019,12 @@ class StoryApiTest(unittest.TestCase):
                 "mandatory": True,
             },
         })
-        optionalModel = main.normalize_model({
+        optionalModel = models.normalize_model({
             "id": "test/optional",
             "supported_parameters": ["reasoning"],
             "reasoning": {"mandatory": False},
         })
-        instantModel = main.normalize_model({
+        instantModel = models.normalize_model({
             "id": "test/instant",
             "supported_parameters": [],
         })
@@ -4034,7 +4036,7 @@ class StoryApiTest(unittest.TestCase):
         )
         self.assertTrue(cachedModel["reasoning"]["mandatory"])
         self.assertTrue(main.model_supports_reasoning("test/mandatory:nitro"))
-        self.assertTrue(main.model_requires_reasoning("test/mandatory:nitro"))
+        self.assertTrue(models.model_requires_reasoning("test/mandatory:nitro"))
         self.assertTrue(main.effective_thinking_enabled("test/mandatory", False))
         self.assertFalse(main.effective_thinking_enabled("test/optional", False))
         self.assertIsNone(main.enabled_reasoning_config("test/optional", False, "medium"))
@@ -4049,7 +4051,7 @@ class StoryApiTest(unittest.TestCase):
         )
         self.assertEqual(main.coerce_reasoning_effort("xhigh"), "max")
         self.assertEqual(
-            main.resolved_reasoning_effort("test/mandatory", "low"), "medium"
+            requestOptions.resolved_reasoning_effort("test/mandatory", "low"), "medium"
         )
 
         with patch.object(main, "read_openrouter_key", return_value=None):
@@ -4078,7 +4080,7 @@ class StoryApiTest(unittest.TestCase):
         )
 
     def test_mandatory_reasoning_is_enabled_for_chat_when_preference_is_off(self):
-        main.cache_models([main.normalize_model({
+        main.cache_models([models.normalize_model({
             "id": "test/model",
             "supported_parameters": ["reasoning"],
             "reasoning": {"mandatory": True},
@@ -4145,7 +4147,7 @@ class StoryApiTest(unittest.TestCase):
         self.assertTrue(loadedChat["thinking_enabled"])
 
     def test_mandatory_reasoning_is_enabled_for_chapter_when_preference_is_off(self):
-        main.cache_models([main.normalize_model({
+        main.cache_models([models.normalize_model({
             "id": "test/model",
             "supported_parameters": ["reasoning"],
             "reasoning": {"mandatory": True},
@@ -4514,7 +4516,7 @@ class StoryApiTest(unittest.TestCase):
         self.assertEqual(graph["edges"], [])
 
     def test_brainstorm_generation_saves_complete_branch_atomically(self):
-        main.cache_models([main.normalize_model({
+        main.cache_models([models.normalize_model({
             "id": "test/model",
             "supported_parameters": ["reasoning", "structured_outputs"],
             "reasoning": {"mandatory": True},

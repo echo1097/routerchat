@@ -8,6 +8,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 import backend.main as main
+import backend.providers.openrouter.usage as usage
 import backend.core.paths as paths
 from backend.local_access import create_secret_file
 
@@ -150,7 +151,7 @@ class PromptCachingTest(unittest.TestCase):
 
     def test_cached_reads_are_read_from_both_usage_shapes(self):
         streamUsage = main.normalize_usage({"prompt_tokens": 900, "prompt_tokens_details": {"cached_tokens": 700}})
-        generationUsage = main.normalize_generation_usage({"native_tokens_prompt": 900, "native_tokens_cached": 700})
+        generationUsage = usage.normalize_generation_usage({"native_tokens_prompt": 900, "native_tokens_cached": 700})
 
         self.assertEqual(streamUsage["cached_tokens"], 700)
         self.assertEqual(generationUsage["cached_tokens"], 700)

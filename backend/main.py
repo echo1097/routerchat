@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import hmac
 import json
 import os
 import re
 import sqlite3
-import tempfile
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -67,6 +65,35 @@ from backend.local_access import read_secret_file, validate_base_url
 from backend.lorebook import LorebookDeps, create_lorebook_router
 from backend.lorebook_generate import create_lorebook_generate_router
 from backend.lorebook_repair import create_lorebook_repair_router
+from backend.providers.openrouter.apiKey import (
+    normalize_key_status,
+    read_openrouter_key,
+    validate_key,
+    write_openrouter_key,
+)
+from backend.providers.openrouter.client import (
+    DEFAULT_MAX_TOKENS,
+    OPENROUTER_BASE_URL,
+    OPENROUTER_TIMEOUT,
+    headers_for_key,
+)
+from backend.providers.openrouter.errors import openrouter_error_message
+from backend.providers.openrouter.models import (
+    cache_models,
+    cached_models,
+    default_model_id,
+    fetch_models_from_openrouter,
+    model_supports_reasoning,
+    model_supports_structured_output,
+)
+from backend.providers.openrouter.requestOptions import (
+    effective_thinking_enabled,
+    enabled_reasoning_config,
+    openrouter_provider_options,
+    openrouter_request_model,
+    prompt_cache_control,
+)
+from backend.providers.openrouter.usage import fetch_generation_usage, normalize_usage
 from backend.transcription import createTranscriptionRouter
 from backend.usage import createUsageRouter
 from backend.websearch import (
@@ -116,10 +143,6 @@ TOS_REQUIRED_DETAIL = {
     "code": "tos_required",
     "message": "The current Terms of Service have not been accepted.",
 }
-OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-DEFAULT_MAX_TOKENS = 30000
-OPENROUTER_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=10.0)
-DEFAULT_MODEL_ID = "anthropic/claude-sonnet-5"
 
 
 load_dotenv(paths.ENV_PATH)
@@ -503,152 +526,6 @@ def on_startup() -> None:
             conn.execute("DELETE FROM stories WHERE id = ?", (storyId,))
 
 
-def read_openrouter_key() -> str | None:
-    env_key = os.getenv("OPENROUTER_API_KEY")
-    if env_key:
-        return env_key.strip()
-    if not paths.ENV_PATH.exists():
-        return None
-    for line in paths.ENV_PATH.read_text(encoding="utf-8").splitlines():
-        if line.startswith("OPENROUTER_API_KEY="):
-            value = line.split("=", 1)[1].strip().strip('"').strip("'")
-            return value or None
-    return None
-
-
-def write_openrouter_key(api_key: str) -> None:
-    paths.ENV_PATH.parent.mkdir(parents=True, exist_ok=True)
-    lines: list[str] = []
-    replaced = False
-    if paths.ENV_PATH.exists():
-        lines = paths.ENV_PATH.read_text(encoding="utf-8").splitlines()
-
-    next_lines: list[str] = []
-    for line in lines:
-        if line.startswith("OPENROUTER_API_KEY="):
-            next_lines.append(f"OPENROUTER_API_KEY={api_key}")
-            replaced = True
-        else:
-            next_lines.append(line)
-    if not replaced:
-        next_lines.append(f"OPENROUTER_API_KEY={api_key}")
-
-    with tempfile.NamedTemporaryFile(
-        "w", encoding="utf-8", dir=paths.ENV_PATH.parent, delete=False
-    ) as handle:
-        handle.write("\n".join(next_lines).rstrip() + "\n")
-        temp_name = handle.name
-
-    tempPath = Path(temp_name)
-    if os.name == "posix":
-        tempPath.chmod(0o600)
-    tempPath.replace(paths.ENV_PATH)
-    if os.name == "posix":
-        paths.ENV_PATH.chmod(0o600)
-
-    os.environ["OPENROUTER_API_KEY"] = api_key
-
-
-def headers_for_key(api_key: str) -> dict[str, str]:
-    return {
-        "Authorization": f"Bearer {api_key}",
-        "HTTP-Referer": "https://echo1097.github.io/get-routerchat/",
-        "X-OpenRouter-Title": "RouterChat",
-        "X-Title": "RouterChat",
-    }
-
-
-async def validate_key(api_key: str) -> dict[str, Any]:
-    try:
-        async with httpx.AsyncClient(timeout=20.0) as client:
-            response = await client.get(
-                f"{OPENROUTER_BASE_URL}/key", headers=headers_for_key(api_key)
-            )
-    except httpx.HTTPError as exc:
-        raise HTTPException(
-            status_code=502,
-            detail="Could not reach OpenRouter. Check your network connection or local TLS certificate.",
-        ) from exc
-    if response.status_code == 401:
-        raise HTTPException(status_code=401, detail="OpenRouter API key is invalid.")
-    if response.status_code >= 400:
-        raise HTTPException(
-            status_code=response.status_code,
-            detail=f"OpenRouter key validation failed: {response.text}",
-        )
-    return response.json().get("data", {})
-
-
-def normalize_key_status(data: dict[str, Any] | None, has_key: bool) -> dict[str, Any]:
-    data = data or {}
-    return {
-        "has_key": has_key,
-        "label": data.get("label"),
-        "limit_remaining": data.get("limit_remaining"),
-        "usage": data.get("usage"),
-    }
-
-
-def normalize_model(model: dict[str, Any]) -> dict[str, Any]:
-    normalizedModel = {
-        "id": model.get("id"),
-        "name": model.get("name") or model.get("id"),
-        "context_length": model.get("context_length"),
-        "top_provider": model.get("top_provider") or {},
-        "architecture": model.get("architecture") or {},
-        "pricing": model.get("pricing") or {},
-        "supported_parameters": model.get("supported_parameters") or [],
-        "description": model.get("description"),
-    }
-    if isinstance(model.get("reasoning"), dict):
-        normalizedModel["reasoning"] = model["reasoning"]
-
-    return normalizedModel
-
-
-def outputs_text_model(model: dict[str, Any]) -> bool:
-    architecture = model.get("architecture") or {}
-    output_modalities = set(architecture.get("output_modalities") or [])
-
-    if output_modalities:
-        return "text" in output_modalities
-
-    modality = architecture.get("modality")
-    if isinstance(modality, str) and "->" in modality:
-        _, target = modality.split("->", 1)
-        return "text" in set(target.split("+"))
-
-    # Older cached entries may not include OpenRouter architecture metadata.
-    searchable = " ".join(
-        str(model.get(key) or "").lower() for key in ("id", "name")
-    )
-    return not any(kind in searchable for kind in ("image", "audio", "video", "vision"))
-
-
-def cached_models() -> list[dict[str, Any]]:
-    with get_db() as conn:
-        row = conn.execute(
-            "SELECT payload_json FROM models_cache WHERE id = ?", ("openrouter_text",)
-        ).fetchone()
-    if not row:
-        return []
-    return [model for model in json.loads(row["payload_json"]) if outputs_text_model(model)]
-
-
-def cache_models(models: list[dict[str, Any]]) -> None:
-    with get_db() as conn:
-        conn.execute(
-            """
-            INSERT INTO models_cache (id, payload_json, fetched_at)
-            VALUES (?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-              payload_json = excluded.payload_json,
-              fetched_at = excluded.fetched_at
-            """,
-            ("openrouter_text", json.dumps(models), utc_now()),
-        )
-
-
 def latest_tos_acceptance(tos_hash: str | None = None) -> dict[str, Any] | None:
     query = "SELECT id, tos_hash, tos_date, accepted_at FROM tos_acceptances"
     params: tuple[Any, ...] = ()
@@ -728,64 +605,6 @@ def app_settings_payload() -> dict[str, Any]:
     }
 
 
-def openrouter_request_model(model_id: str, nitro_mode: bool) -> str:
-    if not nitro_mode:
-        return model_id
-    if model_id.endswith(":nitro"):
-        return model_id
-    return f"{model_id}:nitro"
-
-
-def openrouter_provider_options() -> dict[str, Any] | None:
-    provider: dict[str, Any] = {}
-
-    if bool(read_app_setting("cheapest_mode")):
-        provider["sort"] = "price"
-
-    #zdr is the stricter promise, so it already covers what privacy mode asks for
-    if bool(read_app_setting("zdr_mode")):
-        provider["zdr"] = True
-        provider["data_collection"] = "deny"
-    elif bool(read_app_setting("privacy_mode")):
-        provider["data_collection"] = "deny"
-
-    return provider or None
-
-
-def prompt_cache_control() -> dict[str, Any] | None:
-    if bool(read_app_setting("disable_prompt_caching")):
-        return None
-    if hourPromptCacheEnabled():
-        return {"type": "ephemeral", "ttl": "1h"}
-    return {"type": "ephemeral"}
-
-
-async def fetch_models_from_openrouter(api_key: str) -> list[dict[str, Any]]:
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(
-                f"{OPENROUTER_BASE_URL}/models",
-                headers=headers_for_key(api_key),
-                params={"output_modalities": "text"},
-            )
-    except httpx.HTTPError as exc:
-        raise HTTPException(
-            status_code=502,
-            detail="Could not reach OpenRouter. Check your network connection or local TLS certificate.",
-        ) from exc
-    if response.status_code >= 400:
-        raise HTTPException(
-            status_code=response.status_code,
-            detail=f"OpenRouter model fetch failed: {response.text}",
-        )
-    models = [
-        normalize_model(item)
-        for item in response.json().get("data", [])
-        if outputs_text_model(item)
-    ]
-    return [model for model in models if model.get("id")]
-
-
 def row_to_chat(row: sqlite3.Row) -> dict[str, Any]:
     return {
         "id": row["id"],
@@ -841,57 +660,11 @@ def row_to_message(row: sqlite3.Row) -> dict[str, Any]:
     }
 
 
-def api_reasoning_effort(value: ReasoningEffort) -> str:
-    return "max" if value == "xhigh" else value
-
-
-def resolved_reasoning_effort(model_id: str, value: ReasoningEffort) -> str:
-    preferredEffort = api_reasoning_effort(value)
-    model = model_metadata(model_id)
-    supportedEfforts = (model or {}).get("reasoning", {}).get("supported_efforts")
-
-    if not isinstance(supportedEfforts, list):
-        return preferredEffort
-
-    effortOrder = ["low", "medium", "high", "max"]
-    availableEfforts = {
-        "max" if effort == "xhigh" else effort
-        for effort in supportedEfforts
-        if effort in {*effortOrder, "xhigh"}
-    }
-    if preferredEffort in availableEfforts:
-        return preferredEffort
-
-    try:
-        preferredIndex = effortOrder.index(preferredEffort)
-    except ValueError:
-        return preferredEffort
-
-    for effort in effortOrder[preferredIndex + 1:]:
-        if effort in availableEfforts:
-            return effort
-    for effort in reversed(effortOrder[:preferredIndex]):
-        if effort in availableEfforts:
-            return effort
-    return preferredEffort
-
-
 def chat_has_messages(conn: sqlite3.Connection, chat_id: str) -> bool:
     row = conn.execute(
         "SELECT 1 FROM messages WHERE chat_id = ? LIMIT 1", (chat_id,)
     ).fetchone()
     return row is not None
-
-
-def default_model_id() -> str:
-    models = cached_models()
-    ids = {model["id"] for model in models if model.get("id")}
-    saved_default = read_app_setting("default_model")
-    if isinstance(saved_default, str) and saved_default in ids:
-        return saved_default
-    if DEFAULT_MODEL_ID in ids:
-        return DEFAULT_MODEL_ID
-    return models[0]["id"] if models else DEFAULT_MODEL_ID
 
 
 def chat_title_from_message(message: str) -> str:
@@ -1642,51 +1415,6 @@ def build_openrouter_messages(
     return messages
 
 
-def model_metadata(model_id: str) -> dict[str, Any] | None:
-    normalizedModelId = str(model_id or "").removesuffix(":nitro")
-    for model in cached_models():
-        if model.get("id") in {model_id, normalizedModelId}:
-            return model
-    return None
-
-
-def model_supports_reasoning(model_id: str) -> bool:
-    model = model_metadata(model_id)
-    if not model:
-        return False
-    return (
-        "reasoning" in (model.get("supported_parameters") or [])
-        or isinstance(model.get("reasoning"), dict)
-    )
-
-
-def model_requires_reasoning(model_id: str) -> bool:
-    model = model_metadata(model_id)
-    if not model:
-        return False
-    return (model.get("reasoning") or {}).get("mandatory") is True
-
-
-def effective_thinking_enabled(model_id: str, thinking_enabled: bool) -> bool:
-    return thinking_enabled or model_requires_reasoning(model_id)
-
-
-def enabled_reasoning_config(
-    model_id: str,
-    thinking_enabled: bool,
-    reasoning_effort: ReasoningEffort,
-) -> dict[str, Any] | None:
-    if not model_supports_reasoning(model_id):
-        return None
-    if not effective_thinking_enabled(model_id, thinking_enabled):
-        return None
-    return {
-        "enabled": True,
-        "exclude": False,
-        "effort": resolved_reasoning_effort(model_id, reasoning_effort),
-    }
-
-
 #a title is a handful of tokens, so the long read budget a real generation needs would only ever
 #leave the rename lock sitting there after something already went wrong
 CHAT_TITLE_TIMEOUT = httpx.Timeout(connect=10.0, read=30.0, write=15.0, pool=10.0)
@@ -1745,99 +1473,6 @@ async def generate_chat_title(
     content = (choices[0].get("message") or {}).get("content")
 
     return chat_title_from_model_output(content)
-
-
-def model_supports_structured_output(model_id: str) -> bool:
-    model = model_metadata(model_id)
-    if not model:
-        return False
-    return "structured_outputs" in (model.get("supported_parameters") or [])
-
-
-def openrouter_error_message(status_code: int, response_text: str) -> str:
-    try:
-        payload = json.loads(response_text)
-        message = payload.get("error", {}).get("message") or payload.get("message")
-        if message:
-            return f"OpenRouter error {status_code}: {message}"
-    except json.JSONDecodeError:
-        pass
-    return f"OpenRouter error {status_code}: {response_text}"
-
-
-def normalize_usage(usage: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not usage:
-        return None
-    completion_details = usage.get("completion_tokens_details") or {}
-    promptDetails = usage.get("prompt_tokens_details") or {}
-    # Context meter reference math, kept here for future backend-side use:
-    # prompt_tokens = int_or_none(usage.get("prompt_tokens"))
-    # completion_tokens = int_or_none(usage.get("completion_tokens"))
-    # current_context_tokens = int_or_none(usage.get("total_tokens"))
-    # if current_context_tokens is None and prompt_tokens is not None and completion_tokens is not None:
-    #     current_context_tokens = prompt_tokens + completion_tokens
-    return {
-        "prompt_tokens": int_or_none(usage.get("prompt_tokens")),
-        "completion_tokens": int_or_none(usage.get("completion_tokens")),
-        "reasoning_tokens": int_or_none(completion_details.get("reasoning_tokens")),
-        "cached_tokens": int_or_none(promptDetails.get("cached_tokens")),
-        "total_tokens": int_or_none(usage.get("total_tokens")),
-        "cost": float_or_none(usage.get("cost")),
-        "provider_name": usage.get("provider_name"),
-        "generation_time": float_or_none(usage.get("generation_time")),
-        "latency": float_or_none(usage.get("latency")),
-    }
-
-
-def normalize_generation_usage(data: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not data:
-        return None
-    promptTokens = int_or_none(data.get("native_tokens_prompt"))
-    if promptTokens is None:
-        promptTokens = int_or_none(data.get("tokens_prompt"))
-    completionTokens = int_or_none(data.get("native_tokens_completion"))
-    if completionTokens is None:
-        completionTokens = int_or_none(data.get("tokens_completion"))
-    cost = float_or_none(data.get("total_cost"))
-    if cost is None:
-        cost = float_or_none(data.get("usage"))
-    totalTokens = (
-        promptTokens + completionTokens
-        if promptTokens is not None and completionTokens is not None
-        else None
-    )
-    return {
-        "prompt_tokens": promptTokens,
-        "completion_tokens": completionTokens,
-        "reasoning_tokens": int_or_none(data.get("native_tokens_reasoning")),
-        "cached_tokens": int_or_none(data.get("native_tokens_cached")),
-        "total_tokens": totalTokens,
-        "cost": cost,
-        "provider_name": data.get("provider_name"),
-        "generation_time": float_or_none(data.get("generation_time")),
-        "latency": float_or_none(data.get("latency")),
-    }
-
-
-async def fetch_generation_usage(
-    api_key: str, generation_id: str
-) -> dict[str, Any] | None:
-    retry_delays = [0.0, 0.35, 0.8, 1.5]
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        for delay in retry_delays:
-            if delay:
-                await asyncio.sleep(delay)
-            response = await client.get(
-                f"{OPENROUTER_BASE_URL}/generation",
-                headers=headers_for_key(api_key),
-                params={"id": generation_id},
-            )
-            if response.status_code == 404:
-                continue
-            if response.status_code >= 400:
-                return None
-            return normalize_generation_usage(response.json().get("data"))
-    return None
 
 
 def saveAssistantReply(

@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from backend.lorebook_usage import LorebookUsage, ensureLorebookUsageTable
-from backend.main import normalize_generation_usage
+from backend.providers.openrouter.usage import normalize_generation_usage
 
 
 class LorebookUsageTest(unittest.IsolatedAsyncioTestCase):

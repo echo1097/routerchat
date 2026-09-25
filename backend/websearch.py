@@ -230,6 +230,8 @@ class FaviconTransport(httpx.AsyncBaseTransport):
                 if addressIndex == len(addresses) - 1:
                     raise
 
+        raise httpx.ConnectError("Unable to reach favicon host", request=request)
+
     async def aclose(self):
         for transport in self.transports.values():
             await transport.aclose()

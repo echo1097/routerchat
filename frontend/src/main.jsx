@@ -123,6 +123,7 @@ function App() {
   const [disablePromptCaching, setDisablePromptCaching] = useState(
     Boolean(localAppSettings.disable_prompt_caching),
   );
+  const [hourPromptCache, setHourPromptCache] = useState(localAppSettings.hour_prompt_cache !== false);
   const [nitroMode, setNitroMode] = useState(Boolean(localAppSettings.nitro_mode));
   const [cheapestMode, setCheapestMode] = useState(Boolean(localAppSettings.cheapest_mode));
   const [privacyMode, setPrivacyMode] = useState(Boolean(localAppSettings.privacy_mode));
@@ -816,6 +817,10 @@ function App() {
         typeof payload.disable_prompt_caching === "boolean"
           ? payload.disable_prompt_caching
           : Boolean(readLocalAppSettings().disable_prompt_caching);
+      const nextHourPromptCache =
+        typeof payload.hour_prompt_cache === "boolean"
+          ? payload.hour_prompt_cache
+          : readLocalAppSettings().hour_prompt_cache !== false;
       const nextGenerateChatName =
         typeof payload.generate_chat_name === "boolean"
           ? payload.generate_chat_name
@@ -846,6 +851,7 @@ function App() {
       setHideFreeModels(nextHideFreeModels);
       setHideBatchModels(nextHideBatchModels);
       setDisablePromptCaching(nextDisablePromptCaching);
+      setHourPromptCache(nextHourPromptCache);
       setNitroMode(nextNitroMode);
       setSmoothStreaming(nextSmoothStreaming);
       setCheapestMode(nextCheapestMode);
@@ -857,6 +863,7 @@ function App() {
         hide_free_models: nextHideFreeModels,
         hide_batch_models: nextHideBatchModels,
         disable_prompt_caching: nextDisablePromptCaching,
+        hour_prompt_cache: nextHourPromptCache,
         nitro_mode: nextNitroMode,
         smooth_streaming: nextSmoothStreaming,
         cheapest_mode: nextCheapestMode,
@@ -1207,6 +1214,28 @@ function App() {
     } catch (error) {
       setDisablePromptCaching(value);
       writeLocalAppSettings({ disable_prompt_caching: value });
+      setStatus(`Saved locally. Restart the server to sync this setting. ${error.message}`);
+    }
+  }
+
+  async function updateHourPromptCache(value) {
+    setHourPromptCache(value);
+    writeLocalAppSettings({ hour_prompt_cache: value });
+    try {
+      const payload = await api("/api/settings", {
+        method: "PATCH",
+        body: JSON.stringify({ hour_prompt_cache: value }),
+      });
+      const nextValue =
+        typeof payload.hour_prompt_cache === "boolean"
+          ? payload.hour_prompt_cache
+          : value;
+      setHourPromptCache(nextValue);
+      writeLocalAppSettings({ hour_prompt_cache: nextValue });
+      showToast(value ? "Cache kept for 1 hour" : "Cache kept for 5 minutes");
+    } catch (error) {
+      setHourPromptCache(value);
+      writeLocalAppSettings({ hour_prompt_cache: value });
       setStatus(`Saved locally. Restart the server to sync this setting. ${error.message}`);
     }
   }
@@ -3503,6 +3532,7 @@ function App() {
         hideFreeModels={hideFreeModels}
         hideBatchModels={hideBatchModels}
         disablePromptCaching={disablePromptCaching}
+        hourPromptCache={hourPromptCache}
         nitroMode={nitroMode}
         cheapestMode={cheapestMode}
         privacyMode={privacyMode}
@@ -3519,6 +3549,7 @@ function App() {
         onToggleHideFreeModels={updateHideFreeModels}
         onToggleHideBatchModels={updateHideBatchModels}
         onToggleDisablePromptCaching={updateDisablePromptCaching}
+        onToggleHourPromptCache={updateHourPromptCache}
         onToggleNitroMode={updateNitroMode}
         onToggleCheapestMode={updateCheapestMode}
         onTogglePrivacyMode={updatePrivacyMode}

@@ -99,6 +99,7 @@ export function SettingsDrawer({
   hideFreeModels,
   hideBatchModels,
   disablePromptCaching,
+  hourPromptCache,
   nitroMode,
   cheapestMode,
   privacyMode,
@@ -115,6 +116,7 @@ export function SettingsDrawer({
   onToggleHideFreeModels,
   onToggleHideBatchModels,
   onToggleDisablePromptCaching,
+  onToggleHourPromptCache,
   onToggleNitroMode,
   onToggleCheapestMode,
   onTogglePrivacyMode,
@@ -501,6 +503,22 @@ export function SettingsDrawer({
           checked={disablePromptCaching}
           onChange={onToggleDisablePromptCaching}
           label="Disable prompt caching"
+        />
+      </SettingRow>
+    </section>
+  );
+
+  const hourPromptCacheSection = (
+    <section className="border-b border-white/[0.08] py-3">
+      <SettingRow
+        title="Keep cache for 1 hour"
+        description="Cached prompts last an hour instead of 5 minutes. Saving to the cache costs a bit more, reusing it stays cheap"
+      >
+        <SettingSwitch
+          checked={hourPromptCache && !disablePromptCaching}
+          onChange={onToggleHourPromptCache}
+          label="Keep cache for 1 hour"
+          disabled={disablePromptCaching}
         />
       </SettingRow>
     </section>
@@ -1113,6 +1131,7 @@ export function SettingsDrawer({
               {chatNameSection}
               {modelFilterSection}
               {promptCachingSection}
+              {hourPromptCacheSection}
               {batchFilterSection}
               {turboSection}
               {cheapestSection}

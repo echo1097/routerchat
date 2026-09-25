@@ -2827,6 +2827,17 @@ class StoryApiTest(unittest.TestCase):
         self.assertIn("The bells rang at dawn.", marked[0]["content"][0]["text"])
         self.assertTrue(marked[1]["content"][0]["text"].startswith("lorebook:"))
         for message in marked:
+            self.assertEqual(message["content"][0]["cache_control"], {"type": "ephemeral", "ttl": "1h"})
+
+    def test_write_requests_use_the_short_cache_when_the_hour_cache_is_off(self):
+        story, chapter, _ = self.storyForCaching()
+        self.client.patch("/api/settings", json={"hour_prompt_cache": False})
+
+        _, requestBody = self.streamChapterGeneration(story, chapter, "More rain.", mode="new")
+
+        marked = [message for message in requestBody["messages"] if isinstance(message["content"], list)]
+        self.assertEqual(len(marked), 2)
+        for message in marked:
             self.assertEqual(message["content"][0]["cache_control"], {"type": "ephemeral"})
 
     def test_write_requests_put_the_changing_chapter_in_the_last_message(self):

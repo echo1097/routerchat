@@ -107,6 +107,7 @@ export function SettingsDrawer({
   showPromptNavigationRail,
   modelLocked,
   onPersist,
+  chatSystemPrompt,
   onSaveChatSystemPrompt,
   onModelSelected,
   onSetDefaultModel,
@@ -167,10 +168,10 @@ export function SettingsDrawer({
   const cloudChat = selectedCloudChat || activeCloudChat || chats[0];
   const cloudChatId = cloudChat?.id || "";
   const chatPrompt = useChatSystemPromptAutosave({
-    value: chatMode === "chat" ? settings.system_prompt : "",
+    value: chatSystemPrompt,
     onSave: onSaveChatSystemPrompt,
     active: open && chatMode === "chat",
-    resetKey: `${chatMode}:${activeChatId || "home"}`,
+    resetKey: chatMode,
   });
   const chatPromptSaveLabel = chatPrompt.saveState.replace(/\b\w/g, (letter) => letter.toUpperCase());
 
@@ -642,9 +643,7 @@ export function SettingsDrawer({
           )}
         </div>
         <p className="mt-0.5 mb-3 text-pretty text-xs leading-5 text-neutral-500">
-          {activeChatId
-            ? "Optional instructions sent before every message in this chat. Write mode has its own system prompt."
-            : "Optional instructions for your next new chat. Write mode has its own system prompt."}
+          Optional instructions sent before every message in every chat. Write mode has its own system prompt.
         </p>
       </div>
       <div className="min-h-0 flex-1">

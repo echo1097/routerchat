@@ -112,6 +112,7 @@ function App() {
   const [temporaryChat, setTemporaryChat] = useState(false);
   const [tempChatId, setTempChatId] = useState(null);
   const [settings, setSettings] = useState(newSettings);
+  const [chatSystemPrompt, setChatSystemPrompt] = useState("");
   const [defaultModel, setDefaultModel] = useState(DEFAULT_MODEL);
   const [generateChatName, setGenerateChatName] = useState(
     Boolean(localAppSettings.generate_chat_name),
@@ -190,7 +191,6 @@ function App() {
   const chapterContentRef = useRef("");
   const chaptersRef = useRef([]);
   const activeStoryIdRef = useRef(null);
-  const activeChatIdRef = useRef(null);
   const activeChapterIdRef = useRef(null);
   const chapterCanvasScrollPositionsRef = useRef(new Map());
   const storyWorkspaceViewRef = useRef("chapter");
@@ -339,10 +339,6 @@ function App() {
     chaptersRef.current = chapters;
     storyWorkspaceViewRef.current = storyWorkspaceView;
   }, [activeStoryId, activeChapterId, chapters, storyWorkspaceView]);
-
-  useEffect(() => {
-    activeChatIdRef.current = activeChatId;
-  }, [activeChatId]);
 
   useEffect(() => {
     function handlePageHide() {
@@ -855,6 +851,7 @@ function App() {
       setCheapestMode(nextCheapestMode);
       setPrivacyMode(nextPrivacyMode);
       setZdrMode(nextZdrMode);
+      setChatSystemPrompt(typeof payload.chat_system_prompt === "string" ? payload.chat_system_prompt : "");
       writeLocalAppSettings({
         generate_chat_name: nextGenerateChatName,
         hide_free_models: nextHideFreeModels,
@@ -1028,22 +1025,15 @@ function App() {
   }
 
   async function saveChatSystemPrompt(systemPrompt) {
-    const chatId = activeChatId;
-    if (!chatId) {
-      writeLocalAppSettings({ chat_system_prompt_draft: systemPrompt });
-      setSettings((current) => ({ ...current, system_prompt: systemPrompt }));
-      return;
-    }
-
     try {
-      await api(`/api/chats/${chatId}`, {
+      const payload = await api("/api/settings", {
         method: "PATCH",
         body: JSON.stringify({ chat_system_prompt: systemPrompt }),
       });
-      if (activeChatIdRef.current === chatId) {
-        setSettings((current) => ({ ...current, system_prompt: systemPrompt }));
+      if (payload.chat_system_prompt !== systemPrompt) {
+        throw new Error("Chat system prompt did not save. Restart the backend and try again.");
       }
-      await loadChats();
+      setChatSystemPrompt(payload.chat_system_prompt);
     } catch (error) {
       setStatus(error.message);
       throw error;
@@ -1112,7 +1102,6 @@ function App() {
       ...newSettings,
       model: current.model || defaultModel,
       nitro_mode: nitroMode,
-      system_prompt: nextMode === "chat" ? readLocalAppSettings().chat_system_prompt_draft || "" : "",
     }));
     setPrompt("");
     setStatus("");
@@ -1131,12 +1120,6 @@ function App() {
       void loadStoryRoute(route, { replace: true, fromRoute: true });
     } else {
       setChatMode(route.mode || "chat");
-      if ((route.mode || "chat") === "chat") {
-        setSettings((current) => ({
-          ...current,
-          system_prompt: readLocalAppSettings().chat_system_prompt_draft || "",
-        }));
-      }
       writeRoute({ page: "home", mode: route.mode || "chat" }, { replace: true });
     }
   }, []);
@@ -1380,11 +1363,10 @@ function App() {
       method: "POST",
       body: JSON.stringify({
         ...settings,
-        chat_system_prompt: settings.system_prompt,
+        chat_system_prompt: chatSystemPrompt,
         ...(temporary ? { title: "Temporary chat", temporary: true } : {}),
       }),
     });
-    writeLocalAppSettings({ chat_system_prompt_draft: "" });
     applyChat(payload.chat, []);
     await navigateToChat(payload.chat);
     if (!temporary) {
@@ -1607,11 +1589,10 @@ function App() {
         method: "POST",
         body: JSON.stringify({
           ...settings,
-          chat_system_prompt: settings.system_prompt,
+          chat_system_prompt: chatSystemPrompt,
           folder_id: folderId,
         }),
       });
-      writeLocalAppSettings({ chat_system_prompt_draft: "" });
       applyChat(payload.chat, []);
       await navigateToChat(payload.chat);
       await loadChats();
@@ -1839,7 +1820,7 @@ function App() {
         signal: abortRef.current.signal,
         body: JSON.stringify({
           ...settings,
-          chat_system_prompt: settings.system_prompt,
+          chat_system_prompt: chatSystemPrompt,
           message: text,
           regenerate_message_id: regenerateMessageId,
           attachment_ids: sentAttachmentIds,
@@ -3529,6 +3510,7 @@ function App() {
         showPromptNavigationRail={showPromptNavigationRail}
         modelLocked={activeModelLocked}
         onPersist={persistSettings}
+        chatSystemPrompt={chatSystemPrompt}
         onSaveChatSystemPrompt={saveChatSystemPrompt}
         onModelSelected={(name) => showToast(`Model selected: ${name}`)}
         onSetDefaultModel={updateDefaultModel}

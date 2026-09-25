@@ -2,7 +2,7 @@
 
 <img width="120" alt="RouterChat logo" src="media/icon.png" />
 
-# RouterChat 1.1.7
+# RouterChat
 
 **A free, local OpenRouter interface for chatting and longform writing.**
 

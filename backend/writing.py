@@ -1307,7 +1307,7 @@ def apply_chapter_edits(
     claimedBy: dict[str, int] = {}
     appendCount = 0
     droppedIndexes: set[int] = set()
-    for index, (edit, footprint) in enumerate(zip(batch["edits"], footprints)):
+    for index, (edit, footprint) in enumerate(zip(batch["edits"], footprints, strict=True)):
         if edit["operation"] == "appendToChapter":
             appendCount += 1
             if appendCount > 1:

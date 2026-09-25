@@ -21,13 +21,8 @@ import backend.providers.openrouter.models as models
 import backend.providers.openrouter.requestOptions as requestOptions
 import backend.core.migrations as migrations
 import backend.core.paths as paths
-from backend.brainstorm import (
-    COLUMN_OFFSET_X,
-    brainstorm_response_format,
-    build_brainstorm_messages,
-    next_brainstorm_root_position,
-    parse_brainstorm_ideas,
-)
+from backend.brainstorm.brainstormLayout import COLUMN_OFFSET_X, next_brainstorm_root_position
+from backend.brainstorm.brainstormMessages import brainstorm_response_format, build_brainstorm_messages, parse_brainstorm_ideas
 from backend.lorebook import (
     lorebook_history_label,
     lorebook_update_response_format,
@@ -517,7 +512,7 @@ class StoryApiTest(unittest.TestCase):
                 return FakeResponse()
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.brainstorm.httpx.AsyncClient", FakeClient
+            "backend.brainstorm.generateBrainstorm.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
                 f"/api/stories/{story['id']}/brainstorm/generate/stream",
@@ -3977,7 +3972,8 @@ class StoryApiTest(unittest.TestCase):
             routeModules,
             {
                 "backend.writing",
-                "backend.brainstorm",
+                "backend.brainstorm.brainstormRoutes",
+                "backend.brainstorm.generateBrainstorm",
                 "backend.lorebook",
                 "backend.lorebook_repair",
                 "backend.lorebook_generate",
@@ -4572,7 +4568,7 @@ class StoryApiTest(unittest.TestCase):
                 return FakeResponse()
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.brainstorm.httpx.AsyncClient", FakeClient
+            "backend.brainstorm.generateBrainstorm.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
                 f"/api/stories/{story['id']}/brainstorm/generate/stream",
@@ -4627,7 +4623,7 @@ class StoryApiTest(unittest.TestCase):
             node for node in graph["nodes"] if node["node_type"] == "idea"
         )
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.brainstorm.httpx.AsyncClient", FakeClient
+            "backend.brainstorm.generateBrainstorm.httpx.AsyncClient", FakeClient
         ):
             branchResponse = self.client.post(
                 f"/api/stories/{story['id']}/brainstorm/generate/stream",
@@ -4681,7 +4677,7 @@ class StoryApiTest(unittest.TestCase):
                 return FakeResponse()
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.brainstorm.httpx.AsyncClient", FakeClient
+            "backend.brainstorm.generateBrainstorm.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
                 f"/api/stories/{story['id']}/brainstorm/generate/stream",

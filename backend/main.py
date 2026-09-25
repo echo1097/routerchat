@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 
 from backend.attachments import attachmentRoutes
-from backend.brainstorm import BrainstormDeps, create_brainstorm_router
+from backend.brainstorm import brainstormRoutes, generateBrainstorm
 from backend.changelog import changelogRoutes
 from backend.chats import (
     chatImportExport,
@@ -131,23 +131,6 @@ lorebookDeps = LorebookDeps(
     openrouter_base_url=OPENROUTER_BASE_URL,
 )
 
-brainstormDeps = BrainstormDeps(
-    get_db=get_db,
-    utc_now=utc_now,
-    read_openrouter_key=read_openrouter_key,
-    headers_for_key=headers_for_key,
-    openrouter_request_model=openrouter_request_model,
-    openrouter_provider_options=openrouter_provider_options,
-    effective_thinking_enabled=effective_thinking_enabled,
-    enabled_reasoning_config=enabled_reasoning_config,
-    model_supports_structured_output=model_supports_structured_output,
-    openrouter_error_message=openrouter_error_message,
-    normalize_usage=normalize_usage,
-    fetch_generation_usage=fetch_generation_usage,
-    stream_event=stream_event,
-    stream_message_request=StreamMessageRequest,
-    openrouter_base_url=OPENROUTER_BASE_URL,
-)
 
 app.include_router(faviconRoutes.router)
 app.include_router(usageRoutes.router)
@@ -157,7 +140,8 @@ app.include_router(changelogRoutes.router)
 app.include_router(create_lorebook_router(lorebookDeps))
 app.include_router(create_lorebook_repair_router(lorebookDeps))
 app.include_router(create_lorebook_generate_router(lorebookDeps))
-app.include_router(create_brainstorm_router(brainstormDeps))
+app.include_router(brainstormRoutes.router)
+app.include_router(generateBrainstorm.router)
 app.include_router(transcriptionRoutes.router)
 
 configure_static_files(app, paths.STATIC_DIR)

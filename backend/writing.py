@@ -22,8 +22,8 @@ from backend.attachments.attachmentContent import (
     has_pdf_attachment,
     pdf_parser_plugins,
 )
-from backend.brainstorm import (
-    StoryArchiveBrainstorm,
+from backend.brainstorm.brainstormModels import StoryArchiveBrainstorm
+from backend.brainstorm.brainstormRows import (
     row_to_brainstorm_edge,
     row_to_brainstorm_node,
 )

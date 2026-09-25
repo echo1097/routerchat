@@ -1,232 +1,203 @@
 .lorebook-shell {
-  color: #f5f5f5;
-  scrollbar-gutter: stable;
+  --lb-pane: #101010;
+  --lb-pane-edge: rgba(255, 255, 255, 0.06);
+  --lb-hairline: rgba(255, 255, 255, 0.07);
+  --lb-text: #f5f5f5;
+  --lb-text-soft: #d4d4d4;
+  --lb-text-muted: #a3a3a3;
+  --lb-text-quiet: #8a8a8a;
+  --lb-placeholder: #808080;
+  --lb-fill: rgba(255, 255, 255, 0.04);
+  --lb-fill-hover: rgba(255, 255, 255, 0.06);
+  --lb-fill-active: rgba(255, 255, 255, 0.09);
+  --lb-focus-ring: 0 0 0 2px rgba(255, 255, 255, 0.22);
+  --lb-reveal-dur: 500ms;
+  --lb-reveal-distance: 12px;
+  --lb-reveal-stagger: 40ms;
+  --lb-reveal-blur: 3px;
+  --lb-reveal-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  height: 100%;
+  overflow: hidden;
+  color: var(--lb-text);
+}
+
+.lorebook-shell ::selection {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+
+.lorebook-frame {
+  width: 100%;
+  max-width: 1320px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  margin: 0 auto;
+  padding: 16px 16px 0;
 }
 
 .lorebook-header {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  margin: -1.5rem -1rem 0;
-  padding: 0.75rem 1rem 1rem;
+  gap: 14px;
+  padding: 8px 0 20px;
 }
 
-/* the veil carries both the fade and the blur, and the mask fades them out together. blurring the
-whole header box instead would keep smearing whatever sits under the transparent bottom band, which
-is the row of controls, and a white button caught in that band looks sliced off at the top */
-.lorebook-header::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background:
-    linear-gradient(180deg, rgba(7, 7, 7, 0.96) 0%, rgba(7, 7, 7, 0.88) 72%, rgba(7, 7, 7, 0) 100%);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  mask-image: linear-gradient(180deg, #000 0%, #000 72%, transparent 100%);
-  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 72%, transparent 100%);
+.lorebook-back-button {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: var(--lb-fill);
+  color: var(--lb-text-muted);
+  cursor: pointer;
+}
+
+.lorebook-back-button:hover {
+  background: var(--lb-fill-active);
+  color: var(--lb-text);
 }
 
 .lorebook-title-block {
   min-width: 0;
   display: grid;
-  justify-items: start;
-  text-align: left;
-}
-
-.lorebook-back-button,
-.lorebook-primary-button,
-.lorebook-secondary-button,
-.lorebook-generate-button {
-  min-height: 40px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  border: 0;
-  border-radius: 999px;
-  cursor: pointer;
-}
-
-.lorebook-back-button {
-  min-height: 28px;
-  margin-left: -8px;
-  margin-bottom: 8px;
-  padding: 0 8px;
-  background: transparent;
-  color: #a3a3a3;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.lorebook-back-button:hover {
-  color: #f5f5f5;
-}
-
-.lorebook-story-title {
-  max-width: min(480px, 100%);
-  margin-bottom: 5px;
-  overflow: hidden;
-  color: #737373;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  gap: 3px;
 }
 
 .lorebook-title-block h1 {
   margin: 0;
-  color: #f5f5f5;
-  font-size: 24px;
+  color: var(--lb-text);
+  font-size: 22px;
   font-weight: 650;
-  line-height: 1.1;
-  text-wrap: balance;
+  line-height: 1.15;
+  letter-spacing: -0.012em;
 }
 
-.lorebook-primary-button {
-  height: 40px;
-  padding: 0 15px;
-  background: #f5f5f5;
-  color: #0a0a0a;
-  font-size: 14px;
-  font-weight: 700;
+.lorebook-story-title {
+  margin: 0;
+  overflow: hidden;
+  color: var(--lb-text-quiet);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.3;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.lorebook-new-entry-button {
-  background: rgba(255, 255, 255, 0.1822);
-  color: #f5f5f5;
+.lorebook-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.lorebook-totals {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--lb-text-quiet);
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.lorebook-totals span + span::before {
+  content: "";
+  display: inline-block;
+  width: 3px;
+  height: 3px;
+  margin-right: 8px;
+  border-radius: 999px;
+  background: currentColor;
+  vertical-align: middle;
+  opacity: 0.7;
+}
+
+.lorebook-primary-button,
+.lorebook-secondary-button,
+.lorebook-danger-button,
+.lorebook-generate-button {
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 15px;
+  font-size: 13.5px;
+  font-weight: 650;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.lorebook-primary-button {
+  background: #f5f5f5;
+  color: #0a0a0a;
 }
 
 .lorebook-primary-button:hover {
   background: #ffffff;
 }
 
-.lorebook-new-entry-button:hover {
-  color: #0a0a0a;
+.lorebook-secondary-button,
+.lorebook-generate-button {
+  background: var(--lb-fill-hover);
+  color: var(--lb-text-soft);
+}
+
+.lorebook-secondary-button:hover,
+.lorebook-generate-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--lb-text);
+}
+
+.lorebook-danger-button {
+  background: rgba(239, 68, 68, 0.16);
+  color: #fecaca;
+}
+
+.lorebook-danger-button:hover {
+  background: rgba(239, 68, 68, 0.24);
+  color: #fee2e2;
 }
 
 .lorebook-primary-button:disabled,
-.lorebook-delete-button:disabled {
+.lorebook-secondary-button:disabled,
+.lorebook-generate-button:disabled {
   cursor: not-allowed;
-  background: rgba(255, 255, 255, 0.08);
-  color: #737373;
-}
-
-.lorebook-secondary-button {
-  height: 40px;
-  padding: 0 16px;
-  background: transparent;
-  color: #d4d4d4;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.lorebook-secondary-button:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: #f5f5f5;
-}
-
-.lorebook-search-wrap {
-  min-width: 180px;
-  flex: 1 1 220px;
-}
-
-.lorebook-search {
-  min-height: 40px;
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  border-radius: 12px;
   background: rgba(255, 255, 255, 0.05);
-  padding: 0 12px;
-  color: #8f8f8f;
-  box-shadow: var(--shadow-border);
-  transition:
-    background-color 150ms ease-out,
-    box-shadow 150ms ease-out,
-    color 150ms ease-out;
+  color: #6b6b6b;
 }
 
-.lorebook-search:hover {
-  background: rgba(255, 255, 255, 0.07);
-}
-
-.lorebook-search:focus-within {
-  background: rgba(255, 255, 255, 0.08);
-  color: #d4d4d4;
-  box-shadow:
-    var(--shadow-border-hover),
-    0 0 0 3px rgba(255, 255, 255, 0.1);
-}
-
-.lorebook-search.is-error {
-  color: #fca5a5;
-  box-shadow:
-    var(--shadow-border),
-    0 0 0 1px rgba(248, 113, 113, 0.45),
-    0 0 0 4px rgba(248, 113, 113, 0.1);
-}
-
-.lorebook-search input,
-.lorebook-modal input,
-.lorebook-modal select,
-.lorebook-modal textarea {
-  width: 100%;
-  border: 0;
+.lorebook-shell button:focus-visible,
+.lorebook-modal button:focus-visible {
   outline: 0;
-  color: #f5f5f5;
-  font: inherit;
+  box-shadow: var(--lb-focus-ring, 0 0 0 2px rgba(255, 255, 255, 0.22));
 }
 
-.lorebook-search input {
-  height: 40px;
-  background: transparent;
-  font-size: 13px;
-}
-
-.lorebook-modal input::placeholder,
-.lorebook-modal textarea::placeholder {
-  color: #525252;
-}
-
-.lorebook-search input::placeholder {
-  color: #737373;
-}
-
-.lorebook-library-controls {
+.lorebook-tabs-row {
   min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 20px;
+  padding-bottom: 18px;
 }
 
 .lorebook-tabs.t-tabs {
-  align-self: flex-start;
-  width: min(720px, 58%);
-  max-width: 100%;
-  flex: 0 1 auto;
-  margin-top: 0;
+  width: 100%;
+  display: flex;
+  align-items: stretch;
+  gap: 24px;
+  padding: 0;
+  border-radius: 0;
   overflow-x: auto;
-  background: rgba(255, 255, 255, 0.06);
-  box-shadow: var(--shadow-border);
+  background: none;
+  box-shadow: inset 0 -1px 0 var(--lb-hairline);
   scrollbar-width: none;
-  justify-content: flex-start;
-  gap: 3px;
-}
-
-.lorebook-library-controls.is-timeline .lorebook-tabs {
-  width: fit-content;
 }
 
 .lorebook-tabs.t-tabs::-webkit-scrollbar {
@@ -234,159 +205,269 @@ is the row of controls, and a white button caught in that band looks sliced off 
 }
 
 .lorebook-tabs .t-tabs-pill {
-  height: 32px;
-  background: rgba(255, 255, 255, 0.13);
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.08),
-    0 8px 22px rgba(0, 0, 0, 0.2);
+  top: auto;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--lb-text);
+  box-shadow: none;
 }
 
 .lorebook-tab.t-tab {
-  min-width: max-content;
-  height: 32px;
+  flex: none;
+  height: auto;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 3px 11px;
-  color: rgba(212, 212, 212, 0.72);
-  font-size: 12px;
-  font-weight: 650;
+  gap: 8px;
+  padding: 11px 0;
+  border-radius: 0;
+  color: var(--lb-text-quiet);
+  font-size: 13px;
+  font-weight: 600;
   line-height: 1;
-  text-align: center;
+  white-space: nowrap;
+  transition: color 150ms ease-out;
 }
 
-.lorebook-tab.t-tab:not([aria-selected="true"]):hover,
+.lorebook-tab.t-tab:not([aria-selected="true"]):hover {
+  color: var(--lb-text-soft);
+}
+
 .lorebook-tab.t-tab[aria-selected="true"] {
-  color: var(--tabs-text-active);
+  color: var(--lb-text);
+}
+
+.lorebook-tab.t-tab:focus-visible {
+  outline: 0;
+  border-radius: 6px;
+  box-shadow: var(--lb-focus-ring);
 }
 
 .lorebook-count {
-  color: currentColor;
+  min-width: 20px;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: var(--lb-fill);
+  color: var(--lb-text-quiet);
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
-  opacity: 0.58;
+  text-align: center;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
 }
 
-.lorebook-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 10px;
-  margin-top: 14px;
+.lorebook-tab[aria-selected="true"] .lorebook-count {
+  background: var(--lb-fill-active);
+  color: var(--lb-text-soft);
 }
 
-.lorebook-card {
-  position: relative;
+.lorebook-workspace {
+  flex: 1 1 auto;
   min-height: 0;
-  padding: 16px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.035);
-  box-shadow: var(--shadow-border);
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  gap: 20px;
+  padding-bottom: 20px;
+}
+
+.lorebook-list-pane {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lorebook-search-wrap {
+  flex: none;
+}
+
+.lorebook-search {
+  height: 38px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border-radius: 12px;
+  background: var(--lb-fill);
+  padding: 0 12px;
+  color: var(--lb-text-quiet);
+  box-shadow: inset 0 0 0 1px var(--lb-pane-edge);
   transition:
     background-color 150ms ease-out,
     box-shadow 150ms ease-out,
-    transform 150ms ease-out;
+    color 150ms ease-out;
 }
 
-.lorebook-card:hover,
-.lorebook-card:focus-within {
-  background: rgba(255, 255, 255, 0.055);
-  box-shadow: var(--shadow-border-hover);
-  transform: translateY(-1px);
+.lorebook-search:hover {
+  background: var(--lb-fill-hover);
 }
 
-.lorebook-card.is-disabled {
-  background: rgba(0, 0, 0, 0.2);
+.lorebook-search:focus-within {
+  background: var(--lb-fill-hover);
+  color: var(--lb-text-soft);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
 }
 
-.lorebook-card.is-disabled:hover,
-.lorebook-card.is-disabled:focus-within {
-  background: rgba(0, 0, 0, 0.26);
+.lorebook-search.is-error {
+  color: #fca5a5;
+  box-shadow:
+    inset 0 0 0 1px rgba(248, 113, 113, 0.5),
+    0 0 0 3px rgba(248, 113, 113, 0.1);
 }
 
-.lorebook-card-content {
+.lorebook-search input {
+  width: 100%;
+  height: 36px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--lb-text);
+  font: inherit;
+  font-size: 13.5px;
+  caret-color: var(--lb-text);
+}
+
+.lorebook-search input::placeholder {
+  color: var(--lb-placeholder);
+}
+
+.lorebook-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  margin: 0 -6px;
+  padding: 0 6px 16px;
+  overflow-y: auto;
+  list-style: none;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+}
+
+.lorebook-row {
+  position: relative;
+  border-radius: 12px;
+  transition: background-color 150ms ease-out;
+}
+
+.lorebook-row:hover {
+  background: var(--lb-fill);
+}
+
+.lorebook-row.is-selected {
+  background: var(--lb-fill-active);
+}
+
+.lorebook-row-main {
+  width: 100%;
   min-width: 0;
-  padding-right: 40px;
+  display: grid;
+  gap: 3px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  padding: 10px 46px 11px 12px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   cursor: pointer;
 }
 
-.lorebook-card-content:focus-visible {
-  outline: 0;
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.15),
-    0 0 0 4px rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
-}
-
-.lorebook-card h2 {
+.lorebook-row-name,
+.lorebook-row-preview {
   min-width: 0;
-  margin: 0;
   overflow: hidden;
-  color: #f5f5f5;
-  font-size: 15px;
-  font-weight: 650;
-  line-height: 1.4;
   text-overflow: ellipsis;
-  text-wrap: balance;
+  white-space: nowrap;
 }
 
-.lorebook-card p {
-  display: -webkit-box;
-  margin: 7px 0 0;
-  overflow: hidden;
-  color: #a3a3a3;
+.lorebook-row-name {
+  color: #e5e5e5;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  transition: color 150ms ease-out;
+}
+
+.lorebook-row-preview {
+  color: var(--lb-text-quiet);
   font-size: 13px;
-  line-height: 1.55;
-  text-wrap: pretty;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+  line-height: 1.4;
 }
 
-.lorebook-card.is-disabled h2 {
-  color: #a3a3a3;
+.lorebook-row.is-selected .lorebook-row-name {
+  color: #ffffff;
 }
 
-.lorebook-card.is-disabled p {
-  color: #737373;
+.lorebook-row.is-selected .lorebook-row-preview {
+  color: var(--lb-text-muted);
+}
+
+.lorebook-row.is-disabled .lorebook-row-name {
+  color: var(--lb-text-quiet);
+}
+
+.lorebook-row.is-disabled .lorebook-row-preview {
+  color: #767676;
 }
 
 .lorebook-context-button {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 40px;
-  height: 40px;
+  top: 0;
+  bottom: 0;
+  right: 6px;
+  width: 34px;
+  height: 34px;
+  margin: auto 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border: 0;
-  border-radius: 12px;
+  border-radius: 10px;
   background: transparent;
-  color: #a3a3a3;
+  color: var(--lb-text-muted);
   cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 150ms ease-out,
+    background-color 150ms ease-out,
+    color 150ms ease-out;
+}
+
+.lorebook-row:hover .lorebook-context-button,
+.lorebook-row:focus-within .lorebook-context-button,
+.lorebook-row.is-selected .lorebook-context-button,
+.lorebook-context-button.is-disabled {
+  opacity: 1;
 }
 
 .lorebook-context-button:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.065);
-  color: #f5f5f5;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--lb-text);
 }
 
 .lorebook-context-button.is-disabled {
-  color: #737373;
-}
-
-.lorebook-context-button.is-disabled:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.045);
-  color: #a3a3a3;
-}
-
-.lorebook-context-button:focus-visible {
-  outline: 0;
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.12);
+  color: var(--lb-text-quiet);
 }
 
 .lorebook-context-button:disabled {
   cursor: not-allowed;
-  opacity: 0.58;
+}
+
+.lorebook-context-button:disabled:not(.is-disabled) {
+  opacity: 0;
+}
+
+.lorebook-row:hover .lorebook-context-button:disabled,
+.lorebook-row.is-selected .lorebook-context-button:disabled {
+  opacity: 0.5;
+}
+
+@media (hover: none) {
+  .lorebook-context-button {
+    opacity: 1;
+  }
 }
 
 .lorebook-context-icon {
@@ -395,377 +476,244 @@ is the row of controls, and a white button caught in that band looks sliced off 
   align-items: center;
   justify-content: center;
   opacity: 0;
-  transform: scale(0.25);
-  filter: blur(4px);
+  transform: scale(var(--icon-swap-start-scale, 0.25));
+  filter: blur(var(--icon-swap-blur, 2px));
   transition:
-    opacity 150ms cubic-bezier(0.2, 0, 0, 1),
-    transform 150ms cubic-bezier(0.2, 0, 0, 1),
-    filter 150ms cubic-bezier(0.2, 0, 0, 1);
+    opacity var(--icon-swap-dur, 250ms) var(--icon-swap-ease, ease-in-out),
+    transform var(--icon-swap-dur, 250ms) var(--icon-swap-ease, ease-in-out),
+    filter var(--icon-swap-dur, 250ms) var(--icon-swap-ease, ease-in-out);
 }
 
 .lorebook-context-button:not(.is-disabled) .lorebook-context-icon-eye,
-.lorebook-context-button.is-disabled .lorebook-context-icon-eye-off {
+.lorebook-context-button.is-disabled .lorebook-context-icon-eye-off,
+.lorebook-context-chip:not(.is-disabled) .lorebook-context-icon-eye,
+.lorebook-context-chip.is-disabled .lorebook-context-icon-eye-off {
   opacity: 1;
   transform: scale(1);
   filter: blur(0);
 }
 
-.lorebook-timeline-canvas {
-  min-height: 420px;
+.lorebook-list-empty {
   display: grid;
-  grid-template-rows: minmax(320px, 1fr) auto;
-  gap: 12px;
-  margin-top: 14px;
+  gap: 6px;
+  padding: 28px 12px;
+  text-align: center;
 }
 
-.lorebook-timeline-canvas textarea {
-  width: 100%;
-  min-height: 320px;
-  resize: vertical;
-  border: 0;
-  border-radius: 18px;
-  outline: 0;
-  background: rgba(255, 255, 255, 0.035);
-  padding: 18px;
-  color: #f5f5f5;
-  font: inherit;
-  font-size: 15px;
-  line-height: 1.75;
-  box-shadow: var(--shadow-border);
+.lorebook-list-empty p {
+  margin: 0;
+  color: var(--lb-text-quiet);
+  font-size: 13px;
+  line-height: 1.55;
+  text-wrap: pretty;
 }
 
-.lorebook-timeline-canvas textarea:focus {
-  box-shadow:
-    var(--shadow-border-hover),
-    0 0 0 3px rgba(255, 255, 255, 0.1);
+.lorebook-list-empty .lorebook-list-empty-title {
+  color: var(--lb-text-soft);
+  font-size: 14px;
+  font-weight: 600;
 }
 
-.lorebook-timeline-canvas textarea:disabled {
-  cursor: not-allowed;
-  opacity: 0.72;
-}
-
-.lorebook-timeline-footer {
+.lorebook-page-pane {
+  min-width: 0;
+  min-height: 0;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 20px;
+  background: var(--lb-pane);
+  box-shadow: inset 0 0 0 1px var(--lb-pane-edge);
 }
 
-.lorebook-timeline-footer span {
-  color: #737373;
-  font-size: 12px;
-  font-weight: 650;
-}
-
-.lorebook-timeline-actions {
-  display: grid;
-  /* explicit count, auto-fit collapses to one column because this grid is content sized not stretched */
-  grid-template-columns: repeat(3, minmax(140px, 1fr));
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-.lorebook-timeline-actions .lorebook-primary-button {
-  width: 100%;
-}
-
-.lorebook-empty {
-  min-height: 260px;
+.lorebook-page-empty {
+  flex: 1 1 auto;
   display: grid;
   place-items: center;
   align-content: center;
   gap: 8px;
-  margin-top: 14px;
-  padding: 24px;
-  color: #737373;
+  padding: 32px;
   text-align: center;
 }
 
-.lorebook-empty h2 {
-  margin: 0;
-  color: #d4d4d4;
-  font-size: 18px;
-  font-weight: 650;
-}
-
-.lorebook-empty p {
+.lorebook-page-empty p {
   max-width: 320px;
   margin: 0;
-  color: #737373;
-  font-size: 13px;
+  color: var(--lb-text-quiet);
+  font-size: 13.5px;
   line-height: 1.6;
   text-wrap: pretty;
 }
 
-.lorebook-modal {
-  position: relative;
-  z-index: 10;
-  width: min(620px, 100%);
-  max-height: calc(100dvh - 2rem);
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  overflow: hidden;
-  border-radius: 24px;
-  background: #181818;
-  color: #f5f5f5;
-  box-shadow: var(--shadow-surface);
-}
-
-.lorebook-modal header,
-.lorebook-modal footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  border-color: rgba(255, 255, 255, 0.1);
-}
-
-.lorebook-modal header {
-  padding: 18px 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.lorebook-modal footer {
-  padding: 14px 20px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.lorebook-modal-eyebrow {
-  margin-bottom: 5px;
-  color: #737373;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-}
-
-.lorebook-modal h2 {
-  margin: 0;
-  color: #f5f5f5;
-  font-size: 19px;
-  font-weight: 750;
-  line-height: 1.25;
+.lorebook-page-empty .lorebook-page-empty-title {
+  color: var(--lb-text-soft);
+  font-size: 16px;
+  font-weight: 600;
   text-wrap: balance;
 }
 
-.lorebook-modal-actions,
-.lorebook-footer-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+.lorebook-page-empty .lorebook-secondary-button {
+  margin-top: 10px;
 }
 
-.lorebook-icon-button {
-  width: 40px;
-  height: 40px;
+.lorebook-entry-page {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.lorebook-entry-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+}
+
+.lorebook-entry-body {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 40px 36px;
+}
+
+.lorebook-page-back {
+  height: 32px;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  gap: 6px;
+  margin: -8px 0 16px -10px;
   border: 0;
   border-radius: 999px;
   background: transparent;
-  color: #d4d4d4;
+  padding: 0 10px;
+  color: var(--lb-text-muted);
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
 }
 
-.lorebook-icon-button:hover {
-  background: rgba(255, 255, 255, 0.065);
-  color: #ffffff;
+.lorebook-page-back:hover {
+  background: var(--lb-fill);
+  color: var(--lb-text);
 }
 
-.lorebook-modal-body {
-  min-height: 0;
-  display: grid;
-  gap: 14px;
-  overflow-y: auto;
-  padding: 18px 20px;
-}
-
-.lorebook-modal label {
-  display: grid;
-  gap: 7px;
-  color: #a3a3a3;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.lorebook-modal input,
-.lorebook-modal select,
-.lorebook-modal textarea {
-  min-height: 42px;
-  border: 0;
-  border-radius: 12px;
-  outline: 0;
-  background: rgba(0, 0, 0, 0.2);
-  padding: 0 12px;
-  color: #f5f5f5;
-  font-size: 14px;
-  box-shadow: var(--shadow-border);
-  transition:
-    background-color 150ms ease-out,
-    box-shadow 150ms ease-out;
-}
-
-.lorebook-modal select {
-  appearance: none;
-  padding-right: 42px;
-}
-
-.lorebook-modal textarea {
-  min-height: 140px;
-  resize: none;
-  padding: 10px 12px;
-  line-height: 1.55;
-}
-
-.lorebook-modal input:focus,
-.lorebook-modal select:focus,
-.lorebook-modal textarea:focus {
-  background: rgba(0, 0, 0, 0.25);
-  box-shadow:
-    var(--shadow-border-hover),
-    0 0 0 3px rgba(255, 255, 255, 0.1);
-}
-
-/* the editor drops every input box and leans on hairline rules plus a label gutter instead, so the
-form reads like a page of notes rather than a stack of controls */
-.lorebook-editor-modal {
-  width: min(560px, 100%);
-  border-radius: 22px;
-  background: #141414;
-}
-
-.lorebook-editor-modal header {
+.lorebook-entry-heading {
+  display: flex;
   align-items: flex-start;
-  padding: 20px 22px 14px;
-  border-bottom: 0;
+  gap: 14px;
 }
 
-.lorebook-editor-heading {
+.lorebook-name-input {
   min-width: 0;
   flex: 1 1 auto;
-  display: grid;
-  gap: 7px;
-}
-
-.lorebook-editor-modal .lorebook-name-input {
-  min-height: 0;
-  border-radius: 0;
+  border: 0;
+  outline: 0;
   background: transparent;
-  padding: 3px 0 5px;
-  color: #f5f5f5;
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: -0.012em;
-  box-shadow: none;
-}
-
-.lorebook-editor-modal .lorebook-name-input::placeholder {
-  color: #404040;
-  font-weight: 650;
-}
-
-.lorebook-editor-modal .lorebook-name-input:focus {
-  background: transparent;
-  box-shadow: none;
-}
-
-/* the height is pinned from JS so swapping category tweens the modal instead of snapping it, and the
-padding lives on the inner wrapper so what gets measured is the whole stack */
-.lorebook-editor-modal .lorebook-modal-body {
-  --resize-dur: 220ms; /* a hair quicker than the modal open so the field swap doesnt feel draggy */
-  display: block;
-  max-height: 100%;
-  gap: 0;
-  scrollbar-gutter: stable;
   padding: 0;
-}
-
-/* the pinned height lags the content while either of these tweens runs, so the box is briefly
-scrollable and a scrollbar for those frames would shove every line sideways */
-.lorebook-editor-modal .lorebook-modal-body.is-resizing,
-.lorebook-editor-modal .lorebook-modal-body.is-tracking {
-  overflow: hidden;
-}
-
-.lorebook-editor-modal .lorebook-modal-body.is-tracking {
-  transition: none;
-}
-
-/* the trailing gap matches the trigger padding so the Details row sits evenly between its two rules */
-.lorebook-editor-body-inner {
+  color: var(--lb-text);
+  font: inherit;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.018em;
+  caret-color: var(--lb-text);
   display: block;
-  padding: 0 22px 4px;
+  resize: none;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
 }
 
-.lorebook-editor-modal .lorebook-field {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: start;
-  gap: 9px;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
-  padding: 12px 0;
-  transition: border-color 150ms ease-out;
+.lorebook-name-input::placeholder {
+  color: #5c5c5c;
 }
 
-.lorebook-editor-modal .lorebook-field:focus-within {
-  border-top-color: rgba(255, 255, 255, 0.16);
+.lorebook-name-input:disabled {
+  cursor: not-allowed;
 }
 
-/* the label carries the same size, line box and top padding as the value beside it, that is what
-puts the two on one baseline in every row */
-.lorebook-editor-modal .lorebook-field-label {
-  padding-top: 7px;
-  color: #737373;
-  font-size: 14px;
+.lorebook-context-chip {
+  height: 30px;
+  flex: none;
+  margin-top: 2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--lb-fill-hover);
+  padding: 0 12px 0 10px;
+  color: var(--lb-text-soft);
+  font-size: 12.5px;
   font-weight: 600;
-  line-height: 1.6;
-  letter-spacing: normal;
-  text-transform: none;
-  transition: color 150ms ease-out;
+  white-space: nowrap;
+  cursor: pointer;
 }
 
-.lorebook-field:focus-within .lorebook-field-label {
-  color: #a3a3a3;
+.lorebook-context-chip:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--lb-text);
 }
 
-.lorebook-editor-modal .lorebook-field input,
-.lorebook-editor-modal .lorebook-field textarea {
-  min-height: 0;
-  border-radius: 0;
+.lorebook-context-chip.is-disabled {
   background: transparent;
-  padding: 7px 0;
-  font-size: 14px;
-  line-height: 1.6;
-  box-shadow: none;
+  color: var(--lb-text-quiet);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
 }
 
-.lorebook-editor-modal .lorebook-field input:focus,
-.lorebook-editor-modal .lorebook-field textarea:focus {
-  background: transparent;
-  box-shadow: none;
+.lorebook-context-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
-.lorebook-editor-modal .lorebook-field textarea {
-  min-height: 132px;
+.lorebook-context-chip-icon {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  display: inline-grid;
+  place-items: center;
 }
 
-/* the category bar carries no label, the options say what they are, so it spans the full body width
-instead of sitting in the label gutter */
+.lorebook-context-chip-label {
+  display: inline-grid;
+  justify-items: start;
+  overflow: hidden;
+  transition: width 280ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.lorebook-context-chip-text {
+  grid-area: 1 / 1;
+  opacity: 0;
+  filter: blur(2px);
+  transition:
+    opacity 200ms ease-out,
+    filter 200ms ease-out;
+}
+
+.lorebook-context-chip-text.is-active {
+  opacity: 1;
+  filter: blur(0);
+  transition-delay: 60ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lorebook-context-chip-label,
+  .lorebook-context-chip-text {
+    transition: none;
+  }
+}
+
 .lorebook-category-row {
-  padding: 12px 0;
+  padding: 18px 0 8px;
 }
 
 .lorebook-category-tabs.t-tabs {
-  width: 100%;
-  display: flex;
-  justify-content: flex-start;
-  gap: 3px;
+  max-width: 100%;
   overflow-x: auto;
-  background: rgba(255, 255, 255, 0.045);
-  box-shadow: var(--shadow-border);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px var(--lb-pane-edge);
   scrollbar-width: none;
 }
 
@@ -773,12 +721,18 @@ instead of sitting in the label gutter */
   display: none;
 }
 
+.lorebook-category-tabs .t-tabs-pill {
+  height: 28px;
+  background: rgba(255, 255, 255, 0.11);
+}
+
 .lorebook-category-tab.t-tab {
-  flex: 1 1 auto;
+  height: 28px;
+  flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 4px 10px;
+  padding: 3px 11px;
   font: inherit;
   font-size: 12.5px;
   font-weight: 600;
@@ -786,39 +740,388 @@ instead of sitting in the label gutter */
   white-space: nowrap;
 }
 
-.lorebook-category-tab.t-tab:focus-visible {
-  outline: 0;
-}
-
 .lorebook-category-tab.t-tab:disabled {
   cursor: not-allowed;
   opacity: 0.6;
 }
 
-.lorebook-repair-modal {
+.lorebook-field {
+  display: grid;
+  gap: 8px;
+  margin-top: 22px;
+}
+
+.lorebook-field-label {
+  color: var(--lb-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  transition: color 150ms ease-out;
+}
+
+.lorebook-field:focus-within .lorebook-field-label {
+  color: var(--lb-text-soft);
+}
+
+.lorebook-field-hint {
+  color: var(--lb-text-quiet);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.lorebook-field input,
+.lorebook-field textarea {
+  width: 100%;
+  border: 0;
+  border-radius: 12px;
+  outline: 0;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 11px 14px;
+  color: #ededed;
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.7;
+  caret-color: var(--lb-text);
+  box-shadow: inset 0 0 0 1px var(--lb-pane-edge);
+  transition:
+    background-color 150ms ease-out,
+    box-shadow 150ms ease-out;
+}
+
+.lorebook-field textarea {
+  min-height: 96px;
+  resize: none;
+}
+
+.lorebook-field.is-description textarea {
+  min-height: 168px;
+  overflow: hidden;
+}
+
+.lorebook-field input:hover:not(:disabled),
+.lorebook-field textarea:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.lorebook-field input:focus,
+.lorebook-field textarea:focus {
+  background: rgba(255, 255, 255, 0.045);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+.lorebook-field input::placeholder,
+.lorebook-field textarea::placeholder {
+  color: var(--lb-placeholder);
+}
+
+.lorebook-field input:disabled,
+.lorebook-field textarea:disabled {
+  cursor: not-allowed;
+  color: var(--lb-text-muted);
+}
+
+.lorebook-entry-footer {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 64px;
+  padding: 12px 16px 12px 20px;
+  border-top: 1px solid var(--lb-hairline);
+  background: transparent;
+}
+
+.lorebook-footer-left {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.lorebook-footer-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  overflow: hidden;
+  color: var(--lb-text-quiet);
+  font-size: 12.5px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lorebook-footer-status.is-dirty {
+  color: var(--lb-text-soft);
+}
+
+.lorebook-footer-status.is-dirty::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.lorebook-footer-status.is-warning {
+  color: var(--lb-text);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.lorebook-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lorebook-delete-button {
+  height: 32px;
+  flex: none;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  padding: 0 10px;
+  margin-left: -10px;
+  color: #fca5a5;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.lorebook-delete-button:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.12);
+  color: #fecaca;
+}
+
+.lorebook-delete-button:disabled {
+  cursor: not-allowed;
+  color: #6b6b6b;
+}
+
+.lorebook-form-error {
+  margin-top: 16px;
+  border-radius: 12px;
+  background: rgba(239, 68, 68, 0.11);
+  padding: 10px 12px;
+  color: #fecaca;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+  box-shadow: inset 0 0 0 1px rgba(248, 113, 113, 0.22);
+}
+
+.lorebook-form-error.lorebook-page-error {
+  margin: 0 0 14px;
+}
+
+.lorebook-reveal {
+  animation: lorebook-reveal var(--lb-reveal-dur) var(--lb-reveal-ease) both;
+}
+
+.lorebook-entry-body > .lorebook-reveal:nth-child(2) { animation-delay: var(--lb-reveal-stagger); }
+.lorebook-entry-body > .lorebook-reveal:nth-child(3) { animation-delay: calc(var(--lb-reveal-stagger) * 2); }
+.lorebook-entry-body > .lorebook-reveal:nth-child(4) { animation-delay: calc(var(--lb-reveal-stagger) * 3); }
+.lorebook-entry-body > .lorebook-reveal:nth-child(5) { animation-delay: calc(var(--lb-reveal-stagger) * 4); }
+.lorebook-entry-body > .lorebook-reveal:nth-child(6) { animation-delay: calc(var(--lb-reveal-stagger) * 5); }
+
+@keyframes lorebook-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(var(--lb-reveal-distance));
+    filter: blur(var(--lb-reveal-blur));
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes lorebook-page-in {
+  from {
+    opacity: 0;
+    transform: translateX(var(--page-slide-distance, 8px));
+    filter: blur(var(--page-blur, 3px));
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+    filter: blur(0);
+  }
+}
+
+.lorebook-timeline-canvas {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  gap: 20px;
+  padding-bottom: 20px;
+}
+
+.lorebook-timeline-side {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  overflow-y: auto;
+  padding: 6px 2px 0;
+}
+
+.lorebook-timeline-intro {
+  display: grid;
+  gap: 8px;
+}
+
+.lorebook-timeline-intro h2 {
+  margin: 0;
+  color: var(--lb-text);
+  font-size: 18px;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.lorebook-timeline-intro p {
+  margin: 0;
+  color: var(--lb-text-quiet);
+  font-size: 13.5px;
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
+.lorebook-timeline-actions,
+.lorebook-timeline-repairs {
+  display: grid;
+  gap: 10px;
+}
+
+.lorebook-timeline-actions .lorebook-footer-status {
+  justify-content: center;
+}
+
+.lorebook-timeline-repairs {
+  gap: 8px;
+  padding-top: 20px;
+  border-top: 1px solid var(--lb-hairline);
+}
+
+.lorebook-timeline-repairs-label {
+  margin: 0 0 4px;
+  color: var(--lb-text-quiet);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.lorebook-timeline-actions button,
+.lorebook-timeline-repairs button {
+  width: 100%;
+}
+
+.lorebook-timeline-document {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 20px;
+  background: var(--lb-pane);
+  box-shadow: inset 0 0 0 1px var(--lb-pane-edge);
+  transition: box-shadow 150ms ease-out;
+}
+
+.lorebook-timeline-document:focus-within {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+
+.lorebook-timeline-document textarea {
+  width: 100%;
+  max-width: 800px;
+  height: 100%;
+  min-height: 320px;
+  resize: none;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  padding: 32px 40px;
+  color: #ededed;
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.9;
+  caret-color: var(--lb-text);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+}
+
+.lorebook-timeline-document textarea::placeholder {
+  color: var(--lb-placeholder);
+}
+
+.lorebook-timeline-document textarea:disabled {
+  cursor: not-allowed;
+  color: var(--lb-text-muted);
+}
+
+.lorebook-modal {
+  position: relative;
+  z-index: 10;
   width: min(520px, 100%);
+  max-height: calc(100dvh - 2rem);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  border-radius: 20px;
+  background: #181818;
+  color: #f5f5f5;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.07),
+    0 24px 64px rgba(0, 0, 0, 0.5);
 }
 
-/* the close button hides itself mid repair, the floor keeps the header from collapsing 16px and
-undoing the smooth resize happening right below it */
-.lorebook-repair-modal header {
-  padding: 16px 20px 10px;
-  min-height: 66px; /* 40px icon button plus the 26px of padding */
-  border-bottom: 0;
+.lorebook-modal header {
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 14px 6px 22px;
 }
 
-.lorebook-repair-modal footer {
-  padding: 0;
-  border-top: 0;
+.lorebook-modal h2 {
+  margin: 0;
+  color: #f5f5f5;
+  font-size: 18px;
+  font-weight: 650;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
 }
 
-.lorebook-repair-modal .lorebook-footer-actions {
-  margin-left: auto;
+.lorebook-icon-button {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #a3a3a3;
+  cursor: pointer;
 }
 
-/* the height here is pinned from JS so stage swaps tween instead of snapping, padding sits on the inner wrapper so what we measure is the whole thing */
+.lorebook-icon-button:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #ffffff;
+}
+
 .lorebook-repair-modal-body {
-  --resize-dur: 220ms; /* a hair quicker than the modal open so the stage swap doesnt feel draggy */
+  --resize-dur: 220ms;
   min-height: 0;
   display: block;
   overflow: hidden;
@@ -827,52 +1130,60 @@ undoing the smooth resize happening right below it */
 
 .lorebook-repair-modal-body-inner {
   display: grid;
-  gap: 14px;
+  gap: 16px;
   align-content: start;
-  padding: 10px 20px 16px;
+  padding: 4px 22px 20px;
+}
+
+.lorebook-repair-modal footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+
+.lorebook-repair-modal .lorebook-footer-actions {
+  margin-left: auto;
 }
 
 .lorebook-repair-description,
 .lorebook-repair-result,
 .lorebook-repair-error p {
   margin: 0;
-  color: #d4d4d4;
+  color: #c7c7c7;
   font-size: 14px;
-  line-height: 1.75;
+  line-height: 1.7;
   text-wrap: pretty;
 }
 
-/* the title itself does the shimmering while the model works, so it needs the base color the shimmer
-paints over instead of the plain heading white */
 .lorebook-repair-title-text.t-shimmer {
   --shimmer-base: #a3a3a3;
   --shimmer-highlight: #ffffff;
-  color: var(--shimmer-base); /* the h2 color inherits down, so restate the dimmed base here */
+  color: var(--shimmer-base);
 }
 
 .lorebook-repair-reasoning {
   width: 100%;
-  height: min(220px, 34dvh);
+  height: min(240px, 36dvh);
   min-height: 140px;
   overflow-y: auto;
   overscroll-behavior: contain;
   border-radius: 14px;
-  background: rgba(0, 0, 0, 0.24);
-  padding: 14px;
+  background: rgba(0, 0, 0, 0.28);
+  padding: 14px 16px;
   color: #c4c4c4;
   font-size: 0.875rem;
   line-height: 1.625rem;
   text-align: left;
-  box-shadow: var(--shadow-border);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
   scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
 }
 
 .lorebook-repair-reasoning > * {
   overflow-wrap: anywhere;
 }
 
-/* the markdown itself is styled in ThinkingContent, this just stops the block margins from
-punching a gap at the top and bottom of the scroll pane */
 .lorebook-repair-reasoning > :first-child {
   margin-top: 0;
 }
@@ -884,8 +1195,8 @@ punching a gap at the top and bottom of the scroll pane */
 .lorebook-repair-reasoning.is-empty {
   display: grid;
   place-items: center;
-  color: #737373;
-  font-size: 12px;
+  color: #8a8a8a;
+  font-size: 12.5px;
   text-align: center;
 }
 
@@ -903,22 +1214,19 @@ punching a gap at the top and bottom of the scroll pane */
 
 .lorebook-repair-error {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   border-radius: 14px;
-  background: rgba(127, 29, 29, 0.16);
-  padding: 14px;
-  box-shadow:
-    var(--shadow-border),
-    inset 0 0 0 1px rgba(248, 113, 113, 0.12);
+  background: rgba(127, 29, 29, 0.18);
+  padding: 14px 16px;
+  box-shadow: inset 0 0 0 1px rgba(248, 113, 113, 0.16);
 }
 
 .lorebook-repair-error span {
   color: #fca5a5;
-  font-size: 12px;
+  font-size: 12.5px;
   line-height: 1.6;
 }
 
-/* the generator borrows the repair dialog's frame, the brief box is the one thing it adds */
 .lorebook-generate-modal .lorebook-generate-field {
   display: grid;
   gap: 0;
@@ -927,17 +1235,34 @@ punching a gap at the top and bottom of the scroll pane */
 .lorebook-generate-modal textarea {
   width: 100%;
   min-height: 148px;
+  resize: none;
+  border: 0;
   border-radius: 14px;
-  background: rgba(0, 0, 0, 0.24);
-  padding: 14px;
+  outline: 0;
+  background: rgba(0, 0, 0, 0.28);
+  padding: 14px 16px;
   color: #f5f5f5;
-  font-size: 14px;
+  font: inherit;
+  font-size: 14.5px;
   line-height: 1.7;
-  box-shadow: var(--shadow-border);
+  caret-color: #f5f5f5;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+  transition: box-shadow 150ms ease-out;
+}
+
+.lorebook-generate-modal textarea:focus {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
 }
 
 .lorebook-generate-modal textarea::placeholder {
-  color: #5a5a5a;
+  color: #808080;
+}
+
+.lorebook-generate-hint {
+  margin: 8px 2px 0;
+  color: #8a8a8a;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .lorebook-chapter-menu {
@@ -947,26 +1272,26 @@ punching a gap at the top and bottom of the scroll pane */
 .lorebook-chapter-menu-trigger {
   display: flex;
   width: 100%;
-  min-height: 52px;
+  min-height: 48px;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
   border: 0;
   border-radius: 14px;
-  background: rgba(0, 0, 0, 0.24);
-  padding: 0 14px;
+  background: rgba(0, 0, 0, 0.28);
+  padding: 0 14px 0 16px;
   color: #f5f5f5;
   font-size: 14px;
   font-weight: 600;
   text-align: left;
-  box-shadow: var(--shadow-border);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
   cursor: pointer;
 }
 
 .lorebook-chapter-menu-trigger:hover,
 .lorebook-chapter-menu-trigger[aria-expanded="true"] {
-  background: rgba(0, 0, 0, 0.32);
-  box-shadow: var(--shadow-border-hover);
+  background: rgba(0, 0, 0, 0.36);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
 }
 
 .lorebook-chapter-menu-trigger > span {
@@ -977,7 +1302,7 @@ punching a gap at the top and bottom of the scroll pane */
 
 .lorebook-chapter-menu-chevron {
   flex: none;
-  color: #737373;
+  color: #8a8a8a;
   transition: transform 180ms ease-out;
 }
 
@@ -991,20 +1316,22 @@ punching a gap at the top and bottom of the scroll pane */
   margin-top: 8px;
   overflow-y: auto;
   border-radius: 16px;
-  background: #292929;
+  background: #242424;
   padding: 6px;
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.42);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.07),
+    0 18px 48px rgba(0, 0, 0, 0.42);
 }
 
 .lorebook-chapter-menu-options button {
   display: flex;
   width: 100%;
-  min-height: 42px;
+  min-height: 40px;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
   border: 0;
-  border-radius: 12px;
+  border-radius: 11px;
   background: transparent;
   padding: 9px 12px;
   color: #d4d4d4;
@@ -1035,16 +1362,15 @@ punching a gap at the top and bottom of the scroll pane */
 
 .lorebook-generate-empty {
   border-radius: 14px;
-  background: rgba(0, 0, 0, 0.24);
-  padding: 14px;
-  color: #737373;
+  background: rgba(0, 0, 0, 0.28);
+  padding: 14px 16px;
+  color: #8a8a8a;
   font-size: 13px;
   font-weight: 500;
   line-height: 1.6;
-  box-shadow: var(--shadow-border);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 
-/* the same pane the thinking used, handed over to the entry once the writing starts */
 .lorebook-generate-preview p {
   margin: 0 0 10px;
   overflow-wrap: anywhere;
@@ -1061,333 +1387,177 @@ punching a gap at the top and bottom of the scroll pane */
   font-weight: 700;
 }
 
-.lorebook-repair-modal button:focus-visible {
-  outline: 0;
-  box-shadow:
-    var(--shadow-border-hover),
-    0 0 0 3px rgba(255, 255, 255, 0.1);
-}
-
-.lorebook-details {
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
-  background: transparent;
-}
-
-.lorebook-details-trigger {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  border: 0;
-  background: transparent;
-  padding: 4px 0;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.lorebook-details-trigger .lorebook-field-label {
-  padding-top: 0;
-}
-
-.lorebook-details-state {
-  color: #525252;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.6;
-  transition: color 150ms ease-out;
-}
-
-/* the label reads as a heading like every other gutter label, only the Show/Hide word is the control */
-.lorebook-details-trigger:hover .lorebook-details-state,
-.lorebook-details-trigger:focus-visible .lorebook-details-state {
-  color: #d4d4d4;
-}
-
-.lorebook-details-trigger:focus-visible {
-  outline: 0;
-}
-
-.lorebook-details-trigger:disabled {
-  cursor: not-allowed;
-  opacity: 0.65;
-}
-
-.lorebook-details-panel {
-  display: grid;
-  padding: 0;
-}
-
-/* the last row closes as tight as the trigger opens, so the panel is evenly inset top and bottom */
-.lorebook-details-panel .lorebook-field:last-child {
-  padding-bottom: 4px;
-}
-
-.lorebook-details-panel .lorebook-field:first-child {
-  border-top: 0;
-  padding-top: 0;
-}
-
-.lorebook-editor-modal .lorebook-details-panel textarea {
-  min-height: 92px;
-}
-
-.lorebook-editor-modal footer {
-  padding: 14px 22px 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
-}
-
-/* the footer reads as text, not chrome, so the buttons drop their pills and their side padding, which
-also lands the outermost one on the same left edge as every label above it */
-.lorebook-editor-modal footer .lorebook-primary-button,
-.lorebook-editor-modal footer .lorebook-secondary-button,
-.lorebook-editor-modal footer .lorebook-generate-button,
-.lorebook-editor-modal footer .lorebook-delete-button {
-  border-radius: 0;
-  background: transparent;
-  padding: 0;
-  font-size: 14px;
-}
-
-.lorebook-editor-modal .lorebook-footer-actions {
-  gap: 20px;
-}
-
-.lorebook-editor-modal footer .lorebook-secondary-button {
-  color: #737373;
-  font-weight: 600;
-}
-
-.lorebook-editor-modal footer .lorebook-secondary-button:hover {
-  color: #d4d4d4;
-}
-
-/* the generator sits beside the submit as a quieter sibling, one step down in color so the two
-never read as the same button */
-.lorebook-generate-button {
-  background: transparent;
-  color: #a3a3a3;
-  font-size: 14px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.lorebook-editor-modal footer .lorebook-generate-button {
-  color: #a3a3a3;
-}
-
-.lorebook-editor-modal footer .lorebook-generate-button:hover {
-  color: #f5f5f5;
-}
-
-.lorebook-editor-modal footer .lorebook-generate-button:disabled {
-  cursor: not-allowed;
-  background: transparent;
-  color: #525252;
-}
-
-/* the submit keeps its weight to stay the loudest thing down here now that the fill is gone */
-.lorebook-editor-modal footer .lorebook-primary-button {
-  color: #d4d4d4;
-  font-weight: 700;
-}
-
-.lorebook-editor-modal footer .lorebook-primary-button:hover {
-  color: #ffffff;
-}
-
-.lorebook-editor-modal footer .lorebook-primary-button:disabled,
-.lorebook-editor-modal footer .lorebook-delete-button:disabled {
-  background: transparent;
-  color: #525252;
-}
-
-.lorebook-editor-modal footer .lorebook-delete-button:hover {
-  background: transparent;
-  color: #fecaca;
-}
-
-.lorebook-details .t-acc-panel,
-.lorebook-details .t-acc-panel-inner {
-  min-height: 0;
-}
-
-.lorebook-delete-button {
-  min-height: 40px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  padding: 0 10px;
-  color: #fca5a5;
-  font-size: 13px;
-  font-weight: 650;
-  cursor: pointer;
-}
-
-.lorebook-delete-button:hover {
-  background: rgba(239, 68, 68, 0.12);
-  color: #fecaca;
-}
-
-.lorebook-delete-button:focus-visible {
-  outline: 0;
-  box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.18);
-}
-
-.lorebook-form-error {
-  margin-top: 12px;
-  border-radius: 12px;
-  background: rgba(239, 68, 68, 0.11);
-  padding: 10px 12px;
-  color: #fecaca;
-  font-size: 13px;
-  font-weight: 650;
-  line-height: 1.45;
-  box-shadow: 0 0 0 1px rgba(248, 113, 113, 0.22);
-}
-
 @media (min-width: 640px) {
-  .lorebook-header {
-    margin-right: -2rem;
-    margin-left: -2rem;
-    padding-right: 2rem;
-    padding-left: 2rem;
+  .lorebook-frame {
+    padding: 16px 32px 0;
   }
 }
 
 @media (min-width: 1024px) {
-  .lorebook-header {
-    margin-right: -2.5rem;
-    margin-left: -2.5rem;
-    padding-right: 2.5rem;
-    padding-left: 2.5rem;
+  .lorebook-frame {
+    padding: 16px 40px 0;
   }
 }
 
-@media (max-width: 760px) {
-  .lorebook-header {
-    align-items: stretch;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .lorebook-search-wrap {
-    min-width: 0;
-    flex: 1 1 180px;
-  }
-
-  .lorebook-primary-button {
-    flex: 0 0 auto;
-  }
-
-  .lorebook-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .lorebook-library-controls {
-    flex-wrap: wrap;
-  }
-
-  .lorebook-tabs.t-tabs {
-    width: 100%;
-    flex: 1 1 100%;
-    justify-content: flex-start;
-    gap: 3px;
-  }
-
-  .lorebook-timeline-footer {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .lorebook-timeline-actions {
-    width: 100%;
+@media (max-width: 1280px) {
+  .lorebook-category-tab.t-tab {
+    padding: 3px 9px;
+    font-size: 12px;
   }
 }
 
-@media (max-width: 460px) {
-  .lorebook-search-wrap,
-  .lorebook-primary-button {
-    width: 100%;
+@media (max-width: 1100px) {
+  .lorebook-totals {
+    display: none;
+  }
+}
+
+@media (max-width: 1023px) {
+  .lorebook-frame {
+    padding-top: 64px;
+  }
+}
+
+@media (max-width: 899px) {
+  .lorebook-shell {
+    overflow-y: auto;
   }
 
-  .lorebook-primary-button {
-    flex: 1 1 100%;
+  .lorebook-frame {
+    height: auto;
+    min-height: 100%;
   }
 
-  .lorebook-modal footer {
-    align-items: stretch;
+  .lorebook-workspace {
+    display: block;
+  }
+
+  .lorebook-list {
+    overflow: visible;
+  }
+
+  .lorebook-page-pane {
+    display: none;
+  }
+
+  .lorebook-workspace.has-page .lorebook-list-pane {
+    display: none;
+  }
+
+  .lorebook-workspace.has-page .lorebook-page-pane {
+    display: flex;
+    overflow: visible;
+    animation: lorebook-page-in var(--page-slide-dur, 250ms) var(--page-slide-ease, ease-out) both;
+  }
+
+  .lorebook-entry-scroll {
+    overflow: visible;
+  }
+
+  .lorebook-entry-body {
+    padding: 24px 20px 28px;
+  }
+
+  .lorebook-entry-footer {
+    position: sticky;
+    bottom: 0;
+    border-radius: 0 0 20px 20px;
+    background: var(--lb-pane);
+    box-shadow: inset 1px 0 0 var(--lb-pane-edge), inset -1px 0 0 var(--lb-pane-edge), inset 0 -1px 0 var(--lb-pane-edge);
+  }
+
+  .lorebook-timeline-canvas {
+    display: flex;
     flex-direction: column-reverse;
   }
 
-  .lorebook-footer-actions {
-    width: 100%;
+  .lorebook-timeline-side {
+    overflow: visible;
   }
 
-  .lorebook-footer-actions .lorebook-primary-button,
-  .lorebook-footer-actions .lorebook-secondary-button {
-    flex: 1 1 0;
-  }
-
-  .lorebook-delete-button {
-    width: 100%;
-  }
-
-  .lorebook-timeline-actions .lorebook-primary-button {
-    width: 100%;
-  }
-
-  /* the label gutter costs too much width on a phone, so the labels move above their controls */
-  .lorebook-editor-modal .lorebook-field {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 4px;
-  }
-
-  .lorebook-editor-modal .lorebook-field-label {
-    padding-top: 0;
+  .lorebook-timeline-document textarea {
+    min-height: 55dvh;
+    padding: 24px 20px;
   }
 }
 
-/* three buttons need ~440px, below that they stack rather than run off the edge */
 @media (max-width: 560px) {
-  .lorebook-timeline-actions {
-    grid-template-columns: minmax(0, 1fr);
+  .lorebook-header {
+    grid-template-columns: auto minmax(0, 1fr);
   }
 
-  .lorebook-timeline-actions .lorebook-primary-button {
+  .lorebook-header-actions {
+    grid-column: 1 / -1;
+  }
+
+  .lorebook-header-actions .lorebook-new-entry-button {
+    flex: 1 1 auto;
+  }
+
+  .lorebook-name-input {
+    font-size: 24px;
+  }
+
+  .lorebook-entry-heading {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .lorebook-entry-footer {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    padding: 12px 16px;
+  }
+
+  .lorebook-footer-left {
+    justify-content: space-between;
+  }
+
+  .lorebook-footer-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .lorebook-footer-actions > button {
+    flex: 1 1 auto;
+  }
+
+  .lorebook-modal header {
+    padding-left: 18px;
+  }
+
+  .lorebook-repair-modal-body-inner {
+    padding: 4px 18px 18px;
+  }
+
+  .lorebook-repair-modal .lorebook-footer-actions {
     width: 100%;
+  }
+
+  .lorebook-repair-modal .lorebook-footer-actions > button {
+    flex: 1 1 0;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .lorebook-tabs .t-tabs-pill,
   .lorebook-tab.t-tab,
-  .lorebook-card,
-  .lorebook-card-content,
+  .lorebook-row,
+  .lorebook-row-name,
   .lorebook-context-button,
   .lorebook-context-icon,
   .lorebook-search,
-  .lorebook-timeline-canvas textarea,
-  .lorebook-modal input,
-  .lorebook-modal select,
-  .lorebook-modal textarea,
-  .lorebook-category-tab,
-  .lorebook-field,
+  .lorebook-field input,
+  .lorebook-field textarea,
   .lorebook-field-label,
-  .lorebook-details-state,
-  .lorebook-name-input,
-  .lorebook-details-trigger {
+  .lorebook-category-tab,
+  .lorebook-timeline-document,
+  .lorebook-generate-modal textarea {
     transition: none !important;
   }
 
-  .lorebook-card:hover,
-  .lorebook-card:focus-within {
-    transform: none;
-  }
-
-  .lorebook-card.is-disabled:hover,
-  .lorebook-card.is-disabled:focus-within {
-    transform: none;
+  .lorebook-reveal,
+  .lorebook-workspace.has-page .lorebook-page-pane {
+    animation: none !important;
   }
 }

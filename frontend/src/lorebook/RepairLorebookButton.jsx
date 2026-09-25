@@ -66,7 +66,7 @@ export default function RepairLorebookButton({ locked, saving, onRepair }) {
         type="button"
         onClick={openRepair}
         disabled={locked || saving}
-        className={cx("lorebook-primary-button", CONTROL_MOTION)}
+        className={cx("lorebook-secondary-button", CONTROL_MOTION)}
       >
         Repair lorebook
       </button>

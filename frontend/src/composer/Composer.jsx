@@ -10,6 +10,7 @@ import {
 } from "../modelReasoning.js";
 import { useRef, useState, useEffect } from "react";
 import { promptModelName } from "../modelFormatting.js";
+import { useMediaQuery } from "../useMediaQuery.js";
 import AttachmentChips from "../attachments/AttachmentChips.jsx";
 import AttachButton from "../attachments/AttachButton.jsx";
 import { MAX_FILES_PER_MESSAGE } from "../attachments/attachmentsApi.js";
@@ -107,6 +108,17 @@ export function Composer({
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const isEmptyVariant = variant === "empty";
 
+  const isPhone = useMediaQuery("(max-width: 639px)");
+  const isNarrowPhone = useMediaQuery("(max-width: 380px)");
+
+  function composerPlaceholder() {
+    if (isEmptyVariant) return "Ask anything";
+    if (isNarrowPhone) return writeGenerationMode ? "Write…" : "Ask…";
+    if (isPhone) return writeGenerationMode ? "Write anything" : "Ask anything";
+
+    const modelLabel = promptModelName(models, settings.model);
+    return writeGenerationMode ? `Ask ${modelLabel} to write anything` : `Ask ${modelLabel} anything`;
+  }
   const { textareaRef, composerSurfaceRef, leftControlsRef, rightControlsRef, measureRef, isCompact } = useCompactComposer(value, isEmptyVariant ? 184 : 126);
 
   useEffect(() => {
@@ -211,13 +223,7 @@ export function Composer({
                   isStreaming ? onStop() : onSubmit();
                 }
               }}
-              placeholder={
-                isEmptyVariant
-                  ? "Ask anything"
-                  : writeGenerationMode
-                    ? `Ask ${promptModelName(models, settings.model)} to write anything`
-                    : `Ask ${promptModelName(models, settings.model)} anything`
-              }
+              placeholder={composerPlaceholder()}
               className={cx(
                 "block w-full resize-none bg-transparent text-neutral-100 outline-none",
                 isEmptyVariant

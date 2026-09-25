@@ -85,7 +85,7 @@ export function SidebarSearchModal({
         aria-modal="true"
         aria-label={label}
         className={cx(
-          "t-modal relative z-10 flex max-h-[min(620px,calc(100dvh-3rem))] w-full max-w-[560px] flex-col overflow-hidden rounded-[26px] bg-[#191919] text-neutral-100 [box-shadow:var(--shadow-surface)]",
+          "t-modal relative z-10 flex max-h-[min(620px,calc(100dvh-3rem))] w-full max-w-[560px] flex-col overflow-hidden rounded-[26px] bg-[#181818] text-neutral-100 [box-shadow:var(--shadow-surface)]",
           isOpen ? "is-open" : "is-closing",
         )}
       >

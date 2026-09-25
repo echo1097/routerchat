@@ -95,7 +95,7 @@ export function WriteHistoryModal({ open, entries, title, onClose }) {
         aria-modal="true"
         aria-labelledby="write-history-title"
         className={cx(
-          "t-modal relative z-10 flex max-h-[min(720px,calc(100dvh-2rem))] w-full max-w-[720px] flex-col overflow-hidden rounded-[26px] bg-[#191919] text-neutral-100 [box-shadow:var(--shadow-surface)]",
+          "t-modal relative z-10 flex max-h-[min(720px,calc(100dvh-2rem))] w-full max-w-[720px] flex-col overflow-hidden rounded-[26px] bg-[#181818] text-neutral-100 [box-shadow:var(--shadow-surface)]",
           isOpen ? "is-open" : "is-closing",
         )}
       >

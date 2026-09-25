@@ -401,6 +401,7 @@ export default function GenerateEntryModal({
                     spellCheck="true"
                     data-1p-ignore="true"
                   />
+                  <span className="lorebook-generate-hint">Press Enter to generate, Shift+Enter for a new line.</span>
                 </label>
               )
             )}

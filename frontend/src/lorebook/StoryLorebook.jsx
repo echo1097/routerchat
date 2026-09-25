@@ -1,13 +1,14 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Eye,
   EyeOff,
   Plus,
   Search,
+  WandSparkles,
 } from "lucide-react";
 import { cx, CONTROL_MOTION } from "../uiShared.js";
+import { useTextSwap } from "../textSwap.js";
 import RepairModal, { repairDurationParts } from "./RepairModal.jsx";
 import RepairLorebookButton from "./RepairLorebookButton.jsx";
 import GenerateEntryModal from "./GenerateEntryModal.jsx";
@@ -34,11 +35,9 @@ const DESCRIPTION_PROMPTS = {
   synopsis: "What happens in this chapter, from start to finish?",
 };
 
-//matches --resize-dur on the editor body, the two have to agree or scrolling comes back mid tween
-const BODY_RESIZE_MS = 220;
+const WIDE_LAYOUT_QUERY = "(min-width: 900px)";
 
-//matches --acc-expand and --acc-collapse, the details panel owns the motion for that stretch
-const DETAILS_TWEEN_MS = 250;
+const DRAFT_FIELDS = ["name", "category", "description", "aliasesText", "notes"];
 
 const EMPTY_DRAFT = {
   name: "",
@@ -104,6 +103,10 @@ function draftHasText(draft) {
     .some((value) => value.trim());
 }
 
+function draftsMatch(firstDraft, secondDraft) {
+  return DRAFT_FIELDS.every((field) => firstDraft[field] === secondDraft[field]);
+}
+
 function entryFromDraft(draft, existingEntry) {
   const category = normalizeCategory(draft.category);
   const aliases = ["note", "synopsis"].includes(category) ? [] : normalizeArray(draft.aliasesText);
@@ -130,6 +133,29 @@ function entryFromDraft(draft, existingEntry) {
   };
 }
 
+function countTimelineEvents(text) {
+  return String(text || "")
+    .split("\n")
+    .filter((line) => line.replace(/^[-*]\s*/, "").trim()).length;
+}
+
+function useWideLayout() {
+  const [wide, setWide] = useState(() => window.matchMedia(WIDE_LAYOUT_QUERY).matches);
+
+  useEffect(() => {
+    const query = window.matchMedia(WIDE_LAYOUT_QUERY);
+
+    function handleChange(event) {
+      setWide(event.matches);
+    }
+
+    query.addEventListener("change", handleChange);
+    return () => query.removeEventListener("change", handleChange);
+  }, []);
+
+  return wide;
+}
+
 function useSlidingTabs(activeCategory, tabCount, active = true) {
   const tabsRef = useRef(null);
   const pillRef = useRef(null);
@@ -139,8 +165,6 @@ function useSlidingTabs(activeCategory, tabCount, active = true) {
     const tabsBar = tabsRef.current;
     const pill = pillRef.current;
 
-    /* a bar that unmounts between uses starts over, otherwise the pill would slide in from
-    wherever it sat the last time the bar was on screen */
     if (!active) {
       measuredRef.current = false;
       return undefined;
@@ -175,9 +199,6 @@ function useSlidingTabs(activeCategory, tabCount, active = true) {
       movePill(false);
     }
 
-    /* anything else that reflows the bar after the pill was placed leaves it on stale offsets, a
-    scrollbar that comes and goes for a frame is enough, so remeasure off the bar itself. the first
-    callback is the observer reporting the size it already has, which would cancel the slide */
     let observedOnce = false;
     const observer = new ResizeObserver(() => {
       if (!observedOnce) {
@@ -223,9 +244,12 @@ export default function StoryLorebook({
     initialCategory === "characters" ? "character" : normalizeCategory(initialCategory),
   );
   const [searchTerm, setSearchTerm] = useState("");
-  const [editorOpen, setEditorOpen] = useState(false);
+  const [pageMode, setPageMode] = useState("empty");
   const [editingEntryId, setEditingEntryId] = useState(null);
   const [draft, setDraft] = useState(EMPTY_DRAFT);
+  const [baselineDraft, setBaselineDraft] = useState(EMPTY_DRAFT);
+  const [revealKey, setRevealKey] = useState(0);
+  const [pendingAction, setPendingAction] = useState(null);
   const [editorError, setEditorError] = useState("");
   const [lorebookError, setLorebookError] = useState("");
   const [savingEntry, setSavingEntry] = useState(false);
@@ -235,6 +259,7 @@ export default function StoryLorebook({
   const searchWrapRef = useRef(null);
   const searchInputRef = useRef(null);
   const searchShakeRef = useRef(null);
+  const wideLayout = useWideLayout();
 
   const { tabsRef, pillRef } = useSlidingTabs(activeCategory, CATEGORY_OPTIONS.length);
 
@@ -251,22 +276,30 @@ export default function StoryLorebook({
     return nextCounts;
   }, [localEntries]);
 
-  const visibleEntries = useMemo(() => {
-    const query = searchTerm.trim().toLowerCase();
+  const entryTotals = useMemo(() => {
+    const storyEntries = localEntries.filter((entry) => entry.category !== "timeline");
+    return {
+      total: storyEntries.length,
+      hidden: storyEntries.filter((entry) => entry.disabled).length,
+    };
+  }, [localEntries]);
 
-    return localEntries
+  const categoryEntries = useMemo(() => (
+    localEntries
       .filter((entry) => {
         if (activeCategory === "timeline") return entry.category === "timeline";
         if (entry.category === "timeline") return false;
         return entry.category === activeCategory;
       })
-      .filter((entry) => {
-        if (!query) return true;
+      .sort((firstEntry, secondEntry) => firstEntry.name.localeCompare(secondEntry.name))
+  ), [activeCategory, localEntries]);
 
-        return entry.name.toLowerCase().includes(query);
-      })
-      .sort((firstEntry, secondEntry) => firstEntry.name.localeCompare(secondEntry.name));
-  }, [activeCategory, localEntries, searchTerm]);
+  const visibleEntries = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+    if (!query) return categoryEntries;
+
+    return categoryEntries.filter((entry) => entry.name.toLowerCase().includes(query));
+  }, [categoryEntries, searchTerm]);
 
   const timelineEntry = useMemo(
     () =>
@@ -275,6 +308,15 @@ export default function StoryLorebook({
       ),
     [localEntries],
   );
+
+  const editingEntry = useMemo(
+    () => localEntries.find((entry) => entry.id === editingEntryId) || null,
+    [editingEntryId, localEntries],
+  );
+
+  const isTimelineTab = activeCategory === "timeline";
+  const pageOpen = pageMode !== "empty";
+  const draftDirty = pageOpen && !draftsMatch(draft, baselineDraft);
 
   useEffect(() => {
     const query = searchTerm.trim();
@@ -320,22 +362,129 @@ export default function StoryLorebook({
     };
   }, []);
 
+  useEffect(() => {
+    if (pageMode !== "entry" || draftDirty || savingEntry) return;
+
+    if (!editingEntry) {
+      closePageNow();
+      return;
+    }
+
+    const freshDraft = draftFromEntry(editingEntry);
+    if (draftsMatch(freshDraft, baselineDraft)) return;
+
+    setDraft(freshDraft);
+    setBaselineDraft(freshDraft);
+  }, [editingEntry]);
+
+  useEffect(() => {
+    if (!wideLayout || isTimelineTab || draftDirty || pageMode === "new") return;
+    if (editingEntry && editingEntry.category === activeCategory) return;
+
+    const firstEntry = categoryEntries[0];
+    if (firstEntry) {
+      openEntryNow(firstEntry);
+      return;
+    }
+
+    closePageNow();
+  }, [activeCategory, wideLayout, categoryEntries.length]);
+
+  useEffect(() => {
+    if (!pageOpen || wideLayout) return undefined;
+
+    function handleKeyDown(event) {
+      if (event.key !== "Escape" || document.querySelector(".lorebook-modal")) return;
+
+      event.preventDefault();
+      requestPageChange(closePageNow);
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  });
+
+  function requestPageChange(action) {
+    if (draftDirty && !savingEntry) {
+      setPendingAction(() => action);
+      return;
+    }
+
+    action();
+  }
+
+  function discardAndContinue() {
+    const action = pendingAction;
+    setPendingAction(null);
+    action?.();
+  }
+
+  function keepEditing() {
+    setPendingAction(null);
+  }
+
+  function showDraft(nextDraft, entryId, mode) {
+    setEditingEntryId(entryId);
+    setDraft(nextDraft);
+    setBaselineDraft(nextDraft);
+    setPageMode(mode);
+    setPendingAction(null);
+    setEditorError("");
+    setLorebookError("");
+    setRevealKey((currentKey) => currentKey + 1);
+  }
+
+  function openEntryNow(entry) {
+    showDraft(draftFromEntry(entry), entry.id, "entry");
+  }
+
+  function openNewEntryNow() {
+    showDraft({ ...EMPTY_DRAFT, category: activeCategory }, null, "new");
+  }
+
+  function closePageNow() {
+    setPageMode("empty");
+    setEditingEntryId(null);
+    setDraft(EMPTY_DRAFT);
+    setBaselineDraft(EMPTY_DRAFT);
+    setPendingAction(null);
+    setEditorError("");
+  }
+
+  function selectEntry(entry) {
+    if (entry.id === editingEntryId && pageMode === "entry") return;
+    requestPageChange(() => openEntryNow(entry));
+  }
+
+  function openNewEntry() {
+    if (locked || isTimelineTab) return;
+    requestPageChange(openNewEntryNow);
+  }
+
+  function closePage() {
+    requestPageChange(closePageNow);
+  }
+
+  function discardChanges() {
+    if (pageMode === "new") {
+      closePageNow();
+      return;
+    }
+
+    setDraft(baselineDraft);
+    setEditorError("");
+  }
+
+  function goBack() {
+    requestPageChange(onBack);
+  }
+
   function updateDraft(field, value) {
     setEditorError("");
     setDraft((currentDraft) => ({
       ...currentDraft,
       [field]: value,
     }));
-  }
-
-  function openNewEntry() {
-    if (locked || activeCategory === "timeline") return;
-
-    setEditingEntryId(null);
-    setDraft({ ...EMPTY_DRAFT, category: activeCategory });
-    setEditorError("");
-    setLorebookError("");
-    setEditorOpen(true);
   }
 
   /* a generated entry lands in the draft rather than the lorebook, so the author still reads it over
@@ -360,7 +509,10 @@ export default function StoryLorebook({
     }
 
     setEditingEntryId(linkedEntry?.id || null);
+    setPageMode(linkedEntry ? "entry" : "new");
+    if (linkedEntry) setBaselineDraft(draftFromEntry(linkedEntry));
     setEditorError("");
+    setRevealKey((currentKey) => currentKey + 1);
     setDraft((currentDraft) => ({
       ...currentDraft,
       name: generatedEntry.name || currentDraft.name,
@@ -370,20 +522,6 @@ export default function StoryLorebook({
       notes: generatedEntry.notes || "",
       metadata: generatedEntry.metadata || {},
     }));
-  }
-
-  function openEditEntry(entry) {
-    if (locked) return;
-
-    setEditingEntryId(entry.id);
-    setDraft(draftFromEntry(entry));
-    setEditorError("");
-    setLorebookError("");
-    setEditorOpen(true);
-  }
-
-  function closeEditor() {
-    setEditorOpen(false);
   }
 
   async function saveEntry(event) {
@@ -400,16 +538,23 @@ export default function StoryLorebook({
       const savedEntry = existingEntry
         ? await onUpdateEntry(existingEntry.id, nextEntry)
         : await onCreateEntry(nextEntry);
+      const normalizedEntry = normalizeEntry(savedEntry);
 
       setLocalEntries((currentEntries) => {
-        const normalizedEntry = normalizeEntry(savedEntry);
         if (existingEntry) {
           return currentEntries.map((entry) => (entry.id === existingEntry.id ? normalizedEntry : entry));
         }
 
         return [normalizedEntry, ...currentEntries];
       });
-      closeEditor();
+
+      const savedDraft = draftFromEntry(normalizedEntry);
+      setEditingEntryId(normalizedEntry.id);
+      setDraft(savedDraft);
+      setBaselineDraft(savedDraft);
+      setPageMode("entry");
+      setPendingAction(null);
+      if (normalizedEntry.category !== activeCategory) setActiveCategory(normalizedEntry.category);
     } catch (error) {
       setEditorError(error.message || "Could not save entry.");
     } finally {
@@ -461,7 +606,7 @@ export default function StoryLorebook({
       setLocalEntries((currentEntries) => currentEntries.filter((entry) => entry.id !== entryId));
       return true;
     } catch (error) {
-      setLorebookError(error.message || "Could not delete entry.");
+      setEditorError(error.message || "Could not delete entry.");
       return false;
     } finally {
       setDeletingEntryId(null);
@@ -473,7 +618,7 @@ export default function StoryLorebook({
 
     const deleted = await deleteEntry(editingEntryId);
     if (deleted) {
-      closeEditor();
+      closePageNow();
     }
   }
 
@@ -528,26 +673,52 @@ export default function StoryLorebook({
     }
   }
 
-  const isTimelineTab = activeCategory === "timeline";
-  const activeCategoryLabel = CATEGORY_OPTIONS.find((category) => category.id === activeCategory)?.plural.toLowerCase() || "entries";
+  const activeCategoryOption = CATEGORY_OPTIONS.find((category) => category.id === activeCategory);
+  const activeCategoryLabel = activeCategoryOption?.plural.toLowerCase() || "entries";
+  const activeSingularLabel = activeCategoryOption?.label.toLowerCase() || "entry";
+  const searching = Boolean(searchTerm.trim());
+  const entryUnit = entryTotals.total === 1 ? "entry" : "entries";
 
   return (
     <>
-      <section data-tour="write-lorebook" className="lorebook-shell min-h-0 overflow-y-auto px-4 py-6 sm:px-8 lg:px-10">
-        <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col">
+      <section data-tour="write-lorebook" className="lorebook-shell min-h-0">
+        <div className="lorebook-frame">
           <header className="lorebook-header">
+            <button
+              type="button"
+              onClick={goBack}
+              className={cx("lorebook-back-button", CONTROL_MOTION)}
+              aria-label="Back to chapter"
+              title="Back to chapter"
+            >
+              <ArrowLeft size={18} />
+            </button>
+
             <div className="lorebook-title-block">
-              <button type="button" onClick={onBack} className={cx("lorebook-back-button", CONTROL_MOTION)}>
-                <ArrowLeft size={14} />
-                Back to chapter
-              </button>
-              <div className="lorebook-story-title">{story.title}</div>
               <h1>Lorebook</h1>
+              <p className="lorebook-story-title">{story.title}</p>
             </div>
 
+            <div className="lorebook-header-actions">
+              <p className="lorebook-totals">
+                <span>{entryTotals.total} {entryUnit}</span>
+                {entryTotals.hidden > 0 && <span>{entryTotals.hidden} hidden from context</span>}
+              </p>
+              {!isTimelineTab && (
+                <button
+                  type="button"
+                  onClick={openNewEntry}
+                  disabled={locked}
+                  className={cx("lorebook-primary-button lorebook-new-entry-button", CONTROL_MOTION)}
+                >
+                  <Plus size={16} />
+                  New entry
+                </button>
+              )}
+            </div>
           </header>
 
-          <div className={cx("lorebook-library-controls", isTimelineTab && "is-timeline")}>
+          <div className="lorebook-tabs-row">
             <nav ref={tabsRef} className="lorebook-tabs t-tabs" role="tablist" aria-label="Lorebook categories">
               <span ref={pillRef} className="t-tabs-pill" aria-hidden="true" />
               {CATEGORY_OPTIONS.map((category) => {
@@ -568,33 +739,9 @@ export default function StoryLorebook({
                 );
               })}
             </nav>
-
-            {!isTimelineTab && <>
-              <div ref={searchWrapRef} className="lorebook-search-wrap t-input-wrap">
-                <label ref={searchInputRef} className="lorebook-search t-input">
-                  <Search size={16} />
-                  <input
-                    value={searchTerm}
-                    onChange={(event) => setSearchTerm(event.target.value)}
-                    placeholder="Search entries..."
-                    aria-label="Search lorebook entries"
-                    data-1p-ignore="true"
-                  />
-                </label>
-              </div>
-              <button
-                type="button"
-                onClick={openNewEntry}
-                disabled={locked}
-                className={cx("lorebook-primary-button lorebook-new-entry-button", CONTROL_MOTION)}
-              >
-                <Plus size={16} />
-                New entry
-              </button>
-            </>}
           </div>
 
-          {lorebookError && <div className="lorebook-form-error">{lorebookError}</div>}
+          {lorebookError && <div className="lorebook-form-error lorebook-page-error" role="alert">{lorebookError}</div>}
 
           {isTimelineTab ? (
             <TimelineCanvas
@@ -605,47 +752,388 @@ export default function StoryLorebook({
               onRepair={onRepairTimeline}
               onRepairLorebook={onRepairLorebook}
             />
-          ) : visibleEntries.length === 0 ? (
-            <div className="lorebook-empty">
-              <h2>{searchTerm.trim() ? "No matching entries" : `No ${activeCategoryLabel} yet`}</h2>
-              <p>{searchTerm.trim() ? "Try a different name or switch categories." : "Create an entry to keep important story details close at hand."}</p>
-            </div>
           ) : (
-            <div className="lorebook-grid">
-              {visibleEntries.map((entry) => (
-                <LorebookCard
-                  key={entry.id}
-                  entry={entry}
-                  onEdit={() => openEditEntry(entry)}
-                  onToggleContext={() => toggleEntryContext(entry)}
-                  toggling={togglingEntryId === entry.id}
-                  contextBusy={Boolean(togglingEntryId)}
-                  locked={locked}
-                />
-              ))}
+            <div className={cx("lorebook-workspace", pageOpen && "has-page")}>
+              <aside className="lorebook-list-pane" aria-label={`${activeCategoryOption?.plural || "Entries"} list`}>
+                <div ref={searchWrapRef} className="lorebook-search-wrap t-input-wrap">
+                  <label ref={searchInputRef} className="lorebook-search t-input">
+                    <Search size={15} />
+                    <input
+                      value={searchTerm}
+                      onChange={(event) => setSearchTerm(event.target.value)}
+                      placeholder={`Search ${activeCategoryLabel}`}
+                      aria-label="Search lorebook entries"
+                      data-1p-ignore="true"
+                    />
+                  </label>
+                </div>
+
+                {visibleEntries.length === 0 ? (
+                  <div className="lorebook-list-empty">
+                    <p className="lorebook-list-empty-title">
+                      {searching ? "No matching entries" : `No ${activeCategoryLabel} yet`}
+                    </p>
+                    <p>
+                      {searching
+                        ? "Try a different name or switch categories."
+                        : "Create an entry to keep important story details close at hand."}
+                    </p>
+                  </div>
+                ) : (
+                  <ul className="lorebook-list">
+                    {visibleEntries.map((entry) => (
+                      <LorebookRow
+                        key={entry.id}
+                        entry={entry}
+                        selected={pageMode === "entry" && entry.id === editingEntryId}
+                        onSelect={() => selectEntry(entry)}
+                        onToggleContext={() => toggleEntryContext(entry)}
+                        toggling={togglingEntryId === entry.id}
+                        contextBusy={Boolean(togglingEntryId)}
+                        locked={locked}
+                      />
+                    ))}
+                  </ul>
+                )}
+              </aside>
+
+              <div className={cx("lorebook-page-pane", pageOpen && "is-open")} aria-hidden={!wideLayout && !pageOpen}>
+                {pageOpen ? (
+                  <LorebookEntryPage
+                    key={revealKey}
+                    draft={draft}
+                    entry={pageMode === "entry" ? editingEntry : null}
+                    editing={pageMode === "entry"}
+                    dirty={draftDirty}
+                    pendingChange={Boolean(pendingAction)}
+                    saving={savingEntry}
+                    deleting={Boolean(editingEntryId) && deletingEntryId === editingEntryId}
+                    error={editorError}
+                    locked={locked}
+                    wideLayout={wideLayout}
+                    togglingContext={Boolean(editingEntryId) && togglingEntryId === editingEntryId}
+                    contextBusy={Boolean(togglingEntryId)}
+                    onChange={updateDraft}
+                    onSubmit={saveEntry}
+                    onDelete={deleteEditingEntry}
+                    onDiscard={discardChanges}
+                    onClose={closePage}
+                    onToggleContext={() => editingEntry && toggleEntryContext(editingEntry)}
+                    onDiscardAndContinue={discardAndContinue}
+                    onKeepEditing={keepEditing}
+                    onGenerateEntry={onGenerateEntry}
+                    onApplyGenerated={applyGeneratedEntry}
+                    chapters={chapters}
+                    activeChapterId={activeChapterId}
+                  />
+                ) : (
+                  <div className="lorebook-page-empty">
+                    <p className="lorebook-page-empty-title">
+                      {categoryEntries.length ? `Pick a ${activeSingularLabel} to read or edit it` : `Start your ${activeCategoryLabel}`}
+                    </p>
+                    <p>Entries you keep in context are shared with the model while it writes.</p>
+                    <button
+                      type="button"
+                      onClick={openNewEntry}
+                      disabled={locked}
+                      className={cx("lorebook-secondary-button", CONTROL_MOTION)}
+                    >
+                      <Plus size={15} />
+                      Add a {activeSingularLabel}
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
       </section>
+    </>
+  );
+}
 
-      <LorebookEditorModal
-        open={editorOpen}
-        draft={draft}
-        editing={Boolean(editingEntryId)}
-        saving={savingEntry}
-        error={editorError}
-        onChange={updateDraft}
-        onClose={closeEditor}
-        onSubmit={saveEntry}
-        onDelete={deleteEditingEntry}
-        deleting={Boolean(editingEntryId) && deletingEntryId === editingEntryId}
-        onGenerateEntry={onGenerateEntry}
-        onApplyGenerated={applyGeneratedEntry}
+function ContextIcons({ size = 16 }) {
+  return (
+    <>
+      <span className="lorebook-context-icon lorebook-context-icon-eye" aria-hidden="true">
+        <Eye size={size} />
+      </span>
+      <span className="lorebook-context-icon lorebook-context-icon-eye-off" aria-hidden="true">
+        <EyeOff size={size} />
+      </span>
+    </>
+  );
+}
+
+function LorebookRow({ entry, selected, onSelect, onToggleContext, toggling, contextBusy, locked }) {
+  const preview = entry.description.trim() || "No description yet.";
+
+  return (
+    <li className={cx("lorebook-row", selected && "is-selected", entry.disabled && "is-disabled")}>
+      <button
+        type="button"
+        className="lorebook-row-main"
+        onClick={onSelect}
+        aria-current={selected ? "true" : undefined}
+        aria-label={`Open ${entry.name}`}
+      >
+        <span className="lorebook-row-name">{entry.name}</span>
+        <span className="lorebook-row-preview">{preview}</span>
+      </button>
+
+      <button
+        type="button"
+        className={cx("lorebook-context-button", CONTROL_MOTION, entry.disabled && "is-disabled")}
+        onClick={onToggleContext}
+        disabled={locked || contextBusy}
+        aria-pressed={!entry.disabled}
+        aria-busy={toggling}
+        aria-label={entry.disabled ? `Include ${entry.name} in context` : `Exclude ${entry.name} from context`}
+        title={entry.disabled ? "Include in context" : "Exclude from context"}
+      >
+        <ContextIcons />
+      </button>
+    </li>
+  );
+}
+
+function LorebookEntryPage({
+  draft,
+  entry,
+  editing,
+  dirty,
+  pendingChange,
+  saving,
+  deleting,
+  error,
+  locked,
+  wideLayout,
+  togglingContext,
+  contextBusy,
+  onChange,
+  onSubmit,
+  onDelete,
+  onDiscard,
+  onClose,
+  onToggleContext,
+  onDiscardAndContinue,
+  onKeepEditing,
+  onGenerateEntry,
+  onApplyGenerated,
+  chapters,
+  activeChapterId,
+}) {
+  const [generateOpen, setGenerateOpen] = useState(false);
+  const { tabsRef, pillRef } = useSlidingTabs(draft.category, ENTRY_CATEGORY_OPTIONS.length);
+  const descriptionRef = useRef(null);
+
+  const showAliases = !["note", "synopsis"].includes(draft.category);
+  const showNotes = !["character", "note", "synopsis"].includes(draft.category);
+  const categoryLabel = ENTRY_CATEGORY_OPTIONS.find((option) => option.id === draft.category)?.label || "entry";
+  const hasDraftText = draftHasText(draft);
+  const submitLabel = saving ? "Saving..." : editing ? "Save entry" : "Create entry";
+  const { shownText: shownSubmitLabel, textRef: submitLabelRef } = useTextSwap(submitLabel);
+  const statusText = locked
+    ? "Locked while the model is writing"
+    : dirty
+      ? "Unsaved changes"
+      : editing
+        ? "All changes saved"
+        : "New entry";
+
+  useEffect(() => {
+    const textarea = descriptionRef.current;
+    if (!textarea) return;
+
+    textarea.style.height = "auto";
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  }, [draft.description, draft.category]);
+
+  return (
+    <form
+      onSubmit={onSubmit}
+      className="lorebook-entry-page"
+      aria-label={editing ? "Edit lorebook entry" : "Create lorebook entry"}
+    >
+      <div className="lorebook-entry-scroll">
+        <div className="lorebook-entry-body">
+          {!wideLayout && (
+            <button type="button" onClick={onClose} className={cx("lorebook-page-back", CONTROL_MOTION)}>
+              <ArrowLeft size={15} />
+              All entries
+            </button>
+          )}
+
+          <div className="lorebook-reveal lorebook-entry-heading">
+            <input
+              id="lorebook-entry-name"
+              className="lorebook-name-input"
+              aria-label="Entry name"
+              autoFocus={!editing}
+              value={draft.name}
+              onChange={(event) => onChange("name", event.target.value)}
+              placeholder="Untitled entry"
+              disabled={locked}
+              data-1p-ignore="true"
+            />
+
+            {entry && (
+              <button
+                type="button"
+                className={cx("lorebook-context-chip", CONTROL_MOTION, entry.disabled && "is-disabled")}
+                onClick={onToggleContext}
+                disabled={locked || contextBusy}
+                aria-pressed={!entry.disabled}
+                aria-busy={togglingContext}
+                title={entry.disabled ? "Include in context" : "Exclude from context"}
+              >
+                <span className="lorebook-context-chip-icon">
+                  <ContextIcons size={14} />
+                </span>
+                {entry.disabled ? "Hidden from context" : "In context"}
+              </button>
+            )}
+          </div>
+
+          <div className="lorebook-reveal lorebook-category-row">
+            <div ref={tabsRef} className="lorebook-category-tabs t-tabs" role="tablist" aria-label="Entry category">
+              <span ref={pillRef} className="t-tabs-pill" aria-hidden="true" />
+              {ENTRY_CATEGORY_OPTIONS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  className="lorebook-category-tab t-tab"
+                  onClick={() => onChange("category", option.id)}
+                  role="tab"
+                  aria-selected={draft.category === option.id}
+                  disabled={locked}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <label className="lorebook-reveal lorebook-field is-description">
+            <span className="lorebook-field-label">Description</span>
+            <textarea
+              ref={descriptionRef}
+              value={draft.description}
+              onChange={(event) => onChange("description", event.target.value)}
+              placeholder={DESCRIPTION_PROMPTS[draft.category] || DESCRIPTION_PROMPTS.note}
+              disabled={locked}
+              rows={4}
+              data-1p-ignore="true"
+            />
+          </label>
+
+          {showAliases && (
+            <label className="lorebook-reveal lorebook-field">
+              <span className="lorebook-field-label">Aliases</span>
+              <input
+                value={draft.aliasesText}
+                onChange={(event) => onChange("aliasesText", event.target.value)}
+                placeholder="Nicknames, titles, other names this goes by"
+                disabled={locked}
+                data-1p-ignore="true"
+              />
+              <span className="lorebook-field-hint">Separate names with commas.</span>
+            </label>
+          )}
+
+          {showNotes && (
+            <label className="lorebook-reveal lorebook-field">
+              <span className="lorebook-field-label">Notes</span>
+              <textarea
+                value={draft.notes}
+                onChange={(event) => onChange("notes", event.target.value)}
+                placeholder="Extra structured details for this entry"
+                disabled={locked}
+                rows={3}
+                data-1p-ignore="true"
+              />
+            </label>
+          )}
+
+          {error && <div className="lorebook-form-error" role="alert">{error}</div>}
+        </div>
+      </div>
+
+      <footer className={cx("lorebook-entry-footer", pendingChange && "is-confirming")}>
+        {pendingChange ? (
+          <>
+            <p className="lorebook-footer-status is-warning" role="status">
+              Discard your unsaved changes?
+            </p>
+            <div className="lorebook-footer-actions">
+              <button type="button" onClick={onKeepEditing} className={cx("lorebook-secondary-button", CONTROL_MOTION)}>
+                Keep editing
+              </button>
+              <button type="button" onClick={onDiscardAndContinue} className={cx("lorebook-danger-button", CONTROL_MOTION)}>
+                Discard
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="lorebook-footer-left">
+              {editing && (
+                <button
+                  type="button"
+                  className={cx("lorebook-delete-button", CONTROL_MOTION)}
+                  onClick={onDelete}
+                  disabled={deleting || saving || locked}
+                >
+                  {deleting ? "Deleting..." : "Delete entry"}
+                </button>
+              )}
+              <p className={cx("lorebook-footer-status", dirty && "is-dirty")}>{statusText}</p>
+            </div>
+
+            <div className="lorebook-footer-actions">
+              {onGenerateEntry && !editing && (
+                <button
+                  type="button"
+                  onClick={() => setGenerateOpen(true)}
+                  disabled={hasDraftText || saving || locked}
+                  className={cx("lorebook-secondary-button", CONTROL_MOTION)}
+                >
+                  <WandSparkles size={15} />
+                  Generate entry
+                </button>
+              )}
+              {(dirty || !editing) && (
+                <button type="button" onClick={onDiscard} className={cx("lorebook-secondary-button", CONTROL_MOTION)}>
+                  {editing ? "Discard changes" : "Cancel"}
+                </button>
+              )}
+              <button
+                type="submit"
+                disabled={!hasDraftText || saving || locked || (editing && !dirty)}
+                className={cx("lorebook-primary-button", CONTROL_MOTION)}
+              >
+                <span ref={submitLabelRef} className="t-text-swap" data-text={shownSubmitLabel}>
+                  {shownSubmitLabel}
+                </span>
+              </button>
+            </div>
+          </>
+        )}
+      </footer>
+
+      <GenerateEntryModal
+        open={generateOpen}
+        category={draft.category}
+        categoryLabel={categoryLabel}
+        onClose={() => setGenerateOpen(false)}
         chapters={chapters}
         activeChapterId={activeChapterId}
-        locked={locked}
+        onGenerate={(brief, onEvent, chapterId) => (
+          onGenerateEntry(draft.category, brief, onEvent, chapterId)
+        )}
+        onApply={onApplyGenerated}
       />
-    </>
+    </form>
   );
 }
 
@@ -666,6 +1154,16 @@ function TimelineCanvas({ entry, locked, saving, onSave, onRepair, onRepairLoreb
   }, [entry?.id, entry?.description]);
 
   const changed = timelineText !== savedTextRef.current;
+  const eventCount = countTimelineEvents(timelineText);
+  const saveLabel = saving ? "Saving..." : "Save timeline";
+  const { shownText: shownSaveLabel, textRef: saveLabelRef } = useTextSwap(saveLabel);
+  const statusText = locked
+    ? "Timeline locked while the model is writing"
+    : saving
+      ? "Saving timeline"
+      : changed
+        ? "Unsaved changes"
+        : "All changes saved";
 
   async function handleSave() {
     const saved = await onSave(timelineText);
@@ -724,15 +1222,18 @@ function TimelineCanvas({ entry, locked, saving, onSave, onRepair, onRepairLoreb
   return (
     <>
       <section className="lorebook-timeline-canvas">
-        <textarea
-          value={timelineText}
-          onChange={(event) => setTimelineText(event.target.value)}
-          disabled={locked || saving || repairStage === "running"}
-          placeholder="- Add the first durable timeline event"
-          spellCheck="true"
-          data-1p-ignore="true"
-        />
-        <div className="lorebook-timeline-footer">
+        <aside className="lorebook-timeline-side">
+          <div className="lorebook-timeline-intro">
+            <h2>Timeline</h2>
+            <p>
+              One event per line, in the order things happen. The model reads this to keep the story
+              straight.
+            </p>
+            <p className="lorebook-timeline-count">
+              {eventCount} {eventCount === 1 ? "event" : "events"}
+            </p>
+          </div>
+
           <div className="lorebook-timeline-actions">
             <button
               type="button"
@@ -740,14 +1241,22 @@ function TimelineCanvas({ entry, locked, saving, onSave, onRepair, onRepairLoreb
               disabled={!changed || locked || saving}
               className={cx("lorebook-primary-button", CONTROL_MOTION)}
             >
-              {saving ? "Saving..." : "Save timeline"}
+              <span ref={saveLabelRef} className="t-text-swap" data-text={shownSaveLabel}>
+                {shownSaveLabel}
+              </span>
             </button>
+            <p className={cx("lorebook-footer-status", changed && !saving && "is-dirty")}>{statusText}</p>
+          </div>
+
+          <div className="lorebook-timeline-repairs">
+            <p className="lorebook-timeline-repairs-label">Rebuild with the model</p>
             <button
               type="button"
               onClick={openRepair}
               disabled={locked || saving}
-              className={cx("lorebook-primary-button", CONTROL_MOTION)}
+              className={cx("lorebook-secondary-button", CONTROL_MOTION)}
             >
+              <WandSparkles size={15} />
               Repair timeline
             </button>
             <RepairLorebookButton
@@ -756,9 +1265,18 @@ function TimelineCanvas({ entry, locked, saving, onSave, onRepair, onRepairLoreb
               onRepair={onRepairLorebook}
             />
           </div>
-          {(locked || saving) && (
-            <span>{locked ? "timeline locked while the model is writing" : "saving timeline"}</span>
-          )}
+        </aside>
+
+        <div className="lorebook-timeline-document">
+          <textarea
+            value={timelineText}
+            onChange={(event) => setTimelineText(event.target.value)}
+            disabled={locked || saving || repairStage === "running"}
+            placeholder="- Add the first durable timeline event"
+            aria-label="Timeline"
+            spellCheck="true"
+            data-1p-ignore="true"
+          />
         </div>
       </section>
 
@@ -800,360 +1318,5 @@ function TimelineCanvas({ entry, locked, saving, onSave, onRepair, onRepairLoreb
         onClose={closeRepair}
       />
     </>
-  );
-}
-
-function LorebookCard({ entry, onEdit, onToggleContext, toggling, contextBusy, locked }) {
-  function handleKeyDown(event) {
-    if (event.key !== "Enter" && event.key !== " ") return;
-
-    event.preventDefault();
-    onEdit();
-  }
-
-  return (
-    <article className={cx("lorebook-card", entry.disabled && "is-disabled")}>
-      <div
-        className="lorebook-card-content"
-        role="button"
-        tabIndex={locked ? -1 : 0}
-        aria-label={`Edit ${entry.name}`}
-        aria-disabled={locked}
-        onClick={onEdit}
-        onKeyDown={handleKeyDown}
-      >
-        <h2>{entry.name}</h2>
-
-        <p>{entry.description || "No description yet."}</p>
-      </div>
-
-      <button
-        type="button"
-        className={cx("lorebook-context-button", CONTROL_MOTION, entry.disabled && "is-disabled")}
-        onClick={onToggleContext}
-        disabled={locked || contextBusy}
-        aria-pressed={!entry.disabled}
-        aria-busy={toggling}
-        aria-label={entry.disabled ? `Include ${entry.name} in context` : `Exclude ${entry.name} from context`}
-        title={entry.disabled ? "Include in context" : "Exclude from context"}
-      >
-        <span className="lorebook-context-icon lorebook-context-icon-eye" aria-hidden="true">
-          <Eye size={17} />
-        </span>
-        <span className="lorebook-context-icon lorebook-context-icon-eye-off" aria-hidden="true">
-          <EyeOff size={17} />
-        </span>
-      </button>
-    </article>
-  );
-}
-
-function LorebookEditorModal({
-  open,
-  draft,
-  editing,
-  saving,
-  deleting,
-  error,
-  onChange,
-  onClose,
-  onSubmit,
-  onDelete,
-  onGenerateEntry,
-  onApplyGenerated,
-  chapters,
-  activeChapterId,
-  locked,
-}) {
-  const [rendered, setRendered] = useState(open);
-  const [modalState, setModalState] = useState(open ? "open" : "closed");
-  const [generateOpen, setGenerateOpen] = useState(false);
-  const [detailsOpen, setDetailsOpen] = useState(false);
-  const [bodyHeight, setBodyHeight] = useState(null);
-  const [bodyResizing, setBodyResizing] = useState(false);
-  const [bodyTracking, setBodyTracking] = useState(false);
-  const bodyInnerRef = useRef(null);
-  const measuredHeightRef = useRef(null);
-  const bodyResizeTimeoutRef = useRef(null);
-  const { tabsRef, pillRef } = useSlidingTabs(draft.category, ENTRY_CATEGORY_OPTIONS.length, rendered);
-
-  useEffect(() => {
-    if (open) {
-      setRendered(true);
-      requestAnimationFrame(() => setModalState("open"));
-      return undefined;
-    }
-
-    if (!rendered) return undefined;
-
-    setModalState("closing");
-    const closeMs = parseFloat(
-      getComputedStyle(document.documentElement).getPropertyValue("--modal-close-dur"),
-    ) || 150;
-    const timeoutId = window.setTimeout(() => {
-      setRendered(false);
-      setModalState("closed");
-      setGenerateOpen(false);
-      setDetailsOpen(false);
-      setBodyHeight(null); //the next open measures fresh instead of tweening from the old category
-    }, closeMs);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [open, rendered]);
-
-  /* while the box tweens toward a taller stack the new fields stick out past it, so scrolling stays
-  off until the tween lands and no scrollbar can flicker in and out on the way */
-  function markBodyResizing() {
-    setBodyResizing(true);
-    window.clearTimeout(bodyResizeTimeoutRef.current);
-    bodyResizeTimeoutRef.current = window.setTimeout(() => setBodyResizing(false), BODY_RESIZE_MS + 40);
-  }
-
-  /* switching category adds or drops whole fields, so the body is pinned to whatever the current
-  fields measure and tweens between the two heights instead of snapping */
-  useLayoutEffect(() => {
-    const inner = bodyInnerRef.current;
-    if (!inner) return undefined;
-
-    function syncBodyHeight() {
-      const nextHeight = inner.offsetHeight; //offsetHeight, not a rect, the modal is mid scale transform while it opens
-      const previousHeight = measuredHeightRef.current;
-      measuredHeightRef.current = nextHeight;
-      setBodyHeight(nextHeight);
-
-      if (previousHeight === null || previousHeight === nextHeight) return;
-
-      markBodyResizing();
-    }
-
-    syncBodyHeight();
-
-    const observer = new ResizeObserver(syncBodyHeight);
-    observer.observe(inner);
-    return () => {
-      observer.disconnect();
-      window.clearTimeout(bodyResizeTimeoutRef.current);
-      measuredHeightRef.current = null;
-      setBodyResizing(false);
-    };
-  }, [rendered]);
-
-  /* the details panel runs its own open and close tween, so for that stretch the body tracks it
-  frame for frame instead of easing toward it and dragging the footer along late */
-  useEffect(() => {
-    if (!rendered) return undefined;
-
-    setBodyTracking(true);
-    const timeoutId = window.setTimeout(() => setBodyTracking(false), DETAILS_TWEEN_MS + 40);
-    return () => window.clearTimeout(timeoutId);
-  }, [detailsOpen, rendered]);
-
-  useEffect(() => {
-    if (!open) return;
-
-    setDetailsOpen(Boolean(draft.aliasesText.trim() || draft.notes.trim()));
-  }, [open]);
-
-  /* the header shows an Esc affordance instead of a close glyph, so the key has to do the job. the
-  generator sits on top of this one and owns Esc for as long as it is open */
-  useEffect(() => {
-    if (!open || generateOpen) return undefined;
-
-    function handleKeyDown(event) {
-      if (event.key !== "Escape") return;
-
-      event.preventDefault();
-      onClose();
-    }
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [open, generateOpen, onClose]);
-
-  if (!rendered) return null;
-
-  const showAliases = !["note", "synopsis"].includes(draft.category);
-  const showNotes = !["character", "note", "synopsis"].includes(draft.category);
-  const categoryLabel = ENTRY_CATEGORY_OPTIONS.find((option) => option.id === draft.category)?.label || "entry";
-  const hasDraftText = draftHasText(draft);
-
-  return createPortal(
-    <div className="lorebook-modal-guard fixed inset-0 z-[80] grid place-items-center bg-black/60 px-3 py-4 backdrop-blur-sm sm:px-6">
-      <button
-        type="button"
-        className="absolute inset-0 cursor-default"
-        aria-label="Close lorebook editor"
-        onClick={onClose}
-      />
-      <form
-        onSubmit={onSubmit}
-        className={cx(
-          "lorebook-modal lorebook-editor-modal t-modal",
-          modalState === "open" && "is-open",
-          modalState === "closing" && "is-closing",
-        )}
-        aria-modal="true"
-        aria-label={editing ? "Edit lorebook entry" : "Create lorebook entry"}
-      >
-        <header>
-          <div className="lorebook-editor-heading">
-            <input
-              id="lorebook-entry-name"
-              className="lorebook-name-input"
-              aria-label="Entry name"
-              autoFocus
-              value={draft.name}
-              onChange={(event) => onChange("name", event.target.value)}
-              placeholder="Untitled entry"
-              disabled={locked}
-              data-1p-ignore="true"
-            />
-          </div>
-        </header>
-
-        <div
-          className={cx(
-            "lorebook-modal-body t-resize",
-            bodyResizing && "is-resizing",
-            bodyTracking && "is-tracking",
-          )}
-          style={bodyHeight === null ? undefined : { height: `${bodyHeight}px` }}
-        >
-          <div ref={bodyInnerRef} className="lorebook-editor-body-inner">
-            <div className="lorebook-category-row">
-              <div ref={tabsRef} className="lorebook-category-tabs t-tabs" role="tablist" aria-label="Entry category">
-                <span ref={pillRef} className="t-tabs-pill" aria-hidden="true" />
-                {ENTRY_CATEGORY_OPTIONS.map((option) => {
-                  const selected = draft.category === option.id;
-
-                  return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      className="lorebook-category-tab t-tab"
-                      onClick={() => {
-                        markBodyResizing(); //a frame late here is a frame of scrollbar, and the pill measures against it
-                        onChange("category", option.id);
-                      }}
-                      role="tab"
-                      aria-selected={selected}
-                      disabled={locked}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <label className="lorebook-field">
-              <span className="lorebook-field-label">Description</span>
-              <textarea
-                value={draft.description}
-                onChange={(event) => onChange("description", event.target.value)}
-                placeholder={DESCRIPTION_PROMPTS[draft.category] || DESCRIPTION_PROMPTS.note}
-                disabled={locked}
-                data-1p-ignore="true"
-              />
-            </label>
-
-            {(showAliases || showNotes) && (
-              <div className="lorebook-details t-acc" data-open={String(detailsOpen && !locked)}>
-                <button
-                  type="button"
-                  className="lorebook-details-trigger t-acc-head"
-                  onClick={() => setDetailsOpen((wasOpen) => !wasOpen)}
-                  aria-expanded={detailsOpen && !locked}
-                  aria-controls="lorebook-details-panel"
-                  disabled={locked}
-                >
-                  <span className="lorebook-field-label">Details</span>
-                  <span className="lorebook-details-state">{detailsOpen && !locked ? "Hide" : "Show"}</span>
-                </button>
-                <div id="lorebook-details-panel" className="t-acc-panel">
-                  <div className="t-acc-panel-inner">
-                    <div className="lorebook-details-panel">
-                      {showAliases && <label className="lorebook-field">
-                        <span className="lorebook-field-label">Aliases</span>
-                        <input
-                          value={draft.aliasesText}
-                          onChange={(event) => onChange("aliasesText", event.target.value)}
-                          placeholder="Nicknames, titles, other names this goes by"
-                          disabled={locked}
-                          data-1p-ignore="true"
-                        />
-                      </label>}
-
-                      {showNotes && <label className="lorebook-field is-stacked">
-                        <span className="lorebook-field-label">Notes</span>
-                        <textarea
-                          value={draft.notes}
-                          onChange={(event) => onChange("notes", event.target.value)}
-                          placeholder="Extra structured details for this entry"
-                          disabled={locked}
-                          data-1p-ignore="true"
-                        />
-                      </label>}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {error && <div className="lorebook-form-error">{error}</div>}
-          </div>
-        </div>
-
-        <footer>
-          {editing && (
-            <button
-              type="button"
-              className={cx("lorebook-delete-button", CONTROL_MOTION)}
-              onClick={onDelete}
-              disabled={deleting || saving || locked}
-            >
-              {deleting ? "Deleting..." : "Delete entry"}
-            </button>
-          )}
-          <div className="lorebook-footer-actions">
-            <button type="button" onClick={onClose} className={cx("lorebook-secondary-button", CONTROL_MOTION)}>
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={!hasDraftText || saving || locked}
-              className={cx("lorebook-primary-button", CONTROL_MOTION)}
-            >
-              {saving ? "Saving..." : editing ? "Save entry" : "Create entry"}
-            </button>
-            {/* generating is for a blank entry, an entry that already exists has words worth keeping */}
-            {onGenerateEntry && !editing && (
-              <button
-                type="button"
-                onClick={() => setGenerateOpen(true)}
-                disabled={hasDraftText || saving || locked}
-                className={cx("lorebook-generate-button", CONTROL_MOTION)}
-              >
-                Generate entry
-              </button>
-            )}
-          </div>
-        </footer>
-      </form>
-
-      <GenerateEntryModal
-        open={generateOpen}
-        category={draft.category}
-        categoryLabel={categoryLabel}
-        onClose={() => setGenerateOpen(false)}
-        chapters={chapters}
-        activeChapterId={activeChapterId}
-        onGenerate={(brief, onEvent, chapterId) => (
-          onGenerateEntry(draft.category, brief, onEvent, chapterId)
-        )}
-        onApply={onApplyGenerated}
-      />
-    </div>,
-    document.body,
   );
 }

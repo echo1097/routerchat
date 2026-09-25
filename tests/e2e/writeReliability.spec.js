@@ -956,7 +956,7 @@ test("confirms timeline repair, streams thinking, and keeps the dialog open unti
   const repairButton = page.getByRole("button", { name: "Repair timeline" });
   const saveBox = await saveButton.boundingBox();
   const repairBox = await repairButton.boundingBox();
-  expect(repairBox?.x).toBeGreaterThan(saveBox?.x || 0);
+  expect(repairBox?.y).toBeGreaterThan(saveBox?.y || 0);
   expect(Math.abs((repairBox?.width || 0) - (saveBox?.width || 0))).toBeLessThan(1);
 
   await repairButton.click();

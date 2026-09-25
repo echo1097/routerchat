@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from backend.reasoning_effort import LenientReasoningEffort, ReasoningEffort
 from backend.attachments import (
     attachment_content_parts,
     claim_attachments,
@@ -53,7 +54,7 @@ class StoryCreateRequest(BaseModel):
     temperature: float = 0.7
     max_tokens: int = DEFAULT_MAX_TOKENS
     thinking_enabled: bool = False
-    reasoning_effort: str = "medium"
+    reasoning_effort: ReasoningEffort = "medium"
     temporary: bool = False
     lorebook_auto: bool = False
     lorebook_model: str = ""
@@ -69,7 +70,7 @@ class StoryPatchRequest(BaseModel):
     temperature: float | None = None
     max_tokens: int | None = None
     thinking_enabled: bool | None = None
-    reasoning_effort: str | None = None
+    reasoning_effort: ReasoningEffort | None = None
     lorebook_auto: bool | None = None
     lorebook_model: str | None = None
 
@@ -107,7 +108,7 @@ class StoryArchiveStory(BaseModel):
     temperature: float = 0.7
     max_tokens: int = Field(default=DEFAULT_MAX_TOKENS, gt=0)
     thinking_enabled: bool = False
-    reasoning_effort: str = "medium"
+    reasoning_effort: LenientReasoningEffort = "medium"
     lorebook_auto: bool = False
     lorebook_model: str = ""
     created_at: str = ""
@@ -185,7 +186,7 @@ class WritingDeps:
     prompt_cache_control: Callable[[], dict[str, Any] | None]
     model_supports_reasoning: Callable[[str], bool]
     effective_thinking_enabled: Callable[[str, bool], bool]
-    enabled_reasoning_config: Callable[[str, bool, str], dict[str, Any] | None]
+    enabled_reasoning_config: Callable[[str, bool, ReasoningEffort], dict[str, Any] | None]
     model_supports_structured_output: Callable[[str], bool]
     openrouter_error_message: Callable[[int, str], str]
     normalize_usage: Callable[[dict[str, Any] | None], dict[str, Any] | None]

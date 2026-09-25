@@ -13,6 +13,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from backend.lorebook_usage import LorebookUsage
+from backend.reasoning_effort import ReasoningEffort
 
 
 OPENROUTER_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=10.0)
@@ -40,7 +41,7 @@ class LorebookDeps:
     openrouter_request_model: Callable[[str, bool], str]
     openrouter_provider_options: Callable[[], dict[str, Any] | None]
     effective_thinking_enabled: Callable[[str, bool], bool]
-    enabled_reasoning_config: Callable[[str, bool, str], dict[str, Any] | None]
+    enabled_reasoning_config: Callable[[str, bool, ReasoningEffort], dict[str, Any] | None]
     model_supports_structured_output: Callable[[str], bool]
     openrouter_error_message: Callable[[int, str], str]
     normalize_usage: Callable[[dict[str, Any] | None], dict[str, Any] | None]

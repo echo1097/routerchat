@@ -13,7 +13,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, AsyncIterator, Literal
+from typing import Any, AsyncIterator
 from urllib.parse import parse_qs
 
 import httpx
@@ -56,6 +56,7 @@ from backend.lorebook import LorebookDeps, create_lorebook_router
 from backend.lorebook_generate import create_lorebook_generate_router
 from backend.lorebook_repair import create_lorebook_repair_router
 from backend.local_access import read_secret_file, validate_base_url
+from backend.reasoning_effort import ReasoningEffort, coerce_reasoning_effort
 from backend.writing import (
     WritingDeps,
     create_writing_router,
@@ -104,7 +105,6 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_MAX_TOKENS = 30000
 OPENROUTER_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=10.0)
 DEFAULT_MODEL_ID = "anthropic/claude-sonnet-5"
-ReasoningEffort = Literal["low", "medium", "high", "max", "xhigh"]
 
 
 def resolve_user_data_paths(
@@ -1460,12 +1460,6 @@ def row_to_message(row: sqlite3.Row) -> dict[str, Any]:
 
 def coerce_bool_int(value: Any) -> int:
     return int(bool(value))
-
-
-def coerce_reasoning_effort(value: Any) -> ReasoningEffort:
-    if value == "xhigh":
-        return "max"
-    return value if value in {"low", "medium", "high", "max"} else "medium"
 
 
 def api_reasoning_effort(value: ReasoningEffort) -> str:

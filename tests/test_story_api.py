@@ -1287,6 +1287,24 @@ class StoryApiTest(unittest.TestCase):
         importedBundle = self.client.get(f"/api/stories/{imported['story_id']}").json()
         self.assertEqual(importedBundle["story"]["lorebook_model"], "test/lorebook-keeper")
 
+    def test_story_reasoning_effort_only_accepts_known_levels(self):
+        rejected = self.client.post(
+            "/api/stories", json={"title": "Bad Effort", "reasoning_effort": "banana"}
+        )
+        self.assertEqual(rejected.status_code, 422)
+
+        story = self.client.post("/api/stories", json={"title": "Good Effort"}).json()["story"]
+        patched = self.client.patch(
+            f"/api/stories/{story['id']}", json={"reasoning_effort": "banana"}
+        )
+        self.assertEqual(patched.status_code, 422)
+
+        archive = self.client.get(f"/api/stories/{story['id']}/export").json()
+        archive["story"]["reasoning_effort"] = "banana"
+        imported = self.client.post("/api/stories/import", json=archive).json()
+        importedBundle = self.client.get(f"/api/stories/{imported['story_id']}").json()
+        self.assertEqual(importedBundle["story"]["reasoning_effort"], "medium")
+
     def test_a_new_story_starts_on_the_global_model(self):
         story = self.client.post("/api/stories", json={"title": "Fresh"}).json()["story"]
         self.assertEqual(story["lorebook_model"], "")

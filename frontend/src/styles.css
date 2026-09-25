@@ -2738,7 +2738,7 @@ typography exactly or the swap at the end of a generation shows a seam */
   }
 
   .adaptive-composer [data-tour="model-button"] {
-    max-width: 64px;
+    max-width: 96px;
   }
 }
 

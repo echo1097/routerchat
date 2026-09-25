@@ -8,10 +8,12 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
-from backend.attachments import (
-    chat_has_pdf_attachment,
+from backend.attachments.attachmentCleanup import (
     claim_attachments,
     delete_attachments_for_missing_messages,
+)
+from backend.attachments.attachmentContent import (
+    chat_has_pdf_attachment,
     pdf_parser_plugins,
 )
 from backend.chats.buildMessages import build_openrouter_messages
@@ -40,7 +42,7 @@ from backend.providers.openrouter.requestOptions import (
     prompt_cache_control,
 )
 from backend.providers.openrouter.usage import fetch_generation_usage, normalize_usage
-from backend.websearch import (
+from backend.webSearch.sources import (
     merge_sources,
     normalize_sources,
     serialize_sources,

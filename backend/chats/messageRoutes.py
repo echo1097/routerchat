@@ -5,7 +5,9 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from backend.attachments import delete_attachments_for_missing_messages
+from backend.attachments.attachmentCleanup import (
+    delete_attachments_for_missing_messages,
+)
 from backend.chats.chatModels import MessageUpdateRequest
 from backend.chats.chatRoutes import get_chat
 from backend.chats.chatTitles import chat_title_from_message

@@ -13,7 +13,9 @@ import backend.tos.loadTos as loadTos
 import backend.tos.tosAcceptance as tosAcceptance
 import backend.core.migrations as migrations
 import backend.core.paths as paths
-import backend.websearch as websearch
+import backend.webSearch.faviconFetch as faviconFetch
+import backend.webSearch.faviconSafety as faviconSafety
+import backend.webSearch.sources as sources
 from backend.local_access import create_secret_file
 
 
@@ -136,7 +138,7 @@ class WebSearchToggleTest(WebSearchHarness, unittest.TestCase):
         body = self.streamMessage(chat["id"], web_search_enabled=True)
         self.assertEqual(
             body["plugins"],
-            [{"id": "web", "max_results": websearch.WEB_SEARCH_MAX_RESULTS}],
+            [{"id": "web", "max_results": sources.WEB_SEARCH_MAX_RESULTS}],
         )
 
     def test_web_search_rides_alongside_the_pdf_parser(self):
@@ -272,7 +274,7 @@ class SourceCaptureTest(WebSearchHarness, unittest.TestCase):
 
 class SourceNormalizationTest(unittest.TestCase):
     def test_it_keeps_only_usable_web_citations(self):
-        normalized = websearch.normalize_sources(
+        normalized = sources.normalize_sources(
             [
                 {"url_citation": {"url": "https://example.com/a", "title": "A"}},
                 {"url_citation": {"url": "ftp://example.com/b", "title": "B"}},
@@ -287,26 +289,26 @@ class SourceNormalizationTest(unittest.TestCase):
         )
 
     def test_merging_drops_repeats_and_keeps_order(self):
-        first = websearch.normalize_sources(
+        first = sources.normalize_sources(
             [{"url_citation": {"url": "https://a.com/1", "title": "one"}}]
         )
-        second = websearch.normalize_sources(
+        second = sources.normalize_sources(
             [
                 {"url_citation": {"url": "https://a.com/1", "title": "one again"}},
                 {"url_citation": {"url": "https://b.com/2", "title": "two"}},
             ]
         )
-        merged = websearch.merge_sources(first, second)
+        merged = sources.merge_sources(first, second)
         self.assertEqual([source["url"] for source in merged], ["https://a.com/1", "https://b.com/2"])
 
     def test_a_broken_stored_value_reads_back_as_no_sources(self):
-        self.assertEqual(websearch.deserialize_sources("{not json"), [])
-        self.assertEqual(websearch.deserialize_sources(None), [])
+        self.assertEqual(sources.deserialize_sources("{not json"), [])
+        self.assertEqual(sources.deserialize_sources(None), [])
 
 
 class FaviconDomainTest(unittest.TestCase):
     def test_it_accepts_a_plain_hostname(self):
-        self.assertEqual(websearch.safe_favicon_domain("Support.Google.com."), "support.google.com")
+        self.assertEqual(faviconSafety.safe_favicon_domain("Support.Google.com."), "support.google.com")
 
     def test_it_refuses_anything_that_could_reach_the_local_network(self):
         for hostile in [
@@ -323,7 +325,7 @@ class FaviconDomainTest(unittest.TestCase):
             "singlelabel",
         ]:
             with self.subTest(hostile=hostile):
-                self.assertIsNone(websearch.safe_favicon_domain(hostile))
+                self.assertIsNone(faviconSafety.safe_favicon_domain(hostile))
 
 
 ICON_BYTES = b"\x00\x00\x01\x00fake icon"
@@ -360,7 +362,7 @@ def fakeFaviconClient(responses, calls):
 class FaviconRouteTest(WebSearchHarness, unittest.TestCase):
     def fetchFavicon(self, domain, responses, calls):
         with patch(
-            "backend.websearch.httpx.AsyncClient", fakeFaviconClient(responses, calls)
+            "backend.webSearch.faviconFetch.httpx.AsyncClient", fakeFaviconClient(responses, calls)
         ):
             return self.client.get(f"/api/favicon?domain={domain}")
 
@@ -427,7 +429,7 @@ class FaviconRouteTest(WebSearchHarness, unittest.TestCase):
         responses = {
             "https://example.com/favicon.ico": {
                 "headers": {"content-type": "image/png"},
-                "content": b"x" * (websearch.FAVICON_MAX_BYTES + 1),
+                "content": b"x" * (faviconFetch.FAVICON_MAX_BYTES + 1),
             },
             "https://example.com/": {"status": 500, "headers": {}},
         }

@@ -3,9 +3,9 @@ from __future__ import annotations
 from dotenv import load_dotenv
 from fastapi import FastAPI
 
-from backend.attachments import AttachmentsDeps, create_attachments_router
+from backend.attachments import attachmentRoutes
 from backend.brainstorm import BrainstormDeps, create_brainstorm_router
-from backend.changelog_status import ChangelogStatusDeps, create_changelog_status_router
+from backend.changelog import changelogRoutes
 from backend.chats import (
     chatImportExport,
     chatRoutes,
@@ -17,7 +17,6 @@ from backend.chats import (
 from backend.chats.chatModels import StreamMessageRequest
 from backend.chats.systemPrompts import writeSystemPrompt
 from backend.core import paths
-from backend.core.appSettings import read_app_setting, write_app_setting
 from backend.core.database import get_db
 from backend.core.paths import APP_VERSION
 from backend.core.schema import init_db
@@ -49,9 +48,9 @@ from backend.security.apiSecurity import enforce_local_api_security
 from backend.security.localAccessConfig import local_access_config
 from backend.settings import settingsRoutes
 from backend.tos import tosRoutes
-from backend.transcription import createTranscriptionRouter
-from backend.usage import createUsageRouter
-from backend.websearch import WebSearchDeps, create_web_search_router
+from backend.transcription import transcriptionRoutes
+from backend.usage import usageRoutes
+from backend.webSearch import faviconRoutes
 from backend.writing import (
     WritingDeps,
     create_writing_router,
@@ -150,33 +149,15 @@ brainstormDeps = BrainstormDeps(
     openrouter_base_url=OPENROUTER_BASE_URL,
 )
 
-webSearchDeps = WebSearchDeps(get_db=get_db, utc_now=utc_now)
-app.include_router(create_web_search_router(webSearchDeps))
-app.include_router(createUsageRouter(get_db, read_app_setting))
-
-attachmentsDeps = AttachmentsDeps(
-    get_db=get_db,
-    utc_now=utc_now,
-    data_dir=lambda: paths.DATA_DIR,
-)
-
-changelogStatusDeps = ChangelogStatusDeps(
-    read_app_setting=read_app_setting,
-    write_app_setting=write_app_setting,
-    app_version=APP_VERSION,
-)
-
-app.include_router(create_attachments_router(attachmentsDeps))
+app.include_router(faviconRoutes.router)
+app.include_router(usageRoutes.router)
+app.include_router(attachmentRoutes.router)
 app.include_router(create_writing_router(writingDeps, lorebookDeps))
-app.include_router(create_changelog_status_router(changelogStatusDeps))
+app.include_router(changelogRoutes.router)
 app.include_router(create_lorebook_router(lorebookDeps))
 app.include_router(create_lorebook_repair_router(lorebookDeps))
 app.include_router(create_lorebook_generate_router(lorebookDeps))
 app.include_router(create_brainstorm_router(brainstormDeps))
-
-app.include_router(createTranscriptionRouter(
-    read_openrouter_key, read_app_setting, write_app_setting, headers_for_key, OPENROUTER_BASE_URL,
-    get_db, utc_now,
-))
+app.include_router(transcriptionRoutes.router)
 
 configure_static_files(app, paths.STATIC_DIR)

@@ -19,7 +19,7 @@ from backend.core.migrations import (
     ensureGenerationSettledColumn,
 )
 from backend.lorebook_usage import ensureLorebookUsageTable
-from backend.transcription import ensureTranscriptionUsageTable
+from backend.transcription.transcriptionUsage import ensureTranscriptionUsageTable
 
 
 def init_db() -> None:

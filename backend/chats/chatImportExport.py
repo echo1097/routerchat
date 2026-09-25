@@ -12,7 +12,7 @@ from backend.core.reasoningEffort import coerce_reasoning_effort
 from backend.core.utils import coerce_bool_int, float_or_none, int_or_none, utc_now
 from backend.providers.openrouter.client import DEFAULT_MAX_TOKENS
 from backend.providers.openrouter.models import default_model_id
-from backend.websearch import normalize_sources, serialize_sources
+from backend.webSearch.sources import normalize_sources, serialize_sources
 
 router = APIRouter()
 

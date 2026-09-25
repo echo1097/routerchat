@@ -10,7 +10,8 @@ import httpx
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from backend.transcription import createTranscriptionRouter, ensureTranscriptionUsageTable
+from backend.transcription import transcriptionRoutes
+from backend.transcription.transcriptionUsage import ensureTranscriptionUsageTable
 
 
 class TranscriptionTest(unittest.TestCase):
@@ -21,17 +22,26 @@ class TranscriptionTest(unittest.TestCase):
         self.dbPath = Path(self.tempDir.name) / "usage.sqlite3"
         with closing(self.getDb()) as conn, conn:
             ensureTranscriptionUsageTable(conn)
+        replacements = {
+            "read_openrouter_key": lambda: "test-key",
+            "read_app_setting": self.settings.get,
+            "write_app_setting": self.settings.__setitem__,
+            "headers_for_key": lambda key: {"Authorization": f"Bearer {key}"},
+            "OPENROUTER_BASE_URL": "https://example.invalid",
+            "get_db": self.getDb,
+            "utc_now": lambda: "2026-09-09T12:00:00Z",
+        }
+        for name, value in replacements.items():
+            namePatch = patch.object(transcriptionRoutes, name, value)
+            namePatch.start()
+            self.addCleanup(namePatch.stop)
         app = FastAPI()
-        app.include_router(createTranscriptionRouter(
-            lambda: "test-key", self.settings.get, self.settings.__setitem__,
-            lambda key: {"Authorization": f"Bearer {key}"}, "https://example.invalid",
-            self.getDb, lambda: "2026-09-09T12:00:00Z",
-        ))
+        app.include_router(transcriptionRoutes.router)
         self.client = TestClient(app)
         self.provider = AsyncMock()
         self.provider.__aenter__.return_value = self.provider
         self.provider.request.return_value = httpx.Response(200, json={"text": "  Hello world  "})
-        self.clientPatch = patch("backend.transcription.httpx.AsyncClient", return_value=self.provider)
+        self.clientPatch = patch("backend.transcription.transcriptionRoutes.httpx.AsyncClient", return_value=self.provider)
         self.clientPatch.start()
         self.addCleanup(self.clientPatch.stop)
         self.addCleanup(self.client.close)

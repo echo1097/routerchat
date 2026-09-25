@@ -13,11 +13,12 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from backend.core.reasoningEffort import LenientReasoningEffort, ReasoningEffort
-from backend.attachments import (
-    attachment_content_parts,
+from backend.attachments.attachmentCleanup import (
     claim_attachments,
     delete_attachments_for_story,
+)
+from backend.attachments.attachmentContent import (
+    attachment_content_parts,
     has_pdf_attachment,
     pdf_parser_plugins,
 )
@@ -26,6 +27,7 @@ from backend.brainstorm import (
     row_to_brainstorm_edge,
     row_to_brainstorm_node,
 )
+from backend.core.reasoningEffort import LenientReasoningEffort, ReasoningEffort
 from backend.lorebook import (
     LorebookDeps,
     StoryArchiveLorebookEntry,
@@ -40,7 +42,6 @@ from backend.lorebook import (
     sanitize_lorebook_aliases,
     sanitize_lorebook_metadata,
 )
-
 
 DEFAULT_MAX_TOKENS = 30000
 OPENROUTER_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=10.0)

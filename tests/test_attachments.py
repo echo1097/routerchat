@@ -8,7 +8,9 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 from starlette.datastructures import UploadFile
 
-import backend.attachments as attachments
+import backend.attachments.attachmentCleanup as attachmentCleanup
+import backend.attachments.attachmentContent as attachmentContent
+import backend.attachments.attachmentFiles as attachmentFiles
 import backend.main as main
 import backend.chats.buildMessages as buildMessages
 import backend.tos.loadTos as loadTos
@@ -112,7 +114,7 @@ class AttachmentApiTest(unittest.TestCase):
         self.assertEqual(list((paths.DATA_DIR / "attachments").iterdir()), [])
 
     def test_upload_rejects_an_oversized_file(self):
-        oversized = b"x" * (attachments.MAX_TEXT_BYTES + 1)
+        oversized = b"x" * (attachmentFiles.MAX_TEXT_BYTES + 1)
         response = self.upload([("files", ("big.txt", oversized, "text/plain"))])
 
         self.assertEqual(response.status_code, 400)
@@ -134,7 +136,7 @@ class AttachmentApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["detail"], "big.txt is larger than 256KB.")
         self.assertTrue(readLengths)
-        self.assertLessEqual(sum(readLengths), attachments.MAX_TEXT_BYTES + 1)
+        self.assertLessEqual(sum(readLengths), attachmentFiles.MAX_TEXT_BYTES + 1)
         self.assertEqual(list((paths.DATA_DIR / "attachments").iterdir()), [])
 
     def testUploadSizeBoundariesForEveryKind(self):
@@ -142,7 +144,7 @@ class AttachmentApiTest(unittest.TestCase):
         originalRead = UploadFile.read
 
         for kind, filename in cases:
-            limit = attachments.KIND_LIMITS[kind]
+            limit = attachmentFiles.KIND_LIMITS[kind]
             for extraBytes in (0, 1, 1024):
                 with self.subTest(kind=kind, extraBytes=extraBytes):
                     readLengths = []
@@ -162,7 +164,7 @@ class AttachmentApiTest(unittest.TestCase):
                         self.assertEqual(response.status_code, 400)
                         self.assertEqual(
                             response.json()["detail"],
-                            f"{filename} is larger than {attachments.readable_size(limit)}.",
+                            f"{filename} is larger than {attachmentFiles.readable_size(limit)}.",
                         )
                     else:
                         self.assertEqual(response.status_code, 200, response.text)
@@ -175,7 +177,7 @@ class AttachmentApiTest(unittest.TestCase):
     def testRejectedUploadSizeCleansUpEarlierFiles(self):
         for body, detail in (
             (b"", "bad.txt is empty."),
-            (b"x" * (attachments.MAX_TEXT_BYTES + 1), "bad.txt is larger than 256KB."),
+            (b"x" * (attachmentFiles.MAX_TEXT_BYTES + 1), "bad.txt is larger than 256KB."),
         ):
             with self.subTest(detail=detail):
                 response = self.upload([
@@ -193,7 +195,7 @@ class AttachmentApiTest(unittest.TestCase):
     def test_upload_rejects_more_files_than_the_limit(self):
         payload = [
             ("files", (f"note{index}.txt", b"body", "text/plain"))
-            for index in range(attachments.MAX_FILES_PER_MESSAGE + 1)
+            for index in range(attachmentFiles.MAX_FILES_PER_MESSAGE + 1)
         ]
         response = self.upload(payload)
 
@@ -303,7 +305,7 @@ class AttachmentApiTest(unittest.TestCase):
                 self.assertEqual(response.headers["x-content-type-options"], "nosniff")
 
     def testRawAllowedImageTypesStayInline(self):
-        for extension, mime in attachments.IMAGE_TYPES.items():
+        for extension, mime in attachmentFiles.IMAGE_TYPES.items():
             with self.subTest(extension=extension):
                 attachment = self.uploadImage(f"image{extension}")
                 response = self.client.get(f"/api/attachments/{attachment['id']}/raw")
@@ -336,7 +338,7 @@ class AttachmentApiTest(unittest.TestCase):
             'quote"and\\\\slash.txt',
             "plain.md",
         ]:
-            header = attachments.content_disposition(filename)
+            header = attachmentFiles.content_disposition(filename)
             header.encode("latin-1")
             self.assertIn('filename="', header)
             self.assertNotIn('filename=""', header)
@@ -358,7 +360,7 @@ class AttachmentApiTest(unittest.TestCase):
         attachment = self.uploadText("script.py", b"print('hello')\n")
 
         with main.get_db() as conn:
-            parts = attachments.attachment_content_parts(conn, [attachment["id"]])
+            parts = attachmentContent.attachment_content_parts(conn, [attachment["id"]])
 
         self.assertEqual(len(parts), 1)
         self.assertEqual(parts[0]["type"], "text")
@@ -370,7 +372,7 @@ class AttachmentApiTest(unittest.TestCase):
         attachment = self.uploadImage()
 
         with main.get_db() as conn:
-            parts = attachments.attachment_content_parts(conn, [attachment["id"]])
+            parts = attachmentContent.attachment_content_parts(conn, [attachment["id"]])
 
         self.assertEqual(len(parts), 1)
         self.assertEqual(parts[0]["type"], "image_url")
@@ -381,7 +383,7 @@ class AttachmentApiTest(unittest.TestCase):
         attachment = self.uploadText("long.txt", body)
 
         with main.get_db() as conn:
-            parts = attachments.attachment_content_parts(conn, [attachment["id"]])
+            parts = attachmentContent.attachment_content_parts(conn, [attachment["id"]])
 
         self.assertIn("truncated", parts[0]["text"])
         self.assertLess(len(parts[0]["text"]), len(body.decode("utf-8")))
@@ -391,7 +393,7 @@ class AttachmentApiTest(unittest.TestCase):
         second = self.uploadText("b.txt", b"second")
 
         with main.get_db() as conn:
-            parts = attachments.attachment_content_parts(
+            parts = attachmentContent.attachment_content_parts(
                 conn, [second["id"], first["id"]]
             )
 
@@ -402,7 +404,7 @@ class AttachmentApiTest(unittest.TestCase):
         attachment = self.uploadText()
 
         with main.get_db() as conn:
-            parts = attachments.attachment_content_parts(
+            parts = attachmentContent.attachment_content_parts(
                 conn, [attachment["id"], "not-a-real-id"]
             )
 
@@ -410,7 +412,7 @@ class AttachmentApiTest(unittest.TestCase):
 
     def test_user_content_stays_a_plain_string_without_attachments(self):
         with main.get_db() as conn:
-            content = attachments.user_content_with_attachments(conn, [], "hello")
+            content = attachmentContent.user_content_with_attachments(conn, [], "hello")
 
         self.assertEqual(content, "hello")
 
@@ -418,7 +420,7 @@ class AttachmentApiTest(unittest.TestCase):
         attachment = self.uploadText()
 
         with main.get_db() as conn:
-            content = attachments.user_content_with_attachments(
+            content = attachmentContent.user_content_with_attachments(
                 conn, [attachment["id"]], "what is this"
             )
 
@@ -429,7 +431,7 @@ class AttachmentApiTest(unittest.TestCase):
         attachment = self.uploadText()
 
         with main.get_db() as conn:
-            content = attachments.user_content_with_attachments(
+            content = attachmentContent.user_content_with_attachments(
                 conn, [attachment["id"]], "   "
             )
 
@@ -441,7 +443,7 @@ class AttachmentApiTest(unittest.TestCase):
         attachment = self.uploadImage()
 
         with main.get_db() as conn:
-            attachments.claim_attachments(
+            attachmentCleanup.claim_attachments(
                 conn,
                 [attachment["id"]],
                 chat_id=chat["id"],
@@ -469,7 +471,7 @@ class AttachmentApiTest(unittest.TestCase):
         attachment = self.uploadImage()
 
         with main.get_db() as conn:
-            attachments.claim_attachments(
+            attachmentCleanup.claim_attachments(
                 conn,
                 [attachment["id"]],
                 chat_id=chat["id"],
@@ -504,7 +506,7 @@ class AttachmentApiTest(unittest.TestCase):
         attachment = self.uploadText()
 
         with main.get_db() as conn:
-            attachments.claim_attachments(
+            attachmentCleanup.claim_attachments(
                 conn,
                 [attachment["id"]],
                 chat_id=chat["id"],
@@ -542,7 +544,7 @@ class AttachmentApiTest(unittest.TestCase):
                     (messageId, chat["id"], role, "test/model", index, main.utc_now()),
                 )
                 if attachmentId:
-                    attachments.claim_attachments(
+                    attachmentCleanup.claim_attachments(
                         conn, [attachmentId], chat_id=chat["id"], message_id=messageId
                     )
 
@@ -563,7 +565,7 @@ class AttachmentApiTest(unittest.TestCase):
         attachment = self.uploadText()
 
         with main.get_db() as conn:
-            attachments.claim_attachments(
+            attachmentCleanup.claim_attachments(
                 conn, [attachment["id"]], chat_id=chat["id"], message_id="message-1"
             )
 
@@ -586,12 +588,12 @@ class AttachmentApiTest(unittest.TestCase):
         freshOrphan = self.uploadText("fresh.txt")
 
         with main.get_db() as conn:
-            attachments.claim_attachments(conn, [claimed["id"]], story_id="story-1")
+            attachmentCleanup.claim_attachments(conn, [claimed["id"]], story_id="story-1")
             conn.execute(
                 "UPDATE attachments SET created_at = ? WHERE id = ?",
                 ("2020-01-01T00:00:00Z", staleOrphan["id"]),
             )
-            removed = attachments.delete_orphaned_attachments(conn)
+            removed = attachmentCleanup.delete_orphaned_attachments(conn)
             remaining = {
                 row["id"] for row in conn.execute("SELECT id FROM attachments").fetchall()
             }
@@ -604,13 +606,13 @@ class AttachmentApiTest(unittest.TestCase):
         textAttachment = self.uploadText()
 
         with main.get_db() as conn:
-            attachments.claim_attachments(
+            attachmentCleanup.claim_attachments(
                 conn,
                 [textAttachment["id"]],
                 chat_id=chat["id"],
                 message_id="message-1",
             )
-            self.assertFalse(attachments.chat_has_pdf_attachment(conn, chat["id"]))
+            self.assertFalse(attachmentContent.chat_has_pdf_attachment(conn, chat["id"]))
 
         pdfResponse = self.upload([("files", ("paper.pdf", b"%PDF-1.4 fake", "application/pdf"))])
         self.assertEqual(pdfResponse.status_code, 200)
@@ -618,19 +620,19 @@ class AttachmentApiTest(unittest.TestCase):
         self.assertEqual(pdfAttachment["kind"], "pdf")
 
         with main.get_db() as conn:
-            attachments.claim_attachments(
+            attachmentCleanup.claim_attachments(
                 conn,
                 [pdfAttachment["id"]],
                 chat_id=chat["id"],
                 message_id="message-2",
             )
-            self.assertTrue(attachments.chat_has_pdf_attachment(conn, chat["id"]))
-            parts = attachments.attachment_content_parts(conn, [pdfAttachment["id"]])
+            self.assertTrue(attachmentContent.chat_has_pdf_attachment(conn, chat["id"]))
+            parts = attachmentContent.attachment_content_parts(conn, [pdfAttachment["id"]])
 
         self.assertEqual(parts[0]["type"], "file")
         self.assertEqual(parts[0]["file"]["filename"], "paper.pdf")
         self.assertEqual(
-            attachments.pdf_parser_plugins(),
+            attachmentContent.pdf_parser_plugins(),
             [{"id": "file-parser", "pdf": {"engine": "pdf-text"}}],
         )
 
@@ -676,17 +678,17 @@ class AttachmentLimitParityTest(unittest.TestCase):
     def test_size_limits_match_the_backend(self):
         values, _ = self.frontendConstants()
 
-        self.assertEqual(values["MAX_FILES_PER_MESSAGE"], attachments.MAX_FILES_PER_MESSAGE)
-        self.assertEqual(values["MAX_IMAGE_BYTES"], attachments.MAX_IMAGE_BYTES)
-        self.assertEqual(values["MAX_PDF_BYTES"], attachments.MAX_PDF_BYTES)
-        self.assertEqual(values["MAX_TEXT_BYTES"], attachments.MAX_TEXT_BYTES)
+        self.assertEqual(values["MAX_FILES_PER_MESSAGE"], attachmentFiles.MAX_FILES_PER_MESSAGE)
+        self.assertEqual(values["MAX_IMAGE_BYTES"], attachmentFiles.MAX_IMAGE_BYTES)
+        self.assertEqual(values["MAX_PDF_BYTES"], attachmentFiles.MAX_PDF_BYTES)
+        self.assertEqual(values["MAX_TEXT_BYTES"], attachmentFiles.MAX_TEXT_BYTES)
 
     def test_accepted_extensions_match_the_backend(self):
         _, extensions = self.frontendConstants()
 
-        self.assertEqual(extensions["IMAGE_EXTENSIONS"], sorted(attachments.IMAGE_TYPES))
-        self.assertEqual(extensions["PDF_EXTENSIONS"], sorted(attachments.PDF_TYPES))
-        self.assertEqual(extensions["TEXT_EXTENSIONS"], sorted(attachments.TEXT_TYPES))
+        self.assertEqual(extensions["IMAGE_EXTENSIONS"], sorted(attachmentFiles.IMAGE_TYPES))
+        self.assertEqual(extensions["PDF_EXTENSIONS"], sorted(attachmentFiles.PDF_TYPES))
+        self.assertEqual(extensions["TEXT_EXTENSIONS"], sorted(attachmentFiles.TEXT_TYPES))
 
 
 if __name__ == "__main__":

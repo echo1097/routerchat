@@ -4,7 +4,7 @@ import sqlite3
 from typing import Any
 
 from backend.providers.openrouter.requestOptions import effective_thinking_enabled
-from backend.websearch import deserialize_sources
+from backend.webSearch.sources import deserialize_sources
 
 
 def row_to_chat(row: sqlite3.Row) -> dict[str, Any]:

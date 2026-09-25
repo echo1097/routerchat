@@ -1,10 +1,6 @@
 import math
-from contextlib import closing
 from datetime import datetime, timedelta, timezone
-
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-
-from fastapi import APIRouter, HTTPException, Query
+from zoneinfo import ZoneInfo
 
 
 def emptyTotals():
@@ -166,25 +162,3 @@ def getUsage(conn, offsetMinutes=0, now=None, timeZone=None):
         "models": finishModels(modelTotals),
         "lifetimeModels": finishModels(lifetimeTotals),
     }
-
-
-def createUsageRouter(getDb, readSetting=None):
-    router = APIRouter()
-
-    @router.get("/api/usage")
-    def usageOverview(offsetMinutes: int = Query(default=0, ge=-840, le=840), timeZone: str | None = Query(default=None, max_length=100)):
-        if timeZone:
-            try:
-                ZoneInfo(timeZone)
-            except (ZoneInfoNotFoundError, ValueError) as error:
-                raise HTTPException(status_code=422, detail="Invalid timezone") from error
-        with closing(getDb()) as conn:
-            result = getUsage(conn, offsetMinutes, timeZone=timeZone)
-        catalog = readSetting("transcription_models") if readSetting else []
-        modelNames = {model["id"]: model.get("name") for model in (catalog or [])}
-        for model in result["models"] + result["lifetimeModels"]:
-            if modelNames.get(model["id"]):
-                model["name"] = modelNames[model["id"]]
-        return result
-
-    return router

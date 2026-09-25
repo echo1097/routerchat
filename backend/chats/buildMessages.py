@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.attachments import attachments_by_message, user_content_with_attachments
+from backend.attachments.attachmentContent import (
+    attachments_by_message,
+    user_content_with_attachments,
+)
 from backend.core.database import get_db
 
 

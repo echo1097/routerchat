@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from backend.attachments import (
+from backend.attachments.attachmentCleanup import (
     delete_attachments_for_story,
     delete_orphaned_attachments,
 )

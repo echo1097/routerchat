@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import backend.main as main
+import backend.core.appSettings as appSettings
 import backend.providers.openrouter.apiKey as apiKey
 import backend.core.paths as paths
 
@@ -63,7 +64,7 @@ class UserDataPathsTest(unittest.TestCase):
             paths.ENV_PATH = userDataDir / ".env"
 
             main.init_db()
-            main.write_app_setting("default_model", "test/model")
+            appSettings.write_app_setting("default_model", "test/model")
 
             with patch.dict(os.environ, {}, clear=False):
                 os.environ.pop("OPENROUTER_API_KEY", None)
@@ -75,7 +76,7 @@ class UserDataPathsTest(unittest.TestCase):
             main.init_db()
 
             self.assertTrue(paths.DB_PATH.is_file())
-            self.assertEqual(main.read_app_setting("default_model"), "test/model")
+            self.assertEqual(appSettings.read_app_setting("default_model"), "test/model")
 
             if os.name == "posix":
                 fileMode = stat.S_IMODE(paths.ENV_PATH.stat().st_mode)

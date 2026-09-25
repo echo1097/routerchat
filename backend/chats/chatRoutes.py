@@ -5,7 +5,8 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from backend.attachments import attachments_by_message, delete_attachments_for_chat
+from backend.attachments.attachmentCleanup import delete_attachments_for_chat
+from backend.attachments.attachmentContent import attachments_by_message
 from backend.chats.chatModels import ChatCreateRequest, ChatPatchRequest
 from backend.chats.chatRows import chat_has_messages, row_to_chat, row_to_message
 from backend.chats.folderRoutes import folder_or_404

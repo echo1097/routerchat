@@ -266,13 +266,16 @@ Keep the backend on 8000 unless they also edit `vite.config.js`, which is what f
 - `SUPPORT.md`: what is safe to share when reporting a problem.
 - `TOS.md`: the terms the app makes users accept on first run.
 - `assistant.md`: this prompt.
-- `backend/main.py`: FastAPI app, settings, chat routes, database schema.
-- `backend/writing.py`: Write mode, including stories, chapters, lorebook, and brainstorm routes.
+- `backend/main.py`: creates the FastAPI app and wires in every feature's routes. No feature logic lives here.
 - `backend/local_access.py`: the `serve` and `open-browser` commands and the one-time secret.
-- `backend/attachments.py`: file upload handling.
-- `backend/websearch.py`: web search plumbing and source favicons.
-- `backend/lorebook_generate.py`, `lorebook_repair.py`, `lorebook_update_stream.py`: lorebook generation, repair, and streaming updates.
-- `backend/changelog_status.py`: tracks whether the changelog for the current version has been seen.
+- `backend/core/`: paths, the database connection and schema, migrations, app settings, and small shared helpers.
+- `backend/providers/openrouter/`: everything that talks to OpenRouter (API key, models, request options, usage, errors).
+- `backend/security/`, `backend/tos/`, `backend/settings/`: the local API guard, terms acceptance, and the settings routes.
+- `backend/chats/`: chats, folders, messages, chat titles, and chat streaming.
+- `backend/writing/`: Write mode stories and chapters, with chapter edit parsing and applying in `writing/chapterEdits/`.
+- `backend/lorebook/`: lorebook entries, updates, timeline repair, generation, repair, and usage tracking.
+- `backend/brainstorm/`: the brainstorm board and idea generation.
+- `backend/attachments/`, `backend/webSearch/`, `backend/usage/`, `backend/transcription/`, `backend/changelog/`: file uploads, web search sources and favicons, the usage page, voice transcription, and changelog status.
 - `frontend/src/main.jsx`: the React app. It is very large and holds most of the UI.
 - `frontend/src/styles.css`: styles.
 - `frontend/src/writing/`, `lorebook/`, `brainstorm/`, `attachments/`, `websearch/`, `tour/`, `notifications/`: the split-out feature modules.

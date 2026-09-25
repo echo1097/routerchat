@@ -8,14 +8,18 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 import backend.main as main
+import backend.tos.loadTos as loadTos
+import backend.tos.tosAcceptance as tosAcceptance
+import backend.providers.openrouter.usage as usage
+import backend.core.paths as paths
 from backend.local_access import create_secret_file
 
 
 def acceptCurrentTos():
-    tos = main.load_tos()
+    tos = loadTos.load_tos()
     if not tos:
         raise RuntimeError("TOS.md is missing, restore it before running the tests")
-    main.record_tos_acceptance(tos["hash"], tos["date"])
+    tosAcceptance.record_tos_acceptance(tos["hash"], tos["date"])
 
 
 def fakeChatStream(content, usage=None):
@@ -59,12 +63,12 @@ def fakeClientFor(calls, usage=None):
 class PromptCachingTest(unittest.TestCase):
     def setUp(self):
         self.tempDir = tempfile.TemporaryDirectory()
-        self.originalDataDir = main.DATA_DIR
-        self.originalDbPath = main.DB_PATH
-        main.DATA_DIR = Path(self.tempDir.name)
-        main.DB_PATH = main.DATA_DIR / "routerchat-caching-test.sqlite3"
+        self.originalDataDir = paths.DATA_DIR
+        self.originalDbPath = paths.DB_PATH
+        paths.DATA_DIR = Path(self.tempDir.name)
+        paths.DB_PATH = paths.DATA_DIR / "routerchat-caching-test.sqlite3"
         self.baseUrl = "http://127.0.0.1:8000"
-        self.apiSecretPath = main.DATA_DIR / "run" / "api-secret"
+        self.apiSecretPath = paths.DATA_DIR / "run" / "api-secret"
         self.apiSecret = create_secret_file(self.apiSecretPath)
         self.localAccessEnvironment = patch.dict(
             os.environ,
@@ -96,8 +100,8 @@ class PromptCachingTest(unittest.TestCase):
         self.client.close()
         main.reset_local_access_config()
         self.localAccessEnvironment.stop()
-        main.DATA_DIR = self.originalDataDir
-        main.DB_PATH = self.originalDbPath
+        paths.DATA_DIR = self.originalDataDir
+        paths.DB_PATH = self.originalDbPath
         self.tempDir.cleanup()
 
     def sendMessage(self, usage=None):
@@ -107,7 +111,7 @@ class PromptCachingTest(unittest.TestCase):
 
         calls = []
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.main.httpx.AsyncClient", fakeClientFor(calls, usage)
+            "backend.chats.streamMessage.httpx.AsyncClient", fakeClientFor(calls, usage)
         ):
             response = self.client.post(
                 f"/api/chats/{chat['id']}/messages/stream",
@@ -148,12 +152,12 @@ class PromptCachingTest(unittest.TestCase):
         self.assertEqual(calls[0]["cache_control"], {"type": "ephemeral"})
 
     def test_cached_reads_are_read_from_both_usage_shapes(self):
-        streamUsage = main.normalize_usage({"prompt_tokens": 900, "prompt_tokens_details": {"cached_tokens": 700}})
-        generationUsage = main.normalize_generation_usage({"native_tokens_prompt": 900, "native_tokens_cached": 700})
+        streamUsage = usage.normalize_usage({"prompt_tokens": 900, "prompt_tokens_details": {"cached_tokens": 700}})
+        generationUsage = usage.normalize_generation_usage({"native_tokens_prompt": 900, "native_tokens_cached": 700})
 
         self.assertEqual(streamUsage["cached_tokens"], 700)
         self.assertEqual(generationUsage["cached_tokens"], 700)
-        self.assertIsNone(main.normalize_usage({"prompt_tokens": 900})["cached_tokens"])
+        self.assertIsNone(usage.normalize_usage({"prompt_tokens": 900})["cached_tokens"])
 
     def test_chat_replies_save_their_cached_reads(self):
         usage = {"prompt_tokens": 900, "completion_tokens": 10, "prompt_tokens_details": {"cached_tokens": 700}}

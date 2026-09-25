@@ -7,19 +7,23 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 import backend.main as main
+import backend.security.localAccessConfig as localAccessConfig
+import backend.tos.loadTos as loadTos
+import backend.tos.tosAcceptance as tosAcceptance
+import backend.core.paths as paths
 from backend.local_access import create_secret_file
 
 
 class ApiSecurityTest(unittest.TestCase):
     def setUp(self):
         self.tempDir = tempfile.TemporaryDirectory()
-        self.originalDataDir = main.DATA_DIR
-        self.originalDbPath = main.DB_PATH
-        main.DATA_DIR = Path(self.tempDir.name) / "data"
-        main.DB_PATH = main.DATA_DIR / "routerchat-security-test.sqlite3"
+        self.originalDataDir = paths.DATA_DIR
+        self.originalDbPath = paths.DB_PATH
+        paths.DATA_DIR = Path(self.tempDir.name) / "data"
+        paths.DB_PATH = paths.DATA_DIR / "routerchat-security-test.sqlite3"
         main.init_db()
-        tos = main.load_tos()
-        main.record_tos_acceptance(tos["hash"], tos["date"])
+        tos = loadTos.load_tos()
+        tosAcceptance.record_tos_acceptance(tos["hash"], tos["date"])
 
         self.secretPath = Path(self.tempDir.name) / "api-secret"
         self.secret = create_secret_file(self.secretPath)
@@ -45,8 +49,8 @@ class ApiSecurityTest(unittest.TestCase):
         self.client.close()
         main.reset_local_access_config()
         self.environment.stop()
-        main.DATA_DIR = self.originalDataDir
-        main.DB_PATH = self.originalDbPath
+        paths.DATA_DIR = self.originalDataDir
+        paths.DB_PATH = self.originalDbPath
         self.tempDir.cleanup()
 
     def bootstrap(self, secret=None):
@@ -157,7 +161,7 @@ class ApiSecurityTest(unittest.TestCase):
 
     def test_mutations_require_a_trusted_origin_and_same_origin_fetch_metadata(self):
         self.bootstrap()
-        tosHash = main.load_tos()["hash"]
+        tosHash = loadTos.load_tos()["hash"]
 
         missingOrigin = self.client.post(
             "/api/tos/accept",
@@ -187,7 +191,7 @@ class ApiSecurityTest(unittest.TestCase):
         )
         main.reset_local_access_config()
         self.bootstrap()
-        tosHash = main.load_tos()["hash"]
+        tosHash = loadTos.load_tos()["hash"]
 
         response = self.client.post(
             "/api/tos/accept",
@@ -199,7 +203,7 @@ class ApiSecurityTest(unittest.TestCase):
 
     def test_configuration_fails_closed_without_a_secret_file(self):
         with self.assertRaisesRegex(RuntimeError, "ROUTERCHAT_API_SECRET_FILE"):
-            main.load_local_access_config({})
+            localAccessConfig.load_local_access_config({})
 
     def test_duplicate_host_headers_are_rejected(self):
         response = self.client.get(

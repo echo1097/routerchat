@@ -7,7 +7,7 @@ from unittest.mock import patch
 import httpcore
 import httpx
 
-from backend import websearch
+import backend.webSearch.faviconFetch as faviconFetch
 
 
 class FaviconSecurityTest(unittest.IsolatedAsyncioTestCase):
@@ -36,7 +36,7 @@ class FaviconSecurityTest(unittest.IsolatedAsyncioTestCase):
         with patch("socket.getaddrinfo", side_effect=resolveHost), patch.object(
             httpx.AsyncHTTPTransport, "handle_async_request", sendRequest
         ):
-            return await websearch.fetch_favicon("example.com")
+            return await faviconFetch.fetch_favicon("example.com")
 
     async def testPrivateRedirectNeverReachesTransport(self):
         result = await self.fetchIcon({
@@ -169,7 +169,7 @@ class FaviconSecurityTest(unittest.IsolatedAsyncioTestCase):
     async def testDnsFailureRemainsAnEmptyResult(self):
         for error in [socket.gaierror("no DNS"), TimeoutError("DNS timed out")]:
             with self.subTest(error=error), patch("socket.getaddrinfo", side_effect=error):
-                self.assertIsNone(await websearch.fetch_favicon("example.com"))
+                self.assertIsNone(await faviconFetch.fetch_favicon("example.com"))
 
     async def testConnectionUsesPinnedAddressAndOriginalTlsHostname(self):
         connections = []
@@ -218,7 +218,7 @@ class FaviconSecurityTest(unittest.IsolatedAsyncioTestCase):
         with patch("socket.getaddrinfo", side_effect=[firstAnswer, reboundAnswer]) as resolver, \
              patch.object(httpcore.AnyIOBackend, "connect_tcp", connectTcp), \
              patch.dict(os.environ, {"HTTPS_PROXY": "http://127.0.0.1:9999"}):
-            result = await websearch.fetch_favicon("example.com")
+            result = await faviconFetch.fetch_favicon("example.com")
 
         self.assertEqual(result, ("image/png", b"icon"))
         self.assertEqual(resolver.call_count, 1)

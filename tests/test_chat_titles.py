@@ -8,14 +8,20 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 import backend.main as main
+import backend.chats.chatTitles as chatTitles
+import backend.tos.loadTos as loadTos
+import backend.tos.tosAcceptance as tosAcceptance
+import backend.providers.openrouter.models as models
+import backend.providers.openrouter.requestOptions as requestOptions
+import backend.core.paths as paths
 from backend.local_access import create_secret_file
 
 
 def acceptCurrentTos():
-    tos = main.load_tos()
+    tos = loadTos.load_tos()
     if not tos:
         raise RuntimeError("TOS.md is missing, restore it before running the tests")
-    main.record_tos_acceptance(tos["hash"], tos["date"])
+    tosAcceptance.record_tos_acceptance(tos["hash"], tos["date"])
 
 
 def fakeChatStream(content):
@@ -71,12 +77,12 @@ def fakeClientFor(titleResponse, calls):
 class ChatTitleTest(unittest.TestCase):
     def setUp(self):
         self.tempDir = tempfile.TemporaryDirectory()
-        self.originalDataDir = main.DATA_DIR
-        self.originalDbPath = main.DB_PATH
-        main.DATA_DIR = Path(self.tempDir.name)
-        main.DB_PATH = main.DATA_DIR / "routerchat-title-test.sqlite3"
+        self.originalDataDir = paths.DATA_DIR
+        self.originalDbPath = paths.DB_PATH
+        paths.DATA_DIR = Path(self.tempDir.name)
+        paths.DB_PATH = paths.DATA_DIR / "routerchat-title-test.sqlite3"
         self.baseUrl = "http://127.0.0.1:8000"
-        self.apiSecretPath = main.DATA_DIR / "run" / "api-secret"
+        self.apiSecretPath = paths.DATA_DIR / "run" / "api-secret"
         self.apiSecret = create_secret_file(self.apiSecretPath)
         self.localAccessEnvironment = patch.dict(
             os.environ,
@@ -108,8 +114,8 @@ class ChatTitleTest(unittest.TestCase):
         self.client.close()
         main.reset_local_access_config()
         self.localAccessEnvironment.stop()
-        main.DATA_DIR = self.originalDataDir
-        main.DB_PATH = self.originalDbPath
+        paths.DATA_DIR = self.originalDataDir
+        paths.DB_PATH = self.originalDbPath
         self.tempDir.cleanup()
 
     def createChat(self):
@@ -120,7 +126,7 @@ class ChatTitleTest(unittest.TestCase):
     def sendFirstMessage(self, chat, message="how do I fix this borrow checker error"):
         calls = []
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.main.httpx.AsyncClient", fakeClientFor(FakeTitleResponse("Ignored"), calls)
+            "backend.chats.chatTitles.httpx.AsyncClient", fakeClientFor(FakeTitleResponse("Ignored"), calls)
         ):
             response = self.client.post(
                 f"/api/chats/{chat['id']}/messages/stream",
@@ -133,7 +139,7 @@ class ChatTitleTest(unittest.TestCase):
     def nameChat(self, chat, titleResponse):
         calls = []
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.main.httpx.AsyncClient", fakeClientFor(titleResponse, calls)
+            "backend.chats.chatTitles.httpx.AsyncClient", fakeClientFor(titleResponse, calls)
         ):
             response = self.client.post(f"/api/chats/{chat['id']}/title")
         return response, calls
@@ -214,7 +220,9 @@ class ChatTitleTest(unittest.TestCase):
         chat = self.createChat()
         self.sendFirstMessage(chat)
 
-        with patch.object(main, "model_metadata", lambda _: {"supported_parameters": ["reasoning"]}):
+        metadata = {"supported_parameters": ["reasoning"]}
+        with patch.object(models, "model_metadata", lambda _: metadata), \
+             patch.object(requestOptions, "model_metadata", lambda _: metadata):
             _, calls = self.nameChat(chat, FakeTitleResponse("Borrow Checker Help"))
 
         self.assertEqual(calls[0]["reasoning"], {"enabled": False, "exclude": True})
@@ -227,7 +235,8 @@ class ChatTitleTest(unittest.TestCase):
         self.sendFirstMessage(chat)
 
         metadata = {"supported_parameters": ["reasoning"], "reasoning": {"mandatory": True}}
-        with patch.object(main, "model_metadata", lambda _: metadata):
+        with patch.object(models, "model_metadata", lambda _: metadata), \
+             patch.object(requestOptions, "model_metadata", lambda _: metadata):
             _, calls = self.nameChat(chat, FakeTitleResponse("Borrow Checker Help"))
 
         self.assertTrue(calls[0]["reasoning"]["enabled"])
@@ -252,45 +261,45 @@ class ChatTitleTest(unittest.TestCase):
 class ChatTitleSanitizerTest(unittest.TestCase):
     def test_quotes_and_trailing_punctuation_come_off(self):
         self.assertEqual(
-            main.chat_title_from_model_output('"Weekend Pasta Recipe."'),
+            chatTitles.chat_title_from_model_output('"Weekend Pasta Recipe."'),
             "Weekend Pasta Recipe",
         )
 
     def test_a_preamble_line_is_dropped_in_favor_of_the_name(self):
         self.assertEqual(
-            main.chat_title_from_model_output("Sure! Here you go:\nTax Deduction Questions"),
+            chatTitles.chat_title_from_model_output("Sure! Here you go:\nTax Deduction Questions"),
             "Tax Deduction Questions",
         )
 
     def test_a_label_prefix_is_stripped(self):
         self.assertEqual(
-            main.chat_title_from_model_output("Title: Budget Planning Ideas"),
+            chatTitles.chat_title_from_model_output("Title: Budget Planning Ideas"),
             "Budget Planning Ideas",
         )
 
     def test_lowercase_output_is_title_cased(self):
         self.assertEqual(
-            main.chat_title_from_model_output("weekend pasta recipe"),
+            chatTitles.chat_title_from_model_output("weekend pasta recipe"),
             "Weekend Pasta Recipe",
         )
 
     def test_an_acronym_keeps_its_own_casing(self):
         self.assertEqual(
-            main.chat_title_from_model_output("SQL Query Optimization"),
+            chatTitles.chat_title_from_model_output("SQL Query Optimization"),
             "SQL Query Optimization",
         )
 
     def test_a_very_long_name_is_trimmed_on_a_word_boundary(self):
         raw = "Extremely Detailed Conversation About Distributed Database Replication"
-        title = main.chat_title_from_model_output(raw)
-        self.assertLessEqual(len(title), main.CHAT_TITLE_MAX_LENGTH)
+        title = chatTitles.chat_title_from_model_output(raw)
+        self.assertLessEqual(len(title), chatTitles.CHAT_TITLE_MAX_LENGTH)
         self.assertFalse(title.endswith(" "))
         self.assertTrue(raw.startswith(title))
 
     def test_empty_output_has_no_title(self):
-        self.assertIsNone(main.chat_title_from_model_output(""))
-        self.assertIsNone(main.chat_title_from_model_output(None))
-        self.assertIsNone(main.chat_title_from_model_output("  \n  "))
+        self.assertIsNone(chatTitles.chat_title_from_model_output(""))
+        self.assertIsNone(chatTitles.chat_title_from_model_output(None))
+        self.assertIsNone(chatTitles.chat_title_from_model_output("  \n  "))
 
 
 if __name__ == "__main__":

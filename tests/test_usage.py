@@ -10,14 +10,16 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import backend.main as main
-from backend.usage import createUsageRouter, getUsage
+import backend.core.paths as paths
+from backend.usage import usageRoutes
+from backend.usage.usageTotals import getUsage
 
 
 class UsageTest(unittest.TestCase):
     def setUp(self):
         self.tempDir = tempfile.TemporaryDirectory()
         self.dbPath = Path(self.tempDir.name) / "usage.sqlite3"
-        with patch.object(main, "DATA_DIR", Path(self.tempDir.name)), patch.object(main, "DB_PATH", self.dbPath):
+        with patch.object(paths, "DATA_DIR", Path(self.tempDir.name)), patch.object(paths, "DB_PATH", self.dbPath):
             main.init_db()
         self.conn = sqlite3.connect(self.dbPath)
         self.conn.row_factory = sqlite3.Row
@@ -283,8 +285,9 @@ class UsageTest(unittest.TestCase):
             return conn
 
         app = FastAPI()
-        app.include_router(createUsageRouter(getDb))
-        with TestClient(app) as client, patch("httpx.AsyncClient", side_effect=AssertionError("Provider call forbidden")):
+        app.include_router(usageRoutes.router)
+        with patch.object(usageRoutes, "get_db", getDb), patch.object(usageRoutes, "read_app_setting", lambda key: None), \
+             TestClient(app) as client, patch("httpx.AsyncClient", side_effect=AssertionError("Provider call forbidden")):
             self.assertEqual(client.get("/api/usage?offsetMinutes=420").status_code, 200)
             self.assertEqual(client.get("/api/usage?offsetMinutes=900").status_code, 422)
             self.assertEqual(client.get("/api/usage?timeZone=America%2FLos_Angeles").status_code, 200)
@@ -316,7 +319,9 @@ class UsageTest(unittest.TestCase):
             return conn
 
         app = FastAPI()
-        app.include_router(createUsageRouter(getDb, lambda key: [{"id": "openai/whisper-1", "name": "Whisper"}]))
-        with TestClient(app) as client, patch("httpx.AsyncClient", side_effect=AssertionError("Provider call forbidden")):
+        app.include_router(usageRoutes.router)
+        with patch.object(usageRoutes, "get_db", getDb), \
+             patch.object(usageRoutes, "read_app_setting", lambda key: [{"id": "openai/whisper-1", "name": "Whisper"}]), \
+             TestClient(app) as client, patch("httpx.AsyncClient", side_effect=AssertionError("Provider call forbidden")):
             result = client.get("/api/usage").json()
         self.assertEqual(result["lifetimeModels"][0]["name"], "Whisper")

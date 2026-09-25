@@ -1,24 +1,13 @@
 import json
 import unittest
 
-from backend.writing import (
-    CHAPTER_EDIT_CONFLICTING_EDITS,
-    CHAPTER_EDIT_INVALID_JSON,
-    CHAPTER_EDIT_INVALID_OPERATION,
-    CHAPTER_EDIT_REVISION_MISMATCH,
-    CHAPTER_EDIT_TARGET_MISMATCH,
-    CHAPTER_EDIT_TRUNCATED,
-    ChapterEditError,
-    apply_chapter_edits,
-    apply_chapter_operation,
-    block_map_for_prompt,
-    chapter_blocks,
-    chapter_edit_operation_schema,
-    parse_chapter_edit_batch,
-    parse_chapter_operation,
-    validate_chapter_operation,
-    word_diff_counts,
-)
+from backend.writing.chapterEdits.anchors import block_map_for_prompt, chapter_blocks
+from backend.writing.chapterEdits.applyEdits import apply_chapter_edits, apply_chapter_operation
+from backend.writing.chapterEdits.editErrors import CHAPTER_EDIT_CONFLICTING_EDITS, CHAPTER_EDIT_INVALID_JSON, CHAPTER_EDIT_INVALID_OPERATION, CHAPTER_EDIT_REVISION_MISMATCH, CHAPTER_EDIT_TARGET_MISMATCH, CHAPTER_EDIT_TRUNCATED, ChapterEditError
+from backend.writing.chapterEdits.editSchema import chapter_edit_operation_schema
+from backend.writing.chapterEdits.parseEdits import parse_chapter_edit_batch, parse_chapter_operation
+from backend.writing.chapterEdits.validateEdits import validate_chapter_operation
+from backend.writing.storyRows import word_diff_counts
 
 
 class WordDiffCountsTest(unittest.TestCase):

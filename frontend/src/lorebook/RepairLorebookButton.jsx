@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import { WandSparkles } from "lucide-react";
 import { cx, CONTROL_MOTION } from "../uiShared.js";
 import RepairModal, { repairDurationParts } from "./RepairModal.jsx";
 
@@ -69,7 +68,6 @@ export default function RepairLorebookButton({ locked, saving, onRepair }) {
         disabled={locked || saving}
         className={cx("lorebook-secondary-button", CONTROL_MOTION)}
       >
-        <WandSparkles size={15} />
         Repair lorebook
       </button>
 

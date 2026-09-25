@@ -5,7 +5,6 @@ import {
   EyeOff,
   Plus,
   Search,
-  WandSparkles,
 } from "lucide-react";
 import { cx, CONTROL_MOTION } from "../uiShared.js";
 import { useTextSwap } from "../textSwap.js";
@@ -948,7 +947,7 @@ function LorebookEntryPage({
       ? "Unsaved changes"
       : editing
         ? "All changes saved"
-        : "New entry";
+        : "";
 
   useEffect(() => {
     const textarea = descriptionRef.current;
@@ -1119,7 +1118,7 @@ function LorebookEntryPage({
                   {deleting ? "Deleting..." : "Delete entry"}
                 </button>
               )}
-              <p className={cx("lorebook-footer-status", dirty && "is-dirty")}>{statusText}</p>
+              {statusText && <p className={cx("lorebook-footer-status", dirty && "is-dirty")}>{statusText}</p>}
             </div>
 
             <div className="lorebook-footer-actions">
@@ -1130,7 +1129,6 @@ function LorebookEntryPage({
                   disabled={hasDraftText || saving || locked}
                   className={cx("lorebook-secondary-button", CONTROL_MOTION)}
                 >
-                  <WandSparkles size={15} />
                   Generate entry
                 </button>
               )}
@@ -1292,7 +1290,6 @@ function TimelineCanvas({ entry, locked, saving, onSave, onRepair, onRepairLoreb
               disabled={locked || saving}
               className={cx("lorebook-secondary-button", CONTROL_MOTION)}
             >
-              <WandSparkles size={15} />
               Repair timeline
             </button>
             <RepairLorebookButton

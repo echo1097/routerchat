@@ -948,7 +948,7 @@ test("confirms timeline repair, streams thinking, and keeps the dialog open unti
 
   await page.getByRole("button", { name: /Writing tools/ }).click();
   await page.getByRole("menu").getByText("Lorebook", { exact: true }).click();
-  await page.getByRole("tab", { name: "Timeline", exact: true }).click();
+  await page.getByRole("tab", { name: /^Timeline \d+$/ }).click();
 
   const timeline = page.locator(".lorebook-timeline-canvas textarea");
   await timeline.fill("- an unsaved timeline detail");

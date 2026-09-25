@@ -958,13 +958,6 @@
   text-wrap: pretty;
 }
 
-.lorebook-timeline-intro .lorebook-timeline-count {
-  color: var(--lb-text-muted);
-  font-size: 13px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
 .lorebook-timeline-actions,
 .lorebook-timeline-repairs {
   display: grid;

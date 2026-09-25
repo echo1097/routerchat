@@ -309,6 +309,9 @@ export default function StoryLorebook({
     [localEntries],
   );
 
+  const [liveTimelineCount, setLiveTimelineCount] = useState(null);
+  const timelineCount = liveTimelineCount ?? countTimelineEvents(timelineEntry?.description || "");
+
   const editingEntry = useMemo(
     () => localEntries.find((entry) => entry.id === editingEntryId) || null,
     [editingEntryId, localEntries],
@@ -723,7 +726,7 @@ export default function StoryLorebook({
               <span ref={pillRef} className="t-tabs-pill" aria-hidden="true" />
               {CATEGORY_OPTIONS.map((category) => {
                 const selected = activeCategory === category.id;
-                const isTimeline = category.id === "timeline";
+                const tabCount = category.id === "timeline" ? timelineCount : counts[category.id] || 0;
 
                 return (
                   <button
@@ -735,7 +738,7 @@ export default function StoryLorebook({
                     onClick={() => setActiveCategory(category.id)}
                   >
                     <span>{category.plural}</span>
-                    {!isTimeline && <span className="lorebook-count">{counts[category.id] || 0}</span>}
+                    <span className="lorebook-count">{tabCount}</span>
                   </button>
                 );
               })}
@@ -752,6 +755,7 @@ export default function StoryLorebook({
               onSave={saveTimeline}
               onRepair={onRepairTimeline}
               onRepairLorebook={onRepairLorebook}
+              onEventCountChange={setLiveTimelineCount}
             />
           ) : (
             <div className={cx("lorebook-workspace", pageOpen && "has-page")}>
@@ -1138,7 +1142,7 @@ function LorebookEntryPage({
   );
 }
 
-function TimelineCanvas({ entry, locked, saving, onSave, onRepair, onRepairLorebook }) {
+function TimelineCanvas({ entry, locked, saving, onSave, onRepair, onRepairLorebook, onEventCountChange }) {
   const [timelineText, setTimelineText] = useState(entry?.description || "");
   const [repairOpen, setRepairOpen] = useState(false);
   const [repairStage, setRepairStage] = useState("confirm");
@@ -1156,6 +1160,13 @@ function TimelineCanvas({ entry, locked, saving, onSave, onRepair, onRepairLoreb
 
   const changed = timelineText !== savedTextRef.current;
   const eventCount = countTimelineEvents(timelineText);
+
+  useEffect(() => {
+    onEventCountChange(eventCount);
+  }, [eventCount, onEventCountChange]);
+
+  useEffect(() => () => onEventCountChange(null), [onEventCountChange]);
+
   const saveLabel = saving ? "Saving..." : "Save timeline";
   const { shownText: shownSaveLabel, textRef: saveLabelRef } = useTextSwap(saveLabel);
   const statusText = locked
@@ -1229,9 +1240,6 @@ function TimelineCanvas({ entry, locked, saving, onSave, onRepair, onRepairLoreb
             <p>
               One event per line, in the order things happen. The model reads this to keep the story
               straight.
-            </p>
-            <p className="lorebook-timeline-count">
-              {eventCount} {eventCount === 1 ? "event" : "events"}
             </p>
           </div>
 

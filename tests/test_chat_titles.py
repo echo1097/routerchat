@@ -8,6 +8,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 import backend.main as main
+import backend.chats.chatTitles as chatTitles
 import backend.tos.loadTos as loadTos
 import backend.tos.tosAcceptance as tosAcceptance
 import backend.providers.openrouter.models as models
@@ -125,7 +126,7 @@ class ChatTitleTest(unittest.TestCase):
     def sendFirstMessage(self, chat, message="how do I fix this borrow checker error"):
         calls = []
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.main.httpx.AsyncClient", fakeClientFor(FakeTitleResponse("Ignored"), calls)
+            "backend.chats.chatTitles.httpx.AsyncClient", fakeClientFor(FakeTitleResponse("Ignored"), calls)
         ):
             response = self.client.post(
                 f"/api/chats/{chat['id']}/messages/stream",
@@ -138,7 +139,7 @@ class ChatTitleTest(unittest.TestCase):
     def nameChat(self, chat, titleResponse):
         calls = []
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.main.httpx.AsyncClient", fakeClientFor(titleResponse, calls)
+            "backend.chats.chatTitles.httpx.AsyncClient", fakeClientFor(titleResponse, calls)
         ):
             response = self.client.post(f"/api/chats/{chat['id']}/title")
         return response, calls
@@ -260,45 +261,45 @@ class ChatTitleTest(unittest.TestCase):
 class ChatTitleSanitizerTest(unittest.TestCase):
     def test_quotes_and_trailing_punctuation_come_off(self):
         self.assertEqual(
-            main.chat_title_from_model_output('"Weekend Pasta Recipe."'),
+            chatTitles.chat_title_from_model_output('"Weekend Pasta Recipe."'),
             "Weekend Pasta Recipe",
         )
 
     def test_a_preamble_line_is_dropped_in_favor_of_the_name(self):
         self.assertEqual(
-            main.chat_title_from_model_output("Sure! Here you go:\nTax Deduction Questions"),
+            chatTitles.chat_title_from_model_output("Sure! Here you go:\nTax Deduction Questions"),
             "Tax Deduction Questions",
         )
 
     def test_a_label_prefix_is_stripped(self):
         self.assertEqual(
-            main.chat_title_from_model_output("Title: Budget Planning Ideas"),
+            chatTitles.chat_title_from_model_output("Title: Budget Planning Ideas"),
             "Budget Planning Ideas",
         )
 
     def test_lowercase_output_is_title_cased(self):
         self.assertEqual(
-            main.chat_title_from_model_output("weekend pasta recipe"),
+            chatTitles.chat_title_from_model_output("weekend pasta recipe"),
             "Weekend Pasta Recipe",
         )
 
     def test_an_acronym_keeps_its_own_casing(self):
         self.assertEqual(
-            main.chat_title_from_model_output("SQL Query Optimization"),
+            chatTitles.chat_title_from_model_output("SQL Query Optimization"),
             "SQL Query Optimization",
         )
 
     def test_a_very_long_name_is_trimmed_on_a_word_boundary(self):
         raw = "Extremely Detailed Conversation About Distributed Database Replication"
-        title = main.chat_title_from_model_output(raw)
-        self.assertLessEqual(len(title), main.CHAT_TITLE_MAX_LENGTH)
+        title = chatTitles.chat_title_from_model_output(raw)
+        self.assertLessEqual(len(title), chatTitles.CHAT_TITLE_MAX_LENGTH)
         self.assertFalse(title.endswith(" "))
         self.assertTrue(raw.startswith(title))
 
     def test_empty_output_has_no_title(self):
-        self.assertIsNone(main.chat_title_from_model_output(""))
-        self.assertIsNone(main.chat_title_from_model_output(None))
-        self.assertIsNone(main.chat_title_from_model_output("  \n  "))
+        self.assertIsNone(chatTitles.chat_title_from_model_output(""))
+        self.assertIsNone(chatTitles.chat_title_from_model_output(None))
+        self.assertIsNone(chatTitles.chat_title_from_model_output("  \n  "))
 
 
 if __name__ == "__main__":

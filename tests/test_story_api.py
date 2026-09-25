@@ -9,9 +9,11 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 import backend.main as main
+import backend.core.reasoningEffort as reasoningEffort
 import backend.settings.settingsRoutes as settingsRoutes
 import backend.tos.loadTos as loadTos
 import backend.tos.tosAcceptance as tosAcceptance
@@ -3503,7 +3505,7 @@ class StoryApiTest(unittest.TestCase):
                         message="continue", model="test/model", chapter_revision=chapter["revision"],
                         generation_status_id=generationId, write_generation_mode="new",
                     ))
-                    with self.assertRaises(main.HTTPException) as duplicateError:
+                    with self.assertRaises(HTTPException) as duplicateError:
                         await endpoint(story["id"], chapter["id"], main.StreamMessageRequest(
                             message="duplicate", model="test/model", chapter_revision=chapter["revision"],
                             generation_status_id=generationId,
@@ -3983,7 +3985,7 @@ class StoryApiTest(unittest.TestCase):
         )
 
     def test_openrouter_transport_failures_do_not_break_status_or_models_routes(self):
-        transportError = main.HTTPException(
+        transportError = HTTPException(
             status_code=502,
             detail="Could not reach OpenRouter.",
         )
@@ -4052,7 +4054,7 @@ class StoryApiTest(unittest.TestCase):
             main.enabled_reasoning_config("test/mandatory", False, "xhigh"),
             {"enabled": True, "exclude": False, "effort": "high"},
         )
-        self.assertEqual(main.coerce_reasoning_effort("xhigh"), "max")
+        self.assertEqual(reasoningEffort.coerce_reasoning_effort("xhigh"), "max")
         self.assertEqual(
             requestOptions.resolved_reasoning_effort("test/mandatory", "low"), "medium"
         )
@@ -4122,7 +4124,7 @@ class StoryApiTest(unittest.TestCase):
                 return FakeResponse()
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.main.httpx.AsyncClient", FakeClient
+            "backend.chats.streamMessage.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
                 f"/api/chats/{chat['id']}/messages/stream",

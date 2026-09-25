@@ -10,6 +10,7 @@ from starlette.datastructures import UploadFile
 
 import backend.attachments as attachments
 import backend.main as main
+import backend.chats.buildMessages as buildMessages
 import backend.tos.loadTos as loadTos
 import backend.tos.tosAcceptance as tosAcceptance
 import backend.core.paths as paths
@@ -440,7 +441,7 @@ class AttachmentApiTest(unittest.TestCase):
         attachment = self.uploadImage()
 
         with main.get_db() as conn:
-            main.claim_attachments(
+            attachments.claim_attachments(
                 conn,
                 [attachment["id"]],
                 chat_id=chat["id"],
@@ -468,7 +469,7 @@ class AttachmentApiTest(unittest.TestCase):
         attachment = self.uploadImage()
 
         with main.get_db() as conn:
-            main.claim_attachments(
+            attachments.claim_attachments(
                 conn,
                 [attachment["id"]],
                 chat_id=chat["id"],
@@ -490,7 +491,7 @@ class AttachmentApiTest(unittest.TestCase):
                     (messageId, chat["id"], role, content, "test/model", index, main.utc_now()),
                 )
 
-        messages = main.build_openrouter_messages(chat["id"], "")
+        messages = buildMessages.build_openrouter_messages(chat["id"], "")
 
         self.assertEqual(len(messages), 3)
         self.assertIsInstance(messages[0]["content"], list)
@@ -503,7 +504,7 @@ class AttachmentApiTest(unittest.TestCase):
         attachment = self.uploadText()
 
         with main.get_db() as conn:
-            main.claim_attachments(
+            attachments.claim_attachments(
                 conn,
                 [attachment["id"]],
                 chat_id=chat["id"],
@@ -541,7 +542,7 @@ class AttachmentApiTest(unittest.TestCase):
                     (messageId, chat["id"], role, "test/model", index, main.utc_now()),
                 )
                 if attachmentId:
-                    main.claim_attachments(
+                    attachments.claim_attachments(
                         conn, [attachmentId], chat_id=chat["id"], message_id=messageId
                     )
 
@@ -562,7 +563,7 @@ class AttachmentApiTest(unittest.TestCase):
         attachment = self.uploadText()
 
         with main.get_db() as conn:
-            main.claim_attachments(
+            attachments.claim_attachments(
                 conn, [attachment["id"]], chat_id=chat["id"], message_id="message-1"
             )
 
@@ -585,7 +586,7 @@ class AttachmentApiTest(unittest.TestCase):
         freshOrphan = self.uploadText("fresh.txt")
 
         with main.get_db() as conn:
-            main.claim_attachments(conn, [claimed["id"]], story_id="story-1")
+            attachments.claim_attachments(conn, [claimed["id"]], story_id="story-1")
             conn.execute(
                 "UPDATE attachments SET created_at = ? WHERE id = ?",
                 ("2020-01-01T00:00:00Z", staleOrphan["id"]),
@@ -603,13 +604,13 @@ class AttachmentApiTest(unittest.TestCase):
         textAttachment = self.uploadText()
 
         with main.get_db() as conn:
-            main.claim_attachments(
+            attachments.claim_attachments(
                 conn,
                 [textAttachment["id"]],
                 chat_id=chat["id"],
                 message_id="message-1",
             )
-            self.assertFalse(main.chat_has_pdf_attachment(conn, chat["id"]))
+            self.assertFalse(attachments.chat_has_pdf_attachment(conn, chat["id"]))
 
         pdfResponse = self.upload([("files", ("paper.pdf", b"%PDF-1.4 fake", "application/pdf"))])
         self.assertEqual(pdfResponse.status_code, 200)
@@ -617,19 +618,19 @@ class AttachmentApiTest(unittest.TestCase):
         self.assertEqual(pdfAttachment["kind"], "pdf")
 
         with main.get_db() as conn:
-            main.claim_attachments(
+            attachments.claim_attachments(
                 conn,
                 [pdfAttachment["id"]],
                 chat_id=chat["id"],
                 message_id="message-2",
             )
-            self.assertTrue(main.chat_has_pdf_attachment(conn, chat["id"]))
+            self.assertTrue(attachments.chat_has_pdf_attachment(conn, chat["id"]))
             parts = attachments.attachment_content_parts(conn, [pdfAttachment["id"]])
 
         self.assertEqual(parts[0]["type"], "file")
         self.assertEqual(parts[0]["file"]["filename"], "paper.pdf")
         self.assertEqual(
-            main.pdf_parser_plugins(),
+            attachments.pdf_parser_plugins(),
             [{"id": "file-parser", "pdf": {"engine": "pdf-text"}}],
         )
 

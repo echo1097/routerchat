@@ -600,7 +600,7 @@
 
 .lorebook-entry-heading {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 14px;
 }
 
@@ -618,6 +618,11 @@
   line-height: 1.2;
   letter-spacing: -0.018em;
   caret-color: var(--lb-text);
+  display: block;
+  resize: none;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
 }
 
 .lorebook-name-input::placeholder {
@@ -631,6 +636,7 @@
 .lorebook-context-chip {
   height: 30px;
   flex: none;
+  margin-top: 2px;
   display: inline-flex;
   align-items: center;
   gap: 7px;

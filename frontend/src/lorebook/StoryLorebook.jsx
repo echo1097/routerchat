@@ -934,6 +934,7 @@ function LorebookEntryPage({
   const [generateOpen, setGenerateOpen] = useState(false);
   const { tabsRef, pillRef } = useSlidingTabs(draft.category, ENTRY_CATEGORY_OPTIONS.length);
   const descriptionRef = useRef(null);
+  const nameRef = useRef(null);
 
   const showAliases = !["note", "synopsis"].includes(draft.category);
   const showNotes = !["character", "note", "synopsis"].includes(draft.category);
@@ -957,6 +958,21 @@ function LorebookEntryPage({
     textarea.style.height = `${textarea.scrollHeight}px`;
   }, [draft.description, draft.category]);
 
+  useEffect(() => {
+    const textarea = nameRef.current;
+    if (!textarea) return undefined;
+
+    function fitName() {
+      textarea.style.height = "auto";
+      textarea.style.height = `${textarea.scrollHeight}px`;
+    }
+
+    fitName();
+    const observer = new ResizeObserver(fitName);
+    observer.observe(textarea.parentElement);
+    return () => observer.disconnect();
+  }, [draft.name]);
+
   return (
     <form
       onSubmit={onSubmit}
@@ -973,13 +989,21 @@ function LorebookEntryPage({
           )}
 
           <div className="lorebook-reveal lorebook-entry-heading">
-            <input
+            <textarea
+              ref={nameRef}
               id="lorebook-entry-name"
               className="lorebook-name-input"
               aria-label="Entry name"
               autoFocus={!editing}
+              rows={1}
               value={draft.name}
-              onChange={(event) => onChange("name", event.target.value)}
+              onChange={(event) => onChange("name", event.target.value.replace(/\s*\n\s*/g, " "))}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                  event.preventDefault();
+                  event.currentTarget.form?.requestSubmit();
+                }
+              }}
               placeholder="Untitled entry"
               disabled={locked}
               data-1p-ignore="true"

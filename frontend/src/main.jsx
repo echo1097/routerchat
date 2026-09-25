@@ -863,12 +863,13 @@ function App() {
         privacy_mode: nextPrivacyMode,
         zdr_mode: nextZdrMode,
       });
-      setSettings((current) => (
-        activeChatId || activeStoryId || appSettingsLoadedRef.current
-          ? { ...current, nitro_mode: nextNitroMode }
-          : { ...current, model: nextDefaultModel, nitro_mode: nextNitroMode }
-      ));
+      const applyDefaultModel = !appSettingsLoadedRef.current && parseRoute().page === "home";
       appSettingsLoadedRef.current = true;
+      setSettings((current) => (
+        applyDefaultModel
+          ? { ...current, model: nextDefaultModel, nitro_mode: nextNitroMode }
+          : { ...current, nitro_mode: nextNitroMode }
+      ));
     } catch (error) {
       setStatus(error.message);
     }

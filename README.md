@@ -93,7 +93,11 @@ The top priority right now is support for more API providers.
     - Choose which transcription model to use
 - Usage tracking
     - Spending, request counts, and token usage for the last 7 days
+    - Token breakdown split into input, cached reads, output, and reasoning
     - Lifetime totals per model
+- Prompt caching
+    - On by default in Chat and Write modes to save on repeat tokens
+    - Can be turned off in API settings
 - Model settings
     - Model search and a default model
     - Option to hide batch models

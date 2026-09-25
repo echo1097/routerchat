@@ -729,7 +729,7 @@ export default function StoryLorebook({
                   <button
                     type="button"
                     key={category.id}
-                    className={cx("t-tab lorebook-tab", isTimeline && "is-timeline")}
+                    className="t-tab lorebook-tab"
                     role="tab"
                     aria-selected={selected}
                     onClick={() => setActiveCategory(category.id)}

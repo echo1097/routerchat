@@ -243,10 +243,6 @@
   box-shadow: var(--lb-focus-ring);
 }
 
-.lorebook-tab.is-timeline {
-  margin-left: auto;
-}
-
 .lorebook-count {
   min-width: 20px;
   padding: 3px 6px;

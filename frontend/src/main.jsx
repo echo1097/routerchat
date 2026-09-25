@@ -73,6 +73,7 @@ import NotificationStack from "./notifications/NotificationStack.jsx";
 import TourOverlay from "./tour/TourOverlay.jsx";
 import { TosLoadingScreen, TosUnavailableScreen, TosGateModal } from "./TosGate.jsx";
 import { createRoot } from "react-dom/client";
+import "@fontsource-variable/inter";
 import "./styles.css";
 
 function App() {

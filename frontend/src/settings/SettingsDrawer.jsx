@@ -18,6 +18,7 @@ import { Accordion } from "../components/Accordion.jsx";
 import { SlidingTabs } from "../components/SlidingTabs.jsx";
 import { MaskIcon, IconButton } from "../components/IconButton.jsx";
 import { UsagePanel } from "./UsagePanel.jsx";
+import { useChatSystemPromptAutosave } from "./useChatSystemPromptAutosave.js";
 import { useLingeringPage } from "./useLingeringPage.js";
 
 const REASONING_EFFORTS = [
@@ -106,6 +107,7 @@ export function SettingsDrawer({
   showPromptNavigationRail,
   modelLocked,
   onPersist,
+  onSaveChatSystemPrompt,
   onModelSelected,
   onSetDefaultModel,
   onToggleGenerateChatName,
@@ -164,7 +166,13 @@ export function SettingsDrawer({
   const activeCloudChat = chats.find((chat) => chat.id === activeChatId);
   const cloudChat = selectedCloudChat || activeCloudChat || chats[0];
   const cloudChatId = cloudChat?.id || "";
-  const promptModeName = chatMode === "write" ? "Write" : "Chat";
+  const chatPrompt = useChatSystemPromptAutosave({
+    value: chatMode === "chat" ? settings.system_prompt : "",
+    onSave: onSaveChatSystemPrompt,
+    active: open && chatMode === "chat",
+    resetKey: `${chatMode}:${activeChatId || "home"}`,
+  });
+  const chatPromptSaveLabel = chatPrompt.saveState.replace(/\b\w/g, (letter) => letter.toUpperCase());
 
   const visibleSettingsPages = chatMode === "write"
     ? SETTINGS_PAGES.filter((page) => page.id !== "system")
@@ -601,16 +609,28 @@ export function SettingsDrawer({
     <section className="flex h-full min-h-0 flex-col">
       <div className="shrink-0">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-balance text-sm font-semibold text-neutral-100">
-            {promptModeName} system prompt
-          </h2>
-          {settings.system_prompt && (
+          <div className="flex min-w-0 items-center gap-2">
+            <h2 className="text-balance text-sm font-semibold text-neutral-100">
+              Chat system prompt
+            </h2>
+            <span
+              aria-live="polite"
+              className={cx(
+                "inline-flex shrink-0 items-center rounded-full bg-white/[0.045] px-2 py-0.5 text-[11px] font-semibold leading-normal shadow-[var(--shadow-border)]",
+                chatPrompt.saveState === "save failed"
+                  ? "text-red-300"
+                  : chatPrompt.saveState === "saving" || chatPrompt.saveState === "unsaved"
+                    ? "text-neutral-400"
+                    : "text-emerald-300",
+              )}
+            >
+              {chatPromptSaveLabel}
+            </span>
+          </div>
+          {chatPrompt.draft && (
             <button
               type="button"
-              onClick={() => {
-                updateSetting({ system_prompt: "" });
-                onPersist({ ...settings, system_prompt: "" });
-              }}
+              onClick={() => chatPrompt.updateDraft("")}
               className={cx(
                 "flex shrink-0 items-center gap-1 rounded-full bg-white/[0.055] px-2 py-0.5 text-[11px] font-medium leading-normal text-neutral-400 shadow-[var(--shadow-border)] hover:bg-white/[0.085] hover:text-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
                 CONTROL_MOTION,
@@ -622,18 +642,18 @@ export function SettingsDrawer({
           )}
         </div>
         <p className="mt-0.5 mb-3 text-pretty text-xs leading-5 text-neutral-500">
-          {promptModeName === "Write"
-            ? "Optional instructions sent before every write-mode message. Chat mode has its own system prompt."
-            : "Optional instructions sent before every chat-mode message. Write mode has its own system prompt."}
+          {activeChatId
+            ? "Optional instructions sent before every message in this chat. Write mode has its own system prompt."
+            : "Optional instructions for your next new chat. Write mode has its own system prompt."}
         </p>
       </div>
       <div className="min-h-0 flex-1">
         <div className="prompt-edit-surface h-full w-full rounded-[22px] px-4 py-3">
           <textarea
-            value={settings.system_prompt}
-            onChange={(event) => updateSetting({ system_prompt: event.target.value })}
-            onBlur={() => onPersist(settings)}
-            placeholder={`No ${promptModeName.toLowerCase()} system prompt`}
+            value={chatPrompt.draft}
+            onChange={(event) => chatPrompt.updateDraft(event.target.value)}
+            onBlur={chatPrompt.saveNow}
+            placeholder="No chat system prompt"
             data-1p-ignore="true"
             className="block h-full w-full resize-none overflow-y-auto bg-transparent text-sm leading-6 text-neutral-100 outline-none placeholder:text-neutral-500"
           />

@@ -190,6 +190,7 @@ function App() {
   const chapterContentRef = useRef("");
   const chaptersRef = useRef([]);
   const activeStoryIdRef = useRef(null);
+  const activeChatIdRef = useRef(null);
   const activeChapterIdRef = useRef(null);
   const chapterCanvasScrollPositionsRef = useRef(new Map());
   const storyWorkspaceViewRef = useRef("chapter");
@@ -338,6 +339,10 @@ function App() {
     chaptersRef.current = chapters;
     storyWorkspaceViewRef.current = storyWorkspaceView;
   }, [activeStoryId, activeChapterId, chapters, storyWorkspaceView]);
+
+  useEffect(() => {
+    activeChatIdRef.current = activeChatId;
+  }, [activeChatId]);
 
   useEffect(() => {
     function handlePageHide() {
@@ -1022,6 +1027,29 @@ function App() {
     }
   }
 
+  async function saveChatSystemPrompt(systemPrompt) {
+    const chatId = activeChatId;
+    if (!chatId) {
+      writeLocalAppSettings({ chat_system_prompt_draft: systemPrompt });
+      setSettings((current) => ({ ...current, system_prompt: systemPrompt }));
+      return;
+    }
+
+    try {
+      await api(`/api/chats/${chatId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ chat_system_prompt: systemPrompt }),
+      });
+      if (activeChatIdRef.current === chatId) {
+        setSettings((current) => ({ ...current, system_prompt: systemPrompt }));
+      }
+      await loadChats();
+    } catch (error) {
+      setStatus(error.message);
+      throw error;
+    }
+  }
+
   async function saveStorySystemPrompt(systemPrompt) {
     if (!activeStoryId) {
       throw new Error("No active story.");
@@ -1084,6 +1112,7 @@ function App() {
       ...newSettings,
       model: current.model || defaultModel,
       nitro_mode: nitroMode,
+      system_prompt: nextMode === "chat" ? readLocalAppSettings().chat_system_prompt_draft || "" : "",
     }));
     setPrompt("");
     setStatus("");
@@ -1102,6 +1131,12 @@ function App() {
       void loadStoryRoute(route, { replace: true, fromRoute: true });
     } else {
       setChatMode(route.mode || "chat");
+      if ((route.mode || "chat") === "chat") {
+        setSettings((current) => ({
+          ...current,
+          system_prompt: readLocalAppSettings().chat_system_prompt_draft || "",
+        }));
+      }
       writeRoute({ page: "home", mode: route.mode || "chat" }, { replace: true });
     }
   }, []);
@@ -1349,6 +1384,7 @@ function App() {
         ...(temporary ? { title: "Temporary chat", temporary: true } : {}),
       }),
     });
+    writeLocalAppSettings({ chat_system_prompt_draft: "" });
     applyChat(payload.chat, []);
     await navigateToChat(payload.chat);
     if (!temporary) {
@@ -1575,6 +1611,7 @@ function App() {
           folder_id: folderId,
         }),
       });
+      writeLocalAppSettings({ chat_system_prompt_draft: "" });
       applyChat(payload.chat, []);
       await navigateToChat(payload.chat);
       await loadChats();
@@ -3492,6 +3529,7 @@ function App() {
         showPromptNavigationRail={showPromptNavigationRail}
         modelLocked={activeModelLocked}
         onPersist={persistSettings}
+        onSaveChatSystemPrompt={saveChatSystemPrompt}
         onModelSelected={(name) => showToast(`Model selected: ${name}`)}
         onSetDefaultModel={updateDefaultModel}
         onToggleGenerateChatName={updateGenerateChatName}

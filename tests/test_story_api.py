@@ -2823,9 +2823,9 @@ class StoryApiTest(unittest.TestCase):
 
         marked = [message for message in requestBody["messages"] if isinstance(message["content"], list)]
         self.assertEqual(len(marked), 2)
-        self.assertTrue(marked[0]["content"][0]["text"].startswith("story title: Cached Story"))
-        self.assertIn("The bells rang at dawn.", marked[0]["content"][0]["text"])
-        self.assertTrue(marked[1]["content"][0]["text"].startswith("lorebook:"))
+        self.assertTrue(marked[0]["content"][0]["text"].startswith("lorebook:"))
+        self.assertTrue(marked[1]["content"][0]["text"].startswith("previous chapter 1: Chapter 1"))
+        self.assertIn("The bells rang at dawn.", marked[1]["content"][0]["text"])
         for message in marked:
             self.assertEqual(message["content"][0]["cache_control"], {"type": "ephemeral", "ttl": "1h"})
 
@@ -2840,6 +2840,30 @@ class StoryApiTest(unittest.TestCase):
         for message in marked:
             self.assertEqual(message["content"][0]["cache_control"], {"type": "ephemeral"})
 
+    def test_moving_to_a_new_chapter_keeps_the_cached_context_unchanged(self):
+        story, secondChapter, _ = self.storyForCaching()
+
+        _, firstBody = self.streamChapterGeneration(story, secondChapter, "More rain.", mode="new")
+        thirdChapter = self.client.post(
+            f"/api/stories/{story['id']}/chapters",
+            json={"title": "Chapter 3", "content": "The gate opened."},
+        ).json()["chapter"]
+        _, secondBody = self.streamChapterGeneration(story, thirdChapter, "More rain.", mode="new")
+
+        firstMessages = firstBody["messages"]
+        secondMessages = secondBody["messages"]
+        cachedCount = next(
+            index + 1 for index, message in enumerate(firstMessages)
+            if messageText(message).startswith("previous chapter 1:")
+        )
+        self.assertEqual(
+            [(message["role"], messageText(message)) for message in firstMessages[:cachedCount]],
+            [(message["role"], messageText(message)) for message in secondMessages[:cachedCount]],
+        )
+        self.assertTrue(messageText(secondMessages[cachedCount]).startswith("previous chapter 2: Chapter 2"))
+        self.assertNotIn("cache_control", json.dumps(secondMessages[cachedCount - 1]))
+        self.assertIn("cache_control", json.dumps(secondMessages[cachedCount]))
+
     def test_write_requests_put_the_changing_chapter_in_the_last_message(self):
         story, chapter, _ = self.storyForCaching()
 
@@ -2848,10 +2872,12 @@ class StoryApiTest(unittest.TestCase):
         texts = [messageText(message) for message in requestBody["messages"]]
         storyIndex = next(index for index, text in enumerate(texts) if text.startswith("story title:"))
         lorebookIndex = next(index for index, text in enumerate(texts) if text.startswith("lorebook:"))
+        previousIndex = next(index for index, text in enumerate(texts) if text.startswith("previous chapter 1:"))
         instructionIndex = next(index for index, text in enumerate(texts) if text.startswith("You are writing prose"))
 
         self.assertLess(storyIndex, lorebookIndex)
-        self.assertLess(lorebookIndex, instructionIndex)
+        self.assertLess(lorebookIndex, previousIndex)
+        self.assertLess(previousIndex, instructionIndex)
         self.assertEqual(instructionIndex, len(texts) - 2)
         self.assertTrue(texts[-1].startswith("chapter title: Chapter 2"))
         self.assertIn("Mara waited by the gate.", texts[-1])

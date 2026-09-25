@@ -41,7 +41,8 @@ def messageText(message):
 
 
 def storyContext(messages):
-    return "\n\n".join(messageText(message) for message in messages[:-2] if message["role"] == "user")
+    contextMessages = [*messages[:-2], messages[-1]]
+    return "\n\n".join(messageText(message) for message in contextMessages if message["role"] == "user")
 
 
 #the lorebook update streams now, so the fakes hand back an sse style response instead of one json blob
@@ -2828,7 +2829,7 @@ class StoryApiTest(unittest.TestCase):
         for message in marked:
             self.assertEqual(message["content"][0]["cache_control"], {"type": "ephemeral"})
 
-    def test_write_requests_put_stable_context_before_the_draft(self):
+    def test_write_requests_put_the_changing_chapter_in_the_last_message(self):
         story, chapter, _ = self.storyForCaching()
 
         _, requestBody = self.streamChapterGeneration(story, chapter, "More rain.", mode="new")
@@ -2836,15 +2837,15 @@ class StoryApiTest(unittest.TestCase):
         texts = [messageText(message) for message in requestBody["messages"]]
         storyIndex = next(index for index, text in enumerate(texts) if text.startswith("story title:"))
         lorebookIndex = next(index for index, text in enumerate(texts) if text.startswith("lorebook:"))
-        chapterIndex = next(index for index, text in enumerate(texts) if text.startswith("chapter title:"))
         instructionIndex = next(index for index, text in enumerate(texts) if text.startswith("You are writing prose"))
 
         self.assertLess(storyIndex, lorebookIndex)
-        self.assertLess(lorebookIndex, chapterIndex)
-        self.assertLess(chapterIndex, instructionIndex)
+        self.assertLess(lorebookIndex, instructionIndex)
         self.assertEqual(instructionIndex, len(texts) - 2)
-        self.assertIn("Mara waited by the gate.", texts[chapterIndex])
-        self.assertNotIn("Mara waited by the gate.", texts[storyIndex])
+        self.assertTrue(texts[-1].startswith("chapter title: Chapter 2"))
+        self.assertIn("Mara waited by the gate.", texts[-1])
+        self.assertTrue(texts[-1].endswith("request:\nedit the chapter"))
+        self.assertNotIn("Mara waited by the gate.", "\n".join(texts[:-1]))
 
     def test_write_requests_keep_lorebook_order_after_an_edit(self):
         story, chapter, second = self.storyForCaching()

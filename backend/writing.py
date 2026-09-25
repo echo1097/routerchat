@@ -1626,7 +1626,6 @@ def build_story_messages(
     messages.append({"role": "user", "content": "\n\n".join(storyParts)})
     if lorebook_text:
         messages.append({"role": "user", "content": f"lorebook:\n{lorebook_text}"})
-    messages.append({"role": "user", "content": "\n\n".join(chapterParts)})
 
     if generation_mode == "edit":
         messages.append(
@@ -1674,13 +1673,17 @@ def build_story_messages(
             }
         )
 
+    chapterText = "\n\n".join(chapterParts)
+    requestText = f"request:\n{prompt}" if prompt.strip() else ""
+
     if attachment_parts:
-        promptContent = list(attachment_parts)
-        if prompt.strip():
-            promptContent.append({"type": "text", "text": prompt})
+        promptContent = [{"type": "text", "text": chapterText}, *attachment_parts]
+        if requestText:
+            promptContent.append({"type": "text", "text": requestText})
         messages.append({"role": "user", "content": promptContent})
     else:
-        messages.append({"role": "user", "content": prompt})
+        lastText = f"{chapterText}\n\n{requestText}" if requestText else chapterText
+        messages.append({"role": "user", "content": lastText})
 
     #a repair sees its own failed output plus a block map rebuilt from the chapter as it stands now, which is the part it got wrong last time
     if generation_mode == "edit" and repair_context:

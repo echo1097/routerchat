@@ -723,18 +723,19 @@ export default function StoryLorebook({
               <span ref={pillRef} className="t-tabs-pill" aria-hidden="true" />
               {CATEGORY_OPTIONS.map((category) => {
                 const selected = activeCategory === category.id;
+                const isTimeline = category.id === "timeline";
 
                 return (
                   <button
                     type="button"
                     key={category.id}
-                    className="t-tab lorebook-tab"
+                    className={cx("t-tab lorebook-tab", isTimeline && "is-timeline")}
                     role="tab"
                     aria-selected={selected}
                     onClick={() => setActiveCategory(category.id)}
                   >
                     <span>{category.plural}</span>
-                    {category.id !== "timeline" && <span className="lorebook-count">{counts[category.id] || 0}</span>}
+                    {!isTimeline && <span className="lorebook-count">{counts[category.id] || 0}</span>}
                   </button>
                 );
               })}

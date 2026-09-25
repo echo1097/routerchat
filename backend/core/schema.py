@@ -18,7 +18,7 @@ from backend.core.migrations import (
     ensureCachedTokenColumns,
     ensureGenerationSettledColumn,
 )
-from backend.lorebook_usage import ensureLorebookUsageTable
+from backend.lorebook.lorebookUsage import ensureLorebookUsageTable
 from backend.transcription.transcriptionUsage import ensureTranscriptionUsageTable
 
 

@@ -3,10 +3,10 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
-from backend.lorebook_usage import LorebookUsage, ensureLorebookUsageTable
+import backend.lorebook.lorebookUsage as lorebookUsage
+from backend.lorebook.lorebookUsage import LorebookUsage, ensureLorebookUsageTable
 from backend.providers.openrouter.usage import normalize_generation_usage
 
 
@@ -16,11 +16,15 @@ class LorebookUsageTest(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(self.tempDir.cleanup)
         self.dbPath = Path(self.tempDir.name) / "usage.sqlite3"
         self.lookup = AsyncMock(return_value=None)
-        self.deps = SimpleNamespace(
-            get_db=self.getDb,
-            utc_now=lambda: "2026-09-10T12:00:00Z",
-            fetch_generation_usage=self.lookup,
-        )
+        replacements = {
+            "get_db": self.getDb,
+            "utc_now": lambda: "2026-09-10T12:00:00Z",
+            "fetch_generation_usage": self.lookup,
+        }
+        for name, value in replacements.items():
+            namePatch = patch.object(lorebookUsage, name, value)
+            namePatch.start()
+            self.addCleanup(namePatch.stop)
         with self.getDb() as conn:
             conn.execute("CREATE TABLE stories (id TEXT PRIMARY KEY)")
             conn.execute("CREATE TABLE chapters (id TEXT PRIMARY KEY)")
@@ -35,7 +39,7 @@ class LorebookUsageTest(unittest.IsolatedAsyncioTestCase):
         return conn
 
     def newRun(self, chapterId=None):
-        return LorebookUsage(self.deps, "test-key", "story", "test/model", "generate", chapterId)
+        return LorebookUsage("test-key", "story", "test/model", "generate", chapterId)
 
     def savedRows(self):
         with self.getDb() as conn:

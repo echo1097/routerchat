@@ -152,12 +152,12 @@ class PromptCachingTest(unittest.TestCase):
         self.assertEqual(calls[0]["cache_control"], {"type": "ephemeral"})
 
     def test_cached_reads_are_read_from_both_usage_shapes(self):
-        streamUsage = main.normalize_usage({"prompt_tokens": 900, "prompt_tokens_details": {"cached_tokens": 700}})
+        streamUsage = usage.normalize_usage({"prompt_tokens": 900, "prompt_tokens_details": {"cached_tokens": 700}})
         generationUsage = usage.normalize_generation_usage({"native_tokens_prompt": 900, "native_tokens_cached": 700})
 
         self.assertEqual(streamUsage["cached_tokens"], 700)
         self.assertEqual(generationUsage["cached_tokens"], 700)
-        self.assertIsNone(main.normalize_usage({"prompt_tokens": 900})["cached_tokens"])
+        self.assertIsNone(usage.normalize_usage({"prompt_tokens": 900})["cached_tokens"])
 
     def test_chat_replies_save_their_cached_reads(self):
         usage = {"prompt_tokens": 900, "completion_tokens": 10, "prompt_tokens_details": {"cached_tokens": 700}}

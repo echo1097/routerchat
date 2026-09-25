@@ -1,6 +1,10 @@
 import asyncio
 import uuid
 
+from backend.core.database import get_db
+from backend.core.utils import utc_now
+from backend.providers.openrouter.usage import fetch_generation_usage
+
 
 def ensureLorebookUsageTable(conn):
     conn.execute(
@@ -32,8 +36,7 @@ def ensureLorebookUsageTable(conn):
 
 
 class LorebookUsage:
-    def __init__(self, deps, apiKey, storyId, model, action, chapterId=None):
-        self.deps = deps
+    def __init__(self, apiKey, storyId, model, action, chapterId=None):
         self.apiKey = apiKey
         self.storyId = storyId
         self.chapterId = chapterId
@@ -44,13 +47,13 @@ class LorebookUsage:
         self.usage = {}
 
     async def __aenter__(self):
-        with self.deps.get_db() as conn:
+        with get_db() as conn:
             conn.execute(
                 """
                 INSERT INTO lorebook_usage (id, story_id, chapter_id, action, model, created_at)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (self.requestId, self.storyId, self.chapterId, self.action, self.model, self.deps.utc_now()),
+                (self.requestId, self.storyId, self.chapterId, self.action, self.model, utc_now()),
             )
         return self
 
@@ -75,7 +78,7 @@ class LorebookUsage:
         if currentTask and currentTask.cancelling():
             return
         try:
-            nextUsage = await self.deps.fetch_generation_usage(self.apiKey, self.generationId)
+            nextUsage = await fetch_generation_usage(self.apiKey, self.generationId)
             self.addUsage(nextUsage)
         except Exception:
             pass
@@ -86,7 +89,7 @@ class LorebookUsage:
         if self.usage.get("total_tokens") is None and promptTokens is not None and completionTokens is not None:
             self.usage["total_tokens"] = promptTokens + completionTokens
 
-        with self.deps.get_db() as conn:
+        with get_db() as conn:
             conn.execute(
                 """
                 UPDATE lorebook_usage

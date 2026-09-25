@@ -9,6 +9,7 @@ import httpx
 from fastapi.testclient import TestClient
 
 import backend.main as main
+import backend.core.database as database
 import backend.tos.loadTos as loadTos
 import backend.tos.tosAcceptance as tosAcceptance
 import backend.core.migrations as migrations
@@ -178,14 +179,14 @@ class WebSearchToggleTest(WebSearchHarness, unittest.TestCase):
         self.assertEqual(patched.status_code, 200, patched.text)
         self.assertTrue(patched.json()["chat"]["web_search_enabled"])
 
-        with main.get_db() as conn:
+        with database.get_db() as conn:
             stored = conn.execute(
                 "SELECT web_search_enabled FROM chats WHERE id = ?", (chat["id"],)
             ).fetchone()
         self.assertEqual(stored["web_search_enabled"], 1)
 
     def test_an_older_database_gains_the_column(self):
-        with main.get_db() as conn:
+        with database.get_db() as conn:
             conn.execute("ALTER TABLE chats DROP COLUMN web_search_enabled")
             columns = {
                 row["name"] for row in conn.execute("PRAGMA table_info(chats)").fetchall()
@@ -263,7 +264,7 @@ class SourceCaptureTest(WebSearchHarness, unittest.TestCase):
         self.assertEqual(assistant["sources"], [])
 
     def test_an_older_database_gains_the_sources_column(self):
-        with main.get_db() as conn:
+        with database.get_db() as conn:
             conn.execute("ALTER TABLE messages DROP COLUMN sources")
             migrations.ensure_message_source_column(conn)
             columns = {

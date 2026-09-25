@@ -71,7 +71,7 @@ class UserDataPathsTest(unittest.TestCase):
                 apiKey.write_openrouter_key("saved-test-key")
                 os.environ.pop("OPENROUTER_API_KEY", None)
 
-                self.assertEqual(main.read_openrouter_key(), "saved-test-key")
+                self.assertEqual(apiKey.read_openrouter_key(), "saved-test-key")
 
             main.init_db()
 

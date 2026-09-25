@@ -1,7 +1,8 @@
 import sqlite3
 from typing import Any
 
-from backend.lorebook import lorebook_context_line, parse_lorebook_json
+from backend.lorebook.lorebookRows import lorebook_context_line
+from backend.lorebook.parseLorebook import parse_lorebook_json
 
 
 def brainstorm_response_format(ideaCount: int) -> dict[str, Any]:

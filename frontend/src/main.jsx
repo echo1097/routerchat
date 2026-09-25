@@ -119,6 +119,9 @@ function App() {
   const [namingChatId, setNamingChatId] = useState(null);
   const [hideFreeModels, setHideFreeModels] = useState(Boolean(localAppSettings.hide_free_models));
   const [hideBatchModels, setHideBatchModels] = useState(Boolean(localAppSettings.hide_batch_models));
+  const [disablePromptCaching, setDisablePromptCaching] = useState(
+    Boolean(localAppSettings.disable_prompt_caching),
+  );
   const [nitroMode, setNitroMode] = useState(Boolean(localAppSettings.nitro_mode));
   const [cheapestMode, setCheapestMode] = useState(Boolean(localAppSettings.cheapest_mode));
   const [privacyMode, setPrivacyMode] = useState(Boolean(localAppSettings.privacy_mode));
@@ -808,6 +811,10 @@ function App() {
         typeof payload.hide_batch_models === "boolean"
           ? payload.hide_batch_models
           : Boolean(readLocalAppSettings().hide_batch_models);
+      const nextDisablePromptCaching =
+        typeof payload.disable_prompt_caching === "boolean"
+          ? payload.disable_prompt_caching
+          : Boolean(readLocalAppSettings().disable_prompt_caching);
       const nextGenerateChatName =
         typeof payload.generate_chat_name === "boolean"
           ? payload.generate_chat_name
@@ -837,6 +844,7 @@ function App() {
       setGenerateChatName(nextGenerateChatName);
       setHideFreeModels(nextHideFreeModels);
       setHideBatchModels(nextHideBatchModels);
+      setDisablePromptCaching(nextDisablePromptCaching);
       setNitroMode(nextNitroMode);
       setSmoothStreaming(nextSmoothStreaming);
       setCheapestMode(nextCheapestMode);
@@ -846,6 +854,7 @@ function App() {
         generate_chat_name: nextGenerateChatName,
         hide_free_models: nextHideFreeModels,
         hide_batch_models: nextHideBatchModels,
+        disable_prompt_caching: nextDisablePromptCaching,
         nitro_mode: nextNitroMode,
         smooth_streaming: nextSmoothStreaming,
         cheapest_mode: nextCheapestMode,
@@ -1157,6 +1166,28 @@ function App() {
     } catch (error) {
       setHideBatchModels(value);
       writeLocalAppSettings({ hide_batch_models: value });
+      setStatus(`Saved locally. Restart the server to sync this setting. ${error.message}`);
+    }
+  }
+
+  async function updateDisablePromptCaching(value) {
+    setDisablePromptCaching(value);
+    writeLocalAppSettings({ disable_prompt_caching: value });
+    try {
+      const payload = await api("/api/settings", {
+        method: "PATCH",
+        body: JSON.stringify({ disable_prompt_caching: value }),
+      });
+      const nextValue =
+        typeof payload.disable_prompt_caching === "boolean"
+          ? payload.disable_prompt_caching
+          : value;
+      setDisablePromptCaching(nextValue);
+      writeLocalAppSettings({ disable_prompt_caching: nextValue });
+      showToast(value ? "Prompt caching disabled" : "Prompt caching enabled");
+    } catch (error) {
+      setDisablePromptCaching(value);
+      writeLocalAppSettings({ disable_prompt_caching: value });
       setStatus(`Saved locally. Restart the server to sync this setting. ${error.message}`);
     }
   }
@@ -3452,6 +3483,7 @@ function App() {
         generateChatName={generateChatName}
         hideFreeModels={hideFreeModels}
         hideBatchModels={hideBatchModels}
+        disablePromptCaching={disablePromptCaching}
         nitroMode={nitroMode}
         cheapestMode={cheapestMode}
         privacyMode={privacyMode}
@@ -3465,6 +3497,7 @@ function App() {
         onToggleGenerateChatName={updateGenerateChatName}
         onToggleHideFreeModels={updateHideFreeModels}
         onToggleHideBatchModels={updateHideBatchModels}
+        onToggleDisablePromptCaching={updateDisablePromptCaching}
         onToggleNitroMode={updateNitroMode}
         onToggleCheapestMode={updateCheapestMode}
         onTogglePrivacyMode={updatePrivacyMode}

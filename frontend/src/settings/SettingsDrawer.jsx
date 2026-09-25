@@ -97,6 +97,7 @@ export function SettingsDrawer({
   generateChatName,
   hideFreeModels,
   hideBatchModels,
+  disablePromptCaching,
   nitroMode,
   cheapestMode,
   privacyMode,
@@ -110,6 +111,7 @@ export function SettingsDrawer({
   onToggleGenerateChatName,
   onToggleHideFreeModels,
   onToggleHideBatchModels,
+  onToggleDisablePromptCaching,
   onToggleNitroMode,
   onToggleCheapestMode,
   onTogglePrivacyMode,
@@ -475,6 +477,21 @@ export function SettingsDrawer({
           checked={hideFreeModels}
           onChange={onToggleHideFreeModels}
           label="Hide free models"
+        />
+      </SettingRow>
+    </section>
+  );
+
+  const promptCachingSection = (
+    <section className="border-b border-white/[0.08] py-3">
+      <SettingRow
+        title="Disable prompt caching"
+        description="Don't ask models to cache the conversation to save on repeat tokens"
+      >
+        <SettingSwitch
+          checked={disablePromptCaching}
+          onChange={onToggleDisablePromptCaching}
+          label="Disable prompt caching"
         />
       </SettingRow>
     </section>
@@ -1076,6 +1093,7 @@ export function SettingsDrawer({
               {keySection}
               {chatNameSection}
               {modelFilterSection}
+              {promptCachingSection}
               {batchFilterSection}
               {turboSection}
               {cheapestSection}

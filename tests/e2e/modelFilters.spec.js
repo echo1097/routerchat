@@ -41,6 +41,29 @@ test("hides batch models from the model list when disabled", async ({ page }) =>
   await expect(page.getByRole("dialog", { name: "Models", exact: true })).toContainText("Test model (batch)");
 });
 
+test("turns prompt caching off from the api settings", async ({ page }) => {
+  const fixture = await installWriteApi(page);
+  const patches = [];
+  await page.route("**/api/models", (route) => route.fulfill({ json: { models } }));
+  await page.route("**/api/settings", (route) => {
+    if (route.request().method() !== "PATCH") return route.fallback();
+    const body = route.request().postDataJSON();
+    patches.push(body);
+    return route.fulfill({ json: { default_model: "test/model", ...body } });
+  });
+
+  await fixture.open();
+  await page.locator('[data-tour="model-button"]').click();
+  await page.getByRole("menuitem", { name: /Settings/ }).click();
+
+  const cachingSwitch = page.getByRole("switch", { name: "Disable prompt caching" });
+  await expect(cachingSwitch).toBeVisible();
+  await expect(cachingSwitch).not.toBeChecked();
+  await cachingSwitch.click();
+  await expect.poll(() => patches).toContainEqual({ disable_prompt_caching: true });
+  await expect(cachingSwitch).toBeChecked();
+});
+
 test("shows model names without the maker prefix and the maker underneath", async ({ page }) => {
   const fixture = await installWriteApi(page);
   const glm = { id: "z-ai/glm-5.3", name: "Z.ai: GLM 5.3", pricing: { prompt: "0.000001", completion: "0.000002" }, architecture: { output_modalities: ["text"] }, supported_parameters: [] };

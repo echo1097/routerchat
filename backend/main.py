@@ -383,6 +383,7 @@ class AppSettingsPatchRequest(BaseModel):
     generate_chat_name: bool | None = None
     hide_free_models: bool | None = None
     hide_batch_models: bool | None = None
+    disable_prompt_caching: bool | None = None
     nitro_mode: bool | None = None
     cheapest_mode: bool | None = None
     privacy_mode: bool | None = None
@@ -1315,6 +1316,7 @@ def app_settings_payload() -> dict[str, Any]:
         "generate_chat_name": bool(read_app_setting("generate_chat_name")),
         "hide_free_models": bool(read_app_setting("hide_free_models")),
         "hide_batch_models": bool(read_app_setting("hide_batch_models")),
+        "disable_prompt_caching": bool(read_app_setting("disable_prompt_caching")),
         "nitro_mode": bool(read_app_setting("nitro_mode")),
         "cheapest_mode": bool(read_app_setting("cheapest_mode")),
         "privacy_mode": bool(read_app_setting("privacy_mode")),
@@ -1627,6 +1629,8 @@ def update_app_settings(payload: AppSettingsPatchRequest) -> dict[str, Any]:
         write_app_setting("hide_free_models", payload.hide_free_models)
     if payload.hide_batch_models is not None:
         write_app_setting("hide_batch_models", payload.hide_batch_models)
+    if payload.disable_prompt_caching is not None:
+        write_app_setting("disable_prompt_caching", payload.disable_prompt_caching)
     if payload.nitro_mode is not None:
         write_app_setting("nitro_mode", payload.nitro_mode)
         if payload.nitro_mode and payload.cheapest_mode is None:

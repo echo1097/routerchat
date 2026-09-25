@@ -8,6 +8,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 import backend.main as main
+import backend.core.paths as paths
 from backend.local_access import create_secret_file
 
 
@@ -71,12 +72,12 @@ def fakeClientFor(titleResponse, calls):
 class ChatTitleTest(unittest.TestCase):
     def setUp(self):
         self.tempDir = tempfile.TemporaryDirectory()
-        self.originalDataDir = main.DATA_DIR
-        self.originalDbPath = main.DB_PATH
-        main.DATA_DIR = Path(self.tempDir.name)
-        main.DB_PATH = main.DATA_DIR / "routerchat-title-test.sqlite3"
+        self.originalDataDir = paths.DATA_DIR
+        self.originalDbPath = paths.DB_PATH
+        paths.DATA_DIR = Path(self.tempDir.name)
+        paths.DB_PATH = paths.DATA_DIR / "routerchat-title-test.sqlite3"
         self.baseUrl = "http://127.0.0.1:8000"
-        self.apiSecretPath = main.DATA_DIR / "run" / "api-secret"
+        self.apiSecretPath = paths.DATA_DIR / "run" / "api-secret"
         self.apiSecret = create_secret_file(self.apiSecretPath)
         self.localAccessEnvironment = patch.dict(
             os.environ,
@@ -108,8 +109,8 @@ class ChatTitleTest(unittest.TestCase):
         self.client.close()
         main.reset_local_access_config()
         self.localAccessEnvironment.stop()
-        main.DATA_DIR = self.originalDataDir
-        main.DB_PATH = self.originalDbPath
+        paths.DATA_DIR = self.originalDataDir
+        paths.DB_PATH = self.originalDbPath
         self.tempDir.cleanup()
 
     def createChat(self):

@@ -6,31 +6,32 @@ from pathlib import Path
 from unittest.mock import patch
 
 import backend.main as main
+import backend.core.paths as paths
 
 
 class UserDataPathsTest(unittest.TestCase):
     def setUp(self):
-        self.originalDataDir = main.DATA_DIR
-        self.originalDbPath = main.DB_PATH
-        self.originalEnvPath = main.ENV_PATH
+        self.originalDataDir = paths.DATA_DIR
+        self.originalDbPath = paths.DB_PATH
+        self.originalEnvPath = paths.ENV_PATH
 
     def tearDown(self):
-        main.DATA_DIR = self.originalDataDir
-        main.DB_PATH = self.originalDbPath
-        main.ENV_PATH = self.originalEnvPath
+        paths.DATA_DIR = self.originalDataDir
+        paths.DB_PATH = self.originalDbPath
+        paths.ENV_PATH = self.originalEnvPath
 
     def test_default_paths_stay_inside_the_repository(self):
-        dataDir, dbPath, envPath = main.resolve_user_data_paths({})
+        dataDir, dbPath, envPath = paths.resolve_user_data_paths({})
 
-        self.assertEqual(dataDir, main.ROOT_DIR / "data")
-        self.assertEqual(dbPath, main.ROOT_DIR / "data" / "routerchat.sqlite3")
-        self.assertEqual(envPath, main.ROOT_DIR / ".env")
+        self.assertEqual(dataDir, paths.ROOT_DIR / "data")
+        self.assertEqual(dbPath, paths.ROOT_DIR / "data" / "routerchat.sqlite3")
+        self.assertEqual(envPath, paths.ROOT_DIR / ".env")
 
     def test_configured_paths_share_the_external_directory(self):
         with tempfile.TemporaryDirectory() as tempDir:
             configuredDir = Path(tempDir) / "RouterChat data"
-            dataDir, dbPath, envPath = main.resolve_user_data_paths(
-                {main.USER_DATA_ENV_VAR: str(configuredDir)}
+            dataDir, dbPath, envPath = paths.resolve_user_data_paths(
+                {paths.USER_DATA_ENV_VAR: str(configuredDir)}
             )
 
         self.assertEqual(dataDir, configuredDir.resolve())
@@ -38,8 +39,8 @@ class UserDataPathsTest(unittest.TestCase):
         self.assertEqual(envPath, configuredDir.resolve() / ".env")
 
     def test_configured_path_expands_the_current_users_home(self):
-        dataDir, _, _ = main.resolve_user_data_paths(
-            {main.USER_DATA_ENV_VAR: "~/routerchat-test-data"}
+        dataDir, _, _ = paths.resolve_user_data_paths(
+            {paths.USER_DATA_ENV_VAR: "~/routerchat-test-data"}
         )
 
         self.assertEqual(dataDir, Path.home() / "routerchat-test-data")
@@ -49,16 +50,16 @@ class UserDataPathsTest(unittest.TestCase):
         for emptyValue in ("", "   ", "\t"):
             with self.subTest(emptyValue=emptyValue):
                 with self.assertRaisesRegex(RuntimeError, "cannot be empty"):
-                    main.resolve_user_data_paths(
-                        {main.USER_DATA_ENV_VAR: emptyValue}
+                    paths.resolve_user_data_paths(
+                        {paths.USER_DATA_ENV_VAR: emptyValue}
                     )
 
     def test_external_key_and_database_survive_reinitialization(self):
         with tempfile.TemporaryDirectory() as tempDir:
             userDataDir = Path(tempDir) / "external-user-data"
-            main.DATA_DIR = userDataDir
-            main.DB_PATH = userDataDir / "routerchat.sqlite3"
-            main.ENV_PATH = userDataDir / ".env"
+            paths.DATA_DIR = userDataDir
+            paths.DB_PATH = userDataDir / "routerchat.sqlite3"
+            paths.ENV_PATH = userDataDir / ".env"
 
             main.init_db()
             main.write_app_setting("default_model", "test/model")
@@ -72,11 +73,11 @@ class UserDataPathsTest(unittest.TestCase):
 
             main.init_db()
 
-            self.assertTrue(main.DB_PATH.is_file())
+            self.assertTrue(paths.DB_PATH.is_file())
             self.assertEqual(main.read_app_setting("default_model"), "test/model")
 
             if os.name == "posix":
-                fileMode = stat.S_IMODE(main.ENV_PATH.stat().st_mode)
+                fileMode = stat.S_IMODE(paths.ENV_PATH.stat().st_mode)
                 self.assertEqual(fileMode, 0o600)
 
 

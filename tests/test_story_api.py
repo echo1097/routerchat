@@ -12,6 +12,8 @@ from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 
 import backend.main as main
+import backend.core.migrations as migrations
+import backend.core.paths as paths
 from backend.brainstorm import (
     COLUMN_OFFSET_X,
     brainstorm_response_format,
@@ -88,12 +90,12 @@ def acceptCurrentTos():
 class StoryApiTest(unittest.TestCase):
     def setUp(self):
         self.tempDir = tempfile.TemporaryDirectory()
-        self.originalDataDir = main.DATA_DIR
-        self.originalDbPath = main.DB_PATH
-        main.DATA_DIR = Path(self.tempDir.name)
-        main.DB_PATH = main.DATA_DIR / "routerchat-test.sqlite3"
+        self.originalDataDir = paths.DATA_DIR
+        self.originalDbPath = paths.DB_PATH
+        paths.DATA_DIR = Path(self.tempDir.name)
+        paths.DB_PATH = paths.DATA_DIR / "routerchat-test.sqlite3"
         self.baseUrl = "http://127.0.0.1:8000"
-        self.apiSecretPath = main.DATA_DIR / "run" / "api-secret"
+        self.apiSecretPath = paths.DATA_DIR / "run" / "api-secret"
         self.apiSecret = create_secret_file(self.apiSecretPath)
         self.localAccessEnvironment = patch.dict(
             os.environ,
@@ -125,8 +127,8 @@ class StoryApiTest(unittest.TestCase):
         self.client.close()
         main.reset_local_access_config()
         self.localAccessEnvironment.stop()
-        main.DATA_DIR = self.originalDataDir
-        main.DB_PATH = self.originalDbPath
+        paths.DATA_DIR = self.originalDataDir
+        paths.DB_PATH = self.originalDbPath
         self.tempDir.cleanup()
 
     def test_history_column_migration_upgrades_an_old_table_and_is_idempotent(self):
@@ -151,8 +153,8 @@ class StoryApiTest(unittest.TestCase):
             "INSERT INTO chapter_history_entries VALUES ('e1','s1','c1','r1','User prompt','hi',0,'now')"
         )
 
-        main.ensure_chapter_history_columns(conn)
-        main.ensure_chapter_history_columns(conn) #running twice must not blow up or duplicate anything
+        migrations.ensure_chapter_history_columns(conn)
+        migrations.ensure_chapter_history_columns(conn) #running twice must not blow up or duplicate anything
 
         columns = [row["name"] for row in conn.execute("PRAGMA table_info(chapter_history_entries)")]
         self.assertEqual(columns.count("words_added"), 1)
@@ -201,8 +203,8 @@ class StoryApiTest(unittest.TestCase):
                 (f"e{index}", label, index),
             )
 
-        main.ensure_chapter_history_columns(conn)
-        main.ensure_chapter_history_columns(conn) #twice, must not blow up or double apply
+        migrations.ensure_chapter_history_columns(conn)
+        migrations.ensure_chapter_history_columns(conn) #twice, must not blow up or double apply
 
         columns = [row["name"] for row in conn.execute("PRAGMA table_info(chapter_history_entries)")]
         self.assertEqual(columns.count("kind"), 1)
@@ -2753,8 +2755,8 @@ class StoryApiTest(unittest.TestCase):
             )
             """
         )
-        main.ensure_lorebook_revision_column(conn)
-        main.ensure_lorebook_revision_column(conn)
+        migrations.ensure_lorebook_revision_column(conn)
+        migrations.ensure_lorebook_revision_column(conn)
         columns = [row["name"] for row in conn.execute("PRAGMA table_info(lorebook_entries)")]
         self.assertEqual(columns.count("revision"), 1)
         conn.close()
@@ -3035,8 +3037,8 @@ class StoryApiTest(unittest.TestCase):
                 """
             )
 
-        originalDbPath = main.DB_PATH
-        main.DB_PATH = legacyPath
+        originalDbPath = paths.DB_PATH
+        paths.DB_PATH = legacyPath
         try:
             main.init_db()
             with main.get_db() as conn:
@@ -3046,7 +3048,7 @@ class StoryApiTest(unittest.TestCase):
                 self.assertIn("revision", columns)
                 self.assertIn("disabled", columns)
         finally:
-            main.DB_PATH = originalDbPath
+            paths.DB_PATH = originalDbPath
 
     def test_strict_edit_commits_full_chapter_update_event(self):
         story = self.client.post("/api/stories", json={"title": "Edit Contract"}).json()["story"]
@@ -3574,8 +3576,8 @@ class StoryApiTest(unittest.TestCase):
             conn.row_factory = sqlite3.Row
             conn.execute("CREATE TABLE story_generations (id TEXT PRIMARY KEY)")
             conn.execute("INSERT INTO story_generations (id) VALUES ('old-run')")
-            main.ensureGenerationSettledColumn(conn)
-            main.ensureGenerationSettledColumn(conn)
+            migrations.ensureGenerationSettledColumn(conn)
+            migrations.ensureGenerationSettledColumn(conn)
             self.assertEqual(conn.execute("SELECT settled FROM story_generations").fetchone()[0], 0)
 
     def testCancellationDuringUsageKeepsCompletedGeneration(self):
@@ -4067,7 +4069,7 @@ class StoryApiTest(unittest.TestCase):
         )
         self.assertEqual(htmlResponse.headers["pragma"], "no-cache")
 
-        assetPath = next((main.STATIC_DIR / "assets").glob("index-*.js"))
+        assetPath = next((paths.STATIC_DIR / "assets").glob("index-*.js"))
         assetResponse = self.client.get(f"/assets/{assetPath.name}")
         self.assertEqual(assetResponse.status_code, 200)
         self.assertEqual(

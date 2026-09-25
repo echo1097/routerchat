@@ -10,6 +10,7 @@ from starlette.datastructures import UploadFile
 
 import backend.attachments as attachments
 import backend.main as main
+import backend.core.paths as paths
 from backend.local_access import create_secret_file
 
 
@@ -30,12 +31,12 @@ PNG_BYTES = bytes.fromhex(
 class AttachmentApiTest(unittest.TestCase):
     def setUp(self):
         self.tempDir = tempfile.TemporaryDirectory()
-        self.originalDataDir = main.DATA_DIR
-        self.originalDbPath = main.DB_PATH
-        main.DATA_DIR = Path(self.tempDir.name)
-        main.DB_PATH = main.DATA_DIR / "routerchat-test.sqlite3"
+        self.originalDataDir = paths.DATA_DIR
+        self.originalDbPath = paths.DB_PATH
+        paths.DATA_DIR = Path(self.tempDir.name)
+        paths.DB_PATH = paths.DATA_DIR / "routerchat-test.sqlite3"
         self.baseUrl = "http://127.0.0.1:8000"
-        self.apiSecretPath = main.DATA_DIR / "run" / "api-secret"
+        self.apiSecretPath = paths.DATA_DIR / "run" / "api-secret"
         self.apiSecret = create_secret_file(self.apiSecretPath)
         self.localAccessEnvironment = patch.dict(
             os.environ,
@@ -67,8 +68,8 @@ class AttachmentApiTest(unittest.TestCase):
         self.client.close()
         main.reset_local_access_config()
         self.localAccessEnvironment.stop()
-        main.DATA_DIR = self.originalDataDir
-        main.DB_PATH = self.originalDbPath
+        paths.DATA_DIR = self.originalDataDir
+        paths.DB_PATH = self.originalDbPath
         self.tempDir.cleanup()
 
     def upload(self, files):
@@ -97,7 +98,7 @@ class AttachmentApiTest(unittest.TestCase):
         self.assertEqual(attachment["mime"], "text/markdown")
         self.assertGreater(attachment["size_bytes"], 0)
 
-        stored = list((main.DATA_DIR / "attachments").iterdir())
+        stored = list((paths.DATA_DIR / "attachments").iterdir())
         self.assertEqual(len(stored), 1)
 
     def test_upload_rejects_an_unsupported_file_type(self):
@@ -105,7 +106,7 @@ class AttachmentApiTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("not a supported file type", response.json()["detail"])
-        self.assertEqual(list((main.DATA_DIR / "attachments").iterdir()), [])
+        self.assertEqual(list((paths.DATA_DIR / "attachments").iterdir()), [])
 
     def test_upload_rejects_an_oversized_file(self):
         oversized = b"x" * (attachments.MAX_TEXT_BYTES + 1)
@@ -131,7 +132,7 @@ class AttachmentApiTest(unittest.TestCase):
         self.assertEqual(response.json()["detail"], "big.txt is larger than 256KB.")
         self.assertTrue(readLengths)
         self.assertLessEqual(sum(readLengths), attachments.MAX_TEXT_BYTES + 1)
-        self.assertEqual(list((main.DATA_DIR / "attachments").iterdir()), [])
+        self.assertEqual(list((paths.DATA_DIR / "attachments").iterdir()), [])
 
     def testUploadSizeBoundariesForEveryKind(self):
         cases = [("text", "note.TXT"), ("image", "shot.PNG"), ("pdf", "document.PDF")]
@@ -181,7 +182,7 @@ class AttachmentApiTest(unittest.TestCase):
 
                 self.assertEqual(response.status_code, 400)
                 self.assertEqual(response.json()["detail"], detail)
-                self.assertEqual(list((main.DATA_DIR / "attachments").iterdir()), [])
+                self.assertEqual(list((paths.DATA_DIR / "attachments").iterdir()), [])
                 with main.get_db() as conn:
                     row = conn.execute("SELECT COUNT(*) AS total FROM attachments").fetchone()
                 self.assertEqual(row["total"], 0)
@@ -203,7 +204,7 @@ class AttachmentApiTest(unittest.TestCase):
         ])
 
         self.assertEqual(response.status_code, 400)
-        stored = main.DATA_DIR / "attachments"
+        stored = paths.DATA_DIR / "attachments"
         self.assertEqual(list(stored.iterdir()) if stored.exists() else [], [])
 
         with main.get_db() as conn:
@@ -348,7 +349,7 @@ class AttachmentApiTest(unittest.TestCase):
                 "SELECT * FROM attachments WHERE id = ?", (attachment["id"],)
             ).fetchone()
         self.assertIsNone(row)
-        self.assertEqual(list((main.DATA_DIR / "attachments").iterdir()), [])
+        self.assertEqual(list((paths.DATA_DIR / "attachments").iterdir()), [])
 
     def test_text_attachment_becomes_a_fenced_text_part(self):
         attachment = self.uploadText("script.py", b"print('hello')\n")
@@ -514,7 +515,7 @@ class AttachmentApiTest(unittest.TestCase):
                 "SELECT * FROM attachments WHERE id = ?", (attachment["id"],)
             ).fetchone()
         self.assertIsNone(row)
-        self.assertEqual(list((main.DATA_DIR / "attachments").iterdir()), [])
+        self.assertEqual(list((paths.DATA_DIR / "attachments").iterdir()), [])
 
     def test_deleting_a_user_message_removes_its_attachment_files(self):
         chat = self.createChat()
@@ -551,7 +552,7 @@ class AttachmentApiTest(unittest.TestCase):
             }
 
         self.assertEqual(remaining, {kept["id"]})
-        self.assertEqual(len(list((main.DATA_DIR / "attachments").iterdir())), 1)
+        self.assertEqual(len(list((paths.DATA_DIR / "attachments").iterdir())), 1)
 
     def test_deleting_a_folder_with_its_chats_removes_attachment_files(self):
         folder = self.client.post("/api/folders", json={"name": "Work"}).json()["folder"]
@@ -574,7 +575,7 @@ class AttachmentApiTest(unittest.TestCase):
             ).fetchone()
 
         self.assertIsNone(row)
-        self.assertEqual(list((main.DATA_DIR / "attachments").iterdir()), [])
+        self.assertEqual(list((paths.DATA_DIR / "attachments").iterdir()), [])
 
     def test_the_orphan_sweep_only_takes_unclaimed_and_stale_uploads(self):
         claimed = self.uploadText("claimed.txt")
@@ -645,7 +646,7 @@ class AttachmentApiTest(unittest.TestCase):
             ).fetchone()
 
         storedPath = Path(row["stored_path"]).resolve()
-        self.assertEqual(storedPath.parent, (main.DATA_DIR / "attachments").resolve())
+        self.assertEqual(storedPath.parent, (paths.DATA_DIR / "attachments").resolve())
 
 
 class AttachmentLimitParityTest(unittest.TestCase):

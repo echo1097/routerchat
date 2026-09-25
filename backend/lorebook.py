@@ -13,7 +13,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from backend.lorebook_usage import LorebookUsage
-from backend.reasoning_effort import ReasoningEffort
+from backend.core.reasoningEffort import ReasoningEffort
 
 
 OPENROUTER_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=10.0)

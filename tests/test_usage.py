@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import backend.main as main
+import backend.core.paths as paths
 from backend.usage import createUsageRouter, getUsage
 
 
@@ -17,7 +18,7 @@ class UsageTest(unittest.TestCase):
     def setUp(self):
         self.tempDir = tempfile.TemporaryDirectory()
         self.dbPath = Path(self.tempDir.name) / "usage.sqlite3"
-        with patch.object(main, "DATA_DIR", Path(self.tempDir.name)), patch.object(main, "DB_PATH", self.dbPath):
+        with patch.object(paths, "DATA_DIR", Path(self.tempDir.name)), patch.object(paths, "DB_PATH", self.dbPath):
             main.init_db()
         self.conn = sqlite3.connect(self.dbPath)
         self.conn.row_factory = sqlite3.Row

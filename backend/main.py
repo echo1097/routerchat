@@ -11,7 +11,6 @@ import tempfile
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, AsyncIterator
 from urllib.parse import parse_qs
@@ -19,22 +18,17 @@ from urllib.parse import parse_qs
 import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import (
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import Scope
 
-from backend.websearch import (
-    WEB_SEARCH_MAX_RESULTS,
-    WebSearchDeps,
-    create_web_search_router,
-    deserialize_sources,
-    merge_sources,
-    normalize_sources,
-    serialize_sources,
-    web_search_plugin,
-)
 from backend.attachments import (
     AttachmentsDeps,
     attachments_by_message,
@@ -48,16 +42,42 @@ from backend.attachments import (
     pdf_parser_plugins,
     user_content_with_attachments,
 )
-from backend.changelog_status import ChangelogStatusDeps, create_changelog_status_router
-from backend.transcription import createTranscriptionRouter, ensureTranscriptionUsageTable
-from backend.usage import createUsageRouter
-from backend.lorebook_usage import ensureLorebookUsageTable
 from backend.brainstorm import BrainstormDeps, create_brainstorm_router
+from backend.changelog_status import ChangelogStatusDeps, create_changelog_status_router
+from backend.core import paths
+from backend.core.appSettings import (
+    globalChatSystemPrompt,
+    hourPromptCacheEnabled,
+    read_app_setting,
+    write_app_setting,
+)
+from backend.core.database import get_db, message_order_clause, next_message_order
+from backend.core.paths import APP_VERSION, TOS_PATH
+from backend.core.reasoningEffort import ReasoningEffort, coerce_reasoning_effort
+from backend.core.schema import init_db
+from backend.core.streamEvents import stream_event
+from backend.core.utils import (
+    coerce_bool_int,
+    float_or_none,
+    int_or_none,
+    patch_updates,
+    utc_now,
+)
+from backend.local_access import read_secret_file, validate_base_url
 from backend.lorebook import LorebookDeps, create_lorebook_router
 from backend.lorebook_generate import create_lorebook_generate_router
 from backend.lorebook_repair import create_lorebook_repair_router
-from backend.local_access import read_secret_file, validate_base_url
-from backend.reasoning_effort import ReasoningEffort, coerce_reasoning_effort
+from backend.transcription import createTranscriptionRouter
+from backend.usage import createUsageRouter
+from backend.websearch import (
+    WebSearchDeps,
+    create_web_search_router,
+    deserialize_sources,
+    merge_sources,
+    normalize_sources,
+    serialize_sources,
+    web_search_plugin,
+)
 from backend.writing import (
     WritingDeps,
     create_writing_router,
@@ -66,12 +86,6 @@ from backend.writing import (
     word_diff_counts,
 )
 
-
-ROOT_DIR = Path(__file__).resolve().parent.parent
-STATIC_DIR = ROOT_DIR / "dist"
-TOS_PATH = ROOT_DIR / "TOS.md"
-VERSION_PATH = ROOT_DIR / "version.json"
-USER_DATA_ENV_VAR = "ROUTERCHAT_USER_DATA_DIR"
 API_SECRET_FILE_ENV_VAR = "ROUTERCHAT_API_SECRET_FILE"
 BASE_URL_ENV_VAR = "ROUTERCHAT_BASE_URL"
 TRUSTED_ORIGINS_ENV_VAR = "ROUTERCHAT_TRUSTED_ORIGINS"
@@ -108,45 +122,7 @@ OPENROUTER_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=10
 DEFAULT_MODEL_ID = "anthropic/claude-sonnet-5"
 
 
-def resolve_user_data_paths(
-    environment: Mapping[str, str] | None = None,
-) -> tuple[Path, Path, Path]:
-    environment = os.environ if environment is None else environment
-
-    if USER_DATA_ENV_VAR not in environment:
-        dataDir = ROOT_DIR / "data"
-        return dataDir, dataDir / "routerchat.sqlite3", ROOT_DIR / ".env"
-
-    configuredPath = environment[USER_DATA_ENV_VAR]
-    if not configuredPath.strip():
-        raise RuntimeError(f"{USER_DATA_ENV_VAR} cannot be empty.")
-
-    userDataDir = Path(configuredPath).expanduser().resolve(strict=False)
-    return userDataDir, userDataDir / "routerchat.sqlite3", userDataDir / ".env"
-
-
-def load_version_metadata() -> dict[str, str]:
-    try:
-        metadata = json.loads(VERSION_PATH.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise RuntimeError("version.json is missing or invalid.") from exc
-
-    requiredFields = ("version", "releaseTag", "minimumUpdaterVersion")
-    missingField = any(
-        not isinstance(metadata.get(field), str) or not metadata[field].strip()
-        for field in requiredFields
-    )
-    if missingField:
-        raise RuntimeError("version.json is missing required version fields.")
-
-    return {field: metadata[field].strip() for field in requiredFields}
-
-
-DATA_DIR, DB_PATH, ENV_PATH = resolve_user_data_paths()
-VERSION_METADATA = load_version_metadata()
-APP_VERSION = VERSION_METADATA["version"]
-
-load_dotenv(ENV_PATH)
+load_dotenv(paths.ENV_PATH)
 
 app = FastAPI(title="RouterChat", version=APP_VERSION)
 
@@ -454,25 +430,6 @@ def writeSystemPrompt(payload: ChatCreateRequest | ChatPatchRequest | StreamMess
     )
 
 
-def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def patch_updates(payload: BaseModel) -> dict[str, Any]:
-    if hasattr(payload, "model_dump"):
-        updates = payload.model_dump(exclude_unset=True)
-    else:
-        updates = payload.dict(exclude_unset=True)
-
-    null_fields = [key for key, value in updates.items() if value is None]
-    if null_fields:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Fields cannot be null: {', '.join(null_fields)}.",
-        )
-    return updates
-
-
 #cache the parsed TOS keyed on mtime+size so the guard middleware isnt re-hashing a file on every single request
 _tos_cache: dict[str, Any] = {"stamp": None, "value": None}
 
@@ -515,553 +472,10 @@ def load_tos() -> dict[str, Any] | None:
     return value
 
 
-def get_db() -> sqlite3.Connection:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
-
-
-def init_db() -> None:
-    with get_db() as conn:
-        conn.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS chats (
-              id TEXT PRIMARY KEY,
-              title TEXT NOT NULL,
-              model TEXT NOT NULL,
-              system_prompt TEXT NOT NULL,
-              temperature REAL NOT NULL,
-              max_tokens INTEGER NOT NULL,
-              thinking_enabled INTEGER NOT NULL,
-              reasoning_effort TEXT NOT NULL DEFAULT 'medium',
-              web_search_enabled INTEGER NOT NULL DEFAULT 0,
-              temporary INTEGER NOT NULL DEFAULT 0,
-              pinned INTEGER NOT NULL DEFAULT 0,
-              created_at TEXT NOT NULL,
-              updated_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS chat_folders (
-              id TEXT PRIMARY KEY,
-              name TEXT NOT NULL,
-              created_at TEXT NOT NULL,
-              updated_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS messages (
-              id TEXT PRIMARY KEY,
-              chat_id TEXT NOT NULL,
-              role TEXT NOT NULL,
-              content TEXT NOT NULL,
-              reasoning TEXT,
-              sources TEXT,
-              model TEXT,
-              finish_reason TEXT,
-              error TEXT,
-              message_order INTEGER,
-              created_at TEXT NOT NULL,
-              FOREIGN KEY(chat_id) REFERENCES chats(id) ON DELETE CASCADE
-            );
-
-            CREATE TABLE IF NOT EXISTS favicons (
-              domain TEXT PRIMARY KEY,
-              mime TEXT,
-              image BLOB,
-              fetched_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS attachments (
-              id TEXT PRIMARY KEY,
-              chat_id TEXT,
-              message_id TEXT,
-              story_id TEXT,
-              filename TEXT NOT NULL,
-              mime TEXT NOT NULL,
-              kind TEXT NOT NULL,
-              size_bytes INTEGER NOT NULL,
-              stored_path TEXT NOT NULL,
-              created_at TEXT NOT NULL
-            );
-
-            CREATE INDEX IF NOT EXISTS attachments_chat_idx
-              ON attachments(chat_id);
-
-            CREATE INDEX IF NOT EXISTS attachments_message_idx
-              ON attachments(message_id);
-
-            CREATE INDEX IF NOT EXISTS attachments_story_idx
-              ON attachments(story_id);
-
-            CREATE TABLE IF NOT EXISTS models_cache (
-              id TEXT PRIMARY KEY,
-              payload_json TEXT NOT NULL,
-              fetched_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS app_settings (
-              key TEXT PRIMARY KEY,
-              value_json TEXT NOT NULL,
-              updated_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS tos_acceptances (
-              id TEXT PRIMARY KEY,
-              tos_hash TEXT NOT NULL,
-              tos_date TEXT,
-              accepted_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS stories (
-              id TEXT PRIMARY KEY,
-              title TEXT NOT NULL,
-              author TEXT NOT NULL,
-              language TEXT NOT NULL,
-              synopsis TEXT NOT NULL,
-              model TEXT NOT NULL,
-              system_prompt TEXT NOT NULL,
-              temperature REAL NOT NULL,
-              max_tokens INTEGER NOT NULL,
-              thinking_enabled INTEGER NOT NULL,
-              reasoning_effort TEXT NOT NULL DEFAULT 'medium',
-              temporary INTEGER NOT NULL DEFAULT 0,
-              lorebook_auto INTEGER NOT NULL DEFAULT 0,
-              lorebook_model TEXT NOT NULL DEFAULT '',
-              created_at TEXT NOT NULL,
-              updated_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS chapters (
-              id TEXT PRIMARY KEY,
-              story_id TEXT NOT NULL,
-              title TEXT NOT NULL,
-              content TEXT NOT NULL,
-              word_count INTEGER NOT NULL DEFAULT 0,
-              revision INTEGER NOT NULL DEFAULT 0,
-              order_index INTEGER NOT NULL,
-              disabled INTEGER NOT NULL DEFAULT 0,
-              created_at TEXT NOT NULL,
-              updated_at TEXT NOT NULL,
-              FOREIGN KEY(story_id) REFERENCES stories(id) ON DELETE CASCADE
-            );
-
-            CREATE TABLE IF NOT EXISTS lorebook_entries (
-              id TEXT PRIMARY KEY,
-              story_id TEXT NOT NULL,
-              name TEXT NOT NULL,
-              category TEXT NOT NULL,
-              description TEXT NOT NULL,
-              aliases_json TEXT NOT NULL,
-              tags_json TEXT NOT NULL,
-              metadata_json TEXT NOT NULL,
-              revision INTEGER NOT NULL DEFAULT 0,
-              disabled INTEGER NOT NULL DEFAULT 0,
-              created_at TEXT NOT NULL,
-              updated_at TEXT NOT NULL,
-              FOREIGN KEY(story_id) REFERENCES stories(id) ON DELETE CASCADE
-            );
-
-            CREATE TABLE IF NOT EXISTS story_generations (
-              id TEXT PRIMARY KEY,
-              story_id TEXT NOT NULL,
-              chapter_id TEXT NOT NULL,
-              prompt TEXT NOT NULL,
-              generated_text TEXT NOT NULL,
-              model TEXT,
-              finish_reason TEXT,
-              error TEXT,
-              generation_id TEXT,
-              prompt_tokens INTEGER,
-              completion_tokens INTEGER,
-              reasoning_tokens INTEGER,
-              total_tokens INTEGER,
-              cost REAL,
-              provider_name TEXT,
-              generation_time REAL,
-              latency REAL,
-              created_at TEXT NOT NULL,
-              FOREIGN KEY(story_id) REFERENCES stories(id) ON DELETE CASCADE,
-              FOREIGN KEY(chapter_id) REFERENCES chapters(id) ON DELETE CASCADE
-            );
-
-            CREATE TABLE IF NOT EXISTS lorebook_update_runs (
-              id TEXT PRIMARY KEY,
-              story_id TEXT NOT NULL,
-              chapter_id TEXT NOT NULL,
-              generation_id TEXT,
-              openrouter_generation_id TEXT,
-              raw_output TEXT NOT NULL,
-              applied_updates_json TEXT NOT NULL,
-              rejected_updates_json TEXT NOT NULL DEFAULT '[]',
-              cost REAL,
-              error TEXT,
-              created_at TEXT NOT NULL,
-              FOREIGN KEY(story_id) REFERENCES stories(id) ON DELETE CASCADE,
-              FOREIGN KEY(chapter_id) REFERENCES chapters(id) ON DELETE CASCADE,
-              FOREIGN KEY(generation_id) REFERENCES story_generations(id) ON DELETE SET NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS chapter_history_entries (
-              id TEXT PRIMARY KEY,
-              story_id TEXT NOT NULL,
-              chapter_id TEXT NOT NULL,
-              run_id TEXT NOT NULL,
-              label TEXT NOT NULL,
-              detail TEXT NOT NULL DEFAULT '',
-              entry_order INTEGER NOT NULL,
-              kind TEXT,
-              words_added INTEGER,
-              words_removed INTEGER,
-              cost REAL,
-              created_at TEXT NOT NULL,
-              FOREIGN KEY(story_id) REFERENCES stories(id) ON DELETE CASCADE,
-              FOREIGN KEY(chapter_id) REFERENCES chapters(id) ON DELETE CASCADE
-            );
-
-            CREATE TABLE IF NOT EXISTS brainstorm_nodes (
-              id TEXT PRIMARY KEY,
-              story_id TEXT NOT NULL,
-              node_type TEXT NOT NULL,
-              title TEXT NOT NULL,
-              content TEXT NOT NULL,
-              position_x REAL NOT NULL DEFAULT 0,
-              position_y REAL NOT NULL DEFAULT 0,
-              status TEXT NOT NULL DEFAULT 'complete',
-              created_at TEXT NOT NULL,
-              updated_at TEXT NOT NULL,
-              FOREIGN KEY(story_id) REFERENCES stories(id) ON DELETE CASCADE
-            );
-
-            CREATE TABLE IF NOT EXISTS brainstorm_edges (
-              id TEXT PRIMARY KEY,
-              story_id TEXT NOT NULL,
-              source_node_id TEXT NOT NULL,
-              target_node_id TEXT NOT NULL,
-              created_at TEXT NOT NULL,
-              FOREIGN KEY(story_id) REFERENCES stories(id) ON DELETE CASCADE,
-              FOREIGN KEY(source_node_id) REFERENCES brainstorm_nodes(id) ON DELETE CASCADE,
-              FOREIGN KEY(target_node_id) REFERENCES brainstorm_nodes(id) ON DELETE CASCADE
-            );
-
-            CREATE TABLE IF NOT EXISTS brainstorm_viewports (
-              story_id TEXT PRIMARY KEY,
-              position_x REAL NOT NULL DEFAULT 0,
-              position_y REAL NOT NULL DEFAULT 0,
-              zoom REAL NOT NULL DEFAULT 1,
-              updated_at TEXT NOT NULL,
-              FOREIGN KEY(story_id) REFERENCES stories(id) ON DELETE CASCADE
-            );
-
-            CREATE TABLE IF NOT EXISTS brainstorm_generations (
-              id TEXT PRIMARY KEY,
-              story_id TEXT NOT NULL,
-              prompt_node_id TEXT NOT NULL,
-              prompt TEXT NOT NULL,
-              reasoning TEXT,
-              duration_ms REAL,
-              model TEXT NOT NULL,
-              finish_reason TEXT,
-              error TEXT,
-              generation_id TEXT,
-              prompt_tokens INTEGER,
-              completion_tokens INTEGER,
-              reasoning_tokens INTEGER,
-              total_tokens INTEGER,
-              cost REAL,
-              provider_name TEXT,
-              generation_time REAL,
-              latency REAL,
-              created_at TEXT NOT NULL,
-              FOREIGN KEY(story_id) REFERENCES stories(id) ON DELETE CASCADE,
-              FOREIGN KEY(prompt_node_id) REFERENCES brainstorm_nodes(id) ON DELETE CASCADE
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_brainstorm_nodes_story
-            ON brainstorm_nodes(story_id, created_at);
-
-            CREATE INDEX IF NOT EXISTS idx_brainstorm_edges_story
-            ON brainstorm_edges(story_id, created_at);
-
-            CREATE INDEX IF NOT EXISTS idx_tos_acceptances_hash
-            ON tos_acceptances(tos_hash);
-            """
-        )
-        ensure_chat_folder_column(conn)
-        ensure_message_order_column(conn)
-        ensure_message_usage_columns(conn)
-        ensure_chat_settings_columns(conn)
-        ensure_story_settings_columns(conn)
-        ensureGenerationSettledColumn(conn)
-        ensure_chapter_context_column(conn)
-        ensure_chapter_revision_column(conn)
-        ensure_lorebook_revision_column(conn)
-        ensure_message_source_column(conn)
-        ensure_brainstorm_generation_columns(conn)
-        ensure_chapter_history_columns(conn)
-        ensure_lorebook_run_usage_columns(conn)
-        ensureLorebookUsageTable(conn)
-        ensureTranscriptionUsageTable(conn)
-        ensureCachedTokenColumns(conn)
-        clean_lorebook_categories(conn)
-
-
-def ensureCachedTokenColumns(conn: sqlite3.Connection) -> None:
-    for table in ("messages", "story_generations", "brainstorm_generations"):
-        existingColumns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
-        if "cached_tokens" not in existingColumns:
-            conn.execute(f"ALTER TABLE {table} ADD COLUMN cached_tokens INTEGER")
-
-
-def ensureGenerationSettledColumn(conn: sqlite3.Connection) -> None:
-    existingColumns = {
-        row["name"] for row in conn.execute("PRAGMA table_info(story_generations)").fetchall()
-    }
-    if "settled" not in existingColumns:
-        conn.execute("ALTER TABLE story_generations ADD COLUMN settled INTEGER NOT NULL DEFAULT 0")
-
-
-def ensure_chat_settings_columns(conn: sqlite3.Connection) -> None:
-    existing_columns = {
-        row["name"] for row in conn.execute("PRAGMA table_info(chats)").fetchall()
-    }
-    if "reasoning_effort" not in existing_columns:
-        conn.execute(
-            "ALTER TABLE chats ADD COLUMN reasoning_effort TEXT NOT NULL DEFAULT 'medium'"
-        )
-    if "temporary" not in existing_columns:
-        conn.execute("ALTER TABLE chats ADD COLUMN temporary INTEGER NOT NULL DEFAULT 0")
-    if "pinned" not in existing_columns:
-        conn.execute("ALTER TABLE chats ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0")
-    if "web_search_enabled" not in existing_columns:
-        conn.execute(
-            "ALTER TABLE chats ADD COLUMN web_search_enabled INTEGER NOT NULL DEFAULT 0"
-        )
-
-
-def ensure_message_source_column(conn: sqlite3.Connection) -> None:
-    existing_columns = {
-        row["name"] for row in conn.execute("PRAGMA table_info(messages)").fetchall()
-    }
-    if "sources" not in existing_columns:
-        conn.execute("ALTER TABLE messages ADD COLUMN sources TEXT")
-
-
-def ensure_chat_folder_column(conn: sqlite3.Connection) -> None:
-    existing_columns = {
-        row["name"] for row in conn.execute("PRAGMA table_info(chats)").fetchall()
-    }
-    if "folder_id" not in existing_columns:
-        conn.execute("ALTER TABLE chats ADD COLUMN folder_id TEXT")
-
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_chats_folder ON chats(folder_id, updated_at DESC)"
-    )
-
-
-def ensure_story_settings_columns(conn: sqlite3.Connection) -> None:
-    existingColumns = {
-        row["name"] for row in conn.execute("PRAGMA table_info(stories)").fetchall()
-    }
-    if "temporary" not in existingColumns:
-        conn.execute("ALTER TABLE stories ADD COLUMN temporary INTEGER NOT NULL DEFAULT 0")
-    if "lorebook_auto" not in existingColumns:
-        conn.execute("ALTER TABLE stories ADD COLUMN lorebook_auto INTEGER NOT NULL DEFAULT 0")
-    if "lorebook_model" not in existingColumns:
-        #blank means the author never picked one, so the story's own model keeps doing the lorebook work
-        conn.execute("ALTER TABLE stories ADD COLUMN lorebook_model TEXT NOT NULL DEFAULT ''")
-
-
-def ensure_chapter_context_column(conn: sqlite3.Connection) -> None:
-    existingColumns = {
-        row["name"] for row in conn.execute("PRAGMA table_info(chapters)").fetchall()
-    }
-    if "disabled" not in existingColumns:
-        conn.execute("ALTER TABLE chapters ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0")
-
-
-def ensure_chapter_revision_column(conn: sqlite3.Connection) -> None:
-    existingColumns = {
-        row["name"] for row in conn.execute("PRAGMA table_info(chapters)").fetchall()
-    }
-    if "revision" not in existingColumns:
-        conn.execute(
-            "ALTER TABLE chapters ADD COLUMN revision INTEGER NOT NULL DEFAULT 0"
-        )
-
-
-def ensure_lorebook_revision_column(conn: sqlite3.Connection) -> None:
-    existingColumns = {
-        row["name"] for row in conn.execute("PRAGMA table_info(lorebook_entries)").fetchall()
-    }
-    if "revision" not in existingColumns:
-        conn.execute(
-            "ALTER TABLE lorebook_entries ADD COLUMN revision INTEGER NOT NULL DEFAULT 0"
-        )
-
-
-def ensure_brainstorm_generation_columns(conn: sqlite3.Connection) -> None:
-    existingColumns = {
-        row["name"]
-        for row in conn.execute("PRAGMA table_info(brainstorm_generations)").fetchall()
-    }
-    if "reasoning" not in existingColumns:
-        conn.execute("ALTER TABLE brainstorm_generations ADD COLUMN reasoning TEXT")
-    if "duration_ms" not in existingColumns:
-        conn.execute("ALTER TABLE brainstorm_generations ADD COLUMN duration_ms REAL")
-
-
-def ensure_chapter_history_columns(conn: sqlite3.Connection) -> None:
-    existingColumns = {
-        row["name"]
-        for row in conn.execute("PRAGMA table_info(chapter_history_entries)").fetchall()
-    }
-    #these briefly shipped counting lines, rename rather than re-add so the counts already recorded survive
-    if "lines_added" in existingColumns and "words_added" not in existingColumns:
-        conn.execute(
-            "ALTER TABLE chapter_history_entries RENAME COLUMN lines_added TO words_added"
-        )
-        existingColumns.add("words_added")
-    if "lines_removed" in existingColumns and "words_removed" not in existingColumns:
-        conn.execute(
-            "ALTER TABLE chapter_history_entries RENAME COLUMN lines_removed TO words_removed"
-        )
-        existingColumns.add("words_removed")
-
-    #nullable on purpose, history written before this feature has no numbers and a zero would be a lie
-    if "words_added" not in existingColumns:
-        conn.execute("ALTER TABLE chapter_history_entries ADD COLUMN words_added INTEGER")
-    if "words_removed" not in existingColumns:
-        conn.execute("ALTER TABLE chapter_history_entries ADD COLUMN words_removed INTEGER")
-    if "cost" not in existingColumns:
-        conn.execute("ALTER TABLE chapter_history_entries ADD COLUMN cost REAL")
-    if "kind" not in existingColumns:
-        conn.execute("ALTER TABLE chapter_history_entries ADD COLUMN kind TEXT")
-        backfill_chapter_history_kinds(conn)
-
-
-def backfill_chapter_history_kinds(conn: sqlite3.Connection) -> None:
-    #one time pass so old rows stop leaning on the label text forever, ordered so the lorebook ones dont steal each others patterns
-    rules = [
-        ("prompt", "label = 'User prompt'"),
-        ("thinking", "label LIKE '% thought for %'"),
-        ("write", "label LIKE '% wrote for %'"),
-        ("write_failed", "label LIKE '% could not apply the edit'"),
-        (
-            "lore_summary",
-            "(label LIKE '%finished editing Lorebook after %'"
-            " OR label LIKE '%found no Lorebook changes after %')",
-        ),
-        ("lore_hide", "label LIKE '% from Lorebook'"),
-        ("lore_create", "label LIKE '% to Lorebook'"),
-        ("lore_update", "(label LIKE '% in Lorebook' OR label LIKE '% updated Timeline')"),
-    ]
-    for kind, condition in rules:
-        conn.execute(
-            f"UPDATE chapter_history_entries SET kind = ? WHERE kind IS NULL AND {condition}",
-            (kind,),
-        )
-
-
-def ensure_lorebook_run_usage_columns(conn: sqlite3.Connection) -> None:
-    existingColumns = {
-        row["name"]
-        for row in conn.execute("PRAGMA table_info(lorebook_update_runs)").fetchall()
-    }
-    #generation_id was already taken by the story_generations fk so the openrouter one needs its own name
-    if "openrouter_generation_id" not in existingColumns:
-        conn.execute(
-            "ALTER TABLE lorebook_update_runs ADD COLUMN openrouter_generation_id TEXT"
-        )
-    if "cost" not in existingColumns:
-        conn.execute("ALTER TABLE lorebook_update_runs ADD COLUMN cost REAL")
-    if "rejected_updates_json" not in existingColumns:
-        conn.execute(
-            "ALTER TABLE lorebook_update_runs ADD COLUMN rejected_updates_json TEXT NOT NULL DEFAULT '[]'"
-        )
-
-
-def clean_lorebook_categories(conn: sqlite3.Connection) -> None:
-    conn.execute(
-        """
-        UPDATE lorebook_entries
-        SET category = 'note'
-        WHERE lower(category) = 'starting scenario'
-        """
-    )
-
-
-def ensure_message_order_column(conn: sqlite3.Connection) -> None:
-    existing_columns = {
-        row["name"] for row in conn.execute("PRAGMA table_info(messages)").fetchall()
-    }
-    if "message_order" not in existing_columns:
-        conn.execute("ALTER TABLE messages ADD COLUMN message_order INTEGER")
-
-    chatRows = conn.execute(
-        """
-        SELECT DISTINCT chat_id FROM messages
-        WHERE message_order IS NULL
-        ORDER BY chat_id ASC
-        """
-    ).fetchall()
-    for chatRow in chatRows:
-        messageRows = conn.execute(
-            """
-            SELECT rowid FROM messages
-            WHERE chat_id = ? AND message_order IS NULL
-            ORDER BY created_at ASC, rowid ASC
-            """,
-            (chatRow["chat_id"],),
-        ).fetchall()
-        nextOrder = next_message_order(conn, chatRow["chat_id"])
-        for offset, messageRow in enumerate(messageRows):
-            conn.execute(
-                "UPDATE messages SET message_order = ? WHERE rowid = ?",
-                (nextOrder + offset, messageRow["rowid"]),
-            )
-
-
-def ensure_message_usage_columns(conn: sqlite3.Connection) -> None:
-    existing_columns = {
-        row["name"] for row in conn.execute("PRAGMA table_info(messages)").fetchall()
-    }
-    usage_columns = {
-        "generation_id": "TEXT",
-        "prompt_tokens": "INTEGER",
-        "completion_tokens": "INTEGER",
-        "reasoning_tokens": "INTEGER",
-        "total_tokens": "INTEGER",
-        "cost": "REAL",
-        "provider_name": "TEXT",
-        "generation_time": "REAL",
-        "latency": "REAL",
-    }
-    for column, column_type in usage_columns.items():
-        if column not in existing_columns:
-            conn.execute(f"ALTER TABLE messages ADD COLUMN {column} {column_type}")
-
-
-def next_message_order(conn: sqlite3.Connection, chat_id: str) -> int:
-    row = conn.execute(
-        """
-        SELECT COALESCE(MAX(message_order), -1) + 1 AS next_order
-        FROM messages
-        WHERE chat_id = ?
-        """,
-        (chat_id,),
-    ).fetchone()
-    return int(row["next_order"])
-
-
-def message_order_clause() -> str:
-    return "message_order ASC, created_at ASC, rowid ASC"
-
-
 @app.on_event("startup")
 def on_startup() -> None:
     local_access_config(app)
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    paths.DATA_DIR.mkdir(parents=True, exist_ok=True)
     init_db()
     with get_db() as conn:
         conn.execute(
@@ -1093,9 +507,9 @@ def read_openrouter_key() -> str | None:
     env_key = os.getenv("OPENROUTER_API_KEY")
     if env_key:
         return env_key.strip()
-    if not ENV_PATH.exists():
+    if not paths.ENV_PATH.exists():
         return None
-    for line in ENV_PATH.read_text(encoding="utf-8").splitlines():
+    for line in paths.ENV_PATH.read_text(encoding="utf-8").splitlines():
         if line.startswith("OPENROUTER_API_KEY="):
             value = line.split("=", 1)[1].strip().strip('"').strip("'")
             return value or None
@@ -1103,11 +517,11 @@ def read_openrouter_key() -> str | None:
 
 
 def write_openrouter_key(api_key: str) -> None:
-    ENV_PATH.parent.mkdir(parents=True, exist_ok=True)
+    paths.ENV_PATH.parent.mkdir(parents=True, exist_ok=True)
     lines: list[str] = []
     replaced = False
-    if ENV_PATH.exists():
-        lines = ENV_PATH.read_text(encoding="utf-8").splitlines()
+    if paths.ENV_PATH.exists():
+        lines = paths.ENV_PATH.read_text(encoding="utf-8").splitlines()
 
     next_lines: list[str] = []
     for line in lines:
@@ -1120,7 +534,7 @@ def write_openrouter_key(api_key: str) -> None:
         next_lines.append(f"OPENROUTER_API_KEY={api_key}")
 
     with tempfile.NamedTemporaryFile(
-        "w", encoding="utf-8", dir=ENV_PATH.parent, delete=False
+        "w", encoding="utf-8", dir=paths.ENV_PATH.parent, delete=False
     ) as handle:
         handle.write("\n".join(next_lines).rstrip() + "\n")
         temp_name = handle.name
@@ -1128,9 +542,9 @@ def write_openrouter_key(api_key: str) -> None:
     tempPath = Path(temp_name)
     if os.name == "posix":
         tempPath.chmod(0o600)
-    tempPath.replace(ENV_PATH)
+    tempPath.replace(paths.ENV_PATH)
     if os.name == "posix":
-        ENV_PATH.chmod(0o600)
+        paths.ENV_PATH.chmod(0o600)
 
     os.environ["OPENROUTER_API_KEY"] = api_key
 
@@ -1235,30 +649,6 @@ def cache_models(models: list[dict[str, Any]]) -> None:
         )
 
 
-def read_app_setting(key: str) -> Any:
-    with get_db() as conn:
-        row = conn.execute(
-            "SELECT value_json FROM app_settings WHERE key = ?", (key,)
-        ).fetchone()
-    if not row:
-        return None
-    return json.loads(row["value_json"])
-
-
-def write_app_setting(key: str, value: Any) -> None:
-    with get_db() as conn:
-        conn.execute(
-            """
-            INSERT INTO app_settings (key, value_json, updated_at)
-            VALUES (?, ?, ?)
-            ON CONFLICT(key) DO UPDATE SET
-              value_json = excluded.value_json,
-              updated_at = excluded.updated_at
-            """,
-            (key, json.dumps(value), utc_now()),
-        )
-
-
 def latest_tos_acceptance(tos_hash: str | None = None) -> dict[str, Any] | None:
     query = "SELECT id, tos_hash, tos_date, accepted_at FROM tos_acceptances"
     params: tuple[Any, ...] = ()
@@ -1336,14 +726,6 @@ def app_settings_payload() -> dict[str, Any]:
         "chat_system_prompt": globalChatSystemPrompt(),
         "hour_prompt_cache": hourPromptCacheEnabled(),
     }
-
-
-def hourPromptCacheEnabled() -> bool:
-    return read_app_setting("hour_prompt_cache") is not False
-
-
-def globalChatSystemPrompt() -> str:
-    return str(read_app_setting("chat_system_prompt") or "")
 
 
 def openrouter_request_model(model_id: str, nitro_mode: bool) -> str:
@@ -1457,10 +839,6 @@ def row_to_message(row: sqlite3.Row) -> dict[str, Any]:
         "latency": row["latency"],
         "created_at": row["created_at"],
     }
-
-
-def coerce_bool_int(value: Any) -> int:
-    return int(bool(value))
 
 
 def api_reasoning_effort(value: ReasoningEffort) -> str:
@@ -2387,24 +1765,6 @@ def openrouter_error_message(status_code: int, response_text: str) -> str:
     return f"OpenRouter error {status_code}: {response_text}"
 
 
-def int_or_none(value: Any) -> int | None:
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def float_or_none(value: Any) -> float | None:
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
 def normalize_usage(usage: dict[str, Any] | None) -> dict[str, Any] | None:
     if not usage:
         return None
@@ -2478,13 +1838,6 @@ async def fetch_generation_usage(
                 return None
             return normalize_generation_usage(response.json().get("data"))
     return None
-
-
-def stream_event(event_type: str, value: Any, metadata: dict[str, Any] | None = None) -> bytes:
-    payload = {"type": event_type, "value": value}
-    if metadata:
-        payload.update({key: value for key, value in metadata.items() if value is not None})
-    return (json.dumps(payload) + "\n").encode("utf-8")
 
 
 def saveAssistantReply(
@@ -2919,7 +2272,7 @@ app.include_router(createUsageRouter(get_db, read_app_setting))
 attachmentsDeps = AttachmentsDeps(
     get_db=get_db,
     utc_now=utc_now,
-    data_dir=lambda: DATA_DIR,
+    data_dir=lambda: paths.DATA_DIR,
 )
 
 changelogStatusDeps = ChangelogStatusDeps(
@@ -2941,4 +2294,4 @@ app.include_router(createTranscriptionRouter(
     get_db, utc_now,
 ))
 
-configure_static_files(app, STATIC_DIR)
+configure_static_files(app, paths.STATIC_DIR)

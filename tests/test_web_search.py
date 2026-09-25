@@ -9,6 +9,8 @@ import httpx
 from fastapi.testclient import TestClient
 
 import backend.main as main
+import backend.core.migrations as migrations
+import backend.core.paths as paths
 import backend.websearch as websearch
 from backend.local_access import create_secret_file
 
@@ -26,12 +28,12 @@ PDF_BYTES = b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n"
 class WebSearchHarness:
     def setUp(self):
         self.tempDir = tempfile.TemporaryDirectory()
-        self.originalDataDir = main.DATA_DIR
-        self.originalDbPath = main.DB_PATH
-        main.DATA_DIR = Path(self.tempDir.name)
-        main.DB_PATH = main.DATA_DIR / "routerchat-test.sqlite3"
+        self.originalDataDir = paths.DATA_DIR
+        self.originalDbPath = paths.DB_PATH
+        paths.DATA_DIR = Path(self.tempDir.name)
+        paths.DB_PATH = paths.DATA_DIR / "routerchat-test.sqlite3"
         self.baseUrl = "http://127.0.0.1:8000"
-        self.apiSecretPath = main.DATA_DIR / "run" / "api-secret"
+        self.apiSecretPath = paths.DATA_DIR / "run" / "api-secret"
         self.apiSecret = create_secret_file(self.apiSecretPath)
         self.localAccessEnvironment = patch.dict(
             os.environ,
@@ -63,8 +65,8 @@ class WebSearchHarness:
         self.client.close()
         main.reset_local_access_config()
         self.localAccessEnvironment.stop()
-        main.DATA_DIR = self.originalDataDir
-        main.DB_PATH = self.originalDbPath
+        paths.DATA_DIR = self.originalDataDir
+        paths.DB_PATH = self.originalDbPath
         self.tempDir.cleanup()
 
     def createChat(self, **payload):
@@ -132,7 +134,7 @@ class WebSearchToggleTest(WebSearchHarness, unittest.TestCase):
         body = self.streamMessage(chat["id"], web_search_enabled=True)
         self.assertEqual(
             body["plugins"],
-            [{"id": "web", "max_results": main.WEB_SEARCH_MAX_RESULTS}],
+            [{"id": "web", "max_results": websearch.WEB_SEARCH_MAX_RESULTS}],
         )
 
     def test_web_search_rides_alongside_the_pdf_parser(self):
@@ -186,7 +188,7 @@ class WebSearchToggleTest(WebSearchHarness, unittest.TestCase):
             }
             self.assertNotIn("web_search_enabled", columns)
 
-            main.ensure_chat_settings_columns(conn)
+            migrations.ensure_chat_settings_columns(conn)
             columns = {
                 row["name"] for row in conn.execute("PRAGMA table_info(chats)").fetchall()
             }
@@ -259,7 +261,7 @@ class SourceCaptureTest(WebSearchHarness, unittest.TestCase):
     def test_an_older_database_gains_the_sources_column(self):
         with main.get_db() as conn:
             conn.execute("ALTER TABLE messages DROP COLUMN sources")
-            main.ensure_message_source_column(conn)
+            migrations.ensure_message_source_column(conn)
             columns = {
                 row["name"] for row in conn.execute("PRAGMA table_info(messages)").fetchall()
             }

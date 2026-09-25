@@ -8,6 +8,8 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 import backend.main as main
+import backend.core.migrations as migrations
+import backend.core.paths as paths
 from backend.local_access import create_secret_file
 
 
@@ -21,12 +23,12 @@ def acceptCurrentTos():
 class FolderApiTest(unittest.TestCase):
     def setUp(self):
         self.tempDir = tempfile.TemporaryDirectory()
-        self.originalDataDir = main.DATA_DIR
-        self.originalDbPath = main.DB_PATH
-        main.DATA_DIR = Path(self.tempDir.name)
-        main.DB_PATH = main.DATA_DIR / "routerchat-test.sqlite3"
+        self.originalDataDir = paths.DATA_DIR
+        self.originalDbPath = paths.DB_PATH
+        paths.DATA_DIR = Path(self.tempDir.name)
+        paths.DB_PATH = paths.DATA_DIR / "routerchat-test.sqlite3"
         self.baseUrl = "http://127.0.0.1:8000"
-        self.apiSecretPath = main.DATA_DIR / "run" / "api-secret"
+        self.apiSecretPath = paths.DATA_DIR / "run" / "api-secret"
         self.apiSecret = create_secret_file(self.apiSecretPath)
         self.localAccessEnvironment = patch.dict(
             os.environ,
@@ -58,8 +60,8 @@ class FolderApiTest(unittest.TestCase):
         self.client.close()
         main.reset_local_access_config()
         self.localAccessEnvironment.stop()
-        main.DATA_DIR = self.originalDataDir
-        main.DB_PATH = self.originalDbPath
+        paths.DATA_DIR = self.originalDataDir
+        paths.DB_PATH = self.originalDbPath
         self.tempDir.cleanup()
 
     def createFolder(self, name="Work"):
@@ -148,8 +150,8 @@ class FolderApiTest(unittest.TestCase):
             "INSERT INTO chats (id, title, model, updated_at) VALUES ('a', 'Old', 'm', 'now')"
         )
 
-        main.ensure_chat_folder_column(conn)
-        main.ensure_chat_folder_column(conn)
+        migrations.ensure_chat_folder_column(conn)
+        migrations.ensure_chat_folder_column(conn)
 
         row = conn.execute("SELECT * FROM chats WHERE id = 'a'").fetchone()
         self.assertIsNone(row["folder_id"])

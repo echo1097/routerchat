@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from backend.reasoning_effort import LenientReasoningEffort, ReasoningEffort
+from backend.core.reasoningEffort import LenientReasoningEffort, ReasoningEffort
 from backend.attachments import (
     attachment_content_parts,
     claim_attachments,

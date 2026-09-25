@@ -18,7 +18,7 @@ def acceptCurrentTos():
     main.record_tos_acceptance(tos["hash"], tos["date"])
 
 
-def fakeChatStream(content):
+def fakeChatStream(content, usage=None):
     class FakeStreamResponse:
         status_code = 200
         headers = {}
@@ -31,12 +31,14 @@ def fakeChatStream(content):
 
         async def aiter_lines(self):
             yield f"data: {json.dumps({'choices': [{'delta': {'content': content}}]})}"
+            if usage:
+                yield f"data: {json.dumps({'choices': [], 'usage': usage})}"
             yield "data: [DONE]"
 
     return FakeStreamResponse()
 
 
-def fakeClientFor(calls):
+def fakeClientFor(calls, usage=None):
     class FakeClient:
         def __init__(self, *_args, **_kwargs):
             pass
@@ -49,7 +51,7 @@ def fakeClientFor(calls):
 
         def stream(self, *_args, **kwargs):
             calls.append(kwargs.get("json") or {})
-            return fakeChatStream("the reply")
+            return fakeChatStream("the reply", usage)
 
     return FakeClient
 
@@ -98,14 +100,14 @@ class PromptCachingTest(unittest.TestCase):
         main.DB_PATH = self.originalDbPath
         self.tempDir.cleanup()
 
-    def sendMessage(self):
+    def sendMessage(self, usage=None):
         chatResponse = self.client.post("/api/chats", json={"model": "test/model"})
         self.assertEqual(chatResponse.status_code, 200)
         chat = chatResponse.json()["chat"]
 
         calls = []
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.main.httpx.AsyncClient", fakeClientFor(calls)
+            "backend.main.httpx.AsyncClient", fakeClientFor(calls, usage)
         ):
             response = self.client.post(
                 f"/api/chats/{chat['id']}/messages/stream",
@@ -129,6 +131,22 @@ class PromptCachingTest(unittest.TestCase):
 
         self.assertEqual(calls[0]["cache_control"], {"type": "ephemeral"})
         self.assertEqual(calls[0]["session_id"], chat["id"])
+
+    def test_cached_reads_are_read_from_both_usage_shapes(self):
+        streamUsage = main.normalize_usage({"prompt_tokens": 900, "prompt_tokens_details": {"cached_tokens": 700}})
+        generationUsage = main.normalize_generation_usage({"native_tokens_prompt": 900, "native_tokens_cached": 700})
+
+        self.assertEqual(streamUsage["cached_tokens"], 700)
+        self.assertEqual(generationUsage["cached_tokens"], 700)
+        self.assertIsNone(main.normalize_usage({"prompt_tokens": 900})["cached_tokens"])
+
+    def test_chat_replies_save_their_cached_reads(self):
+        usage = {"prompt_tokens": 900, "completion_tokens": 10, "prompt_tokens_details": {"cached_tokens": 700}}
+
+        chat, _ = self.sendMessage(usage)
+
+        messages = self.client.get(f"/api/chats/{chat['id']}").json()["messages"]
+        self.assertEqual(messages[-1]["cached_tokens"], 700)
 
     def test_chat_requests_skip_caching_when_disabled(self):
         self.client.patch("/api/settings", json={"disable_prompt_caching": True})

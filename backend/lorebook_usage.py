@@ -15,6 +15,7 @@ def ensureLorebookUsageTable(conn):
           prompt_tokens INTEGER,
           completion_tokens INTEGER,
           reasoning_tokens INTEGER,
+          cached_tokens INTEGER,
           total_tokens INTEGER,
           cost REAL,
           created_at TEXT NOT NULL,
@@ -25,6 +26,9 @@ def ensureLorebookUsageTable(conn):
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_lorebook_usage_story ON lorebook_usage(story_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_lorebook_usage_chapter ON lorebook_usage(chapter_id)")
+    existingColumns = {row[1] for row in conn.execute("PRAGMA table_info(lorebook_usage)").fetchall()}
+    if "cached_tokens" not in existingColumns:
+        conn.execute("ALTER TABLE lorebook_usage ADD COLUMN cached_tokens INTEGER")
 
 
 class LorebookUsage:
@@ -87,7 +91,7 @@ class LorebookUsage:
                 """
                 UPDATE lorebook_usage
                 SET generation_id = ?, prompt_tokens = ?, completion_tokens = ?,
-                    reasoning_tokens = ?, total_tokens = ?, cost = ?
+                    reasoning_tokens = ?, cached_tokens = ?, total_tokens = ?, cost = ?
                 WHERE id = ?
                 """,
                 (
@@ -95,6 +99,7 @@ class LorebookUsage:
                     self.usage.get("prompt_tokens"),
                     self.usage.get("completion_tokens"),
                     self.usage.get("reasoning_tokens"),
+                    self.usage.get("cached_tokens"),
                     self.usage.get("total_tokens"),
                     self.usage.get("cost"),
                     self.requestId,

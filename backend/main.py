@@ -799,7 +799,15 @@ def init_db() -> None:
         ensure_lorebook_run_usage_columns(conn)
         ensureLorebookUsageTable(conn)
         ensureTranscriptionUsageTable(conn)
+        ensureCachedTokenColumns(conn)
         clean_lorebook_categories(conn)
+
+
+def ensureCachedTokenColumns(conn: sqlite3.Connection) -> None:
+    for table in ("messages", "story_generations", "brainstorm_generations"):
+        existingColumns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        if "cached_tokens" not in existingColumns:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN cached_tokens INTEGER")
 
 
 def ensureGenerationSettledColumn(conn: sqlite3.Connection) -> None:
@@ -1426,6 +1434,7 @@ def row_to_message(row: sqlite3.Row) -> dict[str, Any]:
         "prompt_tokens": row["prompt_tokens"],
         "completion_tokens": row["completion_tokens"],
         "reasoning_tokens": row["reasoning_tokens"],
+        "cached_tokens": row["cached_tokens"],
         "total_tokens": row["total_tokens"],
         "cost": row["cost"],
         "provider_name": row["provider_name"],
@@ -1924,10 +1933,10 @@ def import_chats(payload: ChatImportRequest) -> dict[str, Any]:
                 INSERT INTO messages (
                   id, chat_id, role, content, reasoning, sources, model, finish_reason,
                   error, generation_id, prompt_tokens, completion_tokens,
-                  reasoning_tokens, total_tokens, cost, provider_name,
+                  reasoning_tokens, cached_tokens, total_tokens, cost, provider_name,
                   generation_time, latency, message_order, created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     message_id,
@@ -1943,6 +1952,7 @@ def import_chats(payload: ChatImportRequest) -> dict[str, Any]:
                     int_or_none(item.get("prompt_tokens")),
                     int_or_none(item.get("completion_tokens")),
                     int_or_none(item.get("reasoning_tokens")),
+                    int_or_none(item.get("cached_tokens")),
                     int_or_none(item.get("total_tokens")),
                     float_or_none(item.get("cost")),
                     item.get("provider_name"),
@@ -2386,6 +2396,7 @@ def normalize_usage(usage: dict[str, Any] | None) -> dict[str, Any] | None:
     if not usage:
         return None
     completion_details = usage.get("completion_tokens_details") or {}
+    promptDetails = usage.get("prompt_tokens_details") or {}
     # Context meter reference math, kept here for future backend-side use:
     # prompt_tokens = int_or_none(usage.get("prompt_tokens"))
     # completion_tokens = int_or_none(usage.get("completion_tokens"))
@@ -2396,6 +2407,7 @@ def normalize_usage(usage: dict[str, Any] | None) -> dict[str, Any] | None:
         "prompt_tokens": int_or_none(usage.get("prompt_tokens")),
         "completion_tokens": int_or_none(usage.get("completion_tokens")),
         "reasoning_tokens": int_or_none(completion_details.get("reasoning_tokens")),
+        "cached_tokens": int_or_none(promptDetails.get("cached_tokens")),
         "total_tokens": int_or_none(usage.get("total_tokens")),
         "cost": float_or_none(usage.get("cost")),
         "provider_name": usage.get("provider_name"),
@@ -2425,6 +2437,7 @@ def normalize_generation_usage(data: dict[str, Any] | None) -> dict[str, Any] | 
         "prompt_tokens": promptTokens,
         "completion_tokens": completionTokens,
         "reasoning_tokens": int_or_none(data.get("native_tokens_reasoning")),
+        "cached_tokens": int_or_none(data.get("native_tokens_cached")),
         "total_tokens": totalTokens,
         "cost": cost,
         "provider_name": data.get("provider_name"),
@@ -2659,10 +2672,10 @@ async def stream_openrouter_response(
                 INSERT INTO messages (
                   id, chat_id, role, content, reasoning, sources, model, finish_reason,
                   error, generation_id, prompt_tokens, completion_tokens,
-                  reasoning_tokens, total_tokens, cost, provider_name,
+                  reasoning_tokens, cached_tokens, total_tokens, cost, provider_name,
                   generation_time, latency, message_order, created_at
                 )
-                VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     assistant_message_id,
@@ -2677,6 +2690,7 @@ async def stream_openrouter_response(
                     usage.get("prompt_tokens") if usage else None,
                     usage.get("completion_tokens") if usage else None,
                     usage.get("reasoning_tokens") if usage else None,
+                    usage.get("cached_tokens") if usage else None,
                     usage.get("total_tokens") if usage else None,
                     usage.get("cost") if usage else None,
                     usage.get("provider_name") if usage else None,

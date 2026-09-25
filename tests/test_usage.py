@@ -76,6 +76,27 @@ class UsageTest(unittest.TestCase):
         self.assertIsNone(current["blendedCost"])
         self.assertEqual(result["models"][1]["id"], "unknown")
 
+    def testCachedReadsAreSplitOutOfInputForEverySource(self):
+        for table in ("messages", "story_generations", "brainstorm_generations", "lorebook_usage"):
+            self.addRow(table, cached_tokens=80)
+        current = self.summary()["current"]
+        self.assertEqual(current["promptTokens"], 80)
+        self.assertEqual(current["cachedTokens"], 320)
+        self.assertEqual(current["totalTokens"], 600)
+
+    def testRowsWithoutCachedCountsKeepTheirFullInput(self):
+        self.addRow()
+        self.addRow("transcription_usage", model="openai/whisper-1")
+        current = self.summary()["current"]
+        self.assertEqual(current["promptTokens"], 200)
+        self.assertEqual(current["cachedTokens"], 0)
+
+    def testCachedReadsNeverExceedTheInput(self):
+        self.addRow(cached_tokens=500)
+        current = self.summary()["current"]
+        self.assertEqual(current["promptTokens"], 0)
+        self.assertEqual(current["cachedTokens"], 100)
+
     def testDuplicateProviderGenerationIsNotDoubleCounted(self):
         self.addRow(generation_id="generation-1")
         self.addRow(id="imported-copy", generation_id="generation-1")

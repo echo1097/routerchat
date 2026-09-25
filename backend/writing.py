@@ -2216,8 +2216,8 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                     UPDATE story_generations
                     SET generated_text = ?, model = ?, finish_reason = ?, error = ?,
                         generation_id = ?, prompt_tokens = ?, completion_tokens = ?,
-                        reasoning_tokens = ?, total_tokens = ?, cost = ?, provider_name = ?,
-                        generation_time = ?, latency = ?, created_at = ?
+                        reasoning_tokens = ?, cached_tokens = ?, total_tokens = ?, cost = ?,
+                        provider_name = ?, generation_time = ?, latency = ?, created_at = ?
                     WHERE id = ?
                     """,
                     (
@@ -2229,6 +2229,7 @@ def create_writing_router(deps: WritingDeps, lorebookDeps: LorebookDeps) -> APIR
                         usage.get("prompt_tokens") if usage else None,
                         usage.get("completion_tokens") if usage else None,
                         usage.get("reasoning_tokens") if usage else None,
+                        usage.get("cached_tokens") if usage else None,
                         usage.get("total_tokens") if usage else None,
                         usage.get("cost") if usage else None,
                         usage.get("provider_name") if usage else None,

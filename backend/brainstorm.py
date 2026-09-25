@@ -585,8 +585,9 @@ def create_brainstorm_router(deps: BrainstormDeps) -> APIRouter:
                       id, story_id, prompt_node_id, prompt, reasoning, duration_ms,
                       model, finish_reason, error,
                       generation_id, prompt_tokens, completion_tokens, reasoning_tokens,
-                      total_tokens, cost, provider_name, generation_time, latency, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                      cached_tokens, total_tokens, cost, provider_name, generation_time,
+                      latency, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         generation_row_id,
@@ -602,6 +603,7 @@ def create_brainstorm_router(deps: BrainstormDeps) -> APIRouter:
                         usage.get("prompt_tokens"),
                         usage.get("completion_tokens"),
                         usage.get("reasoning_tokens"),
+                        usage.get("cached_tokens"),
                         usage.get("total_tokens"),
                         usage.get("cost"),
                         usage.get("provider_name"),

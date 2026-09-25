@@ -12,6 +12,7 @@ def emptyTotals():
         "cost": 0.0,
         "requests": 0,
         "promptTokens": 0,
+        "cachedTokens": 0,
         "outputTokens": 0,
         "reasoningTokens": 0,
         "totalTokens": 0,
@@ -36,6 +37,7 @@ def addUsage(totals, row):
     prompt = cleanNumber(row["prompt_tokens"])
     completion = cleanNumber(row["completion_tokens"])
     reasoning = cleanNumber(row["reasoning_tokens"])
+    cached = min(cleanNumber(row["cached_tokens"]) or 0, prompt or 0)
     total = cleanNumber(row["total_tokens"])
     if total is None and prompt is not None and completion is not None:
         total = prompt + completion
@@ -45,7 +47,8 @@ def addUsage(totals, row):
     totals["missingCost"] += cost is None
     totals["missingTokens"] += prompt is None or completion is None
     totals["knownTokens"] += total is not None
-    totals["promptTokens"] += int(prompt or 0)
+    totals["promptTokens"] += int((prompt or 0) - cached)
+    totals["cachedTokens"] += int(cached)
     totals["reasoningTokens"] += int(min(reasoning or 0, completion) if completion is not None else reasoning or 0)
     totals["outputTokens"] += int(max(0, (completion or 0) - (reasoning or 0)))
     totals["totalTokens"] += int(total or 0)
@@ -64,7 +67,7 @@ def finishTotals(totals):
     if totals["requests"] and not totals["knownTokens"]:
         result["totalTokens"] = None
     if totals["missingTokens"]:
-        for key in ("promptTokens", "outputTokens", "reasoningTokens"):
+        for key in ("promptTokens", "cachedTokens", "outputTokens", "reasoningTokens"):
             result[key] = None
     if totals["missingCost"] or totals["knownTokens"] < totals["requests"]:
         result["blendedCost"] = None
@@ -96,16 +99,17 @@ def getUsage(conn, offsetMinutes=0, now=None, timeZone=None):
         date = (startDate + timedelta(days=dayIndex)).isoformat()
         days[date] = {**emptyTotals(), "date": date, "models": {}}
 
-    usageColumns = "model, generation_id, prompt_tokens, completion_tokens, reasoning_tokens, total_tokens, cost, created_at"
+    usageColumns = "model, generation_id, prompt_tokens, completion_tokens, reasoning_tokens, cached_tokens, total_tokens, cost, created_at"
+    transcriptionColumns = usageColumns.replace("cached_tokens", "NULL AS cached_tokens")
     queries = [
         f"SELECT {usageColumns} FROM messages WHERE role = 'assistant'",
         f"SELECT {usageColumns} FROM story_generations WHERE 1 = 1",
         f"SELECT {usageColumns} FROM brainstorm_generations WHERE 1 = 1",
         f"SELECT {usageColumns} FROM lorebook_usage WHERE 1 = 1",
-        f"SELECT {usageColumns} FROM transcription_usage WHERE 1 = 1",
+        f"SELECT {transcriptionColumns} FROM transcription_usage WHERE 1 = 1",
         """SELECT NULL AS model, openrouter_generation_id AS generation_id,
                   NULL AS prompt_tokens, NULL AS completion_tokens,
-                  NULL AS reasoning_tokens, NULL AS total_tokens, cost, created_at
+                  NULL AS reasoning_tokens, NULL AS cached_tokens, NULL AS total_tokens, cost, created_at
            FROM lorebook_update_runs
            WHERE NOT EXISTS (
                SELECT 1 FROM lorebook_usage WHERE lorebook_usage.id = lorebook_update_runs.id

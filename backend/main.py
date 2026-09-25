@@ -2052,7 +2052,7 @@ def update_chat(chat_id: str, payload: ChatPatchRequest) -> dict[str, Any]:
         #settings, renames, pins and folder moves are housekeeping, so they leave updated_at alone
         #and the chat keeps its place in the sidebar until someone actually talks in it
         values.append(chat_id)
-        result = conn.execute(
+        conn.execute(
             f"UPDATE chats SET {', '.join(assignments)} WHERE id = ?", values
         )
     return get_chat(chat_id)
@@ -2492,6 +2492,98 @@ def stream_event(event_type: str, value: Any, metadata: dict[str, Any] | None = 
     return (json.dumps(payload) + "\n").encode("utf-8")
 
 
+def saveAssistantReply(
+    chat_id: str,
+    payload: StreamMessageRequest,
+    assistant_message_id: str,
+    assistant_text: list[str],
+    reasoning_text: list[str],
+    sources: list[dict[str, str]],
+    finish_reason: str | None,
+    error_text: str | None,
+    generation_id: str | None,
+    usage: dict[str, Any] | None,
+) -> None:
+    content = "".join(assistant_text)
+    with get_db() as conn:
+        if payload.regenerate_message_id:
+            regenerate_message = conn.execute(
+                """
+                SELECT * FROM messages
+                WHERE id = ? AND chat_id = ? AND role = 'user'
+                """,
+                (payload.regenerate_message_id, chat_id),
+            ).fetchone()
+            if not regenerate_message:
+                return
+            previous_first_user = conn.execute(
+                """
+                SELECT content FROM messages
+                WHERE chat_id = ? AND role = 'user'
+                ORDER BY message_order ASC, created_at ASC, rowid ASC
+                LIMIT 1
+                """,
+                (chat_id,),
+            ).fetchone()
+            previous_first_user_content = (
+                previous_first_user["content"] if previous_first_user else None
+            )
+            conn.execute(
+                """
+                DELETE FROM messages
+                WHERE chat_id = ? AND message_order > ?
+                """,
+                (chat_id, regenerate_message["message_order"]),
+            )
+            delete_attachments_for_missing_messages(conn)
+            conn.execute(
+                """
+                UPDATE messages SET content = ? WHERE id = ? AND chat_id = ?
+                """,
+                (payload.message.strip(), payload.regenerate_message_id, chat_id),
+            )
+            refresh_chat_after_message_change(
+                conn, chat_id, previous_first_user_content
+            )
+
+        conn.execute(
+            """
+            INSERT INTO messages (
+              id, chat_id, role, content, reasoning, sources, model, finish_reason,
+              error, generation_id, prompt_tokens, completion_tokens,
+              reasoning_tokens, cached_tokens, total_tokens, cost, provider_name,
+              generation_time, latency, message_order, created_at
+            )
+            VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                assistant_message_id,
+                chat_id,
+                content,
+                "".join(reasoning_text) or None,
+                serialize_sources(sources),
+                payload.model,
+                finish_reason,
+                error_text,
+                generation_id,
+                usage.get("prompt_tokens") if usage else None,
+                usage.get("completion_tokens") if usage else None,
+                usage.get("reasoning_tokens") if usage else None,
+                usage.get("cached_tokens") if usage else None,
+                usage.get("total_tokens") if usage else None,
+                usage.get("cost") if usage else None,
+                usage.get("provider_name") if usage else None,
+                usage.get("generation_time") if usage else None,
+                usage.get("latency") if usage else None,
+                next_message_order(conn, chat_id),
+                utc_now(),
+            ),
+        )
+        conn.execute(
+            "UPDATE chats SET updated_at = ? WHERE id = ?", (utc_now(), chat_id)
+        )
+
+
 async def stream_openrouter_response(
     chat_id: str,
     payload: StreamMessageRequest,
@@ -2640,86 +2732,18 @@ async def stream_openrouter_response(
         assistant_text.append(fallback)
         yield stream_event("error", fallback)
     finally:
-        if payload.regenerate_message_id and (error_text or not stream_completed):
-            return
-
-        content = "".join(assistant_text)
-        with get_db() as conn:
-            if payload.regenerate_message_id:
-                regenerate_message = conn.execute(
-                    """
-                    SELECT * FROM messages
-                    WHERE id = ? AND chat_id = ? AND role = 'user'
-                    """,
-                    (payload.regenerate_message_id, chat_id),
-                ).fetchone()
-                if not regenerate_message:
-                    return
-                previous_first_user = conn.execute(
-                    """
-                    SELECT content FROM messages
-                    WHERE chat_id = ? AND role = 'user'
-                    ORDER BY message_order ASC, created_at ASC, rowid ASC
-                    LIMIT 1
-                    """,
-                    (chat_id,),
-                ).fetchone()
-                previous_first_user_content = (
-                    previous_first_user["content"] if previous_first_user else None
-                )
-                conn.execute(
-                    """
-                    DELETE FROM messages
-                    WHERE chat_id = ? AND message_order > ?
-                    """,
-                    (chat_id, regenerate_message["message_order"]),
-                )
-                delete_attachments_for_missing_messages(conn)
-                conn.execute(
-                    """
-                    UPDATE messages SET content = ? WHERE id = ? AND chat_id = ?
-                    """,
-                    (payload.message.strip(), payload.regenerate_message_id, chat_id),
-                )
-                refresh_chat_after_message_change(
-                    conn, chat_id, previous_first_user_content
-                )
-
-            conn.execute(
-                """
-                INSERT INTO messages (
-                  id, chat_id, role, content, reasoning, sources, model, finish_reason,
-                  error, generation_id, prompt_tokens, completion_tokens,
-                  reasoning_tokens, cached_tokens, total_tokens, cost, provider_name,
-                  generation_time, latency, message_order, created_at
-                )
-                VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    assistant_message_id,
-                    chat_id,
-                    content,
-                    "".join(reasoning_text) or None,
-                    serialize_sources(sources),
-                    payload.model,
-                    finish_reason,
-                    error_text,
-                    generation_id,
-                    usage.get("prompt_tokens") if usage else None,
-                    usage.get("completion_tokens") if usage else None,
-                    usage.get("reasoning_tokens") if usage else None,
-                    usage.get("cached_tokens") if usage else None,
-                    usage.get("total_tokens") if usage else None,
-                    usage.get("cost") if usage else None,
-                    usage.get("provider_name") if usage else None,
-                    usage.get("generation_time") if usage else None,
-                    usage.get("latency") if usage else None,
-                    next_message_order(conn, chat_id),
-                    utc_now(),
-                ),
-            )
-            conn.execute(
-                "UPDATE chats SET updated_at = ? WHERE id = ?", (utc_now(), chat_id)
+        if not (payload.regenerate_message_id and (error_text or not stream_completed)):
+            saveAssistantReply(
+                chat_id,
+                payload,
+                assistant_message_id,
+                assistant_text,
+                reasoning_text,
+                sources,
+                finish_reason,
+                error_text,
+                generation_id,
+                usage,
             )
 
 

@@ -414,10 +414,12 @@
 
 .lorebook-context-button {
   position: absolute;
-  top: 50%;
+  top: 0;
+  bottom: 0;
   right: 6px;
   width: 34px;
   height: 34px;
+  margin: auto 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -427,7 +429,6 @@
   color: var(--lb-text-muted);
   cursor: pointer;
   opacity: 0;
-  transform: translateY(-50%);
   transition:
     opacity 150ms ease-out,
     background-color 150ms ease-out,

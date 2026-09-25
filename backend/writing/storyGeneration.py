@@ -18,11 +18,15 @@ from backend.chats.chatModels import StreamMessageRequest
 from backend.chats.systemPrompts import writeSystemPrompt
 from backend.core.database import get_db
 from backend.core.streamEvents import stream_event
-from backend.core.utils import utc_now
+from backend.core.utils import display_model_name, format_duration, utc_now
 from backend.lorebook.lorebookHistory import lorebook_run_history_actions
 from backend.lorebook.runUpdate import run_lorebook_update
 from backend.providers.openrouter.apiKey import read_openrouter_key
-from backend.providers.openrouter.client import OPENROUTER_BASE_URL, headers_for_key
+from backend.providers.openrouter.client import (
+    OPENROUTER_BASE_URL,
+    OPENROUTER_TIMEOUT,
+    headers_for_key,
+)
 from backend.providers.openrouter.errors import openrouter_error_message
 from backend.providers.openrouter.models import model_supports_structured_output
 from backend.providers.openrouter.requestOptions import (
@@ -54,16 +58,11 @@ from backend.writing.storyMessages import (
     mark_story_cache_points,
 )
 from backend.writing.storyRows import (
-    display_model_name,
-    format_duration,
     insert_chapter_history_entry,
     row_to_chapter,
     word_count,
     word_diff_counts,
 )
-
-DEFAULT_MAX_TOKENS = 30000
-OPENROUTER_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=10.0)
 
 
 class ChapterStreamingResponse(StreamingResponse):

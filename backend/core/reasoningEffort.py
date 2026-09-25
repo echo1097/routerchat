@@ -2,7 +2,6 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BeforeValidator
 
-
 ReasoningEffort = Literal["low", "medium", "high", "max", "xhigh"]
 
 

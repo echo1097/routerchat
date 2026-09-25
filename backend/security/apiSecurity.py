@@ -13,8 +13,6 @@ from backend.tos.tosAcceptance import latest_tos_acceptance
 SESSION_COOKIE_NAME = "routerchat_session"
 BOOTSTRAP_PATH = "/api/bootstrap"
 HEALTH_PATH = "/api/health"
-
-
 TOS_EXEMPT_PATHS = {HEALTH_PATH, BOOTSTRAP_PATH, "/api/tos", "/api/tos/accept"}
 MUTATION_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 API_AUTH_REQUIRED_DETAIL = {

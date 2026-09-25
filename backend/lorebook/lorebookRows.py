@@ -29,11 +29,6 @@ def json_dict(value: str) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {}
 
 
-def format_duration(ms: float) -> str:
-    seconds = max(1, round(ms / 1000))
-    return f"{seconds} {'second' if seconds == 1 else 'seconds'}"
-
-
 def lorebook_model_for(story: Any) -> str:
     #blank means the author left it on "Same as global", so the story's own model keeps doing the lorebook work
     try:
@@ -41,12 +36,6 @@ def lorebook_model_for(story: Any) -> str:
     except (KeyError, IndexError, TypeError):
         chosen = ""
     return chosen or story["model"]
-
-
-def display_model_name(model: str) -> str:
-    name = str(model or "Model").split("/")[-1]
-    name = name.replace(":free", "").replace("-", " ").replace("_", " ")
-    return " ".join(part[:1].upper() + part[1:] for part in name.split())
 
 
 def normalize_lorebook_category(category: str | None) -> str:

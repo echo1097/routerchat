@@ -46,3 +46,14 @@ def float_or_none(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def format_duration(ms: float) -> str:
+    seconds = max(1, round(ms / 1000))
+    return f"{seconds} {'second' if seconds == 1 else 'seconds'}"
+
+
+def display_model_name(model: str) -> str:
+    name = str(model or "Model").split("/")[-1]
+    name = name.replace(":free", "").replace("-", " ").replace("_", " ")
+    return " ".join(part[:1].upper() + part[1:] for part in name.split())

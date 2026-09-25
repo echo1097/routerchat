@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 from backend.brainstorm.brainstormModels import StoryArchiveBrainstorm
 from backend.core.reasoningEffort import LenientReasoningEffort, ReasoningEffort
 from backend.lorebook.lorebookModels import StoryArchiveLorebookEntry
-from backend.writing.storyGeneration import DEFAULT_MAX_TOKENS
+from backend.providers.openrouter.client import DEFAULT_MAX_TOKENS
 
 
 class StoryCreateRequest(BaseModel):

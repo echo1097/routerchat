@@ -27,7 +27,11 @@ from backend.core.database import get_db
 from backend.core.streamEvents import stream_event
 from backend.core.utils import utc_now
 from backend.providers.openrouter.apiKey import read_openrouter_key
-from backend.providers.openrouter.client import OPENROUTER_BASE_URL, headers_for_key
+from backend.providers.openrouter.client import (
+    OPENROUTER_BASE_URL,
+    OPENROUTER_TIMEOUT,
+    headers_for_key,
+)
 from backend.providers.openrouter.errors import openrouter_error_message
 from backend.providers.openrouter.models import model_supports_structured_output
 from backend.providers.openrouter.requestOptions import (
@@ -39,7 +43,6 @@ from backend.providers.openrouter.requestOptions import (
 from backend.providers.openrouter.usage import fetch_generation_usage, normalize_usage
 
 router = APIRouter()
-OPENROUTER_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=10.0)
 
 
 async def stream_brainstorm_generation(

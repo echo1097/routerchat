@@ -42,17 +42,6 @@ def word_diff_counts(before: str, after: str) -> tuple[int, int]:
     return wordsAdded, wordsRemoved
 
 
-def format_duration(ms: float) -> str:
-    seconds = max(1, round(ms / 1000))
-    return f"{seconds} {'second' if seconds == 1 else 'seconds'}"
-
-
-def display_model_name(model: str) -> str:
-    name = str(model or "Model").split("/")[-1]
-    name = name.replace(":free", "").replace("-", " ").replace("_", " ")
-    return " ".join(part[:1].upper() + part[1:] for part in name.split())
-
-
 def request_updates(payload: BaseModel, reject_null: bool = False) -> dict[str, Any]:
     if hasattr(payload, "model_dump"):
         updates = payload.model_dump(exclude_unset=True)

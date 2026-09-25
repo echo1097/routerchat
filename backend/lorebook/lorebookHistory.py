@@ -1,6 +1,6 @@
 from typing import Any
 
-from backend.lorebook.lorebookRows import format_duration
+from backend.core.utils import format_duration
 
 
 def lorebook_update_kind(update: dict[str, Any]) -> str:

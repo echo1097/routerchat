@@ -8,7 +8,6 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from backend.brainstorm.generateBrainstorm import OPENROUTER_TIMEOUT
 from backend.core.database import get_db
 from backend.core.streamEvents import stream_event
 from backend.lorebook.chapterSummaries import SUMMARY_INSTRUCTION
@@ -20,7 +19,11 @@ from backend.lorebook.lorebookRows import (
 from backend.lorebook.lorebookUsage import LorebookUsage
 from backend.lorebook.parseLorebook import parse_lorebook_json
 from backend.providers.openrouter.apiKey import read_openrouter_key
-from backend.providers.openrouter.client import OPENROUTER_BASE_URL, headers_for_key
+from backend.providers.openrouter.client import (
+    OPENROUTER_BASE_URL,
+    OPENROUTER_TIMEOUT,
+    headers_for_key,
+)
 from backend.providers.openrouter.errors import openrouter_error_message
 from backend.providers.openrouter.models import model_supports_structured_output
 from backend.providers.openrouter.requestOptions import (

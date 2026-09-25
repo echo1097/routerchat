@@ -6,14 +6,13 @@ from typing import Any, AsyncIterator
 import httpx
 
 from backend.core.database import get_db
-from backend.core.utils import utc_now
+from backend.core.utils import display_model_name, utc_now
 from backend.lorebook.chapterSummaries import (
     lorebook_summary_chapter_id,
     normalize_required_summary_update,
 )
 from backend.lorebook.lorebookHistory import lorebook_run_history_actions
 from backend.lorebook.lorebookRows import (
-    display_model_name,
     json_list,
     lorebook_model_for,
     normalize_lorebook_category,
@@ -28,7 +27,11 @@ from backend.lorebook.updateSchema import (
     lorebook_update_response_format,
 )
 from backend.providers.openrouter.apiKey import read_openrouter_key
-from backend.providers.openrouter.client import OPENROUTER_BASE_URL, headers_for_key
+from backend.providers.openrouter.client import (
+    OPENROUTER_BASE_URL,
+    OPENROUTER_TIMEOUT,
+    headers_for_key,
+)
 from backend.providers.openrouter.errors import openrouter_error_message
 from backend.providers.openrouter.models import model_supports_structured_output
 from backend.providers.openrouter.requestOptions import (
@@ -39,8 +42,6 @@ from backend.providers.openrouter.requestOptions import (
 )
 from backend.providers.openrouter.usage import normalize_usage
 from backend.writing.storyRows import insert_chapter_history_entry, row_to_story
-
-OPENROUTER_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=10.0)
 
 
 #used to be one blocking post, now it streams so write mode can show the thinking while it works.

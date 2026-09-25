@@ -10,12 +10,8 @@ import httpx
 from backend.webSearch.faviconSafety import FAVICON_TIMEOUT, FaviconTransport
 
 FAVICON_MAX_BYTES = 100 * 1024
-
-
 FAVICON_REFRESH_DAYS = 30
 FAVICON_USER_AGENT = "RouterChat/1.0 (favicon fetch)"
-
-
 ICON_LINK_PATTERN = re.compile(
     r"""<link\b[^>]*rel\s*=\s*["']?[^"'>]*\bicon\b[^"'>]*["']?[^>]*>""",
     re.IGNORECASE,

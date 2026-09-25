@@ -16,10 +16,13 @@ from backend.lorebook.lorebookModels import TimelineRepairRequest
 from backend.lorebook.lorebookRows import lorebook_model_for, row_to_lorebook_entry
 from backend.lorebook.lorebookUsage import LorebookUsage
 from backend.lorebook.parseLorebook import parse_lorebook_json
-from backend.lorebook.runUpdate import OPENROUTER_TIMEOUT
 from backend.lorebook.timeline import normalize_timeline_description
 from backend.providers.openrouter.apiKey import read_openrouter_key
-from backend.providers.openrouter.client import OPENROUTER_BASE_URL, headers_for_key
+from backend.providers.openrouter.client import (
+    OPENROUTER_BASE_URL,
+    OPENROUTER_TIMEOUT,
+    headers_for_key,
+)
 from backend.providers.openrouter.errors import openrouter_error_message
 from backend.providers.openrouter.models import model_supports_structured_output
 from backend.providers.openrouter.requestOptions import (

@@ -41,11 +41,13 @@ When the install finishes, RouterChat opens automatically at `http://127.0.0.1:8
 
 | Action | macOS | Windows |
 | --- | --- | --- |
-| **Start** | Double-click `Start RouterChat.command` in the RouterChat folder | Open **RouterChat** from the Start Menu, or double-click `Start RouterChat.cmd` |
+| **Start** | Double-click `Start RouterChat.command` in the RouterChat folder (see below) | Open **RouterChat** from the Start Menu, or double-click `Start RouterChat.cmd` |
 | **Stop** | Close the launcher window | Close the launcher window |
-| **Update** | Double-click `Update RouterChat.command` | Open **Update RouterChat** from the Start Menu, or double-click `Update RouterChat.cmd` |
+| **Update** | Double-click `Update RouterChat.command` in the RouterChat folder | Open **Update RouterChat** from the Start Menu, or double-click `Update RouterChat.cmd` |
 | **Repair** | Rerun the install command above | Rerun the install command above |
-| **Uninstall** | Double-click `Uninstall RouterChat.command` in `~/Applications/RouterChat` | Open **Uninstall RouterChat** from the Start Menu |
+| **Uninstall** | Double-click `Uninstall RouterChat.command` in the RouterChat folder | Open **Uninstall RouterChat** from the Start Menu |
+
+On macOS, the RouterChat folder is on your Desktop and in `~/Applications/RouterChat`. That is the Applications folder inside your home folder, not the main Applications folder. The Desktop shortcut is only made on a fresh install, and both are shortcuts to the real files in `~/Library/Application Support/RouterChat`.
 
 A few things worth knowing:
 

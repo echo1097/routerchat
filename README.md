@@ -66,6 +66,7 @@ The top priority right now is support for more API providers.
 - UI improvements
     - Navigation bar for moving through long chats
     - Context meter that shows how full a model's context is
+    - Context meter warns at 50, 75, and 90% full
     - Guided tours for Chat and Write modes
     - In-app changelog
     - Feedback button

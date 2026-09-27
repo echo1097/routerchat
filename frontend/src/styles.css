@@ -807,6 +807,22 @@ textarea::placeholder {
   transform: scaleY(-1);
 }
 
+.t-history-page {
+  animation: t-history-page-in var(--modal-open-dur) var(--modal-ease) both;
+}
+@keyframes t-history-page-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+    filter: blur(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: blur(0);
+  }
+}
+
 .t-toggle {
   transition: background var(--toggle-track) var(--toggle-ease);
 }
@@ -2014,6 +2030,7 @@ sticky header veil and reads as clipping through the blur */
   .t-tree-panel, .t-tree-panel-inner, .t-tree-chevron {
     transition: none !important;
   }
+  .t-history-page { animation: none !important; }
   .prompt-nav-tick,
   .prompt-nav-line,
   .prompt-nav-preview {

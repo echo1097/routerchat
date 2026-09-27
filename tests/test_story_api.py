@@ -26,7 +26,14 @@ import backend.providers.openrouter.models as models
 import backend.providers.openrouter.requestOptions as requestOptions
 import backend.core.migrations as migrations
 import backend.core.paths as paths
-from backend.brainstorm.brainstormLayout import COLUMN_OFFSET_X, next_brainstorm_root_position
+from backend.brainstorm.brainstormLayout import (
+    COLUMN_OFFSET_X,
+    brainstorm_idea_positions,
+    next_brainstorm_branch_position,
+    next_brainstorm_root_position,
+    node_bounds,
+)
+from backend.brainstorm.tidyBrainstorm import tidy_brainstorm_positions
 from backend.brainstorm.brainstormMessages import brainstorm_response_format, build_brainstorm_messages, parse_brainstorm_ideas
 from backend.lorebook.lorebookHistory import lorebook_history_label
 from backend.lorebook.timeline import normalize_timeline_description
@@ -232,41 +239,98 @@ class StoryApiTest(unittest.TestCase):
         )
         conn.close()
 
+    def brainstormRound(self, promptId, promptX, promptY, ideaCount):
+        prompt = {
+            "id": promptId,
+            "node_type": "prompt",
+            "position_x": promptX,
+            "position_y": promptY,
+        }
+        ideas = [
+            {
+                "id": f"{promptId}-idea-{index}",
+                "node_type": "idea",
+                "position_x": ideaX,
+                "position_y": ideaY,
+            }
+            for index, (ideaX, ideaY) in enumerate(
+                brainstorm_idea_positions(promptX, promptY, ideaCount)
+            )
+        ]
+        return [prompt, *ideas]
+
+    def assertBrainstormNodesDoNotOverlap(self, nodes):
+        bounds = [node_bounds(node) for node in nodes]
+        for index, first in enumerate(bounds):
+            for second in bounds[index + 1:]:
+                overlaps = (
+                    first[0] < second[2]
+                    and second[0] < first[2]
+                    and first[1] < second[3]
+                    and second[1] < first[3]
+                )
+                self.assertFalse(overlaps, f"{first} overlaps {second}")
+
     def test_brainstorm_root_layout_reuses_the_nearest_open_slot(self):
-        firstRoot = {"id": "root-1", "position_y": 180}
-        firstIdeas = [
-            {"id": "idea-1", "position_y": -30},
-            {"id": "idea-2", "position_y": 180},
-            {"id": "idea-3", "position_y": 390},
-        ]
-        firstNodes = [firstRoot, *firstIdeas]
-        firstEdges = [
-            {"source_node_id": "root-1", "target_node_id": idea["id"]}
-            for idea in firstIdeas
-        ]
+        self.assertEqual(next_brainstorm_root_position([], 3), (0.0, 180.0))
+        firstNodes = self.brainstormRound("root-1", 0.0, 180.0, 3)
 
-        self.assertEqual(next_brainstorm_root_position([], [], 3), (0.0, 180.0))
-        secondPosition = next_brainstorm_root_position(firstNodes, firstEdges, 3)
-        self.assertEqual(secondPosition, (0.0, 940.0))
+        secondPosition = next_brainstorm_root_position(firstNodes, 3)
+        self.assertEqual(secondPosition, (0.0, 436.0))
+        secondNodes = self.brainstormRound("root-2", *secondPosition, 3)
+        self.assertBrainstormNodesDoNotOverlap([*firstNodes, *secondNodes])
 
-        secondRoot = {"id": "root-2", "position_y": secondPosition[1]}
-        secondIdeas = [
-            {"id": "idea-4", "position_y": secondPosition[1] - 210},
-            {"id": "idea-5", "position_y": secondPosition[1]},
-            {"id": "idea-6", "position_y": secondPosition[1] + 210},
-        ]
-        secondNodes = [secondRoot, *secondIdeas]
-        secondEdges = [
-            {"source_node_id": "root-2", "target_node_id": idea["id"]}
-            for idea in secondIdeas
-        ]
-        allNodes = [*firstNodes, *secondNodes]
-        allEdges = [*firstEdges, *secondEdges]
+        thirdPosition = next_brainstorm_root_position([*firstNodes, *secondNodes], 3)
+        self.assertEqual(thirdPosition, (0.0, -76.0))
+        thirdNodes = self.brainstormRound("root-3", *thirdPosition, 3)
+        self.assertBrainstormNodesDoNotOverlap([*firstNodes, *secondNodes, *thirdNodes])
 
-        thirdPosition = next_brainstorm_root_position(allNodes, allEdges, 3)
-        self.assertEqual(thirdPosition, (0.0, -580.0))
-        reusedPosition = next_brainstorm_root_position(secondNodes, secondEdges, 3)
+        reusedPosition = next_brainstorm_root_position(secondNodes, 3)
         self.assertEqual(reusedPosition, (0.0, 180.0))
+
+    def test_brainstorm_branches_from_neighbouring_ideas_do_not_collide(self):
+        rootNodes = self.brainstormRound("root", 0.0, 180.0, 3)
+        firstIdea, secondIdea = rootNodes[1], rootNodes[2]
+
+        firstBranch = next_brainstorm_branch_position(rootNodes, [firstIdea], 4)
+        self.assertEqual(firstBranch[0], firstIdea["position_x"] + COLUMN_OFFSET_X)
+        self.assertEqual(firstBranch[1], firstIdea["position_y"])
+        firstBranchNodes = self.brainstormRound("branch-1", *firstBranch, 4)
+
+        allNodes = [*rootNodes, *firstBranchNodes]
+        secondBranch = next_brainstorm_branch_position(allNodes, [secondIdea], 4)
+        secondBranchNodes = self.brainstormRound("branch-2", *secondBranch, 4)
+        self.assertBrainstormNodesDoNotOverlap([*allNodes, *secondBranchNodes])
+
+    def test_brainstorm_tidy_rebuilds_a_collided_canvas_without_overlap(self):
+        nodes = [
+            {"id": "root", "node_type": "prompt", "position_x": 0, "position_y": 0},
+            {"id": "idea-a", "node_type": "idea", "position_x": 5, "position_y": 5},
+            {"id": "idea-b", "node_type": "idea", "position_x": 5, "position_y": 10},
+            {"id": "branch", "node_type": "prompt", "position_x": 8, "position_y": 8},
+            {"id": "idea-c", "node_type": "idea", "position_x": 9, "position_y": 9},
+            {"id": "second-root", "node_type": "prompt", "position_x": 3, "position_y": 3},
+            {"id": "idea-d", "node_type": "idea", "position_x": 4, "position_y": 4},
+        ]
+        edges = [
+            {"source_node_id": "root", "target_node_id": "idea-a"},
+            {"source_node_id": "root", "target_node_id": "idea-b"},
+            {"source_node_id": "idea-a", "target_node_id": "branch"},
+            {"source_node_id": "branch", "target_node_id": "idea-c"},
+            {"source_node_id": "second-root", "target_node_id": "idea-d"},
+        ]
+
+        positions = tidy_brainstorm_positions(nodes, edges)
+
+        self.assertEqual(set(positions), {node["id"] for node in nodes})
+        self.assertEqual(positions["root"], (0.0, 180.0))
+        self.assertEqual(positions["branch"][0], positions["idea-a"][0] + COLUMN_OFFSET_X)
+        self.assertEqual(positions["branch"][1], positions["idea-a"][1])
+        tidiedNodes = [
+            {**node, "position_x": positions[node["id"]][0], "position_y": positions[node["id"]][1]}
+            for node in nodes
+        ]
+        self.assertBrainstormNodesDoNotOverlap(tidiedNodes)
 
     def streamChapterGeneration(
         self,
@@ -4226,6 +4290,66 @@ class StoryApiTest(unittest.TestCase):
         remaining = self.client.get(f"/api/stories/{story['id']}/brainstorm").json()
         self.assertEqual([node["id"] for node in remaining["nodes"]], [nodeIds[0]])
         self.assertEqual(remaining["edges"], [])
+
+    def test_brainstorm_tidy_route_saves_positions_and_waits_for_generation(self):
+        story = self.client.post("/api/stories", json={"title": "Tidy Test"}).json()["story"]
+        now = utils.utc_now()
+        nodeRows = [
+            ("root", "prompt", "complete"),
+            ("idea-a", "idea", "complete"),
+            ("idea-b", "idea", "complete"),
+            ("branch", "prompt", "complete"),
+            ("idea-c", "idea", "complete"),
+        ]
+        edgeRows = [("root", "idea-a"), ("root", "idea-b"), ("idea-a", "branch"), ("branch", "idea-c")]
+        with database.get_db() as conn:
+            for nodeId, nodeType, status in nodeRows:
+                conn.execute(
+                    """
+                    INSERT INTO brainstorm_nodes (
+                      id, story_id, node_type, title, content, position_x,
+                      position_y, status, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, 10, 10, ?, ?, ?)
+                    """,
+                    (nodeId, story["id"], nodeType, nodeId, nodeId, status, now, now),
+                )
+            for sourceId, targetId in edgeRows:
+                conn.execute(
+                    """
+                    INSERT INTO brainstorm_edges (
+                      id, story_id, source_node_id, target_node_id, created_at
+                    ) VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (str(uuid.uuid4()), story["id"], sourceId, targetId, now),
+                )
+
+        tidyResponse = self.client.post(f"/api/stories/{story['id']}/brainstorm/tidy")
+        self.assertEqual(tidyResponse.status_code, 200)
+        returned = {
+            item["id"]: (item["position_x"], item["position_y"])
+            for item in tidyResponse.json()["positions"]
+        }
+        self.assertEqual(set(returned), {nodeId for nodeId, _, _ in nodeRows})
+
+        graph = self.client.get(f"/api/stories/{story['id']}/brainstorm").json()
+        saved = {node["id"]: (node["position_x"], node["position_y"]) for node in graph["nodes"]}
+        self.assertEqual(saved, returned)
+        self.assertEqual(saved["root"], (0.0, 180.0))
+        self.assertEqual(saved["branch"][0], saved["idea-a"][0] + COLUMN_OFFSET_X)
+        self.assertBrainstormNodesDoNotOverlap([
+            {"node_type": nodeType, "position_x": saved[nodeId][0], "position_y": saved[nodeId][1]}
+            for nodeId, nodeType, _ in nodeRows
+        ])
+
+        with database.get_db() as conn:
+            conn.execute(
+                "UPDATE brainstorm_nodes SET status = 'generating' WHERE id = 'branch'",
+            )
+        blockedResponse = self.client.post(f"/api/stories/{story['id']}/brainstorm/tidy")
+        self.assertEqual(blockedResponse.status_code, 409)
+
+        missingResponse = self.client.post("/api/stories/missing-story/brainstorm/tidy")
+        self.assertEqual(missingResponse.status_code, 404)
 
     def test_brainstorm_context_uses_all_chapters_enabled_lore_and_selected_branch(self):
         story = self.client.post(

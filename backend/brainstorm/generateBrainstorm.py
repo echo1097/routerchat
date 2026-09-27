@@ -10,7 +10,8 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from backend.brainstorm.brainstormLayout import (
-    COLUMN_OFFSET_X,
+    brainstorm_idea_positions,
+    next_brainstorm_branch_position,
     next_brainstorm_root_position,
 )
 from backend.brainstorm.brainstormMessages import (
@@ -224,9 +225,7 @@ async def stream_brainstorm_generation(
             )
         prompt_x = float(prompt_node["position_x"])
         prompt_y = float(prompt_node["position_y"])
-        child_x = prompt_x + COLUMN_OFFSET_X
-        child_gap = 210
-        first_y = prompt_y - ((len(ideas) - 1) * child_gap / 2)
+        idea_positions = brainstorm_idea_positions(prompt_x, prompt_y, len(ideas))
         now = utc_now()
         created_nodes: list[dict[str, Any]] = []
         created_edges: list[dict[str, Any]] = []
@@ -246,8 +245,8 @@ async def stream_brainstorm_generation(
                         story_id,
                         idea["title"],
                         idea["content"],
-                        child_x,
-                        first_y + index * child_gap,
+                        idea_positions[index][0],
+                        idea_positions[index][1],
                         now,
                         now,
                     ),
@@ -351,14 +350,14 @@ async def generate_brainstorm(
         branch_nodes = [row for row in all_nodes if row["id"] in branch_ids]
 
         if selected_ids:
-            prompt_x = max(float(nodes_by_id[node_id]["position_x"]) for node_id in selected_ids) + COLUMN_OFFSET_X
-            prompt_y = sum(
-                float(nodes_by_id[node_id]["position_y"]) for node_id in selected_ids
-            ) / len(selected_ids)
+            prompt_x, prompt_y = next_brainstorm_branch_position(
+                all_nodes,
+                [nodes_by_id[node_id] for node_id in selected_ids],
+                payload.brainstorm_idea_count,
+            )
         else:
             prompt_x, prompt_y = next_brainstorm_root_position(
                 all_nodes,
-                all_edges,
                 payload.brainstorm_idea_count,
             )
 

@@ -35,6 +35,14 @@ const HISTORY_MODEL_PATTERNS = [
   /^(.+?) found no Lorebook changes after /,
 ];
 
+const HISTORY_LORE_CHANGE_KINDS = new Set(["lore_create", "lore_update", "lore_hide"]);
+
+const HISTORY_LORE_KIND_NAMES = {
+  lore_create: "Added",
+  lore_update: "Updated",
+  lore_hide: "Excluded",
+};
+
 function historyModelName(entries) {
   for (const entry of entries) {
     const label = String(entry?.label || "");
@@ -43,112 +51,7 @@ function historyModelName(entries) {
       if (match) return match[1];
     }
   }
-  return "Model";
-}
-
-function historyEntryIsTimeline(entry) {
-  return / updated Timeline$/.test(String(entry?.label || ""));
-}
-
-const HISTORY_FOLDABLE_KINDS = new Set(["lore_create", "lore_update", "lore_hide"]);
-
-function historyFoldGroup(entry) {
-  if (!HISTORY_FOLDABLE_KINDS.has(entry?.kind)) return null;
-  if (historyEntryIsTimeline(entry)) return null;
-  return entry.kind;
-}
-
-const HISTORY_LORE_KINDS = new Set([
-  "lore_create",
-  "lore_update",
-  "lore_hide",
-  "lore_summary",
-]);
-
-function historyActivityRows(actions) {
-  const rows = [];
-  let pass = null;
-
-  actions.forEach((entry) => {
-    if (!HISTORY_LORE_KINDS.has(entry.kind)) {
-      pass = null;
-      rows.push({ id: entry.id, group: null, entries: [entry] });
-      return;
-    }
-
-    if (!pass) {
-
-      pass = { id: `pass:${entry.id}`, group: "lore_pass", entries: [] };
-      rows.push(pass);
-    }
-    pass.entries.push(entry);
-
-    if (entry.kind === "lore_summary") pass = null;
-  });
-
-  return rows;
-}
-
-function historyLoreRows(entries) {
-  const rows = [];
-  const rowsByGroup = new Map();
-
-  entries.forEach((entry) => {
-    if (entry.kind === "lore_summary") return;
-
-    const group = historyFoldGroup(entry);
-    if (!group) {
-      rows.push({ id: `lore:${entry.id}`, group: null, entries: [entry], lore: true });
-      return;
-    }
-
-    const existing = rowsByGroup.get(group);
-    if (existing) {
-      existing.entries.push(entry);
-      return;
-    }
-
-    const row = { id: `fold:${group}:${entry.id}`, group, entries: [entry], lore: true };
-    rowsByGroup.set(group, row);
-    rows.push(row);
-  });
-
-  return rows;
-}
-
-export function historyRunRows(run) {
-  const promptLed = isPromptEntry(run.prompt);
-  const actions = promptLed ? run.actions : [run.prompt, ...run.actions];
-  const rows = historyActivityRows(actions);
-
-  if (promptLed) {
-    rows.unshift({ id: run.prompt.id, group: null, entries: [run.prompt] });
-  }
-
-  return rows;
-}
-
-export function historyRowText(row) {
-  if (row.name || row.lore || row.entries.length !== 1) return null;
-
-  const entry = row.entries[0];
-  if (isPromptEntry(entry)) return { kind: "prompt", text: String(entry.detail || "").trim() };
-  if (entry.kind !== "thinking") return null;
-
-  return { kind: "thinking", text: String(entry.detail || "").trim() };
-}
-
-export function historyRowChildren(row) {
-  if (row.group === "lore_pass") return historyLoreRows(row.entries);
-  if (row.entries.length > 1) {
-    return row.entries.map((entry) => ({
-      id: `name:${entry.id}`,
-      group: null,
-      entries: [entry],
-      name: true,
-    }));
-  }
-  return [];
+  return "";
 }
 
 function historyEntryName(entry) {
@@ -156,6 +59,7 @@ function historyEntryName(entry) {
   const match =
     label.match(/ added (.+) to Lorebook$/)
     || label.match(/ updated (.+) in Lorebook$/)
+    || label.match(/ updated (Timeline)$/)
     || label.match(/ excluded (.+) from context$/);
   return match ? match[1] : label;
 }
@@ -174,53 +78,69 @@ function historyLabelBody(label) {
   return text;
 }
 
-function historyPassLabel(row) {
-  const summary = row.entries.find((entry) => entry.kind === "lore_summary");
-  const label = String(summary?.label || "");
-
-  const finished = label.match(/^(.+?) finished editing Lorebook after (.+)$/);
-  if (finished) return `${finished[1]} edited Lorebook for ${finished[2]}`;
-
-  if (label) return label;
-  return `${historyModelName(row.entries)} edited Lorebook`;
+function historyEntryWords(entry) {
+  return {
+    added: toFiniteNumber(entry.words_added) || 0,
+    removed: toFiniteNumber(entry.words_removed) || 0,
+  };
 }
 
-export function historyRowLabel(row) {
-  if (row.group === "lore_pass") return historyPassLabel(row);
-  if (row.name) return historyEntryName(row.entries[0]);
-
-  if (row.entries.length === 1) {
-    const label = row.entries[0].label;
-    return row.lore ? historyLabelBody(label) : String(label || "");
-  }
-
-  const count = row.entries.length;
-  const noun = count === 1 ? "entry" : "entries";
-
-  if (row.group === "lore_create") return `Added ${count} ${noun} to Lorebook`;
-  if (row.group === "lore_hide") return `Excluded ${count} ${noun} from context`;
-  return `Updated ${count} ${noun} in Lorebook`;
+export function historyRunPrompt(run) {
+  if (!isPromptEntry(run.prompt)) return "";
+  return String(run.prompt.detail || "").trim();
 }
 
-export function historyRowWords(row) {
+function isLoreEntry(entry) {
+  return entry.kind === "lore_summary" || HISTORY_LORE_CHANGE_KINDS.has(entry.kind);
+}
 
-  const summary = row.entries.find((entry) => entry.kind === "lore_summary");
-  const counted = summary ? [summary] : row.entries;
+export function historyRunStoryModel(run) {
+  return historyModelName(run.actions.filter((entry) => !isLoreEntry(entry)));
+}
 
-  return counted.reduce(
-    (totals, entry) => ({
-      added: totals.added + (toFiniteNumber(entry.words_added) || 0),
-      removed: totals.removed + (toFiniteNumber(entry.words_removed) || 0),
-    }),
-    { added: 0, removed: 0 },
-  );
+export function historyRunLoreModel(run) {
+  return historyModelName(run.actions.filter(isLoreEntry));
+}
+
+export function historyRunFailed(run) {
+  return run.actions.some((entry) => entry.kind === "write_failed");
+}
+
+export function historyRunSteps(run) {
+  const actions = isPromptEntry(run.prompt) ? run.actions : [run.prompt, ...run.actions];
+
+  return actions
+    .filter((entry) => !HISTORY_LORE_CHANGE_KINDS.has(entry.kind))
+    .filter((entry) => !(entry.kind === "lore_summary" && / finished editing Lorebook after /.test(String(entry.label || ""))))
+    .map((entry) => ({
+      id: entry.id,
+      kind: entry.kind,
+      label: historyLabelBody(entry.label),
+      detail: String(entry.detail || "").trim(),
+      ...historyEntryWords(entry),
+    }));
+}
+
+export function historyRunLore(run) {
+  const changes = run.actions
+    .filter((entry) => HISTORY_LORE_CHANGE_KINDS.has(entry.kind))
+    .map((entry) => ({
+      id: entry.id,
+      kind: HISTORY_LORE_KIND_NAMES[entry.kind],
+      name: historyEntryName(entry),
+      ...historyEntryWords(entry),
+    }));
+
+  if (changes.length === 0) return null;
+
+  return { changes };
 }
 
 export function historyWordTotals(entries) {
 
   return entries.reduce(
     (totals, entry) => {
-      if (entry.kind === "lore_hide" || entry.kind === "lore_summary") return totals;
+      if (isLoreEntry(entry)) return totals;
       return {
         added: totals.added + (toFiniteNumber(entry.words_added) || 0),
         removed: totals.removed + (toFiniteNumber(entry.words_removed) || 0),
@@ -236,4 +156,21 @@ export function historyCostTotal(entries) {
     const cost = toFiniteNumber(entry.cost);
     return isFiniteNumber(cost) ? total + cost : total;
   }, 0);
+}
+
+export function historyTimeAgo(value, now = Date.now()) {
+  const time = Date.parse(value || "");
+  if (!Number.isFinite(time)) return "";
+
+  const minutes = Math.round((now - time) / 60000);
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes} min ago`;
+
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+
+  const days = Math.round(hours / 24);
+  if (days < 7) return `${days}d ago`;
+
+  return new Date(time).toLocaleDateString([], { month: "short", day: "numeric" });
 }

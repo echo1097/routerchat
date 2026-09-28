@@ -2740,6 +2740,22 @@ function App() {
     await performDelete();
   }
 
+  async function tidyBrainstorm() {
+    if (!activeStoryId || isStreaming) return;
+    try {
+      const positions = await storyApi.tidyBrainstorm(activeStoryId);
+      const positionById = new Map(positions.map((item) => [item.id, item]));
+      setBrainstormNodes((current) => current.map((node) => {
+        const position = positionById.get(node.id);
+        return position
+          ? { ...node, position_x: position.position_x, position_y: position.position_y }
+          : node;
+      }));
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
   function updateBrainstormViewport(viewport) {
     if (!activeStoryId) return;
     setBrainstormViewport(viewport);
@@ -3364,6 +3380,7 @@ function App() {
             onUpdateNode={updateBrainstormNode}
             onDeleteNode={deleteBrainstormNode}
             onUpdateViewport={updateBrainstormViewport}
+            onTidy={tidyBrainstorm}
             onConfirm={setConfirmDialog}
           />
         ) : isWritingMode && !showLandingComposer ? (

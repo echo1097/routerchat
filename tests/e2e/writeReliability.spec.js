@@ -240,7 +240,7 @@ test("keeps completed brainstorm thinking on its prompt node", async ({ page }) 
   const thinkingButton = promptNode.getByRole("button", { name: "Expand thinking" });
   await expect(thinkingButton).toBeVisible();
   await expect(thinkingButton).toHaveAttribute("aria-expanded", "false");
-  await expect(thinkingButton).toContainText("Finished in 4 seconds");
+  await expect(thinkingButton).toContainText("Worked for 4 seconds");
 
   await thinkingButton.click();
   await expect(promptNode.getByText(reasoning)).toBeVisible();
@@ -342,7 +342,7 @@ test("transitions brainstorm reasoning from locked thinking to writing to comple
   });
   await expect(completedTrigger).toBeEnabled();
   await expect(completedTrigger).toHaveAttribute("aria-expanded", "false");
-  await expect(completedTrigger).toHaveText("Finished in 4 seconds");
+  await expect(completedTrigger).toHaveText("Worked for 4 seconds");
 
   await api.closeBrainstormStream();
 });

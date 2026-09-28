@@ -202,6 +202,13 @@ export const storyApi = {
     );
   },
 
+  async tidyBrainstorm(storyId) {
+    const payload = await api(`/api/stories/${encodeURIComponent(storyId)}/brainstorm/tidy`, {
+      method: "POST",
+    });
+    return payload.positions || [];
+  },
+
   async updateBrainstormViewport(storyId, viewport) {
     return api(`/api/stories/${encodeURIComponent(storyId)}/brainstorm/viewport`, {
       method: "PATCH",

@@ -11,6 +11,7 @@ from backend.brainstorm.brainstormRows import (
     row_to_brainstorm_edge,
     row_to_brainstorm_node,
 )
+from backend.brainstorm.tidyBrainstorm import tidy_brainstorm_positions
 from backend.core.database import get_db
 from backend.core.utils import utc_now
 
@@ -157,6 +158,51 @@ def update_brainstorm_node(
             "SELECT * FROM brainstorm_nodes WHERE id = ?", (node_id,)
         ).fetchone()
     return {"node": row_to_brainstorm_node(updated)}
+
+
+@router.post("/api/stories/{story_id}/brainstorm/tidy")
+def tidy_brainstorm(story_id: str) -> dict[str, Any]:
+    with get_db() as conn:
+        story = conn.execute("SELECT id FROM stories WHERE id = ?", (story_id,)).fetchone()
+        if not story:
+            raise HTTPException(status_code=404, detail="Story not found.")
+        generating = conn.execute(
+            "SELECT 1 FROM brainstorm_nodes WHERE story_id = ? AND status = 'generating' LIMIT 1",
+            (story_id,),
+        ).fetchone()
+        if generating:
+            raise HTTPException(
+                status_code=409,
+                detail="Wait for the current brainstorm to finish before tidying.",
+            )
+        nodes = conn.execute(
+            "SELECT * FROM brainstorm_nodes WHERE story_id = ? ORDER BY created_at ASC",
+            (story_id,),
+        ).fetchall()
+        edges = conn.execute(
+            "SELECT * FROM brainstorm_edges WHERE story_id = ? ORDER BY created_at ASC",
+            (story_id,),
+        ).fetchall()
+
+        positions = tidy_brainstorm_positions(nodes, edges)
+        conn.executemany(
+            """
+            UPDATE brainstorm_nodes
+            SET position_x = ?, position_y = ?
+            WHERE id = ? AND story_id = ?
+            """,
+            [
+                (x, y, nodeId, story_id)
+                for nodeId, (x, y) in positions.items()
+            ],
+        )
+
+    return {
+        "positions": [
+            {"id": nodeId, "position_x": x, "position_y": y}
+            for nodeId, (x, y) in positions.items()
+        ],
+    }
 
 
 @router.patch("/api/stories/{story_id}/brainstorm/viewport")

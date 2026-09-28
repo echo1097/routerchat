@@ -303,7 +303,7 @@ export default function StoryBrainstorm({
         type: "branch",
         selectable: false,
         style: {
-          stroke: lit ? "rgba(255, 255, 255, 0.52)" : "rgba(255, 255, 255, 0.16)",
+          stroke: lit ? "#888888" : "#303030",
           strokeWidth: 1.5,
           strokeLinecap: "round",
           transition: "stroke 200ms ease-out",

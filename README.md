@@ -29,21 +29,21 @@ RouterChat is licensed under the [Apache License 2.0](LICENSE) as of August 3, 2
 
 ## Install RouterChat
 
-All you need is an [OpenRouter API key](https://openrouter.ai/keys). Both installers are open source, so you can read the [macOS installer](https://github.com/echo1097/get-routerchat/blob/main/install.sh) or [Windows installer](https://github.com/echo1097/get-routerchat/blob/main/install.ps1) before running it.
+All you need is an [OpenRouter API key](https://openrouter.ai/keys). 
 
-**macOS (Apple Silicon or Intel):**
+**macOS (Apple Silicon or Intel)** ([inspect installer](https://github.com/echo1097/get-routerchat/blob/main/install.sh))
 
 ```sh
 curl -fsSL https://echo1097.github.io/get-routerchat/install.sh | sh
 ```
 
-**Windows x64:**
+**Windows x64** ([inspect installer](https://github.com/echo1097/get-routerchat/blob/main/install.ps1))
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://echo1097.github.io/get-routerchat/install.ps1 | iex"
 ```
 
-- **Setup:** The [setup guide](setup.md) covers starting, updating, repairing, data locations, and manual developer installation.
+- **Setup:** The [setup guide](setup.md) covers starting, updating, repairing, and data locations. The [developer guide](developer.md) covers building from source.
 - **Help:** See [SUPPORT.md](SUPPORT.md), or fill out [this form](https://forms.gle/gTth2TcXLYAArvGm6) if you still need help.
 - **Uninstall:** On macOS, double-click `Uninstall RouterChat.command` in the **RouterChat** folder on your Desktop. On Windows, open **Uninstall RouterChat** from the Start Menu. It can save your database to Downloads before removing the app.
 

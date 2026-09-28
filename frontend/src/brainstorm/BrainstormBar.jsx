@@ -1,14 +1,8 @@
 import { ArrowLeft, Maximize, Minus, Plus } from "lucide-react";
 import { CONTROL_MOTION, cx } from "../uiShared.js";
 
-function countLabel(count, singular, plural) {
-  return `${count} ${count === 1 ? singular : plural}`;
-}
-
 export default function BrainstormBar({
   storyTitle,
-  promptCount,
-  ideaCount,
   tidyDisabled,
   onBack,
   onTidy,
@@ -34,11 +28,6 @@ export default function BrainstormBar({
       </div>
 
       <div className="brainstorm-bar-tools">
-        {promptCount > 0 && (
-          <span className="brainstorm-bar-count tabular-nums">
-            {countLabel(promptCount, "prompt", "prompts")} · {countLabel(ideaCount, "idea", "ideas")}
-          </span>
-        )}
         <button
           type="button"
           onClick={onTidy}

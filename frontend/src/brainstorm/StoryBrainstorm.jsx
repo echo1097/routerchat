@@ -134,13 +134,6 @@ export default function StoryBrainstorm({
     [graphNodes],
   );
 
-  const ideaTotal = useMemo(
-    () => graphNodes.filter((node) => node.node_type === "idea").length,
-    [graphNodes],
-  );
-  const promptTotal = graphNodes.length - ideaTotal;
-
-
   const paneIdea = paneIdeaId ? nodesById.get(paneIdeaId) : null;
   const panePrompt = paneIdea ? nodesById.get(promptIdByIdea.get(paneIdea.id)) : null;
 
@@ -467,8 +460,6 @@ export default function StoryBrainstorm({
     <section data-tour="write-brainstorm" className="brainstorm-workspace">
       <BrainstormBar
         storyTitle={story?.title}
-        promptCount={promptTotal}
-        ideaCount={ideaTotal}
         tidyDisabled={tidying || nodeOperationInProgress || graphNodes.length === 0}
         onBack={onBack}
         onTidy={tidyCanvas}

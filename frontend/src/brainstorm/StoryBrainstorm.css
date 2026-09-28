@@ -88,14 +88,6 @@
   gap: 8px;
 }
 
-.brainstorm-bar-count {
-  margin-right: 4px;
-  color: #8a8a8a;
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
 .brainstorm-bar-pill {
   display: inline-flex;
   height: 32px;
@@ -1253,7 +1245,6 @@
     padding: 0 12px 0 64px;
   }
 
-  .brainstorm-bar-count,
   .brainstorm-bar-pill span {
     display: none;
   }

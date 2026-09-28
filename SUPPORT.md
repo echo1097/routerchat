@@ -2,35 +2,41 @@
 
 ## Getting help
 
-Start with the [setup guide](setup.md). For guided troubleshooting, you can optionally use the [support assistant prompt](assistant.md) with an AI assistant.
+- **Guides:** the [setup guide](setup.md) for the one-click install, or the [developer guide](developer.md) if you run from source.
+- **AI help:** paste the [support assistant prompt](assistant.md) into any AI assistant for step by step troubleshooting.
+- **Feedback:** use the **Feedback** button at the bottom of the sidebar, or [this form](https://forms.gle/gTth2TcXLYAArvGm6).
+- **Bugs:** [open a GitHub issue](https://github.com/echo1097/routerchat/issues).
+- **Security issues:** never report them publicly. Follow [SECURITY.md](SECURITY.md).
 
-Issue reports are welcome.
+## Before reporting
 
-## Installation problems
+1. Update to the [latest release](https://github.com/echo1097/routerchat/releases/latest). Only the latest release is supported.
+2. For install or startup problems, rerun the install command. It repairs the app and its private runtime without touching `user-data`.
 
-Before reporting an installation problem, rerun the original installer command. It repairs the application and private runtime without replacing `user-data`.
-
-## Find the logs
-
-- **macOS:** `~/Library/Application Support/RouterChat/logs/`
-- **Windows:** `%LOCALAPPDATA%\RouterChat\logs\`
-
-Logs are designed not to contain the OpenRouter API key. Still, read a log before sharing it and remove anything personal from error messages.
-
-Never share either of these files:
-
-- `user-data/.env`
-- `user-data/routerchat.sqlite3`
-
-The first contains the API key. The second contains chats, stories, settings, and history.
-
-## Find the installed version
-
-Open `app/version.json` or `install.json` inside the RouterChat installation folder and report only the version number, platform, and the exact error message. Do not paste the full contents of private data files.
-
-Installation folders:
+## Your RouterChat folder
 
 - **macOS:** `~/Library/Application Support/RouterChat/`
 - **Windows:** `%LOCALAPPDATA%\RouterChat\`
 
-When opening a GitHub issue, include the operating system, processor type, installed version, what you were doing, sanitized log excerpt, and steps that reproduce the problem.
+[setup.md](setup.md#3-where-your-files-live) explains how to open it.
+
+**Logs** are in the `logs` folder. They are designed not to contain your API key, but read them before sharing and remove anything personal. Developer installs have no log files, so copy the error from the terminal instead.
+
+**Your version** is in `app/version.json` (`version`) or `install.json` (`installedVersion`). Developer installs use `version.json` in the project folder. Share only the version number.
+
+## Never share
+
+| File | Contains |
+| --- | --- |
+| `user-data/.env` (or `.env` in a developer install) | Your OpenRouter API key |
+| `user-data/routerchat.sqlite3` (or `data/routerchat.sqlite3`) | Your chats, stories, settings, and history |
+
+If your key may have leaked, revoke it at [openrouter.ai/keys](https://openrouter.ai/keys).
+
+## What to include in an issue
+
+- Operating system and processor (for example, macOS Apple Silicon or Windows 11 x64)
+- One-click install or developer install
+- RouterChat version
+- What you were doing and the steps to reproduce it
+- The exact error message and a sanitized log excerpt

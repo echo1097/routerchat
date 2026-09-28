@@ -19,7 +19,7 @@ export default function PromptNode({ data }) {
   let operationLabel = "Thinking";
   if (isWorking) operationLabel = "Writing";
   if (data.status === "complete") {
-    operationLabel = `Finished in ${brainstormDurationLabel(data)}`;
+    operationLabel = `Worked for ${brainstormDurationLabel(data)}`;
   }
 
   const [thinkingOpen, setThinkingOpen] = useState(isThinking);

@@ -87,6 +87,8 @@ export default function StoryBrainstorm({
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [flowInstance, setFlowInstance] = useState(null);
   const viewportAppliedRef = useRef(false);
+  const visibleCheckDoneRef = useRef(false);
+  const canvasRef = useRef(null);
   const { textareaRef, composerSurfaceRef, leftControlsRef, rightControlsRef, measureRef, isCompact } = useCompactComposer(prompt);
   const ideaMenuRef = useRef(null);
   const modelMenuRef = useRef(null);
@@ -384,6 +386,33 @@ export default function StoryBrainstorm({
     fitAll(duration);
   }, [fitAll, flowInstance, graphNodeIdsKey, nodes]);
 
+  useEffect(() => {
+    if (!flowInstance || !viewportAppliedRef.current || visibleCheckDoneRef.current) return;
+    if (pendingFrameRef.current || nodes.length === 0) return;
+
+    const renderedNodeIdsKey = nodes.map((node) => node.id).sort().join("|");
+    if (renderedNodeIdsKey !== graphNodeIdsKey) return;
+
+    const nodesMeasured = nodes.every(
+      (node) => Number(node.measured?.width) > 0 && Number(node.measured?.height) > 0,
+    );
+    if (!nodesMeasured) return;
+
+    const canvasBox = canvasRef.current?.getBoundingClientRect();
+    if (!canvasBox || canvasBox.width === 0 || canvasBox.height === 0) return;
+
+    visibleCheckDoneRef.current = true;
+    const currentViewport = flowInstance.getViewport();
+    const anyNodeVisible = nodes.some((node) => {
+      const left = node.position.x * currentViewport.zoom + currentViewport.x;
+      const top = node.position.y * currentViewport.zoom + currentViewport.y;
+      const right = left + node.measured.width * currentViewport.zoom;
+      const bottom = top + node.measured.height * currentViewport.zoom;
+      return right > 0 && bottom > 0 && left < canvasBox.width && top < canvasBox.height;
+    });
+    if (!anyNodeVisible) fitAll(0);
+  }, [fitAll, flowInstance, graphNodeIdsKey, nodes]);
+
 
   useEffect(() => {
     function closeOnEscape(event) {
@@ -471,6 +500,7 @@ export default function StoryBrainstorm({
       <div className="brainstorm-body">
         <div className="brainstorm-main">
           <div
+            ref={canvasRef}
             className="brainstorm-canvas"
             aria-label="Story brainstorm canvas"
             onKeyDown={handleCanvasKeyDown}

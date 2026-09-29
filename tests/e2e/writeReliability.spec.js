@@ -1580,3 +1580,50 @@ test("flushes a pending chapter draft before switching to chat", async ({ page }
   await expect(page).toHaveURL(/\?mode=chat/);
   expect(api.state.chapters[0].content).toBe("switch draft");
 });
+
+test("fits the brainstorm view when the saved camera shows no nodes", async ({ page }) => {
+  const api = await installWriteApi(page, {
+    brainstormNodes: [
+      {
+        id: "lost-prompt",
+        story_id: "story-1",
+        node_type: "prompt",
+        title: "Prompt",
+        content: "Lost prompt",
+        position_x: 0,
+        position_y: 180,
+        status: "complete",
+      },
+    ],
+    brainstormViewport: { x: 9000, y: 9000, zoom: 1 },
+  });
+  await api.openBrainstorm();
+
+  const promptNode = page.locator(".react-flow__node-prompt");
+  await expect(promptNode).toBeInViewport();
+});
+
+test("keeps the saved brainstorm camera when a node is already in view", async ({ page }) => {
+  const api = await installWriteApi(page, {
+    brainstormNodes: [
+      {
+        id: "seen-prompt",
+        story_id: "story-1",
+        node_type: "prompt",
+        title: "Prompt",
+        content: "Seen prompt",
+        position_x: 0,
+        position_y: 180,
+        status: "complete",
+      },
+    ],
+    brainstormViewport: { x: 120, y: 40, zoom: 0.8 },
+  });
+  await api.openBrainstorm();
+
+  const promptNode = page.locator(".react-flow__node-prompt");
+  await expect(promptNode).toBeInViewport();
+  await page.waitForTimeout(600);
+  const transform = await page.locator(".react-flow__viewport").getAttribute("style");
+  expect(transform).toContain("translate(120px, 40px) scale(0.8)");
+});

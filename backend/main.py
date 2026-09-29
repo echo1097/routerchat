@@ -17,7 +17,7 @@ from backend.chats import (
 from backend.core import paths
 from backend.core.paths import APP_VERSION
 from backend.core.schema import init_db
-from backend.core.startupCleanup import delete_temporary_items
+from backend.core.startupCleanup import delete_temporary_items, reset_stale_brainstorm_generations
 from backend.frontend.staticFiles import configure_static_files
 from backend.lorebook import (
     generateEntry,
@@ -83,6 +83,7 @@ def on_startup() -> None:
     paths.DATA_DIR.mkdir(parents=True, exist_ok=True)
     init_db()
     delete_temporary_items()
+    reset_stale_brainstorm_generations()
 
 
 configure_static_files(app, paths.STATIC_DIR)

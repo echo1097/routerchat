@@ -287,6 +287,9 @@ async def stream_brainstorm_generation(
         error = str(exc)
         save_generation("failed", error)
         yield stream_event("error", error)
+    finally:
+        if not saved_generation:
+            save_generation("cancelled", "Generation cancelled.")
 
 
 @router.post("/api/stories/{story_id}/brainstorm/generate/stream")

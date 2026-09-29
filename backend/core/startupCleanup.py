@@ -5,6 +5,7 @@ from backend.attachments.attachmentCleanup import (
     delete_orphaned_attachments,
 )
 from backend.core.database import get_db
+from backend.core.utils import utc_now
 
 
 def delete_temporary_items() -> None:
@@ -32,3 +33,15 @@ def delete_temporary_items() -> None:
             conn.execute("DELETE FROM lorebook_entries WHERE story_id = ?", (storyId,))
             conn.execute("DELETE FROM chapters WHERE story_id = ?", (storyId,))
             conn.execute("DELETE FROM stories WHERE id = ?", (storyId,))
+
+
+def reset_stale_brainstorm_generations() -> None:
+    with get_db() as conn:
+        conn.execute(
+            """
+            UPDATE brainstorm_nodes
+            SET status = 'failed', updated_at = ?
+            WHERE status = 'generating'
+            """,
+            (utc_now(),),
+        )

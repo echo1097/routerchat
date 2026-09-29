@@ -139,6 +139,16 @@ function countTimelineEvents(text) {
     .filter((line) => line.replace(/^[-*]\s*/, "").trim()).length;
 }
 
+function fitTextarea(textarea) {
+  const scroller = textarea.closest(".lorebook-entry-scroll");
+  const scrollTop = scroller?.scrollTop ?? 0;
+
+  textarea.style.height = "auto";
+  textarea.style.height = `${textarea.scrollHeight}px`;
+
+  if (scroller) scroller.scrollTop = scrollTop;
+}
+
 function useWideLayout() {
   const [wide, setWide] = useState(() => window.matchMedia(WIDE_LAYOUT_QUERY).matches);
 
@@ -972,21 +982,19 @@ function LorebookEntryPage({
         ? "All changes saved"
         : "";
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const textarea = descriptionRef.current;
     if (!textarea) return;
 
-    textarea.style.height = "auto";
-    textarea.style.height = `${textarea.scrollHeight}px`;
+    fitTextarea(textarea);
   }, [draft.description, draft.category]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const textarea = nameRef.current;
     if (!textarea) return undefined;
 
     function fitName() {
-      textarea.style.height = "auto";
-      textarea.style.height = `${textarea.scrollHeight}px`;
+      fitTextarea(textarea);
     }
 
     fitName();

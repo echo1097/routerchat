@@ -178,6 +178,7 @@ function App() {
   const appSettingsLoadedRef = useRef(false);
   const latestChatLoadRef = useRef(0);
   const latestStoryLoadRef = useRef(0);
+  const brainstormLoadedStoryIdRef = useRef(null);
   const temporaryTourStoryIdRef = useRef(null);
   const defaultModelRef = useRef(DEFAULT_MODEL);
   const skipNextStoryAutoloadRef = useRef(false);
@@ -447,6 +448,14 @@ function App() {
       : "chapter";
     const nextChapter = chapter || nextChapters.find((item) => item.id === chapterId) || null;
 
+    if (storyId !== activeStoryIdRef.current && brainstormLoadedStoryIdRef.current !== storyId) {
+      brainstormLoadedStoryIdRef.current = null;
+      setBrainstormNodes([]);
+      setBrainstormEdges([]);
+      setBrainstormViewport({ x: 0, y: 0, zoom: 1 });
+      setLatestBrainstormGeneration(null);
+    }
+
     activeStoryIdRef.current = storyId;
     activeChapterIdRef.current = nextChapter?.id || null;
     storyWorkspaceViewRef.current = nextView;
@@ -705,9 +714,14 @@ function App() {
     });
   }
 
-  async function loadBrainstormBundle(storyId, storyLoadId = latestStoryLoadRef.current) {
+  async function loadBrainstormBundle(storyId, storyLoadId = null) {
     const payload = await storyApi.getBrainstorm(storyId);
-    if (storyLoadId !== latestStoryLoadRef.current || !navigationIntentIsCurrent(storyLoadId)) return null;
+    if (storyLoadId !== null) {
+      if (storyLoadId !== latestStoryLoadRef.current || !navigationIntentIsCurrent(storyLoadId)) return null;
+    } else if (activeStoryIdRef.current !== storyId) {
+      return null;
+    }
+    brainstormLoadedStoryIdRef.current = storyId;
     setBrainstormNodes(payload.nodes || []);
     setBrainstormEdges(payload.edges || []);
     setBrainstormViewport(payload.viewport || { x: 0, y: 0, zoom: 1 });
@@ -2663,7 +2677,8 @@ function App() {
     if (!activeStoryId || isStreaming) return;
     try {
       await flushChapterSave(activeStoryId, activeChapterId);
-      await loadBrainstormBundle(activeStoryId);
+      const payload = await loadBrainstormBundle(activeStoryId);
+      if (!payload) return;
       setStoryWorkspaceView("brainstorm");
       writeRoute(storyRoute(activeStoryId, activeChapterId, "brainstorm"));
     } catch (error) {

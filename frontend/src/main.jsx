@@ -2909,12 +2909,25 @@ function App() {
       }
       return false;
     } finally {
+      const endedPromptNodeId = brainstormPromptNodeIdRef.current;
+      const endedByStop = abortController.signal.aborted;
       brainstormPromptNodeIdRef.current = null;
       abortRef.current = null;
       try {
         await loadBrainstormBundle(activeStoryId);
       } catch (error) {
         setStatus(error.message);
+      }
+      if (endedPromptNodeId && !hasGeneratedIdeas) {
+        setBrainstormNodes((current) => current.map((node) => (
+          node.id === endedPromptNodeId && node.status === "generating"
+            ? {
+                ...node,
+                status: endedByStop ? "cancelled" : "failed",
+                generation_phase: "complete",
+              }
+            : node
+        )));
       }
       brainstormStreamingRef.current = false;
       setIsStreaming(false);

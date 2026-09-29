@@ -2866,3 +2866,74 @@ typography exactly or the swap at the end of a generation shows a seam */
     animation: none;
   }
 }
+
+.tos-enter {
+  animation: tos-enter 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes tos-enter {
+  from {
+    opacity: 0;
+    filter: blur(6px);
+    transform: translateY(10px) scale(0.985);
+  }
+}
+
+.tos-progress {
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.tos-scroll,
+.tos-rail {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+}
+.tos-scroll::-webkit-scrollbar,
+.tos-rail::-webkit-scrollbar {
+  width: 10px;
+}
+.tos-scroll::-webkit-scrollbar-thumb,
+.tos-rail::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border: 3px solid #181818;
+  border-radius: 999px;
+}
+.tos-scroll::-webkit-scrollbar-thumb:hover,
+.tos-rail::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tos-enter {
+    animation: none;
+  }
+  .tos-progress {
+    transition: none;
+  }
+}
+
+.tos-footer {
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 560ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.tos-footer.is-open {
+  grid-template-rows: 1fr;
+}
+.tos-footer-inner {
+  opacity: 0;
+  transform: translateY(10px) scale(0.98);
+  transition:
+    opacity 320ms ease,
+    transform 560ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.tos-footer.is-open .tos-footer-inner {
+  opacity: 1;
+  transform: none;
+  transition-delay: 140ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tos-footer,
+  .tos-footer-inner {
+    transition: none;
+  }
+}

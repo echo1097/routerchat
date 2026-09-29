@@ -99,50 +99,64 @@ async def stream_brainstorm_generation(
     receivedDone = False
     saved_generation = False
 
-    def save_generation(status: str, error: str | None = None) -> None:
+    def save_generation(
+        status: str,
+        error: str | None = None,
+        conn: sqlite3.Connection | None = None,
+    ) -> None:
         nonlocal duration_ms, saved_generation
         if saved_generation:
             return
-        saved_generation = True
         duration_ms = (time.perf_counter() - generation_started_at) * 1000
-        with get_db() as conn:
-            conn.execute(
-                "UPDATE brainstorm_nodes SET status = ?, updated_at = ? WHERE id = ?",
-                (status, utc_now(), prompt_node_id),
-            )
-            conn.execute(
-                """
-                INSERT INTO brainstorm_generations (
-                  id, story_id, prompt_node_id, prompt, reasoning, duration_ms,
-                  model, finish_reason, error,
-                  generation_id, prompt_tokens, completion_tokens, reasoning_tokens,
-                  cached_tokens, total_tokens, cost, provider_name, generation_time,
-                  latency, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    generation_row_id,
-                    story_id,
-                    prompt_node_id,
-                    payload.message,
-                    "".join(reasoning_text) or None,
-                    duration_ms,
-                    payload.model,
-                    finish_reason,
-                    error,
-                    generation_id,
-                    usage.get("prompt_tokens"),
-                    usage.get("completion_tokens"),
-                    usage.get("reasoning_tokens"),
-                    usage.get("cached_tokens"),
-                    usage.get("total_tokens"),
-                    usage.get("cost"),
-                    usage.get("provider_name"),
-                    usage.get("generation_time"),
-                    usage.get("latency"),
-                    utc_now(),
-                ),
-            )
+        if conn is not None:
+            write_generation(conn, status, error)
+        else:
+            with get_db() as ownConn:
+                write_generation(ownConn, status, error)
+        saved_generation = True
+
+    def write_generation(
+        conn: sqlite3.Connection,
+        status: str,
+        error: str | None,
+    ) -> None:
+        conn.execute(
+            "UPDATE brainstorm_nodes SET status = ?, updated_at = ? WHERE id = ?",
+            (status, utc_now(), prompt_node_id),
+        )
+        conn.execute(
+            """
+            INSERT INTO brainstorm_generations (
+              id, story_id, prompt_node_id, prompt, reasoning, duration_ms,
+              model, finish_reason, error,
+              generation_id, prompt_tokens, completion_tokens, reasoning_tokens,
+              cached_tokens, total_tokens, cost, provider_name, generation_time,
+              latency, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                generation_row_id,
+                story_id,
+                prompt_node_id,
+                payload.message,
+                "".join(reasoning_text) or None,
+                duration_ms,
+                payload.model,
+                finish_reason,
+                error,
+                generation_id,
+                usage.get("prompt_tokens"),
+                usage.get("completion_tokens"),
+                usage.get("reasoning_tokens"),
+                usage.get("cached_tokens"),
+                usage.get("total_tokens"),
+                usage.get("cost"),
+                usage.get("provider_name"),
+                usage.get("generation_time"),
+                usage.get("latency"),
+                utc_now(),
+            ),
+        )
 
     try:
         promptNodeValue = row_to_brainstorm_node(prompt_node)
@@ -267,7 +281,7 @@ async def stream_brainstorm_generation(
                 ).fetchone()
                 created_nodes.append(row_to_brainstorm_node(node_row))
                 created_edges.append(row_to_brainstorm_edge(edge_row))
-        save_generation("complete")
+            save_generation("complete", conn=conn)
         yield stream_event(
             "ideas",
             {

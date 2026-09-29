@@ -4636,6 +4636,39 @@ class StoryApiTest(unittest.TestCase):
         self.assertEqual(graph["nodes"][0]["status"], "failed")
         self.assertEqual(graph["edges"], [])
 
+    def test_brainstorm_ideas_are_not_kept_when_completed_status_fails_to_save(self):
+        story = self.client.post(
+            "/api/stories",
+            json={"title": "Atomic ideas"},
+        ).json()["story"]
+        output = json.dumps({
+            "ideas": [
+                {"title": "one", "content": "first path"},
+                {"title": "two", "content": "second path"},
+                {"title": "three", "content": "third path"},
+            ]
+        })
+        with database.get_db() as conn:
+            conn.execute(
+                """
+                CREATE TRIGGER block_complete_generation
+                BEFORE INSERT ON brainstorm_generations
+                WHEN NEW.error IS NULL
+                BEGIN
+                    SELECT RAISE(ABORT, 'forced save failure');
+                END
+                """
+            )
+
+        response, _ = self.callBrainstormWithStreamState(story, output)
+
+        events = [json.loads(line) for line in response.text.splitlines() if line]
+        self.assertEqual(events[-1]["type"], "error")
+        graph = self.client.get(f"/api/stories/{story['id']}/brainstorm").json()
+        self.assertEqual(len(graph["nodes"]), 1)
+        self.assertEqual(graph["nodes"][0]["status"], "failed")
+        self.assertEqual(graph["edges"], [])
+
     def test_brainstorm_generation_saves_complete_branch_atomically(self):
         models.cache_models([models.normalize_model({
             "id": "test/model",

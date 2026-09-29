@@ -191,6 +191,7 @@ function App() {
   const previousRailStateRef = useRef(null);
   const brainstormViewportTimeoutRef = useRef(null);
   const brainstormPromptNodeIdRef = useRef(null);
+  const brainstormStreamingRef = useRef(false);
   const chapterContentRef = useRef("");
   const chaptersRef = useRef([]);
   const activeStoryIdRef = useRef(null);
@@ -485,6 +486,7 @@ function App() {
   }
 
   function hasActiveWriteGeneration() {
+    if (brainstormStreamingRef.current) return true;
     const status = writeGenerationRunRef.current?.status;
     return ["preparing", "streaming", "applying", "reconciling"].includes(status);
   }
@@ -2789,6 +2791,7 @@ function App() {
       settings.model,
       settings.thinking_enabled,
     );
+    brainstormStreamingRef.current = true;
     setIsStreaming(true);
     setStatus("");
     setBrainstormPrompt("");
@@ -2913,6 +2916,7 @@ function App() {
       } catch (error) {
         setStatus(error.message);
       }
+      brainstormStreamingRef.current = false;
       setIsStreaming(false);
     }
   }

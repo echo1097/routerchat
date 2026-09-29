@@ -35,5 +35,9 @@ def hourPromptCacheEnabled() -> bool:
     return read_app_setting("hour_prompt_cache") is not False
 
 
+def updateChecksEnabled() -> bool:
+    return read_app_setting("update_checks") is not False
+
+
 def globalChatSystemPrompt() -> str:
     return str(read_app_setting("chat_system_prompt") or "")

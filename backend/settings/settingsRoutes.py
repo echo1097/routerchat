@@ -8,6 +8,7 @@ from backend.core.appSettings import (
     globalChatSystemPrompt,
     hourPromptCacheEnabled,
     read_app_setting,
+    updateChecksEnabled,
     write_app_setting,
 )
 from backend.core.utils import patch_updates
@@ -43,6 +44,7 @@ def app_settings_payload() -> dict[str, Any]:
         "smooth_streaming": bool(read_app_setting("smooth_streaming")),
         "chat_system_prompt": globalChatSystemPrompt(),
         "hour_prompt_cache": hourPromptCacheEnabled(),
+        "update_checks": updateChecksEnabled(),
     }
 
 
@@ -111,6 +113,8 @@ def update_app_settings(payload: AppSettingsPatchRequest) -> dict[str, Any]:
         write_app_setting("chat_system_prompt", payload.chat_system_prompt)
     if payload.hour_prompt_cache is not None:
         write_app_setting("hour_prompt_cache", payload.hour_prompt_cache)
+    if payload.update_checks is not None:
+        write_app_setting("update_checks", payload.update_checks)
     return app_settings_payload()
 
 

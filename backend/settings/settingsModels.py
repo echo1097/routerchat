@@ -21,3 +21,4 @@ class AppSettingsPatchRequest(BaseModel):
     smooth_streaming: bool | None = None
     chat_system_prompt: str | None = None
     hour_prompt_cache: bool | None = None
+    update_checks: bool | None = None

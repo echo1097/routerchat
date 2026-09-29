@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cx, CONTROL_MOTION } from "../uiShared.js";
 import { APP_VERSION } from "../appInfo.js";
@@ -6,6 +7,7 @@ import { MaskIcon } from "../components/IconButton.jsx";
 import { SlidingTabs } from "../components/SlidingTabs.jsx";
 import { CHAT_MODES } from "../settings/settingsDefaults.js";
 import { FeedbackLink } from "./FeedbackLink.jsx";
+import { useAvailableUpdate } from "../updates/updateCheck.js";
 
 const headerButtonClass = cx(
   "h-9 w-9 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:bg-white/[0.06] hover:text-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
@@ -88,6 +90,20 @@ export function SidebarShell({
   listClassName,
   children,
 }) {
+  const availableUpdate = useAvailableUpdate();
+  const [updatePopPlace, setUpdatePopPlace] = useState(null);
+  const [updatePopOpen, setUpdatePopOpen] = useState(false);
+
+  function openUpdatePop(event) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    setUpdatePopPlace({ left: rect.right + 14, top: rect.top + rect.height / 2 });
+    setUpdatePopOpen(true);
+  }
+
+  function closeUpdatePop() {
+    setUpdatePopOpen(false);
+  }
+
   const {
     railRef,
     contentRef,
@@ -124,13 +140,44 @@ export function SidebarShell({
           )}
         >
           <div className="mb-3 flex h-9 items-center justify-between gap-2 pl-2.5">
-            <div className="flex min-w-0 items-baseline gap-1.5">
+            <div className="relative flex min-w-0 items-baseline gap-1.5">
               <span className="truncate text-[17px] font-semibold tracking-[-0.02em] text-white">
                 RouterChat
               </span>
-              <span className="shrink-0 text-[17px] font-semibold tracking-[-0.02em] tabular-nums text-neutral-500">
-                {APP_VERSION}
-              </span>
+              {availableUpdate ? (
+                <>
+                  <a
+                    href={availableUpdate.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label={`Version ${APP_VERSION}. RouterChat ${availableUpdate.version} is now available`}
+                    className="sidebar-version-update shrink-0 text-[17px] font-semibold tracking-[-0.02em] tabular-nums focus:outline-none"
+                    onMouseEnter={openUpdatePop}
+                    onMouseLeave={closeUpdatePop}
+                    onFocus={openUpdatePop}
+                    onBlur={closeUpdatePop}
+                  >
+                    {APP_VERSION}
+                    <span className="sidebar-version-dot" aria-hidden="true" />
+                  </a>
+                  {updatePopPlace
+                    ? createPortal(
+                        <span
+                          className={cx("sidebar-update-pop", updatePopOpen && "is-open")}
+                          style={{ left: updatePopPlace.left, top: updatePopPlace.top }}
+                          aria-hidden="true"
+                        >
+                          {availableUpdate.version} is now available!
+                        </span>,
+                        document.body,
+                      )
+                    : null}
+                </>
+              ) : (
+                <span className="shrink-0 text-[17px] font-semibold tracking-[-0.02em] tabular-nums text-neutral-500">
+                  {APP_VERSION}
+                </span>
+              )}
             </div>
 
             <div className="flex shrink-0 items-center gap-0.5">

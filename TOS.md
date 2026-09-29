@@ -1,4 +1,4 @@
-# RouterChat Terms and Disclaimer
+# RouterChat Terms of Service
 
 **Last updated: September 28, 2026**
 

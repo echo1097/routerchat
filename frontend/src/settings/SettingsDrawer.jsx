@@ -33,7 +33,7 @@ const SETTINGS_PAGES = [
   { id: "models", label: "Models", iconClass: "fi fi-rr-bulb" },
   { id: "transcription", label: "Transcription", iconSrc: "/icons/mic.png" },
   { id: "system", label: "System", iconClass: "fi fi-rr-settings" },
-  { id: "telemetry", label: "Telemetry", iconSrc: "/icons/update.png" },
+  { id: "updates", label: "Updates", iconSrc: "/icons/update.png" },
   { id: "ui", label: "UI", iconClass: "fi fi-rr-apps-add" },
   { id: "cloud", label: "Chats", icon: MessageSquarePlus },
   { id: "advanced", label: "Advanced", icon: SlidersHorizontal },
@@ -616,7 +616,7 @@ export function SettingsDrawer({
     <section className="py-3">
       <SettingRow
         title="Check for updates"
-        description="Look for a new RouterChat release on GitHub each time the app starts. This only shows a dot next to the version number; nothing is downloaded or installed automatically."
+        description="Look for a new RouterChat release on GitHub each time the app starts. This only shows a dot next to the version number. Nothing is downloaded or installed automatically, and RouterChat never sends usage data."
       >
         <SettingSwitch
           checked={updateChecks}
@@ -1176,7 +1176,7 @@ export function SettingsDrawer({
             <section
               className="settings-scroll-page t-page space-y-0 overflow-y-auto settings-inline py-4 md:py-5"
               data-page-id="5"
-              aria-label="Telemetry settings"
+              aria-label="Updates settings"
             >
               {updateChecksSection}
             </section>

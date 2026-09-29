@@ -33,6 +33,7 @@ const SETTINGS_PAGES = [
   { id: "models", label: "Models", iconClass: "fi fi-rr-bulb" },
   { id: "transcription", label: "Transcription", iconSrc: "/icons/mic.png" },
   { id: "system", label: "System", iconClass: "fi fi-rr-settings" },
+  { id: "telemetry", label: "Telemetry", iconSrc: "/icons/update.png" },
   { id: "ui", label: "UI", iconClass: "fi fi-rr-apps-add" },
   { id: "cloud", label: "Chats", icon: MessageSquarePlus },
   { id: "advanced", label: "Advanced", icon: SlidersHorizontal },
@@ -122,6 +123,8 @@ export function SettingsDrawer({
   onTogglePrivacyMode,
   onToggleZdrMode,
   onToggleSmoothStreaming,
+  updateChecks,
+  onToggleUpdateChecks,
   onTogglePromptNavigationRail,
   onExportChats,
   onImportChats,
@@ -604,6 +607,21 @@ export function SettingsDrawer({
           checked={smoothStreaming}
           onChange={onToggleSmoothStreaming}
           label="Smooth text"
+        />
+      </SettingRow>
+    </section>
+  );
+
+  const updateChecksSection = (
+    <section className="py-3">
+      <SettingRow
+        title="Check for updates"
+        description="Look for a new RouterChat release on GitHub each time the app starts. This only shows a dot next to the version number; nothing is downloaded or installed automatically."
+      >
+        <SettingSwitch
+          checked={updateChecks}
+          onChange={onToggleUpdateChecks}
+          label="Check for updates"
         />
       </SettingRow>
     </section>
@@ -1158,6 +1176,13 @@ export function SettingsDrawer({
             <section
               className="settings-scroll-page t-page space-y-0 overflow-y-auto settings-inline py-4 md:py-5"
               data-page-id="5"
+              aria-label="Telemetry settings"
+            >
+              {updateChecksSection}
+            </section>
+            <section
+              className="settings-scroll-page t-page space-y-0 overflow-y-auto settings-inline py-4 md:py-5"
+              data-page-id="6"
               aria-label="UI settings"
             >
               {promptNavigationSection}
@@ -1165,14 +1190,14 @@ export function SettingsDrawer({
             </section>
             <section
               className="t-page overflow-hidden settings-inline py-4 md:py-5"
-              data-page-id="6"
+              data-page-id="7"
               aria-label="Chats settings"
             >
               {importExportSection}
             </section>
             <section
               className="settings-scroll-page t-page space-y-0 overflow-y-auto settings-inline py-4 md:py-5"
-              data-page-id="7"
+              data-page-id="8"
               aria-label="Advanced settings"
             >
               {reasoningSection}
@@ -1180,14 +1205,14 @@ export function SettingsDrawer({
             </section>
             <section
               className="t-page flex min-h-0 flex-col settings-inline py-4 md:py-5"
-              data-page-id="8"
+              data-page-id="9"
               aria-label="Lorebook settings"
             >
               {lorebookSection}
             </section>
             <section
               className="settings-scroll-page t-page settings-inline overflow-y-auto py-4 md:py-5"
-              data-page-id="9"
+              data-page-id="10"
               aria-label="Usage settings"
             >
               {usagePage.mounted && <UsagePanel key={usagePage.session} models={models} />}

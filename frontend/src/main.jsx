@@ -71,6 +71,7 @@ import { ConfirmModal } from "./components/ConfirmModal.jsx";
 import { NewStoryModal } from "./writing/NewStoryModal.jsx";
 import NotificationStack from "./notifications/NotificationStack.jsx";
 import TourOverlay from "./tour/TourOverlay.jsx";
+import { checkForUpdate, clearUpdateCheck } from "./updates/updateCheck.js";
 import { TosLoadingScreen, TosUnavailableScreen, TosGateModal } from "./TosGate.jsx";
 import { createRoot } from "react-dom/client";
 import "@fontsource-variable/inter";
@@ -125,6 +126,7 @@ function App() {
     Boolean(localAppSettings.disable_prompt_caching),
   );
   const [hourPromptCache, setHourPromptCache] = useState(localAppSettings.hour_prompt_cache !== false);
+  const [updateChecks, setUpdateChecks] = useState(localAppSettings.update_checks !== false);
   const [nitroMode, setNitroMode] = useState(Boolean(localAppSettings.nitro_mode));
   const [cheapestMode, setCheapestMode] = useState(Boolean(localAppSettings.cheapest_mode));
   const [privacyMode, setPrivacyMode] = useState(Boolean(localAppSettings.privacy_mode));
@@ -838,6 +840,10 @@ function App() {
         typeof payload.hour_prompt_cache === "boolean"
           ? payload.hour_prompt_cache
           : readLocalAppSettings().hour_prompt_cache !== false;
+      const nextUpdateChecks =
+        typeof payload.update_checks === "boolean"
+          ? payload.update_checks
+          : readLocalAppSettings().update_checks !== false;
       const nextGenerateChatName =
         typeof payload.generate_chat_name === "boolean"
           ? payload.generate_chat_name
@@ -869,6 +875,9 @@ function App() {
       setHideBatchModels(nextHideBatchModels);
       setDisablePromptCaching(nextDisablePromptCaching);
       setHourPromptCache(nextHourPromptCache);
+      setUpdateChecks(nextUpdateChecks);
+      if (nextUpdateChecks) checkForUpdate();
+      else clearUpdateCheck();
       setNitroMode(nextNitroMode);
       setSmoothStreaming(nextSmoothStreaming);
       setCheapestMode(nextCheapestMode);
@@ -881,6 +890,7 @@ function App() {
         hide_batch_models: nextHideBatchModels,
         disable_prompt_caching: nextDisablePromptCaching,
         hour_prompt_cache: nextHourPromptCache,
+        update_checks: nextUpdateChecks,
         nitro_mode: nextNitroMode,
         smooth_streaming: nextSmoothStreaming,
         cheapest_mode: nextCheapestMode,
@@ -1253,6 +1263,30 @@ function App() {
     } catch (error) {
       setHourPromptCache(value);
       writeLocalAppSettings({ hour_prompt_cache: value });
+      setStatus(`Saved locally. Restart the server to sync this setting. ${error.message}`);
+    }
+  }
+
+  async function updateUpdateChecks(value) {
+    setUpdateChecks(value);
+    if (value) checkForUpdate();
+    else clearUpdateCheck();
+    writeLocalAppSettings({ update_checks: value });
+    try {
+      const payload = await api("/api/settings", {
+        method: "PATCH",
+        body: JSON.stringify({ update_checks: value }),
+      });
+      const nextValue =
+        typeof payload.update_checks === "boolean"
+          ? payload.update_checks
+          : value;
+      setUpdateChecks(nextValue);
+      writeLocalAppSettings({ update_checks: nextValue });
+      showToast(value ? "Update checks enabled" : "Update checks disabled");
+    } catch (error) {
+      setUpdateChecks(value);
+      writeLocalAppSettings({ update_checks: value });
       setStatus(`Saved locally. Restart the server to sync this setting. ${error.message}`);
     }
   }
@@ -3605,6 +3639,8 @@ function App() {
         onTogglePrivacyMode={updatePrivacyMode}
         onToggleZdrMode={updateZdrMode}
         onToggleSmoothStreaming={updateSmoothStreaming}
+        updateChecks={updateChecks}
+        onToggleUpdateChecks={updateUpdateChecks}
         onTogglePromptNavigationRail={updatePromptNavigationRail}
         onExportChats={exportChats}
         onImportChats={importChats}

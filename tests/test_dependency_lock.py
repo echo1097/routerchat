@@ -36,7 +36,7 @@ class DependencyLockTest(unittest.TestCase):
         self.assertIn("git diff --exit-code -- requirements.lock", workflow)
 
     def test_manual_install_requires_dependency_hashes(self):
-        setupGuide = (PROJECT_ROOT / "setup.md").read_text(encoding="utf-8")
+        setupGuide = (PROJECT_ROOT / "developer.md").read_text(encoding="utf-8")
 
         self.assertIn("pip install --require-hashes -r requirements.lock", setupGuide)
 

@@ -4,6 +4,7 @@ import uuid
 from backend.core.database import get_db
 from backend.core.utils import utc_now
 from backend.providers.registry import getActiveProvider
+from backend.usage.recordUsage import recordUsage
 
 
 def ensureLorebookUsageTable(conn):
@@ -45,16 +46,19 @@ class LorebookUsage:
         self.requestId = str(uuid.uuid4())
         self.generationId = None
         self.usage = {}
+        self.createdAt = None
 
     async def __aenter__(self):
+        self.createdAt = utc_now()
         with get_db() as conn:
             conn.execute(
                 """
                 INSERT INTO lorebook_usage (id, story_id, chapter_id, action, model, created_at)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (self.requestId, self.storyId, self.chapterId, self.action, self.model, utc_now()),
+                (self.requestId, self.storyId, self.chapterId, self.action, self.model, self.createdAt),
             )
+        recordUsage("lorebook", self.requestId, self.model, None, self.createdAt)
         return self
 
     async def __aexit__(self, errorType, error, traceback):
@@ -108,3 +112,4 @@ class LorebookUsage:
                     self.requestId,
                 ),
             )
+        recordUsage("lorebook", self.requestId, self.model, self.usage, self.createdAt, self.generationId)

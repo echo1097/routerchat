@@ -28,6 +28,7 @@ from backend.core.utils import utc_now
 from backend.providers.base import ChatOptions
 from backend.providers.registry import getActiveProvider
 from backend.providers.streaming import streamChat
+from backend.usage.recordUsage import recordUsage
 from backend.webSearch.sources import (
     merge_sources,
     serialize_sources,
@@ -91,6 +92,7 @@ def saveAssistantReply(
                 conn, chat_id, previous_first_user_content
             )
 
+        createdAt = utc_now()
         conn.execute(
             """
             INSERT INTO messages (
@@ -121,9 +123,10 @@ def saveAssistantReply(
                 usage.get("generation_time") if usage else None,
                 usage.get("latency") if usage else None,
                 next_message_order(conn, chat_id),
-                utc_now(),
+                createdAt,
             ),
         )
+        recordUsage("message", assistant_message_id, payload.model, usage, createdAt, generation_id)
         conn.execute(
             "UPDATE chats SET updated_at = ? WHERE id = ?", (utc_now(), chat_id)
         )

@@ -13,6 +13,7 @@ from backend.core.database import get_db
 from backend.core.utils import utc_now
 from backend.providers.openrouter.apiKey import read_openrouter_key
 from backend.providers.openrouter.client import OPENROUTER_BASE_URL, headers_for_key
+from backend.usage.recordUsage import recordUsage
 from backend.usage.usageTotals import cleanNumber
 
 
@@ -62,11 +63,13 @@ async def transcribeAudio(payload: TranscriptionRequest):
     if not read_openrouter_key():
         raise HTTPException(401, "Add an OpenRouter API key first.")
     requestId = str(uuid.uuid4())
+    createdAt = utc_now()
     with closing(get_db()) as conn, conn:
         conn.execute(
             "INSERT INTO transcription_usage (id, model, created_at) VALUES (?, ?, ?)",
-            (requestId, modelId, utc_now()),
+            (requestId, modelId, createdAt),
         )
+    recordUsage("transcription", requestId, modelId, None, createdAt)
     audioTypes = {"webm": "audio/webm", "m4a": "audio/mp4", "ogg": "audio/ogg", "wav": "audio/wav"}
     result = await providerRequest(
         "POST", "audio/transcriptions",
@@ -88,6 +91,13 @@ async def transcribeAudio(payload: TranscriptionRequest):
             (promptTokens, completionTokens, totalTokens,
              cleanNumber(usage.get("seconds")), cleanNumber(usage.get("cost")), requestId),
         )
+    transcriptionUsage = {
+        "prompt_tokens": promptTokens,
+        "completion_tokens": completionTokens,
+        "total_tokens": totalTokens,
+        "cost": cleanNumber(usage.get("cost")),
+    }
+    recordUsage("transcription", requestId, modelId, transcriptionUsage, createdAt)
     transcript = result.get("text")
     if not isinstance(transcript, str) or not transcript.strip():
         raise HTTPException(422, "No speech was detected. Try recording again.")

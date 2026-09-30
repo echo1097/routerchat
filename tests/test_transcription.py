@@ -10,8 +10,10 @@ import httpx
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+import backend.core.paths as paths
 from backend.transcription import transcriptionRoutes
 from backend.transcription.transcriptionUsage import ensureTranscriptionUsageTable
+from backend.usage.usageDatabase import getUsageDb, initUsageDb
 
 
 class TranscriptionTest(unittest.TestCase):
@@ -19,7 +21,12 @@ class TranscriptionTest(unittest.TestCase):
         self.settings = {"transcription_model": "test/transcribe"}
         self.tempDir = tempfile.TemporaryDirectory()
         self.addCleanup(self.tempDir.cleanup)
-        self.dbPath = Path(self.tempDir.name) / "usage.sqlite3"
+        self.dbPath = Path(self.tempDir.name) / "transcription.sqlite3"
+        pathPatch = patch.object(paths, "DB_PATH", Path(self.tempDir.name) / "routerchat.sqlite3")
+        pathPatch.start()
+        self.addCleanup(pathPatch.stop)
+        with closing(getUsageDb()) as usageConn:
+            initUsageDb(usageConn)
         with closing(self.getDb()) as conn, conn:
             ensureTranscriptionUsageTable(conn)
         replacements = {
@@ -93,6 +100,10 @@ class TranscriptionTest(unittest.TestCase):
         conn.row_factory = sqlite3.Row
         return conn
 
+    def ledgerRows(self):
+        with closing(getUsageDb()) as conn:
+            return [dict(row) for row in conn.execute("SELECT * FROM usage_entries")]
+
     def testReportedCostAndTokensAreSavedForTheSelectedModel(self):
         self.provider.request.return_value = httpx.Response(200, json={
             "text": "Hello", "usage": {"input_tokens": 100, "output_tokens": 20, "cost": 0.003, "seconds": 12},
@@ -106,6 +117,12 @@ class TranscriptionTest(unittest.TestCase):
         self.assertEqual(row["completion_tokens"], 20)
         self.assertEqual(row["total_tokens"], 120)
         self.assertEqual(row["audio_seconds"], 12)
+        ledger = self.ledgerRows()
+        self.assertEqual(len(ledger), 1)
+        self.assertEqual(ledger[0]["kind"], "transcription")
+        self.assertEqual(ledger[0]["model"], "test/transcribe")
+        self.assertEqual(ledger[0]["cost"], 0.003)
+        self.assertEqual(ledger[0]["total_tokens"], 120)
 
     def testDurationPricedAndEmptyTranscriptsKeepTheirCost(self):
         self.provider.request.return_value = httpx.Response(200, json={

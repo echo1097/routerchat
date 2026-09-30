@@ -29,6 +29,7 @@ from backend.core.utils import utc_now
 from backend.providers.base import ChatOptions
 from backend.providers.registry import getActiveProvider
 from backend.providers.streaming import streamChat
+from backend.usage.recordUsage import recordUsage
 
 router = APIRouter()
 
@@ -110,6 +111,7 @@ async def stream_brainstorm_generation(
             "UPDATE brainstorm_nodes SET status = ?, updated_at = ? WHERE id = ?",
             (status, utc_now(), prompt_node_id),
         )
+        createdAt = utc_now()
         conn.execute(
             """
             INSERT INTO brainstorm_generations (
@@ -140,9 +142,10 @@ async def stream_brainstorm_generation(
                 usage.get("provider_name"),
                 usage.get("generation_time"),
                 usage.get("latency"),
-                utc_now(),
+                createdAt,
             ),
         )
+        recordUsage("brainstorm", generation_row_id, payload.model, usage, createdAt, generation_id)
 
     try:
         promptNodeValue = row_to_brainstorm_node(prompt_node)

@@ -23,6 +23,7 @@ from backend.lorebook.runUpdate import run_lorebook_update
 from backend.providers.base import ChatOptions
 from backend.providers.registry import getActiveProvider
 from backend.providers.streaming import streamChat
+from backend.usage.recordUsage import recordUsage
 from backend.writing.chapterEdits.anchors import chapter_blocks
 from backend.writing.chapterEdits.applyEdits import (
     append_chapter_text,
@@ -456,6 +457,7 @@ async def stream_story_generation(
                     story_generation_id,
                 ),
             )
+            recordUsage("story", story_generation_id, payload.model, usage, now, generation_id)
             conn.execute(
                 "UPDATE stories SET updated_at = ? WHERE id = ?",
                 (now, story_id),

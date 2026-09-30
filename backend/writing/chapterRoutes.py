@@ -15,6 +15,7 @@ from backend.lorebook.chapterSummaries import (
     rename_linked_chapter_summaries,
 )
 from backend.providers.registry import getActiveProvider
+from backend.usage.recordUsage import recordUsage
 from backend.writing.storyGeneration import (
     ChapterStreamingResponse,
     stream_story_generation,
@@ -280,6 +281,7 @@ async def stream_story_chapter_generation(
         claim_attachments(conn, attachmentIds, story_id=story_id)
 
         generationId = payload.generation_status_id or str(uuid.uuid4())
+        createdAt = utc_now()
         try:
             conn.execute(
                 """
@@ -287,10 +289,11 @@ async def stream_story_chapter_generation(
                     id, story_id, chapter_id, prompt, generated_text, model, error, created_at
                 ) VALUES (?, ?, ?, ?, '', ?, 'generation_pending', ?)
                 """,
-                (generationId, story_id, chapter_id, payload.message, payload.model, utc_now()),
+                (generationId, story_id, chapter_id, payload.message, payload.model, createdAt),
             )
         except sqlite3.IntegrityError as exc:
             raise HTTPException(status_code=409, detail="Generation status ID is already in use.") from exc
+        recordUsage("story", generationId, payload.model, None, createdAt)
 
     def settleUnstartedGeneration():
         with get_db() as conn:

@@ -117,7 +117,7 @@ class WebSearchHarness:
                 return FakeResponse()
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.chats.streamMessage.httpx.AsyncClient", FakeClient
+            "backend.providers.streaming.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
                 f"/api/chats/{chatId}/messages/stream",

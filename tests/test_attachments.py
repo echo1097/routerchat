@@ -495,7 +495,7 @@ class AttachmentApiTest(unittest.TestCase):
                     (messageId, chat["id"], role, content, "test/model", index, utils.utc_now()),
                 )
 
-        messages = buildMessages.build_openrouter_messages(chat["id"], "")
+        messages = buildMessages.build_messages(chat["id"], "")
 
         self.assertEqual(len(messages), 3)
         self.assertIsInstance(messages[0]["content"], list)

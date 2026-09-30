@@ -111,7 +111,7 @@ class PromptCachingTest(unittest.TestCase):
 
         calls = []
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.chats.streamMessage.httpx.AsyncClient", fakeClientFor(calls, usage)
+            "backend.providers.streaming.httpx.AsyncClient", fakeClientFor(calls, usage)
         ):
             response = self.client.post(
                 f"/api/chats/{chat['id']}/messages/stream",

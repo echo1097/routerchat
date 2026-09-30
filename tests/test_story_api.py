@@ -24,6 +24,7 @@ import backend.tos.loadTos as loadTos
 import backend.tos.tosAcceptance as tosAcceptance
 import backend.providers.openrouter.models as models
 import backend.providers.openrouter.requestOptions as requestOptions
+from backend.providers.registry import getActiveProvider
 import backend.core.migrations as migrations
 import backend.core.paths as paths
 from backend.brainstorm.brainstormLayout import (
@@ -419,7 +420,7 @@ class StoryApiTest(unittest.TestCase):
                 return FakeResponse()
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.writing.storyGeneration.httpx.AsyncClient", FakeClient
+            "backend.providers.streaming.httpx.AsyncClient", FakeClient
         ), patch(
             "backend.lorebook.runUpdate.httpx.AsyncClient", FakeClient
         ):
@@ -3449,9 +3450,9 @@ class StoryApiTest(unittest.TestCase):
             providerClient.__aenter__.return_value = providerClient
             endpoint = chapterRoutes.stream_story_chapter_generation
             with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-                "backend.writing.storyGeneration.httpx.AsyncClient", return_value=providerClient,
+                "backend.providers.streaming.httpx.AsyncClient", return_value=providerClient,
             ), patch("backend.writing.storyGeneration.run_lorebook_update") as lorebookRun, patch.object(
-                storyGeneration, "fetch_generation_usage", waitForUsage,
+                getActiveProvider(), "fetchFinalUsage", waitForUsage,
             ):
                 response = await endpoint(story["id"], chapter["id"], chatModels.StreamMessageRequest(
                     message="continue", model="test/model", write_generation_mode=mode,
@@ -3598,7 +3599,7 @@ class StoryApiTest(unittest.TestCase):
                 fakeClient.__aenter__.return_value = fakeClient
                 fakeClient.stream = lambda *args, **kwargs: fakeLorebookStream("Partial prose.")
                 with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-                    "backend.writing.storyGeneration.httpx.AsyncClient", return_value=fakeClient,
+                    "backend.providers.streaming.httpx.AsyncClient", return_value=fakeClient,
                 ) as providerClient:
                     asyncio.run(disconnectResponse())
                     if stopEvent:
@@ -3896,7 +3897,7 @@ class StoryApiTest(unittest.TestCase):
                 return FakeResponse()
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.writing.storyGeneration.httpx.AsyncClient", FakeClient
+            "backend.providers.streaming.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
                 f"/api/stories/{story['id']}/chapters/{chapter['id']}/generate/stream",
@@ -3983,7 +3984,7 @@ class StoryApiTest(unittest.TestCase):
                 return FakeResponse()
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.writing.storyGeneration.httpx.AsyncClient", FakeClient
+            "backend.providers.streaming.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
                 f"/api/stories/{story['id']}/chapters/{chapter['id']}/generate/stream",

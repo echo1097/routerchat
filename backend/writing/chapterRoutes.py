@@ -14,7 +14,7 @@ from backend.lorebook.chapterSummaries import (
     delete_linked_chapter_summaries,
     rename_linked_chapter_summaries,
 )
-from backend.providers.openrouter.apiKey import read_openrouter_key
+from backend.providers.registry import getActiveProvider
 from backend.writing.storyGeneration import (
     ChapterStreamingResponse,
     stream_story_generation,
@@ -216,8 +216,9 @@ async def stream_story_chapter_generation(
     chapter_id: str,
     payload: StreamMessageRequest,
 ) -> StreamingResponse:
-    if not read_openrouter_key():
-        raise HTTPException(status_code=401, detail="Add an OpenRouter API key first.")
+    provider = getActiveProvider()
+    if not provider.readKey():
+        raise HTTPException(status_code=401, detail=provider.missingKeyMessage)
     attachmentIds = list(payload.attachment_ids or [])
     if not payload.message.strip() and not attachmentIds:
         raise HTTPException(status_code=400, detail="Message cannot be empty.")

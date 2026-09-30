@@ -19,7 +19,6 @@ import backend.core.database as database
 import backend.core.utils as utils
 import backend.providers.openrouter.client as openrouterClient
 import backend.core.reasoningEffort as reasoningEffort
-import backend.settings.settingsRoutes as settingsRoutes
 import backend.tos.loadTos as loadTos
 import backend.tos.tosAcceptance as tosAcceptance
 import backend.providers.openrouter.models as models
@@ -4047,16 +4046,42 @@ class StoryApiTest(unittest.TestCase):
             detail="Could not reach OpenRouter.",
         )
 
-        with patch.object(settingsRoutes, "read_openrouter_key", return_value="test-key"):
-            with patch.object(settingsRoutes, "validate_key", side_effect=transportError):
+        with patch.object(getActiveProvider(), "readKey", return_value="test-key"):
+            with patch.object(getActiveProvider(), "validateKey", side_effect=transportError):
                 statusResponse = self.client.get("/api/settings/key-status")
 
-            with patch.object(settingsRoutes, "fetch_models_from_openrouter", side_effect=transportError):
+            with patch.object(getActiveProvider(), "listModels", side_effect=transportError):
                 modelsResponse = self.client.get("/api/models")
 
         self.assertEqual(statusResponse.status_code, 200)
         self.assertTrue(statusResponse.json()["has_key"])
         self.assertEqual(modelsResponse.status_code, 502)
+
+    def test_providers_route_lists_openrouter_as_the_active_provider(self):
+        response = self.client.get("/api/providers")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["cache-control"], "no-store")
+        payload = response.json()
+        self.assertEqual(payload["active"], "openrouter")
+        self.assertEqual([provider["id"] for provider in payload["providers"]], ["openrouter"])
+        provider = payload["providers"][0]
+        self.assertTrue(provider["active"])
+        self.assertEqual(provider["name"], "OpenRouter")
+        self.assertEqual(
+            provider["capabilities"],
+            {
+                "reasoning": True,
+                "reasoningEfforts": ["low", "medium", "high", "max"],
+                "webSearch": True,
+                "pdfParsing": True,
+                "cost": True,
+                "structuredOutput": True,
+                "needsKey": True,
+                "needsBaseUrl": False,
+                "routingOptions": True,
+            },
+        )
 
     def test_openrouter_headers_use_the_public_routerchat_identity(self):
         self.assertEqual(
@@ -4116,7 +4141,7 @@ class StoryApiTest(unittest.TestCase):
             requestOptions.resolved_reasoning_effort("test/mandatory", "low"), "medium"
         )
 
-        with patch.object(settingsRoutes, "read_openrouter_key", return_value=None):
+        with patch.object(getActiveProvider(), "readKey", return_value=None):
             modelsResponse = self.client.get("/api/models")
         self.assertEqual(modelsResponse.headers["cache-control"], "no-store")
         responseModel = next(

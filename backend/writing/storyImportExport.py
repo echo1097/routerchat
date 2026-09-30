@@ -17,7 +17,7 @@ from backend.lorebook.lorebookRows import (
     sanitize_lorebook_metadata,
 )
 from backend.lorebook.timeline import normalize_timeline_description
-from backend.providers.openrouter.models import default_model_id
+from backend.providers.registry import getActiveProvider
 from backend.writing.storyModels import StoryImportRequest
 from backend.writing.storyRows import (
     row_to_chapter,
@@ -189,7 +189,7 @@ def import_story(payload: StoryImportRequest) -> dict[str, Any]:
                 story.author,
                 story.language,
                 story.synopsis,
-                story.model or default_model_id(),
+                story.model or getActiveProvider().defaultModelId(),
                 story.system_prompt,
                 story.temperature,
                 story.max_tokens,

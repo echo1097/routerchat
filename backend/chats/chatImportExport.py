@@ -11,7 +11,7 @@ from backend.core.database import get_db, message_order_clause, next_message_ord
 from backend.core.reasoningEffort import coerce_reasoning_effort
 from backend.core.utils import coerce_bool_int, float_or_none, int_or_none, utc_now
 from backend.providers.base import DEFAULT_MAX_TOKENS
-from backend.providers.openrouter.models import default_model_id
+from backend.providers.registry import getActiveProvider
 from backend.webSearch.sources import normalize_sources, serialize_sources
 
 router = APIRouter()
@@ -76,7 +76,7 @@ def import_chats(payload: ChatImportRequest) -> dict[str, Any]:
                 (
                     chat_id,
                     str(item.get("title") or "Imported chat")[:120],
-                    str(item.get("model") or default_model_id()),
+                    str(item.get("model") or getActiveProvider().defaultModelId()),
                     str(item.get("system_prompt") or ""),
                     0.7 if imported_temperature is None else imported_temperature,
                     int_or_none(item.get("max_tokens")) or DEFAULT_MAX_TOKENS,

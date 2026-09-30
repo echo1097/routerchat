@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
-from backend.providers.openrouter.requestOptions import effective_thinking_enabled
+from backend.providers.registry import getActiveProvider
 from backend.webSearch.sources import deserialize_sources
 
 
@@ -15,7 +15,7 @@ def row_to_chat(row: sqlite3.Row) -> dict[str, Any]:
         "system_prompt": row["system_prompt"],
         "temperature": row["temperature"],
         "max_tokens": row["max_tokens"],
-        "thinking_enabled": effective_thinking_enabled(
+        "thinking_enabled": getActiveProvider().effectiveThinkingEnabled(
             row["model"], bool(row["thinking_enabled"])
         ),
         "reasoning_effort": row["reasoning_effort"],

@@ -26,6 +26,7 @@ from backend.lorebook import (
     timelineRepair,
     updateRoutes,
 )
+from backend.providers import providerRoutes
 from backend.security import bootstrapRoutes
 from backend.security.apiSecurity import enforce_local_api_security
 from backend.security.localAccessConfig import local_access_config
@@ -45,6 +46,7 @@ featureRouters = [
     bootstrapRoutes.router,
     tosRoutes.router,
     settingsRoutes.router,
+    providerRoutes.router,
     folderRoutes.router,
     chatRoutes.router,
     chatImportExport.router,

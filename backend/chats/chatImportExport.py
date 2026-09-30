@@ -10,7 +10,7 @@ from backend.chats.chatRows import row_to_chat, row_to_message
 from backend.core.database import get_db, message_order_clause, next_message_order
 from backend.core.reasoningEffort import coerce_reasoning_effort
 from backend.core.utils import coerce_bool_int, float_or_none, int_or_none, utc_now
-from backend.providers.openrouter.client import DEFAULT_MAX_TOKENS
+from backend.providers.base import DEFAULT_MAX_TOKENS
 from backend.providers.openrouter.models import default_model_id
 from backend.webSearch.sources import normalize_sources, serialize_sources
 

@@ -6,6 +6,8 @@ from typing import Any
 
 import httpx
 
+from backend.core.reasoningEffort import ReasoningEffort
+
 DEFAULT_MAX_TOKENS = 30000
 
 
@@ -35,7 +37,7 @@ class ChatOptions:
     stream: bool = True
     nitro: bool = False
     thinkingEnabled: bool = False
-    reasoningEffort: str = "medium"
+    reasoningEffort: ReasoningEffort = "medium"
     explicitReasoning: bool = False
     responseFormat: dict[str, Any] | None = None
     plugins: list[dict[str, Any]] = field(default_factory=list)

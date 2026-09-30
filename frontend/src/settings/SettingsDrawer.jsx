@@ -21,6 +21,7 @@ import { UsagePanel } from "./UsagePanel.jsx";
 import { useChatSystemPromptAutosave } from "./useChatSystemPromptAutosave.js";
 import { useLingeringPage } from "./useLingeringPage.js";
 import { DEFAULT_PROVIDER } from "../providers/providerApi.js";
+import { PROVIDER_OPTIONS, findProviderOption } from "../providers/providerOptions.js";
 
 const REASONING_EFFORTS = [
   { value: "low", label: "Low" },
@@ -133,6 +134,8 @@ export function SettingsDrawer({
   onNotify,
 }) {
   const [apiKey, setApiKey] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
+  const [selectedProviderId, setSelectedProviderId] = useState(provider.id);
   const [query, setQuery] = useState("");
   const [lorebookQuery, setLorebookQuery] = useState("");
   const [saving, setSaving] = useState(false);
@@ -168,9 +171,14 @@ export function SettingsDrawer({
   const selectedModelContext = Number.isFinite(selectedModelContextLimit)
     ? `${formatTokens(selectedModelContextLimit)} context`
     : "";
-  const keyConnected = Boolean(keyStatus.has_key);
-  const providerName = provider.name;
-  const capabilities = provider.capabilities || DEFAULT_PROVIDER.capabilities;
+  const selectedProvider = findProviderOption(selectedProviderId);
+  const isPreviewProvider = selectedProviderId !== provider.id;
+  const keyConnected = !isPreviewProvider && Boolean(keyStatus.has_key);
+  const providerName = isPreviewProvider ? selectedProvider.name : provider.name;
+  const keyPlaceholder = isPreviewProvider ? selectedProvider.keyPlaceholder : provider.keyPlaceholder;
+  const capabilities = isPreviewProvider
+    ? selectedProvider.capabilities
+    : provider.capabilities || DEFAULT_PROVIDER.capabilities;
   const activePageIndex = SETTINGS_PAGES.findIndex((page) => page.id === activePage) + 1;
   const selectedCloudChat = chats.find((chat) => chat.id === selectedCloudChatId);
   const activeCloudChat = chats.find((chat) => chat.id === activeChatId);
@@ -305,8 +313,14 @@ export function SettingsDrawer({
     }, shakeMs + holdMs);
   }, [filteredModels.length, query]);
 
+  function chooseProvider(providerId) {
+    setSelectedProviderId(providerId);
+    setApiKey("");
+    setBaseUrl("");
+  }
+
   async function saveKey() {
-    if (!apiKey.trim()) return;
+    if (isPreviewProvider || !apiKey.trim()) return;
     setSaving(true);
     try {
       await onSaveKey(apiKey.trim());
@@ -439,8 +453,38 @@ export function SettingsDrawer({
     />
   );
 
+  const providerSection = (
+    <section className="border-b border-white/[0.08] pb-4">
+      <SettingRow
+        title="Provider"
+        description="Where your messages are sent"
+      />
+      <SlidingTabs
+        options={PROVIDER_OPTIONS}
+        value={selectedProviderId}
+        onChange={chooseProvider}
+        getValue={(option) => option.id}
+        getLabel={(option) => option.tabLabel}
+        ariaLabel="API provider"
+        className="mt-3 flex w-full"
+      />
+      {isPreviewProvider && (
+        <p className="mt-2.5 text-pretty text-xs leading-5 text-neutral-500">
+          {selectedProvider.name} support is coming soon. Chats keep using {provider.name} for now.
+        </p>
+      )}
+    </section>
+  );
+
+  const saveButtonClass = cx(
+    "h-10 rounded-xl bg-neutral-100 px-3 text-sm font-semibold text-neutral-950 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:cursor-not-allowed disabled:bg-neutral-800 disabled:text-neutral-500 disabled:shadow-[var(--shadow-border)] disabled:active:scale-100",
+    CONTROL_MOTION,
+  );
+
+  const fieldClass = "h-10 min-w-0 flex-1 rounded-xl bg-black/20 px-3 text-sm text-neutral-100 shadow-[var(--shadow-border)] outline-none transition-[background-color,box-shadow] duration-150 ease-out placeholder:text-neutral-600 focus:bg-black/25 focus:shadow-[0_0_0_1px_rgba(255,255,255,0.16)]";
+
   const keySection = (
-    <section className="border-b border-white/[0.08] pb-3">
+    <section className="border-b border-white/[0.08] py-3">
       <div className="mb-2.5 flex items-center justify-between gap-3">
         <h2 className="flex items-center gap-2 text-balance text-sm font-semibold text-neutral-100">
           {providerName} key
@@ -452,21 +496,57 @@ export function SettingsDrawer({
           type="password"
           value={apiKey}
           onChange={(event) => setApiKey(event.target.value)}
-          placeholder={provider.keyPlaceholder}
-          className="h-10 min-w-0 flex-1 rounded-xl bg-black/20 px-3 text-sm text-neutral-100 shadow-[var(--shadow-border)] outline-none transition-[background-color,box-shadow] duration-150 ease-out placeholder:text-neutral-600 focus:bg-black/25 focus:shadow-[0_0_0_1px_rgba(255,255,255,0.16)]"
+          placeholder={keyPlaceholder}
+          aria-label={`${providerName} key`}
+          className={fieldClass}
         />
         <button
           type="button"
           onClick={saveKey}
-          disabled={saving || !apiKey.trim()}
-          className={cx(
-            "h-10 rounded-xl bg-neutral-100 px-3 text-sm font-semibold text-neutral-950 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:cursor-not-allowed disabled:bg-neutral-800 disabled:text-neutral-500 disabled:shadow-[var(--shadow-border)] disabled:active:scale-100",
-            CONTROL_MOTION,
-          )}
+          disabled={isPreviewProvider || saving || !apiKey.trim()}
+          className={saveButtonClass}
         >
           {saving ? "Saving" : "Save"}
         </button>
       </div>
+    </section>
+  );
+
+  const localModelSection = (
+    <section className="border-b border-white/[0.08] py-3">
+      <h2 className="mb-2.5 text-balance text-sm font-semibold text-neutral-100">
+        Server address
+      </h2>
+      <div className="space-y-2">
+        <input
+          type="url"
+          value={baseUrl}
+          onChange={(event) => setBaseUrl(event.target.value)}
+          placeholder={selectedProvider.baseUrlPlaceholder}
+          aria-label="Server address"
+          className={cx(fieldClass, "w-full")}
+        />
+        <div className="flex gap-2">
+          <input
+            type="password"
+            value={apiKey}
+            onChange={(event) => setApiKey(event.target.value)}
+            placeholder="API key (optional)"
+            aria-label="Local model API key"
+            className={fieldClass}
+          />
+          <button
+            type="button"
+            disabled
+            className={saveButtonClass}
+          >
+            Connect
+          </button>
+        </div>
+      </div>
+      <p className="mt-2 text-pretty text-xs leading-5 text-neutral-500">
+        Works with Ollama, LM Studio, or any OpenAI-compatible server
+      </p>
     </section>
   );
 
@@ -1149,7 +1229,9 @@ export function SettingsDrawer({
               data-page-id="1"
               aria-label="API settings"
             >
+              {providerSection}
               {capabilities.needsKey && keySection}
+              {capabilities.needsBaseUrl && localModelSection}
               {chatNameSection}
               {modelFilterSection}
               {promptCachingSection}

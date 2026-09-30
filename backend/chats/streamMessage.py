@@ -189,7 +189,7 @@ async def stream_chat_response(
         async with aclosing(streamChat(provider, request)) as events:
             async for event in events:
                 if event["type"] == "error":
-                    error_text = event["message"]
+                    error_text = str(event["message"])
                     assistant_text.append(error_text)
                     yield stream_event("error", error_text)
                     return

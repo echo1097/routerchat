@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import json
-from typing import Any, AsyncIterator
+from typing import Any, AsyncGenerator
 
 import httpx
 
 from backend.providers.base import ChatRequest, Provider
 
 
-async def streamChat(provider: Provider, request: ChatRequest) -> AsyncIterator[dict[str, Any]]:
+async def streamChat(provider: Provider, request: ChatRequest) -> AsyncGenerator[dict[str, Any], None]:
     async with httpx.AsyncClient(timeout=provider.timeout) as client:
         async with client.stream(
             "POST",

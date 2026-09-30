@@ -6,7 +6,9 @@ import httpx
 from fastapi import HTTPException
 
 from backend.providers.base import Capabilities, ChatOptions, ChatRequest, Provider
-from backend.providers.openrouter import apiKey, models, requestOptions, usage
+from backend.providers.openrouter import apiKey as keyStore
+from backend.providers.openrouter import models as modelStore
+from backend.providers.openrouter import requestOptions, usage
 from backend.providers.openrouter.client import (
     OPENROUTER_BASE_URL,
     OPENROUTER_TIMEOUT,
@@ -34,16 +36,16 @@ class OpenRouterProvider(Provider):
     )
 
     def readKey(self) -> str | None:
-        return apiKey.read_openrouter_key()
+        return keyStore.read_openrouter_key()
 
-    def writeKey(self, apiKeyValue: str) -> None:
-        apiKey.write_openrouter_key(apiKeyValue)
+    def writeKey(self, apiKey: str) -> None:
+        keyStore.write_openrouter_key(apiKey)
 
-    async def validateKey(self, apiKeyValue: str) -> dict[str, Any]:
-        return await apiKey.validate_key(apiKeyValue)
+    async def validateKey(self, apiKey: str) -> dict[str, Any]:
+        return await keyStore.validate_key(apiKey)
 
     def normalizeKeyStatus(self, data: dict[str, Any] | None, hasKey: bool) -> dict[str, Any]:
-        return apiKey.normalize_key_status(data, hasKey)
+        return keyStore.normalize_key_status(data, hasKey)
 
     async def keyStatus(self) -> dict[str, Any]:
         savedKey = self.readKey()
@@ -54,26 +56,26 @@ class OpenRouterProvider(Provider):
         except HTTPException:
             return {"has_key": True, "label": None, "limit_remaining": None, "usage": None}
 
-    async def listModels(self, apiKeyValue: str) -> list[dict[str, Any]]:
-        return await models.fetch_models_from_openrouter(apiKeyValue)
+    async def listModels(self, apiKey: str) -> list[dict[str, Any]]:
+        return await modelStore.fetch_models_from_openrouter(apiKey)
 
     def cachedModels(self) -> list[dict[str, Any]]:
-        return models.cached_models()
+        return modelStore.cached_models()
 
-    def cacheModels(self, modelList: list[dict[str, Any]]) -> None:
-        models.cache_models(modelList)
+    def cacheModels(self, models: list[dict[str, Any]]) -> None:
+        modelStore.cache_models(models)
 
     def defaultModelId(self) -> str:
-        return models.default_model_id()
+        return modelStore.default_model_id()
 
     def supportsReasoning(self, modelId: str) -> bool:
-        return models.model_supports_reasoning(modelId)
+        return modelStore.model_supports_reasoning(modelId)
 
     def effectiveThinkingEnabled(self, modelId: str, thinkingEnabled: bool) -> bool:
         return requestOptions.effective_thinking_enabled(modelId, thinkingEnabled)
 
     def supportsStructuredOutput(self, modelId: str) -> bool:
-        return models.model_supports_structured_output(modelId)
+        return modelStore.model_supports_structured_output(modelId)
 
     def promptCacheControl(self) -> dict[str, Any] | None:
         return requestOptions.prompt_cache_control()
@@ -164,8 +166,8 @@ class OpenRouterProvider(Provider):
     def errorMessage(self, statusCode: int, responseText: str) -> str:
         return openrouter_error_message(statusCode, responseText)
 
-    async def fetchFinalUsage(self, apiKeyValue: str, generationId: str) -> dict[str, Any] | None:
-        return await usage.fetch_generation_usage(apiKeyValue, generationId)
+    async def fetchFinalUsage(self, apiKey: str, generationId: str) -> dict[str, Any] | None:
+        return await usage.fetch_generation_usage(apiKey, generationId)
 
 
 openRouterProvider = OpenRouterProvider()

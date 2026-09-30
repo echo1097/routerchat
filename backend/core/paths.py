@@ -49,3 +49,7 @@ def load_version_metadata() -> dict[str, str]:
 DATA_DIR, DB_PATH, ENV_PATH = resolve_user_data_paths()
 VERSION_METADATA = load_version_metadata()
 APP_VERSION = VERSION_METADATA["version"]
+
+
+def usageDbPath() -> Path:
+    return DB_PATH.with_name("usage.sqlite3")

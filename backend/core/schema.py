@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import sqlite3
+from contextlib import closing
+
 from backend.core.database import get_db
 from backend.core.migrations import (
     clean_lorebook_categories,
@@ -20,6 +23,8 @@ from backend.core.migrations import (
 )
 from backend.lorebook.lorebookUsage import ensureLorebookUsageTable
 from backend.transcription.transcriptionUsage import ensureTranscriptionUsageTable
+from backend.usage.migrateLegacyUsage import migrateLegacyUsage
+from backend.usage.usageDatabase import getUsageDb, initUsageDb
 
 
 def init_db() -> None:
@@ -303,3 +308,10 @@ def init_db() -> None:
         ensureTranscriptionUsageTable(conn)
         ensureCachedTokenColumns(conn)
         clean_lorebook_categories(conn)
+
+    with closing(get_db()) as mainConn, closing(getUsageDb()) as usageConn:
+        initUsageDb(usageConn)
+        try:
+            migrateLegacyUsage(mainConn, usageConn)
+        except sqlite3.Error:
+            pass

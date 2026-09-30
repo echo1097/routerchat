@@ -77,10 +77,10 @@ macOS, Apple Silicon or Intel:
 curl -fsSL https://echo1097.github.io/get-routerchat/install.sh | sh
 ```
 
-Windows x64:
+Windows x64, pasted into PowerShell:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://echo1097.github.io/get-routerchat/install.ps1 | iex"
+irm https://echo1097.github.io/get-routerchat/install.ps1 | iex
 ```
 
 Rerunning the same command repairs a broken installation. It replaces the application files and leaves the key and database alone. This is the correct first suggestion for most packaged-install problems.

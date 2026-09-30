@@ -24,10 +24,10 @@ The one-click installer downloads and verifies the open-source RouterChat packag
 curl -fsSL https://echo1097.github.io/get-routerchat/install.sh | sh
 ```
 
-**Windows x64** ([inspect installer](https://github.com/echo1097/get-routerchat/blob/main/install.ps1))
+**Windows x64**, paste into PowerShell ([inspect installer](https://github.com/echo1097/get-routerchat/blob/main/install.ps1))
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://echo1097.github.io/get-routerchat/install.ps1 | iex"
+irm https://echo1097.github.io/get-routerchat/install.ps1 | iex
 ```
 
 RouterChat then opens at `http://127.0.0.1:8000`. Open settings, go to **API**, paste your OpenRouter key, and save.

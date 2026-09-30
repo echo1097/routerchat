@@ -37,10 +37,10 @@ All you need is an [OpenRouter API key](https://openrouter.ai/keys).
 curl -fsSL https://echo1097.github.io/get-routerchat/install.sh | sh
 ```
 
-**Windows x64** ([inspect installer](https://github.com/echo1097/get-routerchat/blob/main/install.ps1))
+**Windows x64**, paste into PowerShell ([inspect installer](https://github.com/echo1097/get-routerchat/blob/main/install.ps1))
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://echo1097.github.io/get-routerchat/install.ps1 | iex"
+irm https://echo1097.github.io/get-routerchat/install.ps1 | iex
 ```
 
 - **Setup:** The [setup guide](setup.md) covers starting, updating, repairing, and data locations. The [developer guide](developer.md) covers building from source.

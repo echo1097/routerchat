@@ -20,6 +20,7 @@ import { MaskIcon, IconButton } from "../components/IconButton.jsx";
 import { UsagePanel } from "./UsagePanel.jsx";
 import { useChatSystemPromptAutosave } from "./useChatSystemPromptAutosave.js";
 import { useLingeringPage } from "./useLingeringPage.js";
+import { DEFAULT_PROVIDER } from "../providers/providerApi.js";
 
 const REASONING_EFFORTS = [
   { value: "low", label: "Low" },
@@ -89,6 +90,7 @@ export function SettingsDrawer({
   onClose,
   keyStatus,
   onSaveKey,
+  provider = DEFAULT_PROVIDER,
   chats,
   activeChatId,
   models,
@@ -167,6 +169,8 @@ export function SettingsDrawer({
     ? `${formatTokens(selectedModelContextLimit)} context`
     : "";
   const keyConnected = Boolean(keyStatus.has_key);
+  const providerName = provider.name;
+  const capabilities = provider.capabilities || DEFAULT_PROVIDER.capabilities;
   const activePageIndex = SETTINGS_PAGES.findIndex((page) => page.id === activePage) + 1;
   const selectedCloudChat = chats.find((chat) => chat.id === selectedCloudChatId);
   const activeCloudChat = chats.find((chat) => chat.id === activeChatId);
@@ -424,8 +428,8 @@ export function SettingsDrawer({
 
   const StatusDot = (
     <span
-      aria-label={keyConnected ? "OpenRouter key connected" : "OpenRouter key not set"}
-      title={keyConnected ? "OpenRouter key connected" : "OpenRouter key not set"}
+      aria-label={keyConnected ? `${providerName} key connected` : `${providerName} key not set`}
+      title={keyConnected ? `${providerName} key connected` : `${providerName} key not set`}
       className={cx(
         "relative top-px inline-block h-2 w-2 rounded-full",
         keyConnected
@@ -439,7 +443,7 @@ export function SettingsDrawer({
     <section className="border-b border-white/[0.08] pb-3">
       <div className="mb-2.5 flex items-center justify-between gap-3">
         <h2 className="flex items-center gap-2 text-balance text-sm font-semibold text-neutral-100">
-          OpenRouter key
+          {providerName} key
           {StatusDot}
         </h2>
       </div>
@@ -448,7 +452,7 @@ export function SettingsDrawer({
           type="password"
           value={apiKey}
           onChange={(event) => setApiKey(event.target.value)}
-          placeholder="sk-or-v1-..."
+          placeholder={provider.keyPlaceholder}
           className="h-10 min-w-0 flex-1 rounded-xl bg-black/20 px-3 text-sm text-neutral-100 shadow-[var(--shadow-border)] outline-none transition-[background-color,box-shadow] duration-150 ease-out placeholder:text-neutral-600 focus:bg-black/25 focus:shadow-[0_0_0_1px_rgba(255,255,255,0.16)]"
         />
         <button
@@ -485,7 +489,7 @@ export function SettingsDrawer({
     <section className="border-b border-white/[0.08] py-3">
       <SettingRow
         title="Disable free models"
-        description="Don't show free OpenRouter models in the model picker"
+        description={`Don't show free ${providerName} models in the model picker`}
       >
         <SettingSwitch
           checked={hideFreeModels}
@@ -531,7 +535,7 @@ export function SettingsDrawer({
     <section className="border-b border-white/[0.08] py-3">
       <SettingRow
         title="Disable batch models"
-        description="Don't show batch OpenRouter models in the model picker"
+        description={`Don't show batch ${providerName} models in the model picker`}
       >
         <SettingSwitch
           checked={hideBatchModels}
@@ -544,7 +548,7 @@ export function SettingsDrawer({
 
   const turboSection = (
     <section className="border-b border-white/[0.08] py-3">
-      <SettingRow title="Turbo" description="Prioritize the fastest OpenRouter providers">
+      <SettingRow title="Turbo" description={`Prioritize the fastest ${providerName} providers`}>
         <SettingSwitch checked={nitroMode} onChange={onToggleNitroMode} label="Turbo" />
       </SettingRow>
     </section>
@@ -554,7 +558,7 @@ export function SettingsDrawer({
     <section className="border-b border-white/[0.08] py-3">
       <SettingRow
         title="Cheapest first"
-        description="Prioritize the lowest priced OpenRouter providers"
+        description={`Prioritize the lowest priced ${providerName} providers`}
       >
         <SettingSwitch
           checked={cheapestMode}
@@ -1145,16 +1149,20 @@ export function SettingsDrawer({
               data-page-id="1"
               aria-label="API settings"
             >
-              {keySection}
+              {capabilities.needsKey && keySection}
               {chatNameSection}
               {modelFilterSection}
               {promptCachingSection}
               {hourPromptCacheSection}
               {batchFilterSection}
-              {turboSection}
-              {cheapestSection}
-              {privacySection}
-              {zdrSection}
+              {capabilities.routingOptions && (
+                <>
+                  {turboSection}
+                  {cheapestSection}
+                  {privacySection}
+                  {zdrSection}
+                </>
+              )}
             </section>
             <section
               className="t-page flex min-h-0 flex-col settings-inline py-4 md:py-5"

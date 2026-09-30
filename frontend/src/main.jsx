@@ -45,6 +45,8 @@ import {
   promptModelName,
 } from "./modelFormatting.js";
 import { api, responseErrorDetail } from "./api.js";
+import { useProviders } from "./providers/useProviders.js";
+import { useModels } from "./providers/useModels.js";
 import { exportFileName, shortTitle, storyExportFileName } from "./textFormatting.js";
 import { updateLorebookStream } from "./lorebook/lorebookUpdateApi.js";
 import { repairLorebook as repairLorebookStream } from "./lorebook/repairLorebookApi.js";
@@ -109,7 +111,6 @@ function App() {
   const [latestStoryGeneration, setLatestStoryGeneration] = useState(null);
   const [writeGenerationMode, setWriteGenerationMode] = useState("edit");
   const [writeHistoryEntries, setWriteHistoryEntries] = useState([]);
-  const [models, setModels] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
   const [temporaryChat, setTemporaryChat] = useState(false);
   const [tempChatId, setTempChatId] = useState(null);
@@ -135,7 +136,6 @@ function App() {
   const [showPromptNavigationRail, setShowPromptNavigationRail] = useState(
     localAppSettings.show_prompt_navigation_rail !== false,
   );
-  const [keyStatus, setKeyStatus] = useState({ has_key: false });
   const [prompt, setPrompt] = useState("");
   const [openingMessage] = useState(() => pickOpeningMessage());
   const [writingOpeningMessage] = useState(() => pickOpeningMessage("write"));
@@ -164,6 +164,10 @@ function App() {
   const tour = useTour();
   const writeTour = useTour(WRITE_TOUR_STEPS);
   const { notifications, setStatus, showToast } = useNotifications();
+  const { activeProvider, keyStatus, loadKeyStatus, saveKey: saveProviderKey } = useProviders({
+    onError: (error) => setStatus(error.message),
+  });
+  const { models, fetchModels } = useModels();
   const promptAttachments = useAttachments({
     allowImages: supportsImageInput(models, settings.model),
     onError: showToast,
@@ -782,9 +786,7 @@ function App() {
 
   const loadModels = useCallback(async () => {
     try {
-      const payload = await api("/api/models");
-      const loaded = payload.models || [];
-      setModels(loaded);
+      const loaded = await fetchModels();
       setSettings((current) => {
         const currentModel = loaded.find((model) => model.id === current.model);
         if (
@@ -908,14 +910,6 @@ function App() {
       setStatus(error.message);
     }
   }, [activeChatId, activeStoryId]);
-
-  const loadKeyStatus = useCallback(async () => {
-    try {
-      setKeyStatus(await api("/api/settings/key-status"));
-    } catch (error) {
-      setStatus(error.message);
-    }
-  }, []);
 
   useEffect(() => {
     loadKeyStatus();
@@ -1687,12 +1681,8 @@ function App() {
 
   async function saveKey(apiKey) {
     try {
-      const payload = await api("/api/settings/openrouter-key", {
-        method: "POST",
-        body: JSON.stringify({ api_key: apiKey }),
-      });
-      setKeyStatus(payload);
-      setStatus("OpenRouter connected");
+      await saveProviderKey(apiKey);
+      setStatus(`${activeProvider.name} connected`);
       await loadModels();
     } catch (error) {
       setStatus(error.message);
@@ -3555,6 +3545,7 @@ function App() {
               dragActive={filesDraggedOverApp}
               webSearchEnabled={settings.web_search_enabled}
               onToggleWebSearch={toggleWebSearch}
+              provider={activeProvider}
             />
           )
         ) : (
@@ -3596,6 +3587,7 @@ function App() {
             dragActive={filesDraggedOverApp}
             webSearchEnabled={settings.web_search_enabled}
             onToggleWebSearch={toggleWebSearch}
+            provider={activeProvider}
           />
         ))}
       </main>
@@ -3605,6 +3597,7 @@ function App() {
         onClose={() => setSettingsOpen(false)}
         keyStatus={keyStatus}
         onSaveKey={saveKey}
+        provider={activeProvider}
         chats={chats}
         activeChatId={activeChatId}
         models={models}

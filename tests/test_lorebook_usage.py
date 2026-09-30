@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 import backend.lorebook.lorebookUsage as lorebookUsage
 from backend.lorebook.lorebookUsage import LorebookUsage, ensureLorebookUsageTable
 from backend.providers.openrouter.usage import normalize_generation_usage
+from backend.providers.registry import getActiveProvider
 
 
 class LorebookUsageTest(unittest.IsolatedAsyncioTestCase):
@@ -19,12 +20,14 @@ class LorebookUsageTest(unittest.IsolatedAsyncioTestCase):
         replacements = {
             "get_db": self.getDb,
             "utc_now": lambda: "2026-09-10T12:00:00Z",
-            "fetch_generation_usage": self.lookup,
         }
         for name, value in replacements.items():
             namePatch = patch.object(lorebookUsage, name, value)
             namePatch.start()
             self.addCleanup(namePatch.stop)
+        lookupPatch = patch.object(getActiveProvider(), "fetchFinalUsage", self.lookup)
+        lookupPatch.start()
+        self.addCleanup(lookupPatch.stop)
         with self.getDb() as conn:
             conn.execute("CREATE TABLE stories (id TEXT PRIMARY KEY)")
             conn.execute("CREATE TABLE chapters (id TEXT PRIMARY KEY)")

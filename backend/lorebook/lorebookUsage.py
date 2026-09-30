@@ -3,7 +3,7 @@ import uuid
 
 from backend.core.database import get_db
 from backend.core.utils import utc_now
-from backend.providers.openrouter.usage import fetch_generation_usage
+from backend.providers.registry import getActiveProvider
 
 
 def ensureLorebookUsageTable(conn):
@@ -78,7 +78,7 @@ class LorebookUsage:
         if currentTask and currentTask.cancelling():
             return
         try:
-            nextUsage = await fetch_generation_usage(self.apiKey, self.generationId)
+            nextUsage = await getActiveProvider().fetchFinalUsage(self.apiKey, self.generationId)
             self.addUsage(nextUsage)
         except Exception:
             pass

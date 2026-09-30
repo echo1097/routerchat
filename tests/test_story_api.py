@@ -422,7 +422,7 @@ class StoryApiTest(unittest.TestCase):
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
             "backend.providers.streaming.httpx.AsyncClient", FakeClient
         ), patch(
-            "backend.lorebook.runUpdate.httpx.AsyncClient", FakeClient
+            "backend.providers.streaming.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
                 f"/api/stories/{story['id']}/chapters/{chapter['id']}/generate/stream",
@@ -480,7 +480,7 @@ class StoryApiTest(unittest.TestCase):
                 return fakeLorebookStream(content)
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.lorebook.runUpdate.httpx.AsyncClient", FakeClient
+            "backend.providers.streaming.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
                 f"/api/stories/{story['id']}/lorebook/update",
@@ -520,7 +520,7 @@ class StoryApiTest(unittest.TestCase):
 
         endpoint = "update/stream" if streaming else "update"
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.lorebook.runUpdate.httpx.AsyncClient", FakeClient
+            "backend.providers.streaming.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
                 f"/api/stories/{story['id']}/lorebook/{endpoint}",
@@ -644,7 +644,7 @@ class StoryApiTest(unittest.TestCase):
                 return FakeResponse()
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.lorebook.timelineRepair.httpx.AsyncClient", FakeClient
+            "backend.providers.streaming.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
                 f"/api/stories/{story['id']}/lorebook/timeline/repair/stream",
@@ -685,7 +685,7 @@ class StoryApiTest(unittest.TestCase):
                 return FakeResponse()
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.lorebook.generateEntry.httpx.AsyncClient", FakeClient
+            "backend.providers.streaming.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
                 f"/api/stories/{story['id']}/lorebook/generate/stream",
@@ -726,7 +726,7 @@ class StoryApiTest(unittest.TestCase):
                 return FakeResponse()
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.lorebook.repairLorebook.httpx.AsyncClient", FakeClient
+            "backend.providers.streaming.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
                 f"/api/stories/{story['id']}/lorebook/repair/stream"
@@ -2259,7 +2259,7 @@ class StoryApiTest(unittest.TestCase):
                 return fakeLorebookStream(content, "weighing whether the lantern matters")
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.lorebook.runUpdate.httpx.AsyncClient", FakeClient
+            "backend.providers.streaming.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
                 f"/api/stories/{story['id']}/lorebook/update/stream",

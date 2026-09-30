@@ -1,9 +1,9 @@
 import asyncio
 import json
 import time
+from contextlib import aclosing
 from typing import Any, AsyncIterator
 
-import httpx
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -18,21 +18,9 @@ from backend.lorebook.lorebookRows import (
 )
 from backend.lorebook.lorebookUsage import LorebookUsage
 from backend.lorebook.parseLorebook import parse_lorebook_json
-from backend.providers.openrouter.apiKey import read_openrouter_key
-from backend.providers.openrouter.client import (
-    OPENROUTER_BASE_URL,
-    OPENROUTER_TIMEOUT,
-    headers_for_key,
-)
-from backend.providers.openrouter.errors import openrouter_error_message
-from backend.providers.openrouter.models import model_supports_structured_output
-from backend.providers.openrouter.requestOptions import (
-    effective_thinking_enabled,
-    enabled_reasoning_config,
-    openrouter_provider_options,
-    openrouter_request_model,
-)
-from backend.providers.openrouter.usage import normalize_usage
+from backend.providers.base import ChatOptions
+from backend.providers.registry import getActiveProvider
+from backend.providers.streaming import streamChat
 
 GENERATE_CATEGORIES = ["character", "location", "item", "event", "note", "synopsis"]
 
@@ -154,9 +142,10 @@ async def stream_entry_generation(
     chapter: Any | None = None,
 ) -> AsyncIterator[bytes]:
     startedAt = time.perf_counter()
-    apiKey = read_openrouter_key()
+    provider = getActiveProvider()
+    apiKey = provider.readKey()
     if not apiKey:
-        raise HTTPException(status_code=401, detail="Add an OpenRouter API key first.")
+        raise HTTPException(status_code=401, detail=provider.missingKeyMessage)
 
     prompt: dict[str, Any] = {
         "entry_category": category,
@@ -193,29 +182,27 @@ async def stream_entry_generation(
         f"{GENERATE_BASE_PROMPT}\n"
         f"{GENERATE_CATEGORY_PROMPTS.get(category, GENERATE_CATEGORY_PROMPTS['note'])}"
     )
-    body: dict[str, Any] = {
-        "model": openrouter_request_model(lorebook_model_for(story), False),
-        "messages": [
-            {"role": "system", "content": systemPrompt},
-            {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
-        ],
-        "temperature": 0.7,
-        "max_tokens": story["max_tokens"],
-        "stream": True,
-    }
+    messages = [
+        {"role": "system", "content": systemPrompt},
+        {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
+    ]
+    responseFormat = None
+    if provider.supportsStructuredOutput(lorebook_model_for(story)):
+        responseFormat = lorebook_generate_response_format()
 
-    providerOptions = openrouter_provider_options()
-    if providerOptions:
-        body["provider"] = providerOptions
-
-    effectiveThinkingEnabled = effective_thinking_enabled(lorebook_model_for(story), True)
-    reasoningConfig = enabled_reasoning_config(
-        lorebook_model_for(story), True, story["reasoning_effort"]
+    request = provider.buildRequest(
+        messages,
+        lorebook_model_for(story),
+        ChatOptions(
+            apiKey=apiKey,
+            temperature=0.7,
+            maxTokens=story["max_tokens"],
+            thinkingEnabled=True,
+            reasoningEffort=story["reasoning_effort"],
+            responseFormat=responseFormat,
+        ),
     )
-    if reasoningConfig:
-        body["reasoning"] = reasoningConfig
-    if model_supports_structured_output(lorebook_model_for(story)):
-        body["response_format"] = lorebook_generate_response_format()
+    effectiveThinkingEnabled = provider.effectiveThinkingEnabled(lorebook_model_for(story), True)
 
     generatedText: list[str] = []
     finishReason: str | None = None
@@ -230,56 +217,39 @@ async def stream_entry_generation(
     yield stream_event("status", "thinking" if effectiveThinkingEnabled else "writing")
 
     try:
-        async with httpx.AsyncClient(timeout=OPENROUTER_TIMEOUT) as client, usageRun:
-            async with client.stream(
-                "POST",
-                f"{OPENROUTER_BASE_URL}/chat/completions",
-                headers={**headers_for_key(apiKey), "Content-Type": "application/json"},
-                json=body,
-            ) as response:
-                usageRun.generationId = response.headers.get("X-Generation-Id")
-                if response.status_code >= 400:
-                    rawError = (await response.aread()).decode("utf-8", errors="replace")
-                    message = openrouter_error_message(response.status_code, rawError)
-                    yield stream_event(
-                        "error",
-                        {"code": "lorebook_generate_provider_error", "message": message},
-                    )
-                    return
-
-                async for line in response.aiter_lines():
-                    if not line.startswith("data:"):
+        async with usageRun:
+            async with aclosing(streamChat(provider, request)) as events:
+                async for event in events:
+                    if event["type"] in ("error", "open"):
+                        usageRun.generationId = event["generationId"]
+                    if event["type"] == "error":
+                        yield stream_event(
+                            "error",
+                            {"code": "lorebook_generate_provider_error", "message": event["message"]},
+                        )
+                        return
+                    if event["type"] == "open":
                         continue
-                    data = line.removeprefix("data:").strip()
-                    if data == "[DONE]":
+                    if event["type"] == "done":
                         receivedDone = True
-                        break
-                    try:
-                        chunk = json.loads(data)
-                    except json.JSONDecodeError:
                         continue
 
-                    usageRun.generationId = usageRun.generationId or chunk.get("id")
-                    usageRun.addUsage(normalize_usage(chunk.get("usage")))
+                    usageRun.generationId = usageRun.generationId or event["id"]
+                    usageRun.addUsage(event["usage"])
 
-                    choices = chunk.get("choices") or []
-                    if not choices:
+                    if not event["hasChoice"]:
                         continue
-                    choice = choices[0]
-                    finishReason = choice.get("finish_reason") or finishReason
-                    delta = choice.get("delta") or {}
-                    reasoning = delta.get("reasoning") or delta.get("reasoning_content")
-                    if reasoning and effectiveThinkingEnabled:
-                        yield stream_event("reasoning", str(reasoning))
-                    content = delta.get("content")
-                    if content:
+                    finishReason = event["finishReason"] or finishReason
+                    if event["reasoning"] and effectiveThinkingEnabled:
+                        yield stream_event("reasoning", event["reasoning"])
+                    if event["content"]:
                         #first real content means the thinking is done and the entry is being written
                         if not announcedWriting:
                             announcedWriting = True
                             yield stream_event("status", "writing")
-                        generatedText.append(str(content))
+                        generatedText.append(event["content"])
                         #the editor renders the entry as it lands, so the raw delta goes out too
-                        yield stream_event("content", str(content))
+                        yield stream_event("content", event["content"])
 
         if usageRun.usage:
             yield stream_event(
@@ -339,8 +309,9 @@ async def generate_lorebook_entry(
     story_id: str,
     payload: GenerateEntryRequest,
 ) -> StreamingResponse:
-    if not read_openrouter_key():
-        raise HTTPException(status_code=401, detail="Add an OpenRouter API key first.")
+    provider = getActiveProvider()
+    if not provider.readKey():
+        raise HTTPException(status_code=401, detail=provider.missingKeyMessage)
 
     category = normalize_lorebook_category(payload.category)
     if category not in GENERATE_CATEGORIES:

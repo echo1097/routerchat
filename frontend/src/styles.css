@@ -710,6 +710,16 @@ textarea::placeholder {
 .settings-mobile-tabs .t-tab {
   flex: 0 0 auto;
 }
+.provider-tabs {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.provider-tabs::-webkit-scrollbar {
+  display: none;
+}
+.provider-tabs .t-tab {
+  flex: 1 0 auto;
+}
 .sidebar-mode-tabs.t-tabs {
   width: 100%;
   display: flex;

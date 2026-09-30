@@ -2,9 +2,15 @@ import { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { cx } from "../uiShared.js";
 import { stripClaude } from "../modelFormatting.js";
+import { SlidingTabs } from "../components/SlidingTabs.jsx";
+import { PROVIDER_OPTIONS } from "../providers/providerOptions.js";
 import "./UsagePanel.css";
 
 const chartColors = ["#c59af5", "#e5ae78", "#7dc7ba", "#e68eb0", "#aebad1", "#b9c984"];
+const usageTabs = [
+  { id: "all", name: "All providers", tabLabel: "All", capabilities: { cost: true } },
+  ...PROVIDER_OPTIONS,
+];
 const tokenSeries = [
   { id: "promptTokens", name: "Input", color: "#aebad1" },
   { id: "cachedTokens", name: "Cached read", color: "#7dc7ba" },
@@ -240,6 +246,26 @@ function UsageSkeleton() {
 }
 
 export function UsagePanel({ models }) {
+  const [tabId, setTabId] = useState("all");
+  const tab = usageTabs.find((option) => option.id === tabId) || usageTabs[0];
+
+  return (
+    <div className="usage-shell">
+      <SlidingTabs
+        options={usageTabs}
+        value={tabId}
+        onChange={setTabId}
+        getValue={(option) => option.id}
+        getLabel={(option) => option.tabLabel}
+        ariaLabel="Usage by provider"
+        className="usage-provider-tabs provider-tabs flex w-full"
+      />
+      <UsageReport key={tab.id} tab={tab} models={models} />
+    </div>
+  );
+}
+
+function UsageReport({ tab, models }) {
   const [usage, setUsage] = useState(null);
   const [error, setError] = useState("");
   const [retryKey, setRetryKey] = useState(0);
@@ -249,14 +275,14 @@ export function UsagePanel({ models }) {
     setError("");
     setUsage(null);
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const query = new URLSearchParams({ offsetMinutes: String(new Date().getTimezoneOffset()), timeZone });
+    const query = new URLSearchParams({ offsetMinutes: String(new Date().getTimezoneOffset()), timeZone, provider: tab.id });
     api(`/api/usage?${query}`, { signal: controller.signal })
       .then(setUsage)
       .catch((requestError) => {
         if (!controller.signal.aborted) setError(requestError.message || "Usage could not be loaded.");
       });
     return () => controller.abort();
-  }, [retryKey]);
+  }, [retryKey, tab.id]);
 
   if (error) return (
     <div className="usage-state" role="alert">
@@ -265,6 +291,15 @@ export function UsagePanel({ models }) {
     </div>
   );
   if (!usage) return <UsageSkeleton />;
+
+  const showCost = tab.capabilities.cost !== false;
+  const hasUsage = usage.lifetimeModels?.length || usage.current.requests || usage.previous.requests;
+  if (tab.id !== "all" && !hasUsage) return (
+    <div className="usage-state">
+      <p className="usage-state-title">No {tab.name} usage yet</p>
+      <p>{tab.preview ? `${tab.name} support is coming soon.` : `Requests sent through ${tab.name} will show up here.`}</p>
+    </div>
+  );
 
   const modelSeries = usage.models.map((item, index) => ({
     ...item,
@@ -286,10 +321,10 @@ export function UsagePanel({ models }) {
     return values.some((value) => value === null) ? null : values.reduce((sum, value) => sum + (value || 0), 0);
   };
   const metrics = [
-    { key: "cost", label: "Total spend", money: true, partialKey: "partialCost" },
+    showCost && { key: "cost", label: "Total spend", money: true, partialKey: "partialCost" },
     { key: "requests", label: "Requests" },
     { key: "totalTokens", label: "Token volume", partialKey: "partialTokens" },
-  ];
+  ].filter(Boolean);
   const dateRange = `${dateLabel(usage.startDate)} – ${dateLabel(usage.endDate)}`;
 
   return (
@@ -298,13 +333,13 @@ export function UsagePanel({ models }) {
         <span>Last 7 days</span>
         <span>{dateRange}</span>
       </div>
-      <div className="usage-summary">
+      <div className={cx("usage-summary", !showCost && "is-compact")}>
         {metrics.map((metric) => (
           <UsageMetric key={metric.key} metric={metric} usage={usage} />
         ))}
       </div>
-      <div className="usage-charts">
-        <UsageChart title="Usage by model" days={usage.days} series={chartSeries} getValue={getModelSpend} money />
+      <div className={cx("usage-charts", !showCost && "is-single")}>
+        {showCost && <UsageChart title="Usage by model" days={usage.days} series={chartSeries} getValue={getModelSpend} money />}
         <UsageChart title="Token breakdown" days={usage.days} series={tokenSeries} getValue={(day, item) => day[item.id]} />
       </div>
       <section className="usage-models" aria-label="Lifetime model totals">
@@ -315,7 +350,7 @@ export function UsagePanel({ models }) {
           <div className="usage-table-wrap">
             <table>
               <thead>
-                <tr><th>Model</th><th>Requests</th><th>Tokens</th><th>Spend</th></tr>
+                <tr><th>Model</th><th>Requests</th><th>Tokens</th>{showCost && <th>Spend</th>}</tr>
               </thead>
               <tbody>
                 {lifetimeModels.map((model) => (
@@ -325,7 +360,7 @@ export function UsagePanel({ models }) {
                     </td>
                     <td>{formatUsage(model.requests)}</td>
                     <td>{formatUsage(model.totalTokens, false, model.partialTokens)}</td>
-                    <td>{formatUsage(model.cost, true, model.partialCost)}</td>
+                    {showCost && <td>{formatUsage(model.cost, true, model.partialCost)}</td>}
                   </tr>
                 ))}
               </tbody>
@@ -333,7 +368,9 @@ export function UsagePanel({ models }) {
           </div>
         ) : <p className="usage-muted">Your model usage will appear here.</p>}
       </section>
-      <p className="usage-note">Saved RouterChat history and transcription usage, including imported history. Partial totals include recorded usage only; some requests may be missing usage details. Deleted history and requests without saved usage are not included. All amounts are USD.</p>
+      <p className="usage-note">
+        Every request RouterChat sends, including transcription. Usage stays even after chats or stories are deleted, and importing a chat or story does not add to it. Partial totals include recorded usage only; some requests may be missing usage details.{showCost ? " All amounts are USD." : " Local models are free, so no spend is shown."}
+      </p>
     </div>
   );
 }

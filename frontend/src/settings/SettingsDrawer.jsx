@@ -466,7 +466,7 @@ export function SettingsDrawer({
         getValue={(option) => option.id}
         getLabel={(option) => option.tabLabel}
         ariaLabel="API provider"
-        className="mt-3 flex w-full"
+        className="provider-tabs mt-3 flex w-full"
       />
       {isPreviewProvider && (
         <p className="mt-2.5 text-pretty text-xs leading-5 text-neutral-500">

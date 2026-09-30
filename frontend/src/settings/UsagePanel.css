@@ -23,6 +23,17 @@
   white-space: nowrap;
 }
 
+.usage-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.usage-provider-tabs {
+  flex-shrink: 0;
+  margin-bottom: 16px;
+}
+
 .usage-period {
   display: flex;
   align-items: baseline;
@@ -527,13 +538,30 @@
 
 .usage-state {
   display: grid;
+  flex: 1;
   justify-items: center;
   align-content: center;
   gap: 12px;
-  height: 100%;
   min-height: 220px;
   color: var(--usage-muted, #a1a1a1);
   font-size: 13px;
+  text-align: center;
+  text-wrap: pretty;
+}
+
+.usage-state .usage-state-title {
+  margin-bottom: -6px;
+  color: #ececec;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.usage-summary.is-compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.usage-charts.is-single {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .usage-state button {
@@ -629,7 +657,8 @@
 }
 
 @container (max-width: 520px) {
-  .usage-summary {
+  .usage-summary,
+  .usage-summary.is-compact {
     grid-template-columns: minmax(0, 1fr);
   }
 

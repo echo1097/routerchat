@@ -129,9 +129,9 @@ Chat Mode
 
 <img width="1000" alt="RouterChat Chat Mode" src="media/chatmode.png" />
 
-Lorebook
+Usage
 
-<img width="1000" alt="RouterChat lorebook" src="media/lorebook.png" />
+<img width="1000" alt="RouterChat usage panel" src="media/usage.png" />
 
 Lorebook entry
 

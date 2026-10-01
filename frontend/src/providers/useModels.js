@@ -5,9 +5,14 @@ export function useModels() {
   const [models, setModels] = useState([]);
 
   const fetchModels = useCallback(async () => {
-    const loaded = await providerApi.listModels();
-    setModels(loaded);
-    return loaded;
+    try {
+      const loaded = await providerApi.listModels();
+      setModels(loaded);
+      return loaded;
+    } catch (error) {
+      setModels([]);
+      throw error;
+    }
   }, []);
 
   return { models, fetchModels };

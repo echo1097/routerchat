@@ -5,6 +5,13 @@ const PREVIEW_CAPABILITIES = {
   routingOptions: false,
 };
 
+const ANTHROPIC_CAPABILITIES = {
+  ...DEFAULT_PROVIDER.capabilities,
+  webSearch: false,
+  routingOptions: false,
+  transcription: false,
+};
+
 export const PROVIDER_OPTIONS = [
   {
     id: DEFAULT_PROVIDER.id,
@@ -18,8 +25,7 @@ export const PROVIDER_OPTIONS = [
     name: "Anthropic",
     tabLabel: "Anthropic",
     keyPlaceholder: "sk-ant-...",
-    preview: true,
-    capabilities: PREVIEW_CAPABILITIES,
+    capabilities: ANTHROPIC_CAPABILITIES,
   },
   {
     id: "openai",

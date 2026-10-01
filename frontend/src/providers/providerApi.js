@@ -15,6 +15,7 @@ export const DEFAULT_PROVIDER = {
     needsKey: true,
     needsBaseUrl: false,
     routingOptions: true,
+    transcription: true,
   },
 };
 
@@ -31,8 +32,19 @@ export const providerApi = {
     return api("/api/settings/key-status");
   },
 
-  async saveKey(apiKey) {
-    return api("/api/settings/openrouter-key", {
+  async setActiveProvider(providerId) {
+    const payload = await api("/api/providers/active", {
+      method: "POST",
+      body: JSON.stringify({ id: providerId }),
+    });
+    return {
+      active: payload.active,
+      providers: payload.providers || [],
+    };
+  },
+
+  async saveKey(providerId, apiKey) {
+    return api(`/api/providers/${encodeURIComponent(providerId)}/key`, {
       method: "POST",
       body: JSON.stringify({ api_key: apiKey }),
     });

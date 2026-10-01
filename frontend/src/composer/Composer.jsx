@@ -384,7 +384,9 @@ export function Composer({
                 </div>
               </div>
 
-            <VoiceInput value={value} setValue={setValue} onSubmit={onSubmit} disabled={disabled || isStreaming} contextKey={contextKey} />
+            {provider.transcriptionAvailable !== false && (
+              <VoiceInput value={value} setValue={setValue} onSubmit={onSubmit} disabled={disabled || isStreaming} contextKey={contextKey} />
+            )}
             <button
               type="submit"
               data-tour="send-button"

@@ -164,7 +164,13 @@ function App() {
   const tour = useTour();
   const writeTour = useTour(WRITE_TOUR_STEPS);
   const { notifications, setStatus, showToast } = useNotifications();
-  const { activeProvider, keyStatus, loadKeyStatus, saveKey: saveProviderKey } = useProviders({
+  const {
+    activeProvider,
+    keyStatus,
+    loadKeyStatus,
+    saveKey: saveProviderKey,
+    switchProvider: switchActiveProvider,
+  } = useProviders({
     onError: (error) => setStatus(error.message),
   });
   const { models, fetchModels } = useModels();
@@ -1687,6 +1693,16 @@ function App() {
     } catch (error) {
       setStatus(error.message);
       throw error;
+    }
+  }
+
+  async function switchProvider(providerId) {
+    try {
+      await switchActiveProvider(providerId);
+      await loadAppSettings();
+      await loadModels();
+    } catch (error) {
+      setStatus(error.message);
     }
   }
 
@@ -3597,6 +3613,7 @@ function App() {
         onClose={() => setSettingsOpen(false)}
         keyStatus={keyStatus}
         onSaveKey={saveKey}
+        onSwitchProvider={switchProvider}
         provider={activeProvider}
         chats={chats}
         activeChatId={activeChatId}

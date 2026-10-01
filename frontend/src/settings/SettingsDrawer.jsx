@@ -91,6 +91,7 @@ export function SettingsDrawer({
   onClose,
   keyStatus,
   onSaveKey,
+  onSwitchProvider,
   provider = DEFAULT_PROVIDER,
   chats,
   activeChatId,
@@ -172,7 +173,8 @@ export function SettingsDrawer({
     ? `${formatTokens(selectedModelContextLimit)} context`
     : "";
   const selectedProvider = findProviderOption(selectedProviderId);
-  const isPreviewProvider = selectedProviderId !== provider.id;
+  const isPreviewProvider = Boolean(selectedProvider.preview);
+  const temperatureLocked = selectedModel?.temperature === false;
   const keyConnected = !isPreviewProvider && Boolean(keyStatus.has_key);
   const providerName = isPreviewProvider ? selectedProvider.name : provider.name;
   const keyPlaceholder = isPreviewProvider ? selectedProvider.keyPlaceholder : provider.keyPlaceholder;
@@ -317,7 +319,14 @@ export function SettingsDrawer({
     setSelectedProviderId(providerId);
     setApiKey("");
     setBaseUrl("");
+
+    const option = findProviderOption(providerId);
+    if (!option.preview && providerId !== provider.id) onSwitchProvider?.(providerId);
   }
+
+  useEffect(() => {
+    setSelectedProviderId(provider.id);
+  }, [provider.id]);
 
   async function saveKey() {
     if (isPreviewProvider || !apiKey.trim()) return;
@@ -1041,7 +1050,7 @@ export function SettingsDrawer({
           <div className="mb-2.5 flex items-center justify-between text-xs font-medium">
             <span className="text-neutral-400">Temperature</span>
             <span className="min-w-9 rounded-full bg-white/[0.055] px-2 py-0.5 text-center tabular-nums text-neutral-200 shadow-[var(--shadow-border)]">
-              {settings.temperature}
+              {temperatureLocked ? "Auto" : settings.temperature}
             </span>
           </div>
           <input
@@ -1054,8 +1063,14 @@ export function SettingsDrawer({
             onMouseUp={() => onPersist(settings)}
             onTouchEnd={() => onPersist(settings)}
             style={{ "--range-progress": rangeProgress(settings.temperature, 0, 1.5) }}
-            className="settings-range"
+            disabled={temperatureLocked}
+            className={cx("settings-range", temperatureLocked && "cursor-not-allowed opacity-40")}
           />
+          {temperatureLocked && (
+            <p className="mt-2 text-pretty text-xs leading-5 text-neutral-500">
+              {selectedModelOutputName} picks its own temperature
+            </p>
+          )}
         </div>
         <div className="settings-slider-row">
           <div className="mb-2.5 flex items-center justify-between text-xs font-medium">
@@ -1254,6 +1269,11 @@ export function SettingsDrawer({
               {modelList}
             </section>
             <section className="t-page flex min-h-0 flex-col settings-inline py-4 md:py-5" data-page-id="3" aria-label="Transcription settings">
+              {!provider.capabilities?.transcription && (
+                <p className="mb-3 text-pretty text-xs leading-5 text-neutral-500">
+                  {provider.name} has no voice typing of its own. Voice input uses OpenRouter, so it needs an OpenRouter key saved under API.
+                </p>
+              )}
               {transcriptionPage.mounted && <TranscriptionSettings key={transcriptionPage.session} />}
             </section>
             <section

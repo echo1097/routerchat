@@ -52,8 +52,11 @@ export function useProviders({ onError } = {}) {
   }, [activeProviderId, loadProviders]);
 
   const switchProvider = useCallback(async (providerId) => {
-    applyProviders(await providerApi.setActiveProvider(providerId));
+    const payload = await providerApi.setActiveProvider(providerId);
+    applyProviders(payload);
     setKeyStatus(await providerApi.getKeyStatus());
+
+    return payload.providers.find((item) => item.id === payload.active);
   }, [applyProviders]);
 
   return {

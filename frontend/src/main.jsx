@@ -1698,7 +1698,9 @@ function App() {
 
   async function switchProvider(providerId) {
     try {
-      await switchActiveProvider(providerId);
+      const switchedProvider = await switchActiveProvider(providerId);
+      if (switchedProvider) showToast(`Switched to ${switchedProvider.name}`);
+
       await loadAppSettings();
       await loadModels();
     } catch (error) {

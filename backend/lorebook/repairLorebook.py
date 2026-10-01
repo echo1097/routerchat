@@ -26,7 +26,8 @@ from backend.lorebook.lorebookUsage import LorebookUsage
 from backend.lorebook.parseLorebook import parse_lorebook_json
 from backend.lorebook.timeline import normalize_timeline_description
 from backend.providers.base import ChatOptions
-from backend.providers.registry import getActiveProvider
+from backend.providers.registry import providerForRow
+from backend.writing.storyProvider import storyProvider
 from backend.providers.streaming import streamChat
 
 REPAIR_CATEGORIES = ["character", "location", "item", "event", "note", "timeline"]
@@ -214,7 +215,7 @@ async def stream_lorebook_repair(
     preserved_summaries: list[sqlite3.Row],
 ) -> AsyncIterator[bytes]:
     startedAt = time.perf_counter()
-    provider = getActiveProvider()
+    provider = providerForRow(story)
     apiKey = provider.readKey()
     if not apiKey:
         raise HTTPException(status_code=401, detail=provider.missingKeyMessage)
@@ -438,7 +439,7 @@ async def stream_lorebook_repair(
 #no request body, the server already has everything a rebuild needs
 @router.post("/api/stories/{story_id}/lorebook/repair/stream")
 async def repair_story_lorebook(story_id: str) -> StreamingResponse:
-    provider = getActiveProvider()
+    provider = storyProvider(story_id)
     if not provider.readKey():
         raise HTTPException(status_code=401, detail=provider.missingKeyMessage)
 

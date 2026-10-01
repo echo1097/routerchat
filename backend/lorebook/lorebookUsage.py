@@ -3,7 +3,7 @@ import uuid
 
 from backend.core.database import get_db
 from backend.core.utils import utc_now
-from backend.providers.registry import getActiveProvider
+from backend.writing.storyProvider import storyProvider
 from backend.usage.recordUsage import recordUsage
 
 
@@ -47,6 +47,7 @@ class LorebookUsage:
         self.generationId = None
         self.usage = {}
         self.createdAt = None
+        self.provider = storyProvider(storyId)
 
     async def __aenter__(self):
         self.createdAt = utc_now()
@@ -58,7 +59,7 @@ class LorebookUsage:
                 """,
                 (self.requestId, self.storyId, self.chapterId, self.action, self.model, self.createdAt),
             )
-        recordUsage("lorebook", self.requestId, self.model, None, self.createdAt)
+        recordUsage("lorebook", self.requestId, self.model, None, self.createdAt, provider=self.provider.id)
         return self
 
     async def __aexit__(self, errorType, error, traceback):
@@ -82,7 +83,7 @@ class LorebookUsage:
         if currentTask and currentTask.cancelling():
             return
         try:
-            nextUsage = await getActiveProvider().fetchFinalUsage(self.apiKey, self.generationId)
+            nextUsage = await self.provider.fetchFinalUsage(self.apiKey, self.generationId)
             self.addUsage(nextUsage)
         except Exception:
             pass
@@ -112,4 +113,12 @@ class LorebookUsage:
                     self.requestId,
                 ),
             )
-        recordUsage("lorebook", self.requestId, self.model, self.usage, self.createdAt, self.generationId)
+        recordUsage(
+            "lorebook",
+            self.requestId,
+            self.model,
+            self.usage,
+            self.createdAt,
+            self.generationId,
+            self.provider.id,
+        )

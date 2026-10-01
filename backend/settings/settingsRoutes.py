@@ -12,7 +12,7 @@ from backend.core.appSettings import (
     write_app_setting,
 )
 from backend.core.utils import patch_updates
-from backend.providers.registry import getActiveProvider
+from backend.providers.registry import getActiveProvider, getProvider
 from backend.settings.settingsModels import ApiKeyRequest, AppSettingsPatchRequest
 
 router = APIRouter()
@@ -104,9 +104,9 @@ def update_app_settings(payload: AppSettingsPatchRequest) -> dict[str, Any]:
 
 
 @router.get("/api/models")
-async def get_models(response: Response) -> dict[str, Any]:
+async def get_models(response: Response, provider: str | None = None) -> dict[str, Any]:
     response.headers["Cache-Control"] = "no-store"
-    provider = getActiveProvider()
+    provider = getProvider(provider or "") or getActiveProvider()
     api_key = provider.readKey()
     if not api_key:
         models = provider.cachedModels()

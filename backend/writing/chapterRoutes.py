@@ -14,7 +14,7 @@ from backend.lorebook.chapterSummaries import (
     delete_linked_chapter_summaries,
     rename_linked_chapter_summaries,
 )
-from backend.providers.registry import getActiveProvider
+from backend.writing.storyProvider import storyProvider
 from backend.usage.recordUsage import recordUsage
 from backend.writing.storyGeneration import (
     ChapterStreamingResponse,
@@ -217,7 +217,7 @@ async def stream_story_chapter_generation(
     chapter_id: str,
     payload: StreamMessageRequest,
 ) -> StreamingResponse:
-    provider = getActiveProvider()
+    provider = storyProvider(story_id)
     if not provider.readKey():
         raise HTTPException(status_code=401, detail=provider.missingKeyMessage)
     attachmentIds = list(payload.attachment_ids or [])
@@ -293,7 +293,7 @@ async def stream_story_chapter_generation(
             )
         except sqlite3.IntegrityError as exc:
             raise HTTPException(status_code=409, detail="Generation status ID is already in use.") from exc
-        recordUsage("story", generationId, payload.model, None, createdAt)
+        recordUsage("story", generationId, payload.model, None, createdAt, provider=provider.id)
 
     def settleUnstartedGeneration():
         with get_db() as conn:

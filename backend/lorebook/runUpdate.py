@@ -26,7 +26,7 @@ from backend.lorebook.updateSchema import (
     lorebook_update_response_format,
 )
 from backend.providers.base import ChatOptions
-from backend.providers.registry import getActiveProvider
+from backend.writing.storyProvider import storyProvider
 from backend.providers.streaming import streamChat
 from backend.writing.storyRows import insert_chapter_history_entry, row_to_story
 
@@ -42,7 +42,7 @@ async def run_lorebook_update(
     max_tokens: int,
     generation_row_id: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
-    provider = getActiveProvider()
+    provider = storyProvider(story_id)
     api_key = provider.readKey()
     if not api_key or not source_text.strip():
         yield {

@@ -18,7 +18,8 @@ from backend.lorebook.lorebookUsage import LorebookUsage
 from backend.lorebook.parseLorebook import parse_lorebook_json
 from backend.lorebook.timeline import normalize_timeline_description
 from backend.providers.base import ChatOptions
-from backend.providers.registry import getActiveProvider
+from backend.providers.registry import providerForRow
+from backend.writing.storyProvider import storyProvider
 from backend.providers.streaming import streamChat
 
 router = APIRouter()
@@ -62,7 +63,7 @@ async def stream_timeline_repair(
     current_timeline: str,
 ) -> AsyncIterator[bytes]:
     startedAt = time.perf_counter()
-    provider = getActiveProvider()
+    provider = providerForRow(story)
     apiKey = provider.readKey()
     if not apiKey:
         raise HTTPException(status_code=401, detail=provider.missingKeyMessage)
@@ -307,7 +308,7 @@ async def stream_timeline_repair(
 async def repair_story_timeline(
     story_id: str, payload: TimelineRepairRequest
 ) -> StreamingResponse:
-    provider = getActiveProvider()
+    provider = storyProvider(story_id)
     if not provider.readKey():
         raise HTTPException(status_code=401, detail=provider.missingKeyMessage)
 

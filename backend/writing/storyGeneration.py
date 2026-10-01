@@ -21,7 +21,7 @@ from backend.core.utils import display_model_name, format_duration, utc_now
 from backend.lorebook.lorebookHistory import lorebook_run_history_actions
 from backend.lorebook.runUpdate import run_lorebook_update
 from backend.providers.base import ChatOptions
-from backend.providers.registry import getActiveProvider
+from backend.providers.registry import providerForRow
 from backend.providers.streaming import streamChat
 from backend.usage.recordUsage import recordUsage
 from backend.writing.chapterEdits.anchors import chapter_blocks
@@ -89,7 +89,7 @@ async def stream_story_generation(
         metadata = {**event_metadata, "revision": revision}
         return stream_event(event_type, value, metadata)
 
-    provider = getActiveProvider()
+    provider = providerForRow(story)
     api_key = provider.readKey()
     if not api_key:
         raise HTTPException(status_code=401, detail=provider.missingKeyMessage)
@@ -457,7 +457,9 @@ async def stream_story_generation(
                     story_generation_id,
                 ),
             )
-            recordUsage("story", story_generation_id, payload.model, usage, now, generation_id)
+            recordUsage(
+                "story", story_generation_id, payload.model, usage, now, generation_id, provider.id
+            )
             conn.execute(
                 "UPDATE stories SET updated_at = ? WHERE id = ?",
                 (now, story_id),

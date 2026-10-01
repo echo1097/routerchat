@@ -19,7 +19,8 @@ from backend.lorebook.lorebookRows import (
 from backend.lorebook.lorebookUsage import LorebookUsage
 from backend.lorebook.parseLorebook import parse_lorebook_json
 from backend.providers.base import ChatOptions
-from backend.providers.registry import getActiveProvider
+from backend.providers.registry import providerForRow
+from backend.writing.storyProvider import storyProvider
 from backend.providers.streaming import streamChat
 
 GENERATE_CATEGORIES = ["character", "location", "item", "event", "note", "synopsis"]
@@ -142,7 +143,7 @@ async def stream_entry_generation(
     chapter: Any | None = None,
 ) -> AsyncIterator[bytes]:
     startedAt = time.perf_counter()
-    provider = getActiveProvider()
+    provider = providerForRow(story)
     apiKey = provider.readKey()
     if not apiKey:
         raise HTTPException(status_code=401, detail=provider.missingKeyMessage)
@@ -309,7 +310,7 @@ async def generate_lorebook_entry(
     story_id: str,
     payload: GenerateEntryRequest,
 ) -> StreamingResponse:
-    provider = getActiveProvider()
+    provider = storyProvider(story_id)
     if not provider.readKey():
         raise HTTPException(status_code=401, detail=provider.missingKeyMessage)
 

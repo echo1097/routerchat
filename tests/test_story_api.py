@@ -4029,6 +4029,7 @@ class StoryApiTest(unittest.TestCase):
             {
                 "backend.writing.storyRoutes",
                 "backend.writing.storyImportExport",
+                "backend.writing.storyProviderRoutes",
                 "backend.writing.chapterRoutes",
                 "backend.brainstorm.brainstormRoutes",
                 "backend.brainstorm.generateBrainstorm",
@@ -4102,6 +4103,82 @@ class StoryApiTest(unittest.TestCase):
 
         unknownResponse = self.client.post("/api/providers/active", json={"id": "nope"})
         self.assertEqual(unknownResponse.status_code, 404)
+
+    def test_story_keeps_its_provider_after_the_active_provider_changes(self):
+        story = self.client.post("/api/stories", json={"title": "Pinned"}).json()["story"]
+        self.assertEqual(story["provider"], "openrouter")
+
+        self.client.post("/api/providers/active", json={"id": "anthropic"})
+
+        loaded = self.client.get(f"/api/stories/{story['id']}").json()["story"]
+        self.assertEqual(loaded["provider"], "openrouter")
+
+        with patch.object(getProvider("openrouter"), "readKey", return_value=None):
+            with patch.object(getProvider("anthropic"), "readKey", return_value="sk-ant-test"):
+                response = self.client.post(f"/api/stories/{story['id']}/lorebook/repair/stream")
+        self.assertEqual(response.status_code, 401)
+        self.assertIn("OpenRouter", response.json()["detail"])
+
+        newStory = self.client.post("/api/stories", json={"title": "Fresh"}).json()["story"]
+        self.assertEqual(newStory["provider"], "anthropic")
+
+    def test_moving_a_story_switches_provider_and_resets_its_models(self):
+        story = self.client.post(
+            "/api/stories",
+            json={"title": "Mover", "model": "test/story-model", "lorebook_model": "test/lore-model"},
+        ).json()["story"]
+
+        response = self.client.post(f"/api/stories/{story['id']}/provider", json={"id": "anthropic"})
+
+        self.assertEqual(response.status_code, 200)
+        moved = response.json()["story"]
+        self.assertEqual(moved["provider"], "anthropic")
+        self.assertEqual(moved["model"], getProvider("anthropic").defaultModelId())
+        self.assertEqual(moved["lorebook_model"], "")
+
+        unknown = self.client.post(f"/api/stories/{story['id']}/provider", json={"id": "nope"})
+        self.assertEqual(unknown.status_code, 404)
+        missing = self.client.post("/api/stories/missing/provider", json={"id": "anthropic"})
+        self.assertEqual(missing.status_code, 404)
+
+    def test_chat_remembers_the_provider_it_was_created_with(self):
+        chat = self.client.post("/api/chats", json={}).json()["chat"]
+        self.assertEqual(chat["provider"], "openrouter")
+
+        self.client.post("/api/providers/active", json={"id": "anthropic"})
+
+        loaded = self.client.get(f"/api/chats/{chat['id']}").json()["chat"]
+        self.assertEqual(loaded["provider"], "openrouter")
+        self.assertEqual(self.client.post("/api/chats", json={}).json()["chat"]["provider"], "anthropic")
+
+    def test_models_route_can_ask_for_a_specific_provider(self):
+        self.client.post("/api/providers/active", json={"id": "anthropic"})
+
+        with patch.object(getProvider("openrouter"), "readKey", return_value=None):
+            with patch.object(getProvider("openrouter"), "cachedModels", return_value=[]):
+                response = self.client.get("/api/models?provider=openrouter")
+
+        self.assertEqual(response.status_code, 401)
+        self.assertIn("OpenRouter", response.json()["detail"])
+
+    def test_provider_column_migration_marks_claude_rows_as_anthropic(self):
+        from backend.core.database import get_db
+        from backend.core.migrations import ensureProviderColumns
+
+        chat = self.client.post("/api/chats", json={"model": "claude-sonnet-5-5"}).json()["chat"]
+        other = self.client.post("/api/chats", json={"model": "anthropic/claude-sonnet-5.5"}).json()["chat"]
+
+        with get_db() as conn:
+            conn.execute("ALTER TABLE chats DROP COLUMN provider")
+            conn.execute("ALTER TABLE stories DROP COLUMN provider")
+            ensureProviderColumns(conn)
+            rows = {
+                row["id"]: row["provider"]
+                for row in conn.execute("SELECT id, provider FROM chats").fetchall()
+            }
+
+        self.assertEqual(rows[chat["id"]], "anthropic")
+        self.assertEqual(rows[other["id"]], "openrouter")
 
     def test_saving_a_provider_key_validates_it_first(self):
         anthropic = getProvider("anthropic")

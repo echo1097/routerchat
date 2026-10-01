@@ -17,7 +17,7 @@ from backend.lorebook.lorebookRows import (
     sanitize_lorebook_metadata,
 )
 from backend.lorebook.timeline import normalize_timeline_description
-from backend.providers.registry import getActiveProvider
+from backend.providers.registry import getActiveProvider, providerIdForImport
 from backend.writing.storyModels import StoryImportRequest
 from backend.writing.storyRows import (
     row_to_chapter,
@@ -174,14 +174,20 @@ def import_story(payload: StoryImportRequest) -> dict[str, Any]:
 
     with get_db() as conn:
         story = payload.story
+        storyModel = story.model or ""
+        storyProvider = providerIdForImport(story.provider, storyModel)
+        if not storyModel:
+            storyModel = getActiveProvider().defaultModelId()
+            storyProvider = getActiveProvider().id
+
         conn.execute(
             """
             INSERT INTO stories (
-              id, title, author, language, synopsis, model, system_prompt,
+              id, title, author, language, synopsis, model, provider, system_prompt,
               temperature, max_tokens, thinking_enabled, reasoning_effort, temporary,
               lorebook_auto, lorebook_model, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 storyId,
@@ -189,7 +195,8 @@ def import_story(payload: StoryImportRequest) -> dict[str, Any]:
                 story.author,
                 story.language,
                 story.synopsis,
-                story.model or getActiveProvider().defaultModelId(),
+                storyModel,
+                storyProvider,
                 story.system_prompt,
                 story.temperature,
                 story.max_tokens,

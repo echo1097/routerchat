@@ -27,7 +27,8 @@ from backend.core.database import get_db
 from backend.core.streamEvents import stream_event
 from backend.core.utils import utc_now
 from backend.providers.base import ChatOptions
-from backend.providers.registry import getActiveProvider
+from backend.providers.registry import providerForRow
+from backend.writing.storyProvider import storyProvider
 from backend.providers.streaming import streamChat
 from backend.usage.recordUsage import recordUsage
 
@@ -44,7 +45,7 @@ async def stream_brainstorm_generation(
     prompt_node: sqlite3.Row,
     prompt_edges: list[sqlite3.Row],
 ) -> AsyncIterator[bytes]:
-    provider = getActiveProvider()
+    provider = providerForRow(story)
     api_key = provider.readKey()
     if not api_key:
         raise HTTPException(status_code=401, detail=provider.missingKeyMessage)
@@ -145,7 +146,9 @@ async def stream_brainstorm_generation(
                 createdAt,
             ),
         )
-        recordUsage("brainstorm", generation_row_id, payload.model, usage, createdAt, generation_id)
+        recordUsage(
+            "brainstorm", generation_row_id, payload.model, usage, createdAt, generation_id, provider.id
+        )
 
     try:
         promptNodeValue = row_to_brainstorm_node(prompt_node)
@@ -280,7 +283,7 @@ async def generate_brainstorm(
     story_id: str,
     payload: StreamMessageRequest,
 ) -> StreamingResponse:
-    provider = getActiveProvider()
+    provider = storyProvider(story_id)
     if not provider.readKey():
         raise HTTPException(status_code=401, detail=provider.missingKeyMessage)
     if not payload.message.strip():

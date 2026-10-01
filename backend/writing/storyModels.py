@@ -66,6 +66,7 @@ class StoryArchiveStory(BaseModel):
     language: str = "English"
     synopsis: str = ""
     model: str | None = None
+    provider: str | None = None
     system_prompt: str = ""
     temperature: float = 0.7
     max_tokens: int = Field(default=DEFAULT_MAX_TOKENS, gt=0)

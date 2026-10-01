@@ -28,6 +28,7 @@ async def streamChat(provider: Provider, request: ChatRequest) -> AsyncGenerator
                 return
 
             yield {"type": "open", "generationId": headerGenerationId}
+            parser = provider.createStreamParser()
 
             async for line in response.aiter_lines():
                 if not line.startswith("data:"):
@@ -40,7 +41,20 @@ async def streamChat(provider: Provider, request: ChatRequest) -> AsyncGenerator
                     chunk = json.loads(data)
                 except json.JSONDecodeError:
                     continue
-                yield {"type": "chunk", **provider.parseStreamChunk(chunk)}
+
+                for parsed in parser.parse(chunk):
+                    eventKind = parsed.pop("event", "chunk")
+                    if eventKind == "error":
+                        yield {
+                            "type": "error",
+                            "message": parsed["message"],
+                            "generationId": headerGenerationId,
+                        }
+                        return
+                    if eventKind == "done":
+                        yield {"type": "done"}
+                        return
+                    yield {"type": "chunk", **parsed}
 
 
 async def sendChat(

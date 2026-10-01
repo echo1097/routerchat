@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field
-from typing import Any
+from typing import Any, Protocol
 
 import httpx
 
@@ -22,6 +22,7 @@ class Capabilities:
     needsKey: bool = True
     needsBaseUrl: bool = False
     routingOptions: bool = False
+    transcription: bool = False
 
     def toDict(self) -> dict[str, Any]:
         values = asdict(self)
@@ -52,12 +53,25 @@ class ChatRequest:
     body: dict[str, Any]
 
 
+class StreamParser(Protocol):
+    def parse(self, chunk: dict[str, Any]) -> list[dict[str, Any]]: ...
+
+
+class SingleChunkParser:
+    def __init__(self, parseChunk) -> None:
+        self.parseChunk = parseChunk
+
+    def parse(self, chunk: dict[str, Any]) -> list[dict[str, Any]]:
+        return [self.parseChunk(chunk)]
+
+
 class Provider(ABC):
     id: str
     name: str
     capabilities: Capabilities
     timeout: httpx.Timeout
     keyPlaceholder: str = ""
+    defaultModelSetting: str = "default_model"
 
     @property
     def missingKeyMessage(self) -> str:
@@ -118,8 +132,11 @@ class Provider(ABC):
     @abstractmethod
     def generationIdFromHeaders(self, headers: httpx.Headers) -> str | None: ...
 
-    @abstractmethod
-    def parseStreamChunk(self, chunk: dict[str, Any]) -> dict[str, Any]: ...
+    def parseStreamChunk(self, chunk: dict[str, Any]) -> dict[str, Any]:
+        raise NotImplementedError
+
+    def createStreamParser(self) -> StreamParser:
+        return SingleChunkParser(self.parseStreamChunk)
 
     @abstractmethod
     def completionText(self, payload: dict[str, Any]) -> str | None: ...

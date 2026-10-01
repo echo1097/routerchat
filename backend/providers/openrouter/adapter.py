@@ -33,6 +33,7 @@ class OpenRouterProvider(Provider):
         needsKey=True,
         needsBaseUrl=False,
         routingOptions=True,
+        transcription=True,
     )
 
     def readKey(self) -> str | None:

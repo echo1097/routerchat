@@ -1,6 +1,6 @@
 # RouterChat Terms of Service
 
-**Last updated: September 28, 2026**
+**Last updated: September 30, 2026**
 
 RouterChat is self-hosted software distributed under the Apache License 2.0.
 
@@ -118,6 +118,7 @@ If you modify RouterChat, or distribute a modification or fork:
 
 * Remove or replace any identifier the software sends to a provider that uses the RouterChat name or branding or that would represent your build as the official RouterChat, including application name and referrer headers.
 * Do not present a modified build to any provider as RouterChat.
+* If you distribute a modified build or make it available to others, including as a hosted service, give it its own name and branding. Do not offer it as RouterChat or in a way that suggests it is the official RouterChat or is endorsed by the author. Stating truthfully that it is based on RouterChat, and keeping the attribution notices the Apache License 2.0 requires, is fine.
 * The same applies to installers, launchers, shortcuts, and update tooling you redistribute. Do not distribute a modified installer under the RouterChat name or from a location that suggests it is the official one.
 
 ## 8. Affiliation

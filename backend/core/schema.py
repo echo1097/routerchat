@@ -18,6 +18,7 @@ from backend.core.migrations import (
     ensure_message_source_column,
     ensure_message_usage_columns,
     ensure_story_settings_columns,
+    ensureProviderColumns,
     ensureCachedTokenColumns,
     ensureGenerationSettledColumn,
 )
@@ -296,6 +297,7 @@ def init_db() -> None:
         ensure_message_usage_columns(conn)
         ensure_chat_settings_columns(conn)
         ensure_story_settings_columns(conn)
+        ensureProviderColumns(conn)
         ensureGenerationSettledColumn(conn)
         ensure_chapter_context_column(conn)
         ensure_chapter_revision_column(conn)

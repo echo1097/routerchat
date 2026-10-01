@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from typing import Any
 
 from backend.core.appSettings import read_app_setting, write_app_setting
 from backend.providers.anthropic.adapter import anthropicProvider
@@ -28,6 +29,25 @@ def getActiveProvider() -> Provider:
     if isinstance(savedId, str) and savedId in providers:
         return providers[savedId]
     return openRouterProvider
+
+
+def providerForRow(row: Any) -> Provider:
+    try:
+        savedId = row["provider"]
+    except (KeyError, IndexError, TypeError):
+        savedId = None
+
+    if isinstance(savedId, str) and savedId in providers:
+        return providers[savedId]
+    return getActiveProvider()
+
+
+def providerIdForImport(savedId: Any, modelId: str) -> str:
+    if isinstance(savedId, str) and savedId in providers:
+        return savedId
+    if modelId.startswith("claude-") and "/" not in modelId:
+        return anthropicProvider.id
+    return openRouterProvider.id
 
 
 def setActiveProvider(providerId: str) -> Provider:

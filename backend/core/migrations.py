@@ -71,6 +71,18 @@ def ensure_story_settings_columns(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE stories ADD COLUMN lorebook_model TEXT NOT NULL DEFAULT ''")
 
 
+def ensureProviderColumns(conn: sqlite3.Connection) -> None:
+    for table in ("chats", "stories"):
+        existingColumns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        if "provider" in existingColumns:
+            continue
+
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN provider TEXT NOT NULL DEFAULT 'openrouter'")
+        conn.execute(
+            f"UPDATE {table} SET provider = 'anthropic' WHERE model LIKE 'claude-%' AND model NOT LIKE '%/%'"
+        )
+
+
 def ensure_chapter_context_column(conn: sqlite3.Connection) -> None:
     existingColumns = {
         row["name"] for row in conn.execute("PRAGMA table_info(chapters)").fetchall()

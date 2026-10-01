@@ -40,6 +40,7 @@ class AnthropicProvider(Provider):
         needsBaseUrl=False,
         routingOptions=False,
         transcription=False,
+        freeModels=False,
     )
 
     def readKey(self) -> str | None:

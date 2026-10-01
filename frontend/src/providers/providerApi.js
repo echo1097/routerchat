@@ -16,6 +16,7 @@ export const DEFAULT_PROVIDER = {
     needsBaseUrl: false,
     routingOptions: true,
     transcription: true,
+    freeModels: true,
   },
 };
 

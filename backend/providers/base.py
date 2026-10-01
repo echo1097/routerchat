@@ -23,6 +23,7 @@ class Capabilities:
     needsBaseUrl: bool = False
     routingOptions: bool = False
     transcription: bool = False
+    freeModels: bool = False
 
     def toDict(self) -> dict[str, Any]:
         values = asdict(self)

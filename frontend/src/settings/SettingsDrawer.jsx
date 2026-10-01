@@ -1248,7 +1248,7 @@ export function SettingsDrawer({
               {capabilities.needsKey && keySection}
               {capabilities.needsBaseUrl && localModelSection}
               {chatNameSection}
-              {modelFilterSection}
+              {capabilities.freeModels && modelFilterSection}
               {promptCachingSection}
               {hourPromptCacheSection}
               {batchFilterSection}

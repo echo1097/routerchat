@@ -10,6 +10,7 @@ const ANTHROPIC_CAPABILITIES = {
   webSearch: false,
   routingOptions: false,
   transcription: false,
+  freeModels: false,
 };
 
 export const PROVIDER_OPTIONS = [

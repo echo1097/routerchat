@@ -4083,6 +4083,7 @@ class StoryApiTest(unittest.TestCase):
                 "needsBaseUrl": False,
                 "routingOptions": True,
                 "transcription": True,
+                "freeModels": True,
             },
         )
 

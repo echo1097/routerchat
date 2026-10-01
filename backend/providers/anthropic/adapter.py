@@ -95,6 +95,7 @@ class AnthropicProvider(Provider):
             options,
             modelStore.modelRules(model),
             modelStore.maxOutputTokens(model),
+            modelStore.modelEfforts(model),
         )
         return ChatRequest(
             url=f"{ANTHROPIC_BASE_URL}/messages",

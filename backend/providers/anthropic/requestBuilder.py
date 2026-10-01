@@ -17,6 +17,7 @@ MIN_THINKING_BUDGET = 1024
 ALWAYS_THINKING_MIN_TOKENS = 2048
 THINKING_BUDGETS = {"low": 2048, "medium": 8192, "high": 16384, "max": 32000}
 EFFORT_ORDER = ("low", "medium", "high", "max")
+API_EFFORT_ORDER = ("low", "medium", "high", "xhigh", "max")
 HIGHEST_EFFORT_WITHOUT_THINKING = "high"
 LOWEST_EFFORT = "low"
 FIRST_TURN_PLACEHOLDER = "Continue."
@@ -32,6 +33,16 @@ def clampEffort(effort: str, ceiling: str) -> str:
     if EFFORT_ORDER.index(effort) > EFFORT_ORDER.index(ceiling):
         return ceiling
     return effort
+
+
+def fitEffort(effort: str, supportedEfforts: list[str] | None) -> str:
+    known = [level for level in API_EFFORT_ORDER if level in (supportedEfforts or [])]
+    if not known or effort in known:
+        return effort
+
+    wanted = API_EFFORT_ORDER.index(effort)
+    lower = [level for level in known if API_EFFORT_ORDER.index(level) < wanted]
+    return lower[-1] if lower else known[0]
 
 
 def parseDataUrl(url: str) -> tuple[str, str] | None:
@@ -151,6 +162,8 @@ def splitMessages(
 
     if not converted or converted[0]["role"] != "user":
         converted.insert(0, {"role": "user", "content": FIRST_TURN_PLACEHOLDER})
+    if converted[-1]["role"] != "user":
+        converted.append({"role": "user", "content": FIRST_TURN_PLACEHOLDER})
 
     return system, converted
 
@@ -160,10 +173,19 @@ def thinkingBudget(effort: str, maxTokens: int) -> int | None:
     return budget if budget >= MIN_THINKING_BUDGET else None
 
 
+def adaptiveThinking(rules: ModelRules) -> dict[str, Any]:
+    if rules.summaryOptIn:
+        return {"type": "adaptive", "display": "summarized"}
+    return {"type": "adaptive"}
+
+
 def applyThinking(
-    body: dict[str, Any], rules: ModelRules, options: ChatOptions
+    body: dict[str, Any],
+    rules: ModelRules,
+    options: ChatOptions,
+    supportedEfforts: list[str] | None = None,
 ) -> None:
-    effort = apiEffort(options.reasoningEffort)
+    effort = fitEffort(apiEffort(options.reasoningEffort), supportedEfforts)
     outputConfig: dict[str, Any] = body.setdefault("output_config", {})
 
     if rules.thinking == BUDGET:
@@ -176,20 +198,22 @@ def applyThinking(
         return
 
     if options.thinkingEnabled:
-        body["thinking"] = {"type": "adaptive", "display": "summarized"}
+        body["thinking"] = adaptiveThinking(rules)
         outputConfig["effort"] = effort
         return
 
     if rules.disable == CANNOT_DISABLE:
-        body["thinking"] = {"type": "adaptive", "display": "summarized"}
-        outputConfig["effort"] = LOWEST_EFFORT
+        body["thinking"] = adaptiveThinking(rules)
+        outputConfig["effort"] = fitEffort(LOWEST_EFFORT, supportedEfforts)
         return
 
     if rules.disable == DISABLE_WITH_BETWEEN_TOOLS:
         body["thinking"] = {"type": "between_tools"}
     elif rules.disable == DISABLE_WITH_DISABLED:
         body["thinking"] = {"type": "disabled"}
-    outputConfig["effort"] = clampEffort(effort, HIGHEST_EFFORT_WITHOUT_THINKING)
+
+    cappedEffort = clampEffort(apiEffort(options.reasoningEffort), HIGHEST_EFFORT_WITHOUT_THINKING)
+    outputConfig["effort"] = fitEffort(cappedEffort, supportedEfforts)
 
 
 def outputFormat(responseFormat: dict[str, Any]) -> dict[str, Any] | None:
@@ -216,6 +240,7 @@ def buildBody(
     options: ChatOptions,
     rules: ModelRules,
     modelLimit: int | None = None,
+    supportedEfforts: list[str] | None = None,
 ) -> dict[str, Any]:
     system, converted = splitMessages(messages)
 
@@ -230,7 +255,7 @@ def buildBody(
     if options.cacheControl:
         body["cache_control"] = options.cacheControl
 
-    applyThinking(body, rules, options)
+    applyThinking(body, rules, options, supportedEfforts)
 
     thinkingActive = (body.get("thinking") or {}).get("type") in THINKING_ON_TYPES
     if rules.temperature and not thinkingActive:

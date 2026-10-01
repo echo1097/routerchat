@@ -17,6 +17,7 @@ class ModelRules:
     thinking: str | None
     disable: str
     temperature: bool
+    summaryOptIn: bool = True
 
 
 ALWAYS_THINKING = ModelRules(thinking=ADAPTIVE, disable=CANNOT_DISABLE, temperature=False)
@@ -24,7 +25,9 @@ ADAPTIVE_STRICT = ModelRules(thinking=ADAPTIVE, disable=DISABLE_WITH_DISABLED, t
 ADAPTIVE_BETWEEN_TOOLS = ModelRules(
     thinking=ADAPTIVE, disable=DISABLE_WITH_BETWEEN_TOOLS, temperature=False
 )
-ADAPTIVE_CLASSIC = ModelRules(thinking=ADAPTIVE, disable=DISABLE_WITH_DISABLED, temperature=True)
+ADAPTIVE_CLASSIC = ModelRules(
+    thinking=ADAPTIVE, disable=DISABLE_WITH_DISABLED, temperature=True, summaryOptIn=False
+)
 BUDGET_THINKING = ModelRules(thinking=BUDGET, disable=DISABLE_BY_OMITTING, temperature=True)
 NO_THINKING = ModelRules(thinking=None, disable=DISABLE_BY_OMITTING, temperature=True)
 

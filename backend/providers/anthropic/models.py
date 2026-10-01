@@ -181,6 +181,11 @@ def modelRules(modelId: str) -> ModelRules:
     return rulesFor(modelId, (model or {}).get("capabilities"))
 
 
+def modelEfforts(modelId: str) -> list[str]:
+    model = modelMetadata(modelId)
+    return supportedEfforts((model or {}).get("capabilities") or {})
+
+
 def maxOutputTokens(modelId: str) -> int | None:
     model = modelMetadata(modelId)
     limit = ((model or {}).get("top_provider") or {}).get("max_completion_tokens")

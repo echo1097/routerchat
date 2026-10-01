@@ -82,13 +82,14 @@ def options(**overrides):
     return ChatOptions(**values)
 
 
-def bodyFor(modelId, messages=None, modelLimit=None, **overrides):
+def bodyFor(modelId, messages=None, modelLimit=None, supportedEfforts=None, **overrides):
     return requestBuilder.buildBody(
         messages or [{"role": "user", "content": "Hi"}],
         modelId,
         options(**overrides),
         modelRules.rulesFor(modelId),
         modelLimit,
+        supportedEfforts,
     )
 
 
@@ -288,6 +289,47 @@ class RequestBuilderTest(unittest.TestCase):
         self.assertEqual(body["thinking"], {"type": "adaptive", "display": "summarized"})
         self.assertEqual(body["output_config"]["effort"], "max")
 
+    def test_effort_drops_to_the_highest_level_the_model_supports(self):
+        body = bodyFor(
+            "claude-sonnet-5-5",
+            thinkingEnabled=True,
+            reasoningEffort="max",
+            supportedEfforts=["low", "medium", "high"],
+        )
+        self.assertEqual(body["output_config"]["effort"], "high")
+
+        body = bodyFor(
+            "claude-sonnet-5-5",
+            thinkingEnabled=True,
+            reasoningEffort="max",
+            supportedEfforts=["low", "medium", "high", "xhigh"],
+        )
+        self.assertEqual(body["output_config"]["effort"], "xhigh")
+
+        body = bodyFor(
+            "claude-opus-5-5",
+            thinkingEnabled=False,
+            supportedEfforts=["medium", "high"],
+        )
+        self.assertEqual(body["output_config"]["effort"], "medium")
+
+    def test_older_adaptive_models_do_not_send_the_summary_option(self):
+        for modelId in ("claude-opus-4-6", "claude-sonnet-4-6"):
+            with self.subTest(modelId=modelId):
+                body = bodyFor(modelId, thinkingEnabled=True)
+                self.assertEqual(body["thinking"], {"type": "adaptive"})
+
+    def test_conversation_never_ends_on_an_assistant_message(self):
+        body = bodyFor(
+            "claude-sonnet-5-5",
+            messages=[
+                {"role": "user", "content": "Hi"},
+                {"role": "assistant", "content": "Hello"},
+            ],
+        )
+
+        self.assertEqual(body["messages"][-1], {"role": "user", "content": "Continue."})
+
     def test_sonnet_55_turns_thinking_off_with_between_tools(self):
         body = bodyFor("claude-sonnet-5-5", thinkingEnabled=False, reasoningEffort="max")
 
@@ -398,6 +440,22 @@ class SchemaCleanerTest(unittest.TestCase):
         self.assertEqual(cleaned["$defs"]["name"], {"type": "string"})
         self.assertEqual(cleaned["anyOf"][0], {"type": "number"})
 
+    def test_one_of_becomes_any_of_without_a_wrapper_type(self):
+        cleaned = cleanSchema(
+            {
+                "type": "object",
+                "oneOf": [
+                    {"type": "object", "properties": {"kind": {"const": "first"}}, "required": ["kind"]},
+                    {"type": "object", "properties": {"kind": {"const": "second"}}, "required": ["kind"]},
+                ],
+            }
+        )
+
+        self.assertEqual(list(cleaned), ["anyOf"])
+        self.assertEqual(len(cleaned["anyOf"]), 2)
+        for choice in cleaned["anyOf"]:
+            self.assertIs(choice["additionalProperties"], False)
+
     def test_every_app_schema_is_clean(self):
         from backend.brainstorm.generateBrainstorm import brainstorm_response_format
         from backend.lorebook.generateEntry import lorebook_generate_response_format
@@ -414,7 +472,7 @@ class SchemaCleanerTest(unittest.TestCase):
             "timelineRepair": timeline_repair_response_format(),
             "chapterEdits": chapter_edit_response_format(),
         }
-        banned = {"minLength", "maxLength", "minimum", "maximum", "multipleOf", "maxItems"}
+        banned = {"minLength", "maxLength", "minimum", "maximum", "multipleOf", "maxItems", "oneOf"}
 
         def check(node, name):
             if isinstance(node, list):

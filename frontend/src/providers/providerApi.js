@@ -51,8 +51,9 @@ export const providerApi = {
     });
   },
 
-  async listModels() {
-    const payload = await api("/api/models");
+  async listModels(providerId) {
+    const query = providerId ? `?provider=${encodeURIComponent(providerId)}` : "";
+    const payload = await api(`/api/models${query}`);
     return payload.models || [];
   },
 };

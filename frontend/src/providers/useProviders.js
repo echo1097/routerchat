@@ -24,8 +24,10 @@ export function useProviders({ onError } = {}) {
     loadProviders();
   }, [loadProviders]);
 
-  const activeProvider = useMemo(() => {
-    const provider = providers.find((item) => item.id === activeProviderId) || DEFAULT_PROVIDER;
+  const providerFor = useCallback((providerId) => {
+    const provider = providers.find((item) => item.id === providerId);
+    if (!provider) return null;
+
     const capabilities = { ...DEFAULT_PROVIDER.capabilities, ...(provider.capabilities || {}) };
     const transcriptionProvider = providers.find((item) => item.capabilities?.transcription);
 
@@ -34,7 +36,12 @@ export function useProviders({ onError } = {}) {
       capabilities,
       transcriptionAvailable: capabilities.transcription || Boolean(transcriptionProvider?.hasKey),
     };
-  }, [providers, activeProviderId]);
+  }, [providers]);
+
+  const activeProvider = useMemo(
+    () => providerFor(activeProviderId) || { ...DEFAULT_PROVIDER, transcriptionAvailable: true },
+    [providerFor, activeProviderId],
+  );
 
   const loadKeyStatus = useCallback(async () => {
     try {
@@ -62,6 +69,7 @@ export function useProviders({ onError } = {}) {
   return {
     providers,
     activeProvider,
+    providerFor,
     capabilities: activeProvider.capabilities,
     keyStatus,
     loadKeyStatus,

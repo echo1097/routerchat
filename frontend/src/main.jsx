@@ -164,8 +164,11 @@ function App() {
   const tour = useTour();
   const writeTour = useTour(WRITE_TOUR_STEPS);
   const { notifications, setStatus, showToast } = useNotifications();
+  const [chatProviderId, setChatProviderId] = useState(null);
+  const [storyProviderId, setStoryProviderId] = useState(null);
   const {
     activeProvider,
+    providerFor,
     keyStatus,
     loadKeyStatus,
     saveKey: saveProviderKey,
@@ -483,6 +486,7 @@ function App() {
     chapterContentRef.current = nextChapter?.content || "";
     setChapterSaveState("");
     setStoryWorkspaceView(nextView);
+    setStoryProviderId(story.provider || null);
     setSettings({
       model: story.model,
       temperature: story.temperature,
@@ -583,6 +587,14 @@ function App() {
     : stories;
   const activeMessages = isWritingMode ? [] : messages;
   const activeConversationId = isWritingMode ? activeStoryId : activeChatId;
+  const chatIsPinned = Boolean(!isWritingMode && activeChatId && activeMessages.length > 0);
+  const pinnedProviderId = isWritingMode
+    ? (activeStoryId ? storyProviderId : null)
+    : (chatIsPinned ? chatProviderId : null);
+  const currentProvider = providerFor(pinnedProviderId) || activeProvider;
+  const currentProviderId = currentProvider.id;
+  const usesActiveProvider = currentProviderId === activeProvider.id;
+  const currentProviderHasKey = usesActiveProvider ? keyStatus.has_key : Boolean(currentProvider.hasKey);
   const activeModelLocked = Boolean(!isWritingMode && activeConversationId && activeMessages.length > 0);
   const activeChapterTitle = chapters.find((chapter) => chapter.id === activeChapterId)?.title || "Chapter";
 
@@ -792,7 +804,9 @@ function App() {
 
   const loadModels = useCallback(async () => {
     try {
-      const loaded = await fetchModels();
+      const loaded = await fetchModels(usesActiveProvider ? undefined : currentProviderId);
+      if (!loaded) return;
+
       setSettings((current) => {
         const currentModel = loaded.find((model) => model.id === current.model);
         if (
@@ -826,7 +840,7 @@ function App() {
     } catch (error) {
       setStatus(error.message);
     }
-  }, [activeChatId, activeStoryId, defaultModel, hideBatchModels, hideFreeModels]);
+  }, [activeChatId, activeStoryId, currentProviderId, defaultModel, hideBatchModels, hideFreeModels, usesActiveProvider]);
 
   const loadAppSettings = useCallback(async () => {
     try {
@@ -965,6 +979,7 @@ function App() {
     setTemporaryChat(isTemporary);
     setTempChatId(isTemporary ? chat.id : null);
     setActiveChatId(chat.id);
+    setChatProviderId(chat.provider || null);
     setMessages(nextMessages || []);
     setSettings({
       model: chat.model,
@@ -1700,9 +1715,27 @@ function App() {
     try {
       const switchedProvider = await switchActiveProvider(providerId);
       if (switchedProvider) showToast(`Switched to ${switchedProvider.name}`);
+      if (!chatIsPinned) setChatProviderId(providerId);
 
       await loadAppSettings();
-      await loadModels();
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function moveStoryToActiveProvider() {
+    if (!activeStoryId || isStreaming || lorebookUpdating) return;
+
+    try {
+      const story = await storyApi.moveStoryToProvider(activeStoryId, activeProvider.id);
+      setStoryProviderId(story.provider);
+      setSettings((current) => ({
+        ...current,
+        model: story.model,
+        lorebook_model: story.lorebook_model || "",
+      }));
+      await loadStories();
+      showToast(`Story moved to ${activeProvider.name}`);
     } catch (error) {
       setStatus(error.message);
     }
@@ -3326,7 +3359,7 @@ function App() {
   const showComposer =
     !(isWritingMode && ["lorebook", "characters", "brainstorm"].includes(storyWorkspaceView) && !showLandingComposer);
   const composerAcceptsFiles =
-    showComposer && !(isWritingMode && showLandingComposer) && keyStatus.has_key;
+    showComposer && !(isWritingMode && showLandingComposer) && currentProviderHasKey;
   const filesDraggedOverApp = useFileDrop({
     enabled: composerAcceptsFiles,
     onFiles: promptAttachments.addFiles,
@@ -3431,7 +3464,7 @@ function App() {
             prompt={brainstormPrompt}
             setPrompt={setBrainstormPrompt}
             isStreaming={isStreaming}
-            disabled={!keyStatus.has_key}
+            disabled={!currentProviderHasKey}
             modelLabel={promptModelName(models, settings.model)}
             thinkingEnabled={effectiveThinkingEnabled(
               models, settings.model, settings.thinking_enabled,
@@ -3542,7 +3575,7 @@ function App() {
               contextKey={`${activeChatId}:${activeStoryId}:${activeChapterId}`}
               value={prompt}
               setValue={setPrompt}
-              disabled={!keyStatus.has_key}
+              disabled={!currentProviderHasKey}
               isStreaming={isStreaming}
               settings={settings}
               models={models}
@@ -3563,7 +3596,7 @@ function App() {
               dragActive={filesDraggedOverApp}
               webSearchEnabled={settings.web_search_enabled}
               onToggleWebSearch={toggleWebSearch}
-              provider={activeProvider}
+              provider={currentProvider}
             />
           )
         ) : (
@@ -3571,7 +3604,7 @@ function App() {
               contextKey={`${activeChatId}:${activeStoryId}:${activeChapterId}`}
             value={prompt}
             setValue={setPrompt}
-            disabled={!keyStatus.has_key}
+            disabled={!currentProviderHasKey}
             isStreaming={isStreaming}
             settings={settings}
             models={models}
@@ -3605,7 +3638,7 @@ function App() {
             dragActive={filesDraggedOverApp}
             webSearchEnabled={settings.web_search_enabled}
             onToggleWebSearch={toggleWebSearch}
-            provider={activeProvider}
+            provider={currentProvider}
           />
         ))}
       </main>
@@ -3617,6 +3650,9 @@ function App() {
         onSaveKey={saveKey}
         onSwitchProvider={switchProvider}
         provider={activeProvider}
+        conversationProvider={currentProvider}
+        conversationKind={isWritingMode ? "story" : "chat"}
+        onMoveToProvider={isWritingMode && activeStoryId ? moveStoryToActiveProvider : null}
         chats={chats}
         activeChatId={activeChatId}
         models={models}

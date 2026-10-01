@@ -93,6 +93,9 @@ export function SettingsDrawer({
   onSaveKey,
   onSwitchProvider,
   provider = DEFAULT_PROVIDER,
+  conversationProvider = provider,
+  conversationKind = "chat",
+  onMoveToProvider,
   chats,
   activeChatId,
   models,
@@ -176,6 +179,7 @@ export function SettingsDrawer({
   const isPreviewProvider = Boolean(selectedProvider.preview);
   const temperatureLocked = selectedModel?.temperature === false;
   const keyConnected = !isPreviewProvider && Boolean(keyStatus.has_key);
+  const providerDiffers = conversationProvider.id !== provider.id;
   const providerName = isPreviewProvider ? selectedProvider.name : provider.name;
   const keyPlaceholder = isPreviewProvider ? selectedProvider.keyPlaceholder : provider.keyPlaceholder;
   const capabilities = isPreviewProvider
@@ -378,7 +382,7 @@ export function SettingsDrawer({
   }
 
   function setSelectedModelAsDefault() {
-    if (!settings.model || settings.model === defaultModel) return;
+    if (providerDiffers || !settings.model || settings.model === defaultModel) return;
     onSetDefaultModel(settings.model);
   }
 
@@ -930,7 +934,7 @@ export function SettingsDrawer({
             )}
             <button
               type="button"
-              disabled={!settings.model || settings.model === defaultModel}
+              disabled={providerDiffers || !settings.model || settings.model === defaultModel}
               onClick={setSelectedModelAsDefault}
               className={cx(
                 "inline-flex min-h-5 shrink-0 items-center rounded-full px-2 text-[11px] font-medium leading-none shadow-[var(--shadow-border)] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 disabled:cursor-default disabled:active:scale-100",
@@ -945,6 +949,26 @@ export function SettingsDrawer({
           </p>
         </div>
       </div>
+
+      {providerDiffers && (
+        <div className="mb-3 flex items-center justify-between gap-3 rounded-xl bg-white/[0.035] px-3 py-2.5 shadow-[var(--shadow-border)]">
+          <p className="min-w-0 text-pretty text-xs leading-5 text-neutral-400">
+            This {conversationKind} uses {conversationProvider.name}, not {provider.name}.
+          </p>
+          {onMoveToProvider && (
+            <button
+              type="button"
+              onClick={onMoveToProvider}
+              className={cx(
+                "inline-flex h-8 shrink-0 items-center rounded-lg bg-white/[0.065] px-3 text-xs font-medium text-neutral-200 shadow-[var(--shadow-border)] hover:bg-white/[0.1] hover:text-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
+                CONTROL_MOTION,
+              )}
+            >
+              Move to {provider.name}
+            </button>
+          )}
+        </div>
+      )}
 
       <ModelPicker
         models={filteredModels}

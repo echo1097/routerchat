@@ -10,8 +10,8 @@ from backend.chats.chatRoutes import get_chat
 from backend.core.appSettings import read_app_setting
 from backend.core.database import get_db, message_order_clause
 from backend.core.reasoningEffort import ReasoningEffort
-from backend.providers.base import ChatOptions, ChatRequest
-from backend.providers.registry import getActiveProvider
+from backend.providers.base import ChatOptions, ChatRequest, Provider
+from backend.providers.registry import getActiveProvider, providerForRow
 from backend.providers.streaming import sendChat
 
 router = APIRouter()
@@ -94,11 +94,12 @@ async def name_chat(chat_id: str) -> dict[str, Any]:
         return get_chat(chat_id)
 
     message = first["content"]
-    api_key = getActiveProvider().readKey()
+    provider = providerForRow(chat)
+    api_key = provider.readKey()
     title = None
     if api_key:
         title = await generate_chat_title(
-            api_key, chat["model"], chat["reasoning_effort"], message
+            api_key, chat["model"], chat["reasoning_effort"], message, provider
         )
 
     #a chat that cannot be named is still better off with the old derived title than a placeholder
@@ -120,10 +121,14 @@ CHAT_TITLE_TIMEOUT = httpx.Timeout(connect=10.0, read=30.0, write=15.0, pool=10.
 
 
 def chat_title_request(
-    api_key: str, model_id: str, reasoning_effort: ReasoningEffort, message: str
+    api_key: str,
+    model_id: str,
+    reasoning_effort: ReasoningEffort,
+    message: str,
+    provider: Provider | None = None,
 ) -> ChatRequest:
     #asking for thinking off means passing False here, which still lets a mandatory model keep it
-    return getActiveProvider().buildRequest(
+    return (provider or getActiveProvider()).buildRequest(
         [{"role": "user", "content": f"{CHAT_TITLE_PROMPT}\n\n{message}"}],
         model_id,
         ChatOptions(
@@ -144,9 +149,10 @@ async def generate_chat_title(
     model_id: str,
     reasoning_effort: ReasoningEffort,
     message: str,
+    provider: Provider | None = None,
 ) -> str | None:
-    provider = getActiveProvider()
-    request = chat_title_request(api_key, model_id, reasoning_effort, message)
+    provider = provider or getActiveProvider()
+    request = chat_title_request(api_key, model_id, reasoning_effort, message, provider)
 
     payload = await sendChat(provider, request, CHAT_TITLE_TIMEOUT)
     if payload is None:

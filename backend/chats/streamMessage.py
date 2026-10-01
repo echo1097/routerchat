@@ -17,7 +17,7 @@ from backend.attachments.attachmentContent import (
 )
 from backend.chats.buildMessages import build_messages
 from backend.chats.chatModels import StreamMessageRequest
-from backend.chats.chatRows import chat_has_messages
+from backend.chats.chatRows import chat_has_messages, chatProvider, sendingProvider
 from backend.chats.chatTitles import chat_title_from_message
 from backend.chats.messageRoutes import refresh_chat_after_message_change
 from backend.chats.systemPrompts import chatSystemPrompt
@@ -26,7 +26,6 @@ from backend.core.database import get_db, next_message_order
 from backend.core.streamEvents import stream_event
 from backend.core.utils import utc_now
 from backend.providers.base import ChatOptions
-from backend.providers.registry import getActiveProvider
 from backend.providers.streaming import streamChat
 from backend.usage.recordUsage import recordUsage
 from backend.webSearch.sources import (
@@ -126,7 +125,15 @@ def saveAssistantReply(
                 createdAt,
             ),
         )
-        recordUsage("message", assistant_message_id, payload.model, usage, createdAt, generation_id)
+        recordUsage(
+            "message",
+            assistant_message_id,
+            payload.model,
+            usage,
+            createdAt,
+            generation_id,
+            chatProvider(conn, chat_id).id,
+        )
         conn.execute(
             "UPDATE chats SET updated_at = ? WHERE id = ?", (utc_now(), chat_id)
         )
@@ -137,7 +144,9 @@ async def stream_chat_response(
     payload: StreamMessageRequest,
     assistant_message_id: str,
 ) -> AsyncIterator[bytes]:
-    provider = getActiveProvider()
+    with get_db() as conn:
+        provider = chatProvider(conn, chat_id)
+
     api_key = provider.readKey()
     if not api_key:
         raise HTTPException(status_code=401, detail=provider.missingKeyMessage)
@@ -263,7 +272,7 @@ async def stream_message(
     chat_id: str,
     payload: StreamMessageRequest,
 ) -> StreamingResponse:
-    provider = getActiveProvider()
+    provider = sendingProvider(chat_id)
     if not provider.readKey():
         raise HTTPException(status_code=401, detail=provider.missingKeyMessage)
     message = payload.message.strip()
@@ -340,7 +349,7 @@ async def stream_message(
         conn.execute(
             """
             UPDATE chats
-            SET title = ?, model = ?, system_prompt = ?, temperature = ?,
+            SET title = ?, model = ?, provider = ?, system_prompt = ?, temperature = ?,
                 max_tokens = ?, thinking_enabled = ?, reasoning_effort = ?,
                 web_search_enabled = ?, updated_at = ?
             WHERE id = ?
@@ -348,6 +357,7 @@ async def stream_message(
             (
                 title,
                 locked_model,
+                provider.id,
                 chatSystemPrompt(payload),
                 payload.temperature,
                 payload.max_tokens,

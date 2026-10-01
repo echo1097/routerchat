@@ -67,10 +67,11 @@ def update_app_settings(payload: AppSettingsPatchRequest) -> dict[str, Any]:
         write_app_setting("transcription_model", modelId)
     if payload.default_model is not None:
         model_id = payload.default_model.strip()
-        ids = {model["id"] for model in getActiveProvider().cachedModels() if model.get("id")}
+        provider = getActiveProvider()
+        ids = {model["id"] for model in provider.cachedModels() if model.get("id")}
         if ids and model_id not in ids:
             raise HTTPException(status_code=400, detail="Unknown model.")
-        write_app_setting("default_model", model_id)
+        write_app_setting(provider.defaultModelSetting, model_id)
     if payload.generate_chat_name is not None:
         write_app_setting("generate_chat_name", payload.generate_chat_name)
     if payload.hide_free_models is not None:

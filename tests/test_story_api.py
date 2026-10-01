@@ -23,7 +23,7 @@ import backend.tos.loadTos as loadTos
 import backend.tos.tosAcceptance as tosAcceptance
 import backend.providers.openrouter.models as models
 import backend.providers.openrouter.requestOptions as requestOptions
-from backend.providers.registry import getActiveProvider
+from backend.providers.registry import getActiveProvider, getProvider
 import backend.core.migrations as migrations
 import backend.core.paths as paths
 from backend.brainstorm.brainstormLayout import (
@@ -4064,7 +4064,9 @@ class StoryApiTest(unittest.TestCase):
         self.assertEqual(response.headers["cache-control"], "no-store")
         payload = response.json()
         self.assertEqual(payload["active"], "openrouter")
-        self.assertEqual([provider["id"] for provider in payload["providers"]], ["openrouter"])
+        self.assertEqual(
+            [provider["id"] for provider in payload["providers"]], ["openrouter", "anthropic"]
+        )
         provider = payload["providers"][0]
         self.assertTrue(provider["active"])
         self.assertEqual(provider["name"], "OpenRouter")
@@ -4080,8 +4082,41 @@ class StoryApiTest(unittest.TestCase):
                 "needsKey": True,
                 "needsBaseUrl": False,
                 "routingOptions": True,
+                "transcription": True,
             },
         )
+
+    def test_switching_the_active_provider_is_saved_and_changes_the_models_route(self):
+        response = self.client.post("/api/providers/active", json={"id": "anthropic"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["active"], "anthropic")
+        self.assertEqual(self.client.get("/api/providers").json()["active"], "anthropic")
+        self.assertEqual(getActiveProvider().id, "anthropic")
+
+        with patch.object(getActiveProvider(), "readKey", return_value=None):
+            modelsResponse = self.client.get("/api/models")
+        self.assertEqual(modelsResponse.status_code, 401)
+        self.assertIn("Anthropic", modelsResponse.json()["detail"])
+
+        unknownResponse = self.client.post("/api/providers/active", json={"id": "nope"})
+        self.assertEqual(unknownResponse.status_code, 404)
+
+    def test_saving_a_provider_key_validates_it_first(self):
+        anthropic = getProvider("anthropic")
+
+        async def acceptKey(_apiKey):
+            return {}
+
+        with patch.object(anthropic, "validateKey", side_effect=acceptKey):
+            with patch.object(anthropic, "writeKey") as writeKey:
+                response = self.client.post(
+                    "/api/providers/anthropic/key", json={"api_key": " sk-ant-test "}
+                )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["has_key"])
+        writeKey.assert_called_once_with("sk-ant-test")
 
     def test_openrouter_headers_use_the_public_routerchat_identity(self):
         self.assertEqual(

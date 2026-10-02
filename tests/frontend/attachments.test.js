@@ -91,6 +91,23 @@ describe("attachment rejection", () => {
       .toContain("larger than");
   });
 
+  it("rejects an image over the provider's own limit", () => {
+    const limits = { maxImageBytes: 5 * 1024 * 1024, providerName: "Anthropic" };
+
+    expect(rejectionReason(fakeFile("shot.png", 5 * 1024 * 1024 + 1), true, limits))
+      .toBe("shot.png is larger than 5.0 MB, the most Anthropic accepts for an image.");
+    expect(rejectionReason(fakeFile("shot.png", 5 * 1024 * 1024), true, limits)).toBe(null);
+  });
+
+  it("keeps the provider image limit away from other files and providers", () => {
+    const limits = { maxImageBytes: 5 * 1024 * 1024, providerName: "Anthropic" };
+    const sixMegabytes = 6 * 1024 * 1024;
+
+    expect(rejectionReason(fakeFile("paper.pdf", sixMegabytes), true, limits)).toBe(null);
+    expect(rejectionReason(fakeFile("shot.png", sixMegabytes), true)).toBe(null);
+    expect(rejectionReason(fakeFile("shot.png", sixMegabytes), true, { maxImageBytes: null })).toBe(null);
+  });
+
   it("rejects an empty file", () => {
     expect(rejectionReason(fakeFile("empty.txt", 0), true)).toContain("is empty");
   });

@@ -177,10 +177,6 @@ function App() {
     onError: (error) => setStatus(error.message),
   });
   const { models, fetchModels } = useModels();
-  const promptAttachments = useAttachments({
-    allowImages: supportsImageInput(models, settings.model),
-    onError: showToast,
-  });
   const [tourForceThinking, setTourForceThinking] = useState(false);
   const [tourSampleChatActive, setTourSampleChatActive] = useState(false);
   const abortRef = useRef(null);
@@ -595,6 +591,12 @@ function App() {
   const currentProviderId = currentProvider.id;
   const usesActiveProvider = currentProviderId === activeProvider.id;
   const currentProviderHasKey = usesActiveProvider ? keyStatus.has_key : Boolean(currentProvider.hasKey);
+  const promptAttachments = useAttachments({
+    allowImages: supportsImageInput(models, settings.model),
+    maxImageBytes: currentProvider.capabilities.maxImageBytes,
+    providerName: currentProvider.name,
+    onError: showToast,
+  });
   const activeModelLocked = Boolean(!isWritingMode && activeConversationId && activeMessages.length > 0);
   const activeChapterTitle = chapters.find((chapter) => chapter.id === activeChapterId)?.title || "Chapter";
 

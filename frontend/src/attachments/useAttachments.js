@@ -7,7 +7,7 @@ import {
   uploadAttachments,
 } from "./attachmentsApi.js";
 
-export function useAttachments({ allowImages, onError }) {
+export function useAttachments({ allowImages, maxImageBytes, providerName, onError }) {
   const [attachments, setAttachments] = useState([]);
   const [uploading, setUploading] = useState(false);
   const attachmentsRef = useRef([]);
@@ -33,7 +33,7 @@ export function useAttachments({ allowImages, onError }) {
 
     const accepted = [];
     for (const file of picked.slice(0, remainingSlots)) {
-      const reason = rejectionReason(file, allowImages);
+      const reason = rejectionReason(file, allowImages, { maxImageBytes, providerName });
       if (reason) {
         reportError(reason);
         continue;
@@ -56,7 +56,7 @@ export function useAttachments({ allowImages, onError }) {
     } finally {
       setUploading(false);
     }
-  }, [allowImages, rememberAttachments, reportError]);
+  }, [allowImages, maxImageBytes, providerName, rememberAttachments, reportError]);
 
   const removeAttachment = useCallback((attachmentId) => {
     rememberAttachments(

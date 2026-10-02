@@ -49,7 +49,14 @@ function sizeLimitForKind(kind) {
   return MAX_TEXT_BYTES;
 }
 
-export function rejectionReason(file, allowImages) {
+function providerImageLimit(kind, maxImageBytes) {
+  if (kind !== "image") return null;
+
+  const limit = Number(maxImageBytes) || 0;
+  return limit > 0 && limit < MAX_IMAGE_BYTES ? limit : null;
+}
+
+export function rejectionReason(file, allowImages, providerLimits = {}) {
   const kind = attachmentKind(file.name);
 
   if (!kind) {
@@ -58,6 +65,12 @@ export function rejectionReason(file, allowImages) {
 
   if (kind === "image" && !allowImages) {
     return "This model cannot read images.";
+  }
+
+  const providerLimit = providerImageLimit(kind, providerLimits.maxImageBytes);
+  if (providerLimit && file.size > providerLimit) {
+    const providerName = providerLimits.providerName || "this provider";
+    return `${file.name} is larger than ${readableSize(providerLimit)}, the most ${providerName} accepts for an image.`;
   }
 
   const limit = sizeLimitForKind(kind);

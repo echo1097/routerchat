@@ -17,6 +17,7 @@ export const DEFAULT_PROVIDER = {
     routingOptions: true,
     transcription: true,
     freeModels: true,
+    maxImageBytes: null,
   },
 };
 

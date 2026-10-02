@@ -92,20 +92,20 @@ describe("attachment rejection", () => {
   });
 
   it("rejects an image over the provider's own limit", () => {
-    const limits = { maxImageBytes: 5 * 1024 * 1024, providerName: "Anthropic" };
+    const limits = { maxImageBytes: 7.5 * 1024 * 1024, providerName: "Anthropic" };
 
-    expect(rejectionReason(fakeFile("shot.png", 5 * 1024 * 1024 + 1), true, limits))
-      .toBe("shot.png is larger than 5.0 MB, the most Anthropic accepts for an image.");
-    expect(rejectionReason(fakeFile("shot.png", 5 * 1024 * 1024), true, limits)).toBe(null);
+    expect(rejectionReason(fakeFile("shot.png", 7.5 * 1024 * 1024 + 1), true, limits))
+      .toBe("shot.png is larger than 7.5 MB, the most Anthropic accepts for an image.");
+    expect(rejectionReason(fakeFile("shot.png", 7.5 * 1024 * 1024), true, limits)).toBe(null);
   });
 
   it("keeps the provider image limit away from other files and providers", () => {
-    const limits = { maxImageBytes: 5 * 1024 * 1024, providerName: "Anthropic" };
-    const sixMegabytes = 6 * 1024 * 1024;
+    const limits = { maxImageBytes: 7.5 * 1024 * 1024, providerName: "Anthropic" };
+    const nineMegabytes = 9 * 1024 * 1024;
 
-    expect(rejectionReason(fakeFile("paper.pdf", sixMegabytes), true, limits)).toBe(null);
-    expect(rejectionReason(fakeFile("shot.png", sixMegabytes), true)).toBe(null);
-    expect(rejectionReason(fakeFile("shot.png", sixMegabytes), true, { maxImageBytes: null })).toBe(null);
+    expect(rejectionReason(fakeFile("paper.pdf", nineMegabytes), true, limits)).toBe(null);
+    expect(rejectionReason(fakeFile("shot.png", nineMegabytes), true)).toBe(null);
+    expect(rejectionReason(fakeFile("shot.png", nineMegabytes), true, { maxImageBytes: null })).toBe(null);
   });
 
   it("rejects an empty file", () => {

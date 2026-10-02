@@ -126,7 +126,7 @@ class AttachmentApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(
             response.json()["detail"],
-            "big.png is larger than 5MB, the most Anthropic accepts for an image.",
+            "big.png is larger than 7.5MB, the most Anthropic accepts for an image.",
         )
         with database.get_db() as conn:
             messageCount = conn.execute("SELECT COUNT(*) AS total FROM messages").fetchone()
@@ -153,7 +153,7 @@ class AttachmentApiTest(unittest.TestCase):
                 checkAttachmentLimits(conn, [atLimit["id"], overLimit["id"]], getProvider("anthropic"))
 
         self.assertEqual(raised.exception.status_code, 400)
-        self.assertIn("big.png is larger than 5MB", raised.exception.detail)
+        self.assertIn("big.png is larger than 7.5MB", raised.exception.detail)
 
     def test_upload_stores_the_file_and_reports_its_kind(self):
         attachment = self.uploadText()

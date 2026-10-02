@@ -121,7 +121,8 @@ def classify_upload(filename: str) -> tuple[str, str]:
 
 def readable_size(byteCount: int) -> str:
     if byteCount >= 1024 * 1024:
-        return f"{byteCount / (1024 * 1024):.0f}MB"
+        megabytes = f"{byteCount / (1024 * 1024):.1f}".removesuffix(".0")
+        return f"{megabytes}MB"
     return f"{max(1, byteCount // 1024)}KB"
 
 

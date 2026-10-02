@@ -11,7 +11,7 @@ const ANTHROPIC_CAPABILITIES = {
   routingOptions: false,
   transcription: false,
   freeModels: false,
-  maxImageBytes: 5 * 1024 * 1024,
+  maxImageBytes: 7.5 * 1024 * 1024,
 };
 
 export const PROVIDER_OPTIONS = [

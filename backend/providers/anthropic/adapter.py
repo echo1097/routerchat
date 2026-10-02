@@ -10,6 +10,7 @@ from backend.providers.anthropic import models as modelStore
 from backend.providers.anthropic import requestBuilder, streamParser
 from backend.providers.anthropic.client import (
     ANTHROPIC_BASE_URL,
+    ANTHROPIC_MAX_IMAGE_BYTES,
     ANTHROPIC_TIMEOUT,
     headersForKey,
 )
@@ -41,6 +42,7 @@ class AnthropicProvider(Provider):
         routingOptions=False,
         transcription=False,
         freeModels=False,
+        maxImageBytes=ANTHROPIC_MAX_IMAGE_BYTES,
     )
 
     def readKey(self) -> str | None:

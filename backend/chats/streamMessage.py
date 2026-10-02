@@ -11,6 +11,7 @@ from backend.attachments.attachmentCleanup import (
     claim_attachments,
     delete_attachments_for_missing_messages,
 )
+from backend.attachments.attachmentLimits import checkAttachmentLimits
 from backend.attachments.attachmentContent import (
     chat_has_pdf_attachment,
     pdf_parser_plugins,
@@ -288,6 +289,7 @@ async def stream_message(
         chat = conn.execute("SELECT * FROM chats WHERE id = ?", (chat_id,)).fetchone()
         if not chat:
             raise HTTPException(status_code=404, detail="Chat not found.")
+        checkAttachmentLimits(conn, attachmentIds, provider)
         has_messages = chat_has_messages(conn, chat_id)
         locked_model = chat["model"] if has_messages else payload.model
         if has_messages and payload.model != locked_model:

@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from backend.attachments.attachmentCleanup import claim_attachments
+from backend.attachments.attachmentLimits import checkAttachmentLimits
 from backend.chats.chatModels import StreamMessageRequest
 from backend.chats.systemPrompts import writeSystemPrompt
 from backend.core.database import get_db
@@ -234,6 +235,7 @@ async def stream_story_chapter_generation(
         ).fetchone()
         if not chapter:
             raise HTTPException(status_code=404, detail="Chapter not found.")
+        checkAttachmentLimits(conn, attachmentIds, provider)
         base_revision = payload.chapter_revision
         if base_revision is None:
             raise HTTPException(status_code=422, detail="chapter_revision is required.")

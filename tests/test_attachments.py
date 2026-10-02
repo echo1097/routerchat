@@ -5,12 +5,15 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from starlette.datastructures import UploadFile
 
 import backend.attachments.attachmentCleanup as attachmentCleanup
 import backend.attachments.attachmentContent as attachmentContent
 import backend.attachments.attachmentFiles as attachmentFiles
+from backend.providers.anthropic.adapter import AnthropicProvider
+from backend.providers.anthropic.client import ANTHROPIC_MAX_IMAGE_BYTES
 import backend.main as main
 import backend.core.database as database
 import backend.core.utils as utils
@@ -96,6 +99,61 @@ class AttachmentApiTest(unittest.TestCase):
         response = self.client.post("/api/chats", json={"model": "test/model", **payload})
         self.assertEqual(response.status_code, 200)
         return response.json()["chat"]
+
+    def uploadSizedImage(self, byteCount, filename="big.png"):
+        response = self.upload([("files", (filename, b"x" * byteCount, "image/png"))])
+        self.assertEqual(response.status_code, 200, response.text)
+        return response.json()["attachments"][0]
+
+    def sendChatMessage(self, chat, attachment):
+        return self.client.post(
+            f"/api/chats/{chat['id']}/messages/stream",
+            json={
+                "message": "look at this",
+                "model": chat["model"],
+                "attachment_ids": [attachment["id"]],
+            },
+        )
+
+    def test_anthropic_chat_rejects_an_image_over_its_limit(self):
+        self.client.post("/api/providers/active", json={"id": "anthropic"})
+        chat = self.createChat(model="claude-sonnet-5-5")
+        attachment = self.uploadSizedImage(ANTHROPIC_MAX_IMAGE_BYTES + 1)
+
+        with patch.object(AnthropicProvider, "readKey", return_value="sk-ant-test"):
+            response = self.sendChatMessage(chat, attachment)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.json()["detail"],
+            "big.png is larger than 5MB, the most Anthropic accepts for an image.",
+        )
+        with database.get_db() as conn:
+            messageCount = conn.execute("SELECT COUNT(*) AS total FROM messages").fetchone()
+            row = conn.execute(
+                "SELECT chat_id FROM attachments WHERE id = ?", (attachment["id"],)
+            ).fetchone()
+        self.assertEqual(messageCount["total"], 0)
+        self.assertIsNone(row["chat_id"])
+
+    def test_provider_image_limit_only_applies_to_images_over_it(self):
+        from backend.attachments.attachmentLimits import checkAttachmentLimits
+        from backend.providers.registry import getProvider
+
+        atLimit = self.uploadSizedImage(ANTHROPIC_MAX_IMAGE_BYTES, "edge.png")
+        overLimit = self.uploadSizedImage(ANTHROPIC_MAX_IMAGE_BYTES + 1)
+        pdf = self.upload(
+            [("files", ("paper.pdf", b"x" * (ANTHROPIC_MAX_IMAGE_BYTES + 1), "application/pdf"))]
+        ).json()["attachments"][0]
+
+        with database.get_db() as conn:
+            checkAttachmentLimits(conn, [atLimit["id"], pdf["id"]], getProvider("anthropic"))
+            checkAttachmentLimits(conn, [overLimit["id"]], getProvider("openrouter"))
+            with self.assertRaises(HTTPException) as raised:
+                checkAttachmentLimits(conn, [atLimit["id"], overLimit["id"]], getProvider("anthropic"))
+
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertIn("big.png is larger than 5MB", raised.exception.detail)
 
     def test_upload_stores_the_file_and_reports_its_kind(self):
         attachment = self.uploadText()

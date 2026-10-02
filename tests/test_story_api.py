@@ -4085,6 +4085,7 @@ class StoryApiTest(unittest.TestCase):
                 "routingOptions": True,
                 "transcription": True,
                 "freeModels": True,
+                "maxImageBytes": None,
             },
         )
 

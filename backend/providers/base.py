@@ -24,6 +24,7 @@ class Capabilities:
     routingOptions: bool = False
     transcription: bool = False
     freeModels: bool = False
+    maxImageBytes: int | None = None
 
     def toDict(self) -> dict[str, Any]:
         values = asdict(self)

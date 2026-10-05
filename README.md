@@ -23,13 +23,17 @@ Bring your own key. Available for macOS and Windows.
 
 ## Disclaimer
 
-RouterChat is provided as-is. You are responsible for how you use it, including third-party models, API keys, generated content, and any resulting costs or consequences. By using RouterChat you agree to the [terms of service](TOS.md).
+By using RouterChat you agree to the [terms of service](TOS.md).
 
-RouterChat is licensed under the [Apache License 2.0](LICENSE) as of August 3, 2026. Releases up to and including 0.3.5 remain available under the MIT License.
+RouterChat is licensed under the [Apache License 2.0](LICENSE) as of August 3, 2026.<br>
+<small>Releases up to and including 0.3.5 remain available under the MIT License.</small>
+
 
 ## Install RouterChat
 
-All you need is an [OpenRouter API key](https://openrouter.ai/keys). 
+You will need an [OpenRouter API key](https://openrouter.ai/keys). 
+
+---
 
 **macOS (Apple Silicon or Intel)** ([inspect installer](https://github.com/echo1097/get-routerchat/blob/main/install.sh))
 
@@ -37,18 +41,20 @@ All you need is an [OpenRouter API key](https://openrouter.ai/keys).
 curl -fsSL https://echo1097.github.io/get-routerchat/install.sh | sh
 ```
 
-**Windows x64**, paste into PowerShell ([inspect installer](https://github.com/echo1097/get-routerchat/blob/main/install.ps1))
+**Windows x64** ([inspect installer](https://github.com/echo1097/get-routerchat/blob/main/install.ps1))
 
 ```powershell
 irm https://echo1097.github.io/get-routerchat/install.ps1 | iex
 ```
 
+---
+
 - **Setup:** The [setup guide](setup.md) covers starting, updating, repairing, and data locations. The [developer guide](developer.md) covers building from source.
-- **Help:** See [SUPPORT.md](SUPPORT.md), or fill out [this form](https://forms.gle/gTth2TcXLYAArvGm6) if you still need help.
+- **Help:** See [SUPPORT.md](SUPPORT.md) 
 - **Uninstall:** On macOS, double-click `Uninstall RouterChat.command` in the **RouterChat** folder on your Desktop. On Windows, open **Uninstall RouterChat** from the Start Menu. It can save your database to Downloads before removing the app.
 
 > [!WARNING]
-> Tested on macOS Apple Silicon and on Windows 11 x64 in a sandbox VM. macOS Intel has not been tested yet.
+> Tested on macOS Apple Silicon and on Windows 11. macOS Intel has not been tested yet.
 
 ## Features
 
@@ -57,7 +63,10 @@ irm https://echo1097.github.io/get-routerchat/install.ps1 | iex
 
 ## Roadmap
 
-The top priority right now is support for more API providers.
+The top priority right now is support for more API providers. Anthropic is added, and these are next:
+
+- **OpenAI:** Use OAI models with your OpenAI key.
+- **Local models:** Use models on your own computer through apps like Ollama and LM Studio.
 
 ## Features added
 

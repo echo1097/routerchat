@@ -6,14 +6,9 @@ test.beforeEach(async ({ page }) => {
 });
 
 const capabilities = {
-  reasoning: true,
-  reasoningEfforts: ["low", "medium", "high", "max"],
   webSearch: true,
   pdfParsing: true,
   cost: true,
-  structuredOutput: true,
-  needsKey: true,
-  needsBaseUrl: false,
   routingOptions: true,
   transcription: true,
   freeModels: true,

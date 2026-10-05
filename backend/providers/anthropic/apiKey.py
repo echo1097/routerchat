@@ -41,12 +41,3 @@ async def validateKey(apiKey: str) -> dict[str, Any]:
             detail=f"Anthropic key validation failed: {response.text}",
         )
     return {}
-
-
-def normalizeKeyStatus(data: dict[str, Any] | None, hasKey: bool) -> dict[str, Any]:
-    return {
-        "has_key": hasKey,
-        "label": None,
-        "limit_remaining": None,
-        "usage": None,
-    }

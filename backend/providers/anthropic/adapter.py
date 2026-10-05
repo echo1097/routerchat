@@ -32,14 +32,9 @@ class AnthropicProvider(Provider):
     timeout = ANTHROPIC_TIMEOUT
     defaultModelSetting = modelStore.DEFAULT_MODEL_SETTING
     capabilities = Capabilities(
-        reasoning=True,
-        reasoningEfforts=("low", "medium", "high", "max"),
         webSearch=False,
         pdfParsing=True,
         cost=True,
-        structuredOutput=True,
-        needsKey=True,
-        needsBaseUrl=False,
         routingOptions=False,
         transcription=False,
         freeModels=False,
@@ -55,9 +50,6 @@ class AnthropicProvider(Provider):
 
     async def validateKey(self, apiKey: str) -> dict[str, Any]:
         return await keyStore.validateKey(apiKey)
-
-    def normalizeKeyStatus(self, data: dict[str, Any] | None, hasKey: bool) -> dict[str, Any]:
-        return keyStore.normalizeKeyStatus(data, hasKey)
 
     async def keyStatus(self) -> dict[str, Any]:
         return self.normalizeKeyStatus(None, bool(self.readKey()))

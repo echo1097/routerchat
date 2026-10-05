@@ -148,9 +148,7 @@ async def stream_chat_response(
     with get_db() as conn:
         provider = chatProvider(conn, chat_id)
 
-    api_key = provider.readKey()
-    if not api_key:
-        raise HTTPException(status_code=401, detail=provider.missingKeyMessage)
+    api_key = provider.requireKey()
 
     messages = build_messages(
         chat_id,
@@ -274,8 +272,7 @@ async def stream_message(
     payload: StreamMessageRequest,
 ) -> StreamingResponse:
     provider = sendingProvider(chat_id)
-    if not provider.readKey():
-        raise HTTPException(status_code=401, detail=provider.missingKeyMessage)
+    provider.requireKey()
     message = payload.message.strip()
     attachmentIds = payload.attachment_ids
     if not message and not attachmentIds:

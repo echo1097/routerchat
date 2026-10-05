@@ -216,9 +216,7 @@ async def stream_lorebook_repair(
 ) -> AsyncIterator[bytes]:
     startedAt = time.perf_counter()
     provider = providerForRow(story)
-    apiKey = provider.readKey()
-    if not apiKey:
-        raise HTTPException(status_code=401, detail=provider.missingKeyMessage)
+    apiKey = provider.requireKey()
 
     lorebookSignature = visible_lorebook_signature(visible_lorebook)
     summaryChapters = [
@@ -440,8 +438,7 @@ async def stream_lorebook_repair(
 @router.post("/api/stories/{story_id}/lorebook/repair/stream")
 async def repair_story_lorebook(story_id: str) -> StreamingResponse:
     provider = storyProvider(story_id)
-    if not provider.readKey():
-        raise HTTPException(status_code=401, detail=provider.missingKeyMessage)
+    provider.requireKey()
 
     with get_db() as conn:
         story = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()

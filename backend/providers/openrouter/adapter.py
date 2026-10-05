@@ -24,14 +24,9 @@ class OpenRouterProvider(Provider):
     keyPlaceholder = "sk-or-v1-..."
     timeout = OPENROUTER_TIMEOUT
     capabilities = Capabilities(
-        reasoning=True,
-        reasoningEfforts=("low", "medium", "high", "max"),
         webSearch=True,
         pdfParsing=True,
         cost=True,
-        structuredOutput=True,
-        needsKey=True,
-        needsBaseUrl=False,
         routingOptions=True,
         transcription=True,
         freeModels=True,
@@ -46,9 +41,6 @@ class OpenRouterProvider(Provider):
     async def validateKey(self, apiKey: str) -> dict[str, Any]:
         return await keyStore.validate_key(apiKey)
 
-    def normalizeKeyStatus(self, data: dict[str, Any] | None, hasKey: bool) -> dict[str, Any]:
-        return keyStore.normalize_key_status(data, hasKey)
-
     async def keyStatus(self) -> dict[str, Any]:
         savedKey = self.readKey()
         if not savedKey:
@@ -56,7 +48,7 @@ class OpenRouterProvider(Provider):
         try:
             return self.normalizeKeyStatus(await self.validateKey(savedKey), True)
         except HTTPException:
-            return {"has_key": True, "label": None, "limit_remaining": None, "usage": None}
+            return self.normalizeKeyStatus(None, True)
 
     async def listModels(self, apiKey: str) -> list[dict[str, Any]]:
         return await modelStore.fetch_models_from_openrouter(apiKey)

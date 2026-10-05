@@ -144,9 +144,7 @@ async def stream_entry_generation(
 ) -> AsyncIterator[bytes]:
     startedAt = time.perf_counter()
     provider = providerForRow(story)
-    apiKey = provider.readKey()
-    if not apiKey:
-        raise HTTPException(status_code=401, detail=provider.missingKeyMessage)
+    apiKey = provider.requireKey()
 
     prompt: dict[str, Any] = {
         "entry_category": category,
@@ -311,8 +309,7 @@ async def generate_lorebook_entry(
     payload: GenerateEntryRequest,
 ) -> StreamingResponse:
     provider = storyProvider(story_id)
-    if not provider.readKey():
-        raise HTTPException(status_code=401, detail=provider.missingKeyMessage)
+    provider.requireKey()
 
     category = normalize_lorebook_category(payload.category)
     if category not in GENERATE_CATEGORIES:

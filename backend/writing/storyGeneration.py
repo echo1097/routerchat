@@ -5,7 +5,6 @@ import uuid
 from contextlib import aclosing
 from typing import Any, AsyncIterator
 
-from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 
 from backend.attachments.attachmentContent import (
@@ -90,9 +89,7 @@ async def stream_story_generation(
         return stream_event(event_type, value, metadata)
 
     provider = providerForRow(story)
-    api_key = provider.readKey()
-    if not api_key:
-        raise HTTPException(status_code=401, detail=provider.missingKeyMessage)
+    api_key = provider.requireKey()
 
     generation_mode = effective_generation_mode(
         getattr(payload, "write_generation_mode", None),

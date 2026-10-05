@@ -4074,14 +4074,9 @@ class StoryApiTest(unittest.TestCase):
         self.assertEqual(
             provider["capabilities"],
             {
-                "reasoning": True,
-                "reasoningEfforts": ["low", "medium", "high", "max"],
                 "webSearch": True,
                 "pdfParsing": True,
                 "cost": True,
-                "structuredOutput": True,
-                "needsKey": True,
-                "needsBaseUrl": False,
                 "routingOptions": True,
                 "transcription": True,
                 "freeModels": True,

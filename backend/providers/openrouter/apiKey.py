@@ -36,13 +36,3 @@ async def validate_key(api_key: str) -> dict[str, Any]:
             detail=f"OpenRouter key validation failed: {response.text}",
         )
     return response.json().get("data", {})
-
-
-def normalize_key_status(data: dict[str, Any] | None, has_key: bool) -> dict[str, Any]:
-    data = data or {}
-    return {
-        "has_key": has_key,
-        "label": data.get("label"),
-        "limit_remaining": data.get("limit_remaining"),
-        "usage": data.get("usage"),
-    }

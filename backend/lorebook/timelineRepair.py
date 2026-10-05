@@ -64,9 +64,7 @@ async def stream_timeline_repair(
 ) -> AsyncIterator[bytes]:
     startedAt = time.perf_counter()
     provider = providerForRow(story)
-    apiKey = provider.readKey()
-    if not apiKey:
-        raise HTTPException(status_code=401, detail=provider.missingKeyMessage)
+    apiKey = provider.requireKey()
 
     timelineSnapshot = (
         {
@@ -309,8 +307,7 @@ async def repair_story_timeline(
     story_id: str, payload: TimelineRepairRequest
 ) -> StreamingResponse:
     provider = storyProvider(story_id)
-    if not provider.readKey():
-        raise HTTPException(status_code=401, detail=provider.missingKeyMessage)
+    provider.requireKey()
 
     with get_db() as conn:
         story = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()

@@ -5,6 +5,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Protocol
 
 import httpx
+from fastapi import HTTPException
 
 from backend.core.reasoningEffort import ReasoningEffort
 
@@ -13,24 +14,14 @@ DEFAULT_MAX_TOKENS = 30000
 
 @dataclass(frozen=True)
 class Capabilities:
-    reasoning: bool = False
-    reasoningEfforts: tuple[str, ...] = ()
     webSearch: bool = False
     pdfParsing: bool = False
     cost: bool = False
-    structuredOutput: bool = False
-    needsKey: bool = True
-    needsBaseUrl: bool = False
     routingOptions: bool = False
     transcription: bool = False
     freeModels: bool = False
     maxImageBytes: int | None = None
     maxRequestAttachmentBytes: int | None = None
-
-    def toDict(self) -> dict[str, Any]:
-        values = asdict(self)
-        values["reasoningEfforts"] = list(self.reasoningEfforts)
-        return values
 
 
 @dataclass
@@ -85,7 +76,7 @@ class Provider(ABC):
             "id": self.id,
             "name": self.name,
             "keyPlaceholder": self.keyPlaceholder,
-            "capabilities": self.capabilities.toDict(),
+            "capabilities": asdict(self.capabilities),
         }
 
     @abstractmethod
@@ -97,8 +88,20 @@ class Provider(ABC):
     @abstractmethod
     async def validateKey(self, apiKey: str) -> dict[str, Any]: ...
 
-    @abstractmethod
-    def normalizeKeyStatus(self, data: dict[str, Any] | None, hasKey: bool) -> dict[str, Any]: ...
+    def requireKey(self) -> str:
+        apiKey = self.readKey()
+        if not apiKey:
+            raise HTTPException(status_code=401, detail=self.missingKeyMessage)
+        return apiKey
+
+    def normalizeKeyStatus(self, data: dict[str, Any] | None, hasKey: bool) -> dict[str, Any]:
+        data = data or {}
+        return {
+            "has_key": hasKey,
+            "label": data.get("label"),
+            "limit_remaining": data.get("limit_remaining"),
+            "usage": data.get("usage"),
+        }
 
     @abstractmethod
     async def keyStatus(self) -> dict[str, Any]: ...

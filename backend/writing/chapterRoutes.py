@@ -219,8 +219,7 @@ async def stream_story_chapter_generation(
     payload: StreamMessageRequest,
 ) -> StreamingResponse:
     provider = storyProvider(story_id)
-    if not provider.readKey():
-        raise HTTPException(status_code=401, detail=provider.missingKeyMessage)
+    provider.requireKey()
     attachmentIds = list(payload.attachment_ids or [])
     if not payload.message.strip() and not attachmentIds:
         raise HTTPException(status_code=400, detail="Message cannot be empty.")

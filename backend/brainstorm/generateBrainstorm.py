@@ -46,9 +46,7 @@ async def stream_brainstorm_generation(
     prompt_edges: list[sqlite3.Row],
 ) -> AsyncIterator[bytes]:
     provider = providerForRow(story)
-    api_key = provider.readKey()
-    if not api_key:
-        raise HTTPException(status_code=401, detail=provider.missingKeyMessage)
+    api_key = provider.requireKey()
 
     prompt_node_id = prompt_node["id"]
     generation_row_id = str(uuid.uuid4())
@@ -284,8 +282,7 @@ async def generate_brainstorm(
     payload: StreamMessageRequest,
 ) -> StreamingResponse:
     provider = storyProvider(story_id)
-    if not provider.readKey():
-        raise HTTPException(status_code=401, detail=provider.missingKeyMessage)
+    provider.requireKey()
     if not payload.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
 

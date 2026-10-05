@@ -4,7 +4,13 @@ import os
 import tempfile
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 from backend.core import paths
+
+
+def loadSavedKeys() -> None:
+    load_dotenv(paths.ENV_PATH, override=True)
 
 
 def readEnvKey(name: str) -> str | None:

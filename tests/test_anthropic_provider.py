@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import backend.main as main
 import backend.core.paths as paths
+import backend.providers.envKeys as envKeys
 import backend.providers.streaming as streaming
 from backend.providers.anthropic import modelRules, models, requestBuilder
 from backend.providers.anthropic.adapter import anthropicProvider
@@ -609,6 +610,21 @@ class ProviderSwitchTest(unittest.TestCase):
         lines = paths.ENV_PATH.read_text(encoding="utf-8").splitlines()
         self.assertEqual(lines, ["OPENROUTER_API_KEY=or-key", "ANTHROPIC_API_KEY=sk-ant-test"])
         self.assertEqual(anthropicProvider.readKey(), "sk-ant-test")
+
+    def test_saved_key_wins_over_a_key_from_the_terminal_at_startup(self):
+        paths.ENV_PATH.write_text("ANTHROPIC_API_KEY=sk-ant-saved\n", encoding="utf-8")
+        os.environ["ANTHROPIC_API_KEY"] = "sk-ant-terminal"
+
+        envKeys.loadSavedKeys()
+
+        self.assertEqual(anthropicProvider.readKey(), "sk-ant-saved")
+
+    def test_terminal_key_is_used_when_nothing_is_saved(self):
+        os.environ["ANTHROPIC_API_KEY"] = "sk-ant-terminal"
+
+        envKeys.loadSavedKeys()
+
+        self.assertEqual(anthropicProvider.readKey(), "sk-ant-terminal")
 
     def test_default_model_comes_from_the_model_list(self):
         anthropicProvider.cacheModels(

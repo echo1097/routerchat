@@ -25,6 +25,7 @@ class Capabilities:
     transcription: bool = False
     freeModels: bool = False
     maxImageBytes: int | None = None
+    maxRequestAttachmentBytes: int | None = None
 
     def toDict(self) -> dict[str, Any]:
         values = asdict(self)

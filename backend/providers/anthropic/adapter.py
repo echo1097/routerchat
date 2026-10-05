@@ -11,6 +11,7 @@ from backend.providers.anthropic import requestBuilder, streamParser
 from backend.providers.anthropic.client import (
     ANTHROPIC_BASE_URL,
     ANTHROPIC_MAX_IMAGE_BYTES,
+    ANTHROPIC_MAX_REQUEST_ATTACHMENT_BYTES,
     ANTHROPIC_TIMEOUT,
     headersForKey,
 )
@@ -43,6 +44,7 @@ class AnthropicProvider(Provider):
         transcription=False,
         freeModels=False,
         maxImageBytes=ANTHROPIC_MAX_IMAGE_BYTES,
+        maxRequestAttachmentBytes=ANTHROPIC_MAX_REQUEST_ATTACHMENT_BYTES,
     )
 
     def readKey(self) -> str | None:

@@ -13,7 +13,10 @@ import backend.attachments.attachmentCleanup as attachmentCleanup
 import backend.attachments.attachmentContent as attachmentContent
 import backend.attachments.attachmentFiles as attachmentFiles
 from backend.providers.anthropic.adapter import AnthropicProvider
-from backend.providers.anthropic.client import ANTHROPIC_MAX_IMAGE_BYTES
+from backend.providers.anthropic.client import (
+    ANTHROPIC_MAX_IMAGE_BYTES,
+    ANTHROPIC_MAX_REQUEST_ATTACHMENT_BYTES,
+)
 import backend.main as main
 import backend.core.database as database
 import backend.core.utils as utils
@@ -154,6 +157,99 @@ class AttachmentApiTest(unittest.TestCase):
 
         self.assertEqual(raised.exception.status_code, 400)
         self.assertIn("big.png is larger than 7.5MB", raised.exception.detail)
+
+    def addEarlierMessage(self, chat, attachments, order=1, error=None):
+        messageId = f"earlier-{order}"
+        with database.get_db() as conn:
+            conn.execute(
+                """
+                INSERT INTO messages (
+                  id, chat_id, role, content, reasoning, model, finish_reason,
+                  error, message_order, created_at
+                )
+                VALUES (?, ?, 'user', 'earlier', NULL, ?, NULL, ?, ?, ?)
+                """,
+                (messageId, chat["id"], chat["model"], error, order, utils.utc_now()),
+            )
+            attachmentCleanup.claim_attachments(
+                conn,
+                [attachment["id"] for attachment in attachments],
+                chat_id=chat["id"],
+                message_id=messageId,
+            )
+        return messageId
+
+    def test_anthropic_chat_rejects_files_that_no_longer_fit_in_one_request(self):
+        self.client.post("/api/providers/active", json={"id": "anthropic"})
+        chat = self.createChat(model="claude-sonnet-5-5")
+        earlier = [
+            self.uploadSizedImage(ANTHROPIC_MAX_IMAGE_BYTES, f"old{index}.png")
+            for index in range(2)
+        ]
+        self.addEarlierMessage(chat, earlier)
+        attachment = self.uploadSizedImage(ANTHROPIC_MAX_IMAGE_BYTES, "new.png")
+
+        with patch.object(AnthropicProvider, "readKey", return_value="sk-ant-test"):
+            response = self.sendChatMessage(chat, attachment)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.json()["detail"],
+            "The files in this chat add up to 22.5MB, and Anthropic accepts about 21MB "
+            "of files per request. Earlier files are sent again with every message, "
+            "so remove a file or start a new chat.",
+        )
+        with database.get_db() as conn:
+            messageCount = conn.execute("SELECT COUNT(*) AS total FROM messages").fetchone()
+        self.assertEqual(messageCount["total"], 1)
+
+    def test_request_size_check_counts_only_what_is_sent(self):
+        from backend.attachments.attachmentLimits import checkAttachmentLimits
+        from backend.providers.registry import getProvider
+
+        anthropic = getProvider("anthropic")
+        chat = self.createChat(model="claude-sonnet-5-5")
+        first = [self.uploadSizedImage(ANTHROPIC_MAX_IMAGE_BYTES, "first.png")]
+        second = [self.uploadSizedImage(ANTHROPIC_MAX_IMAGE_BYTES, "second.png")]
+        failed = [self.uploadSizedImage(ANTHROPIC_MAX_IMAGE_BYTES, "failed.png")]
+        firstMessageId = self.addEarlierMessage(chat, first, order=1)
+        self.addEarlierMessage(chat, second, order=2)
+        self.addEarlierMessage(chat, failed, order=3, error="failed")
+        pending = self.uploadSizedImage(ANTHROPIC_MAX_IMAGE_BYTES, "pending.png")
+        self.assertGreater(3 * ANTHROPIC_MAX_IMAGE_BYTES, ANTHROPIC_MAX_REQUEST_ATTACHMENT_BYTES)
+
+        with database.get_db() as conn:
+            checkAttachmentLimits(conn, [], anthropic, chatId=chat["id"])
+            checkAttachmentLimits(conn, [pending["id"]], getProvider("openrouter"), chatId=chat["id"])
+            checkAttachmentLimits(
+                conn, [pending["id"]], anthropic, chatId=chat["id"], throughMessageId=firstMessageId
+            )
+            checkAttachmentLimits(conn, [second[0]["id"]], anthropic, chatId=chat["id"])
+            with self.assertRaises(HTTPException) as raised:
+                checkAttachmentLimits(conn, [pending["id"]], anthropic, chatId=chat["id"])
+
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertIn("add up to 22.5MB", raised.exception.detail)
+
+    def test_request_size_check_covers_files_sent_without_a_chat(self):
+        from backend.attachments.attachmentLimits import checkAttachmentLimits
+        from backend.providers.registry import getProvider
+
+        attachmentIds = [
+            self.uploadSizedImage(ANTHROPIC_MAX_IMAGE_BYTES, f"shot{index}.png")["id"]
+            for index in range(3)
+        ]
+
+        with database.get_db() as conn:
+            checkAttachmentLimits(conn, attachmentIds[:2], getProvider("anthropic"))
+            with self.assertRaises(HTTPException) as raised:
+                checkAttachmentLimits(conn, attachmentIds, getProvider("anthropic"))
+
+        self.assertEqual(
+            raised.exception.detail,
+            "These files add up to 22.5MB, and Anthropic accepts about 21MB of files per request. "
+            "Remove a file and try again.",
+        )
 
     def test_upload_stores_the_file_and_reports_its_kind(self):
         attachment = self.uploadText()

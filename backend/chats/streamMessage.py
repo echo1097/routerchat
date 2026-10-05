@@ -289,7 +289,13 @@ async def stream_message(
         chat = conn.execute("SELECT * FROM chats WHERE id = ?", (chat_id,)).fetchone()
         if not chat:
             raise HTTPException(status_code=404, detail="Chat not found.")
-        checkAttachmentLimits(conn, attachmentIds, provider)
+        checkAttachmentLimits(
+            conn,
+            attachmentIds,
+            provider,
+            chatId=chat_id,
+            throughMessageId=payload.regenerate_message_id,
+        )
         has_messages = chat_has_messages(conn, chat_id)
         locked_model = chat["model"] if has_messages else payload.model
         if has_messages and payload.model != locked_model:

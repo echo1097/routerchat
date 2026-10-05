@@ -90,6 +90,8 @@ When you send a prompt or attachment, that data goes to the provider you picked,
 
 ## Media
 
+> All screenshots below use mocked data. The chats, story, lorebook, models, and usage numbers are made up for the screenshots.
+
 Chat Mode
 
 <img width="1000" alt="RouterChat Chat Mode" src="media/chatmode.png" />

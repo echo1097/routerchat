@@ -61,51 +61,7 @@ The top priority right now is support for more API providers.
 
 ## Features added
 
-- One-click installer
-    - macOS and Windows
-- UI improvements
-    - Navigation bar for moving through long chats
-    - Context meter that shows how full a model's context is
-    - Context meter warns at 50, 75, and 90% full
-    - Guided tours for Chat and Write modes
-    - In-app changelog
-    - Feedback button
-- Writing Mode improvements
-    - Brainstorming canvas with branching ideas, copy buttons, and prompt regeneration
-    - Chapter editor with a formatting toolbar
-    - Chapter history
-    - Remove chapters from the context
-    - Import and export full stories, including chapters and lorebooks
-- Chat Mode improvements
-    - Web search with sources and citations
-    - Image, PDF, text, and code attachments, with drag and drop
-    - Folders, pinned chats, and chat search
-    - Temporary chats
-    - Automatic chat names
-    - Chat import and export
-    - Edit prompts, regenerate replies, and see token usage and cost for each response
-    - Copy buttons on prompts
-- Memory for Write mode
-    - Lorebook entries for characters, locations, items, events, notes, chapter summaries, and a timeline
-    - Write entries yourself or let the model generate them, with automatic or manual lorebook updates
-    - Repair tools for the lorebook and timeline
-- Voice input
-    - Record and transcribe speech in Chat, Write, and Brainstorm
-    - Choose which transcription model to use
-- Usage tracking
-    - Spending, request counts, and token usage for the last 7 days
-    - Token breakdown split into input, cached reads, output, and reasoning
-    - Lifetime totals per model
-- Prompt caching
-    - On by default in Chat and Write modes to save on repeat tokens
-    - Cache is kept for 1 hour by default on models that support it, or 5 minutes if you turn that off
-    - Write mode keeps the cache when you move to a new chapter
-    - Can be turned off in API settings
-- Model settings
-    - Option to hide batch models
-    - Reasoning level shown on the model button
-    - Provider preference for fastest or lowest price
-    - Privacy and Zero Data Retention routing options
+See [features.md](features.md) for the full list of what has been added so far.
 
 ## AI usage disclaimer
 

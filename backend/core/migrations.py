@@ -12,6 +12,14 @@ def ensureCachedTokenColumns(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN cached_tokens INTEGER")
 
 
+def ensureAttachmentPageCountColumn(conn: sqlite3.Connection) -> None:
+    existingColumns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(attachments)").fetchall()
+    }
+    if "page_count" not in existingColumns:
+        conn.execute("ALTER TABLE attachments ADD COLUMN page_count INTEGER")
+
+
 def ensureGenerationSettledColumn(conn: sqlite3.Connection) -> None:
     existingColumns = {
         row["name"] for row in conn.execute("PRAGMA table_info(story_generations)").fetchall()

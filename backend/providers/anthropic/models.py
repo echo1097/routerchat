@@ -11,6 +11,9 @@ from backend.core.database import get_db
 from backend.core.utils import utc_now
 from backend.providers.anthropic.client import (
     ANTHROPIC_BASE_URL,
+    ANTHROPIC_LARGE_CONTEXT_TOKENS,
+    ANTHROPIC_MAX_PDF_PAGES,
+    ANTHROPIC_MAX_PDF_PAGES_SMALL_CONTEXT,
     FALLBACK_MODEL_ID,
     headersForKey,
 )
@@ -190,6 +193,14 @@ def maxOutputTokens(modelId: str) -> int | None:
     model = modelMetadata(modelId)
     limit = ((model or {}).get("top_provider") or {}).get("max_completion_tokens")
     return limit if isinstance(limit, int) and limit > 0 else None
+
+
+def maxPdfPages(modelId: str) -> int:
+    model = modelMetadata(modelId)
+    contextLength = (model or {}).get("context_length")
+    if isinstance(contextLength, int) and 0 < contextLength < ANTHROPIC_LARGE_CONTEXT_TOKENS:
+        return ANTHROPIC_MAX_PDF_PAGES_SMALL_CONTEXT
+    return ANTHROPIC_MAX_PDF_PAGES
 
 
 def modelSupportsReasoning(modelId: str) -> bool:

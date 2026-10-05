@@ -20,6 +20,7 @@ from backend.attachments.attachmentFiles import (
     readable_size,
     safe_filename,
 )
+from backend.attachments.pdfPages import countPdfPages
 from backend.core.database import get_db
 from backend.core.utils import utc_now
 
@@ -73,6 +74,7 @@ async def upload_attachments(
                     "kind": kind,
                     "size_bytes": len(raw),
                     "stored_path": str(storedPath),
+                    "page_count": (countPdfPages(raw) or 0) if kind == "pdf" else None,
                 }
             )
 
@@ -83,9 +85,9 @@ async def upload_attachments(
                     """
                     INSERT INTO attachments (
                       id, chat_id, message_id, story_id, filename, mime,
-                      kind, size_bytes, stored_path, created_at
+                      kind, size_bytes, stored_path, created_at, page_count
                     )
-                    VALUES (?, NULL, NULL, NULL, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, NULL, NULL, NULL, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         attachment["id"],
@@ -95,6 +97,7 @@ async def upload_attachments(
                         attachment["size_bytes"],
                         attachment["stored_path"],
                         now,
+                        attachment["page_count"],
                     ),
                 )
     except Exception:

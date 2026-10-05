@@ -124,6 +124,9 @@ class Provider(ABC):
     @abstractmethod
     def supportsStructuredOutput(self, modelId: str) -> bool: ...
 
+    def maxPdfPages(self, modelId: str) -> int | None:
+        return None
+
     @abstractmethod
     def promptCacheControl(self) -> dict[str, Any] | None: ...
 

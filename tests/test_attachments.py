@@ -1,6 +1,7 @@
 import os
 import re
 import tempfile
+import zlib
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -12,6 +13,7 @@ from starlette.datastructures import UploadFile
 import backend.attachments.attachmentCleanup as attachmentCleanup
 import backend.attachments.attachmentContent as attachmentContent
 import backend.attachments.attachmentFiles as attachmentFiles
+from backend.attachments.pdfPages import countPdfPages
 from backend.providers.anthropic.adapter import AnthropicProvider
 from backend.providers.anthropic.client import (
     ANTHROPIC_MAX_IMAGE_BYTES,
@@ -39,6 +41,57 @@ PNG_BYTES = bytes.fromhex(
     "890000000a49444154789c6360000002000100ffff03000006000557bfabd400"
     "00000049454e44ae426082"
 )
+
+
+def pdfBytes(pageCount, packed=False, extraRevisions=0):
+    kids = " ".join(f"{index + 3} 0 R" for index in range(pageCount))
+    pageBody = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] >>"
+    parts = [
+        "%PDF-1.5\n",
+        "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+        f"2 0 obj\n<< /Type /Pages /Kids [{kids}] /Count {pageCount} >>\nendobj\n",
+    ]
+    raw = "".join(parts).encode()
+
+    if packed:
+        bodies = [pageBody.encode() for _ in range(pageCount)]
+        offsets = []
+        position = 0
+        for body in bodies:
+            offsets.append(position)
+            position += len(body) + 1
+        header = " ".join(f"{index + 3} {offset}" for index, offset in enumerate(offsets)).encode()
+        header += b"\n"
+        stream = zlib.compress(header + b"\n".join(bodies))
+        raw += (
+            f"{pageCount + 3} 0 obj\n<< /Type /ObjStm /N {pageCount} /First {len(header)} "
+            f"/Filter /FlateDecode /Length {len(stream)} >>\nstream\n"
+        ).encode()
+        raw += stream + b"\nendstream\nendobj\n"
+    else:
+        for index in range(pageCount):
+            raw += f"{index + 3} 0 obj\n{pageBody}\nendobj\n".encode()
+
+    for _ in range(extraRevisions):
+        raw += f"3 0 obj\n{pageBody}\nendobj\n".encode()
+
+    return raw + b"trailer\n<< /Root 1 0 R >>\n%%EOF\n"
+
+
+class PdfPageCountTest(unittest.TestCase):
+    def test_counts_plain_page_objects(self):
+        self.assertEqual(countPdfPages(pdfBytes(7)), 7)
+
+    def test_counts_pages_packed_into_a_compressed_object_stream(self):
+        self.assertEqual(countPdfPages(pdfBytes(130, packed=True)), 130)
+
+    def test_a_page_saved_again_is_counted_once(self):
+        self.assertEqual(countPdfPages(pdfBytes(4, extraRevisions=3)), 4)
+
+    def test_unreadable_files_have_no_count(self):
+        self.assertIsNone(countPdfPages(b"not a pdf"))
+        self.assertIsNone(countPdfPages(b"%PDF-1.7\nnothing here"))
+        self.assertIsNone(countPdfPages(pdfBytes(3) + b"<< /Encrypt 9 0 R >>"))
 
 
 class AttachmentApiTest(unittest.TestCase):
@@ -250,6 +303,102 @@ class AttachmentApiTest(unittest.TestCase):
             "These files add up to 22.5MB, and Anthropic accepts about 21MB of files per request. "
             "Remove a file and try again.",
         )
+
+    def uploadPdf(self, pageCount, filename="paper.pdf"):
+        response = self.upload([("files", (filename, pdfBytes(pageCount), "application/pdf"))])
+        self.assertEqual(response.status_code, 200, response.text)
+        return response.json()["attachments"][0]
+
+    def cacheAnthropicModels(self):
+        AnthropicProvider().cacheModels(
+            [
+                {"id": "claude-haiku-4-5", "context_length": 200000},
+                {"id": "claude-sonnet-5-5", "context_length": 1000000},
+            ]
+        )
+
+    def test_upload_records_how_many_pages_a_pdf_has(self):
+        pdf = self.uploadPdf(12)
+        image = self.uploadImage()
+
+        with database.get_db() as conn:
+            pdfRow = conn.execute(
+                "SELECT page_count FROM attachments WHERE id = ?", (pdf["id"],)
+            ).fetchone()
+            imageRow = conn.execute(
+                "SELECT page_count FROM attachments WHERE id = ?", (image["id"],)
+            ).fetchone()
+
+        self.assertEqual(pdfRow["page_count"], 12)
+        self.assertIsNone(imageRow["page_count"])
+
+    def test_anthropic_chat_rejects_pdfs_with_too_many_pages_for_the_model(self):
+        self.client.post("/api/providers/active", json={"id": "anthropic"})
+        self.cacheAnthropicModels()
+        chat = self.createChat(model="claude-haiku-4-5")
+        earlier = self.uploadPdf(60, "first.pdf")
+        self.addEarlierMessage(chat, [earlier])
+        attachment = self.uploadPdf(41, "second.pdf")
+
+        with patch.object(AnthropicProvider, "readKey", return_value="sk-ant-test"):
+            response = self.sendChatMessage(chat, attachment)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.json()["detail"],
+            "The PDFs in this chat add up to 101 pages, and Anthropic accepts 100 PDF pages "
+            "per request with this model. Earlier files are sent again with every message, "
+            "so remove a PDF or start a new chat.",
+        )
+        with database.get_db() as conn:
+            messageCount = conn.execute("SELECT COUNT(*) AS total FROM messages").fetchone()
+        self.assertEqual(messageCount["total"], 1)
+
+    def test_pdf_page_limit_depends_on_the_model_and_provider(self):
+        from backend.attachments.attachmentLimits import checkAttachmentLimits
+        from backend.providers.registry import getProvider
+
+        self.cacheAnthropicModels()
+        atLimit = self.uploadPdf(100, "edge.pdf")
+        overLimit = self.uploadPdf(101, "long.pdf")
+        anthropic = getProvider("anthropic")
+
+        with database.get_db() as conn:
+            checkAttachmentLimits(conn, [atLimit["id"]], anthropic, modelId="claude-haiku-4-5")
+            checkAttachmentLimits(conn, [overLimit["id"]], anthropic, modelId="claude-sonnet-5-5")
+            checkAttachmentLimits(
+                conn, [overLimit["id"]], getProvider("openrouter"), modelId="test/model"
+            )
+            with self.assertRaises(HTTPException) as raised:
+                checkAttachmentLimits(
+                    conn, [overLimit["id"]], anthropic, modelId="claude-haiku-4-5"
+                )
+
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertEqual(
+            raised.exception.detail,
+            "These PDFs add up to 101 pages, and Anthropic accepts 100 PDF pages per request "
+            "with this model. Remove a PDF and try again.",
+        )
+
+    def test_pdfs_uploaded_before_page_counting_are_counted_when_sent(self):
+        from backend.attachments.attachmentLimits import checkAttachmentLimits
+        from backend.providers.registry import getProvider
+
+        self.cacheAnthropicModels()
+        pdf = self.uploadPdf(101, "old.pdf")
+
+        with database.get_db() as conn:
+            conn.execute("UPDATE attachments SET page_count = NULL WHERE id = ?", (pdf["id"],))
+            with self.assertRaises(HTTPException):
+                checkAttachmentLimits(
+                    conn, [pdf["id"]], getProvider("anthropic"), modelId="claude-haiku-4-5"
+                )
+            row = conn.execute(
+                "SELECT page_count FROM attachments WHERE id = ?", (pdf["id"],)
+            ).fetchone()
+
+        self.assertEqual(row["page_count"], 101)
 
     def test_upload_stores_the_file_and_reports_its_kind(self):
         attachment = self.uploadText()

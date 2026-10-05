@@ -20,6 +20,7 @@ from backend.core.migrations import (
     ensure_story_settings_columns,
     ensureProviderColumns,
     ensureCachedTokenColumns,
+    ensureAttachmentPageCountColumn,
     ensureGenerationSettledColumn,
 )
 from backend.lorebook.lorebookUsage import ensureLorebookUsageTable
@@ -309,6 +310,7 @@ def init_db() -> None:
         ensureLorebookUsageTable(conn)
         ensureTranscriptionUsageTable(conn)
         ensureCachedTokenColumns(conn)
+        ensureAttachmentPageCountColumn(conn)
         clean_lorebook_categories(conn)
 
     with closing(get_db()) as mainConn, closing(getUsageDb()) as usageConn:

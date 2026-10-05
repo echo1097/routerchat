@@ -295,6 +295,7 @@ async def stream_message(
             provider,
             chatId=chat_id,
             throughMessageId=payload.regenerate_message_id,
+            modelId=payload.model,
         )
         has_messages = chat_has_messages(conn, chat_id)
         locked_model = chat["model"] if has_messages else payload.model

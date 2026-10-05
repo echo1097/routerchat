@@ -235,7 +235,7 @@ async def stream_story_chapter_generation(
         ).fetchone()
         if not chapter:
             raise HTTPException(status_code=404, detail="Chapter not found.")
-        checkAttachmentLimits(conn, attachmentIds, provider)
+        checkAttachmentLimits(conn, attachmentIds, provider, modelId=payload.model)
         base_revision = payload.chapter_revision
         if base_revision is None:
             raise HTTPException(status_code=422, detail="chapter_revision is required.")

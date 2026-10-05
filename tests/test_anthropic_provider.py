@@ -626,6 +626,18 @@ class ProviderSwitchTest(unittest.TestCase):
 
         self.assertEqual(anthropicProvider.readKey(), "sk-ant-terminal")
 
+    def test_pdf_page_limit_follows_the_model_context_window(self):
+        anthropicProvider.cacheModels(
+            [
+                {"id": "claude-haiku-4-5", "context_length": 200000},
+                {"id": "claude-sonnet-5-5", "context_length": 1000000},
+            ]
+        )
+
+        self.assertEqual(anthropicProvider.maxPdfPages("claude-haiku-4-5"), 100)
+        self.assertEqual(anthropicProvider.maxPdfPages("claude-sonnet-5-5"), 600)
+        self.assertEqual(anthropicProvider.maxPdfPages("claude-unknown"), 600)
+
     def test_default_model_comes_from_the_model_list(self):
         anthropicProvider.cacheModels(
             [{"id": "claude-fable-5-1"}, {"id": "claude-sonnet-5-5"}, {"id": "claude-haiku-4-5"}]

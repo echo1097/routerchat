@@ -83,6 +83,9 @@ class AnthropicProvider(Provider):
     def supportsStructuredOutput(self, modelId: str) -> bool:
         return modelStore.modelSupportsStructuredOutput(modelId)
 
+    def maxPdfPages(self, modelId: str) -> int | None:
+        return modelStore.maxPdfPages(modelId)
+
     def promptCacheControl(self) -> dict[str, Any] | None:
         if bool(read_app_setting("disable_prompt_caching")):
             return None

@@ -169,7 +169,7 @@ def splitMessages(
 
 
 def thinkingBudget(effort: str, maxTokens: int) -> int | None:
-    budget = min(THINKING_BUDGETS[effort], maxTokens - 1)
+    budget = min(THINKING_BUDGETS[effort], maxTokens // 2)
     return budget if budget >= MIN_THINKING_BUDGET else None
 
 

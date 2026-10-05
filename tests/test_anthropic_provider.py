@@ -367,6 +367,23 @@ class RequestBuilderTest(unittest.TestCase):
         tinyBody = bodyFor("claude-haiku-4-5", thinkingEnabled=True, maxTokens=500)
         self.assertNotIn("thinking", tinyBody)
 
+    def test_budget_leaves_room_for_the_answer_at_every_effort(self):
+        for effort in ("low", "medium", "high", "xhigh", "max"):
+            with self.subTest(effort=effort):
+                body = bodyFor(
+                    "claude-haiku-4-5",
+                    thinkingEnabled=True,
+                    reasoningEffort=effort,
+                    maxTokens=30000,
+                )
+                answerRoom = body["max_tokens"] - body["thinking"]["budget_tokens"]
+                self.assertGreaterEqual(answerRoom, body["max_tokens"] // 2)
+
+        maxBody = bodyFor(
+            "claude-haiku-4-5", thinkingEnabled=True, reasoningEffort="max", maxTokens=30000
+        )
+        self.assertEqual(maxBody["thinking"]["budget_tokens"], 15000)
+
     def test_budget_tokens_never_reach_current_models(self):
         for modelId in ("claude-sonnet-5-5", "claude-sonnet-5", "claude-opus-5-5", "claude-opus-4-7"):
             with self.subTest(modelId=modelId):

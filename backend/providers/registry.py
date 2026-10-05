@@ -16,8 +16,8 @@ providers: dict[str, Provider] = {
 }
 
 
-def getProvider(providerId: str) -> Provider | None:
-    return providers.get(providerId)
+def getProvider(providerId: Any) -> Provider | None:
+    return providers.get(providerId) if isinstance(providerId, str) else None
 
 
 def getActiveProvider() -> Provider:
@@ -26,9 +26,7 @@ def getActiveProvider() -> Provider:
     except sqlite3.Error:
         return openRouterProvider
 
-    if isinstance(savedId, str) and savedId in providers:
-        return providers[savedId]
-    return openRouterProvider
+    return getProvider(savedId) or openRouterProvider
 
 
 def providerForRow(row: Any) -> Provider:
@@ -37,13 +35,11 @@ def providerForRow(row: Any) -> Provider:
     except (KeyError, IndexError, TypeError):
         savedId = None
 
-    if isinstance(savedId, str) and savedId in providers:
-        return providers[savedId]
-    return getActiveProvider()
+    return getProvider(savedId) or getActiveProvider()
 
 
 def providerIdForImport(savedId: Any, modelId: str) -> str:
-    if isinstance(savedId, str) and savedId in providers:
+    if getProvider(savedId):
         return savedId
     if modelId.startswith("claude-") and "/" not in modelId:
         return anthropicProvider.id

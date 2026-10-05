@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from backend.core.database import get_db
-from backend.providers.registry import getProvider
+from backend.providers.providerRoutes import requireProvider
 from backend.writing.storyBundle import get_story_bundle
 
 router = APIRouter()
@@ -16,9 +16,7 @@ class StoryProviderRequest(BaseModel):
 
 @router.post("/api/stories/{story_id}/provider")
 def moveStoryToProvider(story_id: str, payload: StoryProviderRequest) -> dict[str, Any]:
-    provider = getProvider(payload.id)
-    if provider is None:
-        raise HTTPException(status_code=404, detail="Unknown provider.")
+    provider = requireProvider(payload.id)
 
     with get_db() as conn:
         story = conn.execute("SELECT id FROM stories WHERE id = ?", (story_id,)).fetchone()

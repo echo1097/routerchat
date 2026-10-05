@@ -54,7 +54,7 @@ class UsageTest(unittest.TestCase):
 
     def migrateRows(self):
         self.usageConn.execute("DELETE FROM usage_entries")
-        self.usageConn.execute("DELETE FROM usage_meta")
+        self.usageConn.execute("PRAGMA user_version = 0")
         self.usageConn.commit()
         migrateLegacyUsage(self.conn, self.usageConn)
 

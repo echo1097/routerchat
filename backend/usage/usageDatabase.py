@@ -38,10 +38,5 @@ def initUsageDb(conn: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_usage_entries_provider
         ON usage_entries(provider, created_at);
-
-        CREATE TABLE IF NOT EXISTS usage_meta (
-          key TEXT PRIMARY KEY,
-          value TEXT NOT NULL
-        );
         """
     )

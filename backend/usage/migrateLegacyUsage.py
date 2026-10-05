@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import sqlite3
 
-from backend.core.utils import utc_now
 from backend.usage.recordUsage import saveUsageEntries, usageEntry
 
-MIGRATION_KEY = "legacyUsageMigrated"
+MIGRATED_VERSION = 1
 LEGACY_PROVIDER = "openrouter"
 
 USAGE_COLUMNS = "id, model, generation_id, prompt_tokens, completion_tokens, reasoning_tokens, cached_tokens, total_tokens, cost, created_at"
@@ -47,15 +46,9 @@ def legacyEntries(mainConn: sqlite3.Connection):
 
 
 def migrateLegacyUsage(mainConn: sqlite3.Connection, usageConn: sqlite3.Connection) -> None:
-    alreadyMigrated = usageConn.execute(
-        "SELECT 1 FROM usage_meta WHERE key = ?", (MIGRATION_KEY,)
-    ).fetchone()
-    if alreadyMigrated:
+    if usageConn.execute("PRAGMA user_version").fetchone()[0] >= MIGRATED_VERSION:
         return
 
     with usageConn:
         saveUsageEntries(usageConn, legacyEntries(mainConn), replace=False)
-        usageConn.execute(
-            "INSERT INTO usage_meta (key, value) VALUES (?, ?)",
-            (MIGRATION_KEY, utc_now()),
-        )
+        usageConn.execute(f"PRAGMA user_version = {MIGRATED_VERSION}")

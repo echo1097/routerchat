@@ -80,7 +80,7 @@ class UsageLedgerTest(unittest.TestCase):
         return self.query(paths.usageDbPath(), "SELECT kind, source_id, provider, cost FROM usage_entries ORDER BY source_id")
 
     def migrationFlag(self):
-        return self.query(paths.usageDbPath(), "SELECT value FROM usage_meta WHERE key = ?", (migrateLegacyUsage.MIGRATION_KEY,))
+        return [row for row in self.query(paths.usageDbPath(), "PRAGMA user_version") if row[0]]
 
     def addLegacyMessage(self, messageId, cost):
         chat = self.client.post("/api/chats", json={"title": "Legacy"}).json()["chat"]
@@ -106,7 +106,7 @@ class UsageLedgerTest(unittest.TestCase):
         conn = sqlite3.connect(paths.usageDbPath())
         with conn:
             conn.execute("DELETE FROM usage_entries")
-            conn.execute("DELETE FROM usage_meta")
+            conn.execute("PRAGMA user_version = 0")
         conn.close()
 
     def testUsageDatabaseSitsNextToTheMainDatabase(self):

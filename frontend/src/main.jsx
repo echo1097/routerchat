@@ -13,6 +13,7 @@ import { useTour } from "./tour/useTour.js";
 import { WRITE_TOUR_STEPS } from "./tour/tourSteps.js";
 import { useNotifications } from "./notifications/useNotifications.js";
 import { useAttachments } from "./attachments/useAttachments.js";
+import { totalAttachmentBytes } from "./attachments/attachmentsApi.js";
 import {
   supportsImageInput,
   requiresThinking,
@@ -45,6 +46,8 @@ import {
   promptModelName,
 } from "./modelFormatting.js";
 import { api, responseErrorDetail } from "./api.js";
+import { useProviders } from "./providers/useProviders.js";
+import { useModels } from "./providers/useModels.js";
 import { exportFileName, shortTitle, storyExportFileName } from "./textFormatting.js";
 import { updateLorebookStream } from "./lorebook/lorebookUpdateApi.js";
 import { repairLorebook as repairLorebookStream } from "./lorebook/repairLorebookApi.js";
@@ -109,7 +112,6 @@ function App() {
   const [latestStoryGeneration, setLatestStoryGeneration] = useState(null);
   const [writeGenerationMode, setWriteGenerationMode] = useState("edit");
   const [writeHistoryEntries, setWriteHistoryEntries] = useState([]);
-  const [models, setModels] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
   const [temporaryChat, setTemporaryChat] = useState(false);
   const [tempChatId, setTempChatId] = useState(null);
@@ -135,7 +137,6 @@ function App() {
   const [showPromptNavigationRail, setShowPromptNavigationRail] = useState(
     localAppSettings.show_prompt_navigation_rail !== false,
   );
-  const [keyStatus, setKeyStatus] = useState({ has_key: false });
   const [prompt, setPrompt] = useState("");
   const [openingMessage] = useState(() => pickOpeningMessage());
   const [writingOpeningMessage] = useState(() => pickOpeningMessage("write"));
@@ -164,10 +165,19 @@ function App() {
   const tour = useTour();
   const writeTour = useTour(WRITE_TOUR_STEPS);
   const { notifications, setStatus, showToast } = useNotifications();
-  const promptAttachments = useAttachments({
-    allowImages: supportsImageInput(models, settings.model),
-    onError: showToast,
+  const [chatProviderId, setChatProviderId] = useState(null);
+  const [storyProviderId, setStoryProviderId] = useState(null);
+  const {
+    activeProvider,
+    providerFor,
+    keyStatus,
+    loadKeyStatus,
+    saveKey: saveProviderKey,
+    switchProvider: switchActiveProvider,
+  } = useProviders({
+    onError: (error) => setStatus(error.message),
   });
+  const { models, fetchModels } = useModels();
   const [tourForceThinking, setTourForceThinking] = useState(false);
   const [tourSampleChatActive, setTourSampleChatActive] = useState(false);
   const abortRef = useRef(null);
@@ -473,6 +483,7 @@ function App() {
     chapterContentRef.current = nextChapter?.content || "";
     setChapterSaveState("");
     setStoryWorkspaceView(nextView);
+    setStoryProviderId(story.provider || null);
     setSettings({
       model: story.model,
       temperature: story.temperature,
@@ -573,6 +584,26 @@ function App() {
     : stories;
   const activeMessages = isWritingMode ? [] : messages;
   const activeConversationId = isWritingMode ? activeStoryId : activeChatId;
+  const chatIsPinned = Boolean(!isWritingMode && activeChatId && activeMessages.length > 0);
+  const pinnedProviderId = isWritingMode
+    ? (activeStoryId ? storyProviderId : null)
+    : (chatIsPinned ? chatProviderId : null);
+  const currentProvider = providerFor(pinnedProviderId) || activeProvider;
+  const currentProviderId = currentProvider.id;
+  const usesActiveProvider = currentProviderId === activeProvider.id;
+  const currentProviderHasKey = usesActiveProvider ? keyStatus.has_key : Boolean(currentProvider.hasKey);
+  const earlierAttachmentBytes = activeMessages.reduce(
+    (total, message) => total + totalAttachmentBytes(message.attachments),
+    0,
+  );
+  const promptAttachments = useAttachments({
+    allowImages: supportsImageInput(models, settings.model),
+    maxImageBytes: currentProvider.capabilities.maxImageBytes,
+    maxRequestAttachmentBytes: currentProvider.capabilities.maxRequestAttachmentBytes,
+    earlierBytes: earlierAttachmentBytes,
+    providerName: currentProvider.name,
+    onError: showToast,
+  });
   const activeModelLocked = Boolean(!isWritingMode && activeConversationId && activeMessages.length > 0);
   const activeChapterTitle = chapters.find((chapter) => chapter.id === activeChapterId)?.title || "Chapter";
 
@@ -782,9 +813,9 @@ function App() {
 
   const loadModels = useCallback(async () => {
     try {
-      const payload = await api("/api/models");
-      const loaded = payload.models || [];
-      setModels(loaded);
+      const loaded = await fetchModels(usesActiveProvider ? undefined : currentProviderId);
+      if (!loaded) return;
+
       setSettings((current) => {
         const currentModel = loaded.find((model) => model.id === current.model);
         if (
@@ -818,7 +849,7 @@ function App() {
     } catch (error) {
       setStatus(error.message);
     }
-  }, [activeChatId, activeStoryId, defaultModel, hideBatchModels, hideFreeModels]);
+  }, [activeChatId, activeStoryId, currentProviderId, defaultModel, hideBatchModels, hideFreeModels, usesActiveProvider]);
 
   const loadAppSettings = useCallback(async () => {
     try {
@@ -909,14 +940,6 @@ function App() {
     }
   }, [activeChatId, activeStoryId]);
 
-  const loadKeyStatus = useCallback(async () => {
-    try {
-      setKeyStatus(await api("/api/settings/key-status"));
-    } catch (error) {
-      setStatus(error.message);
-    }
-  }, []);
-
   useEffect(() => {
     loadKeyStatus();
     loadAppSettings();
@@ -965,6 +988,7 @@ function App() {
     setTemporaryChat(isTemporary);
     setTempChatId(isTemporary ? chat.id : null);
     setActiveChatId(chat.id);
+    setChatProviderId(chat.provider || null);
     setMessages(nextMessages || []);
     setSettings({
       model: chat.model,
@@ -1687,16 +1711,42 @@ function App() {
 
   async function saveKey(apiKey) {
     try {
-      const payload = await api("/api/settings/openrouter-key", {
-        method: "POST",
-        body: JSON.stringify({ api_key: apiKey }),
-      });
-      setKeyStatus(payload);
-      setStatus("OpenRouter connected");
+      await saveProviderKey(apiKey);
+      setStatus(`${activeProvider.name} connected`);
       await loadModels();
     } catch (error) {
       setStatus(error.message);
       throw error;
+    }
+  }
+
+  async function switchProvider(providerId) {
+    try {
+      const switchedProvider = await switchActiveProvider(providerId);
+      if (switchedProvider) showToast(`Switched to ${switchedProvider.name}`);
+      if (!chatIsPinned) setChatProviderId(providerId);
+
+      await loadAppSettings();
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function moveStoryToActiveProvider() {
+    if (!activeStoryId || isStreaming || lorebookUpdating) return;
+
+    try {
+      const story = await storyApi.moveStoryToProvider(activeStoryId, activeProvider.id);
+      setStoryProviderId(story.provider);
+      setSettings((current) => ({
+        ...current,
+        model: story.model,
+        lorebook_model: story.lorebook_model || "",
+      }));
+      await loadStories();
+      showToast(`Story moved to ${activeProvider.name}`);
+    } catch (error) {
+      setStatus(error.message);
     }
   }
 
@@ -3318,7 +3368,7 @@ function App() {
   const showComposer =
     !(isWritingMode && ["lorebook", "characters", "brainstorm"].includes(storyWorkspaceView) && !showLandingComposer);
   const composerAcceptsFiles =
-    showComposer && !(isWritingMode && showLandingComposer) && keyStatus.has_key;
+    showComposer && !(isWritingMode && showLandingComposer) && currentProviderHasKey;
   const filesDraggedOverApp = useFileDrop({
     enabled: composerAcceptsFiles,
     onFiles: promptAttachments.addFiles,
@@ -3423,7 +3473,7 @@ function App() {
             prompt={brainstormPrompt}
             setPrompt={setBrainstormPrompt}
             isStreaming={isStreaming}
-            disabled={!keyStatus.has_key}
+            disabled={!currentProviderHasKey}
             modelLabel={promptModelName(models, settings.model)}
             thinkingEnabled={effectiveThinkingEnabled(
               models, settings.model, settings.thinking_enabled,
@@ -3534,7 +3584,7 @@ function App() {
               contextKey={`${activeChatId}:${activeStoryId}:${activeChapterId}`}
               value={prompt}
               setValue={setPrompt}
-              disabled={!keyStatus.has_key}
+              disabled={!currentProviderHasKey}
               isStreaming={isStreaming}
               settings={settings}
               models={models}
@@ -3555,6 +3605,7 @@ function App() {
               dragActive={filesDraggedOverApp}
               webSearchEnabled={settings.web_search_enabled}
               onToggleWebSearch={toggleWebSearch}
+              provider={currentProvider}
             />
           )
         ) : (
@@ -3562,7 +3613,7 @@ function App() {
               contextKey={`${activeChatId}:${activeStoryId}:${activeChapterId}`}
             value={prompt}
             setValue={setPrompt}
-            disabled={!keyStatus.has_key}
+            disabled={!currentProviderHasKey}
             isStreaming={isStreaming}
             settings={settings}
             models={models}
@@ -3596,6 +3647,7 @@ function App() {
             dragActive={filesDraggedOverApp}
             webSearchEnabled={settings.web_search_enabled}
             onToggleWebSearch={toggleWebSearch}
+            provider={currentProvider}
           />
         ))}
       </main>
@@ -3605,6 +3657,11 @@ function App() {
         onClose={() => setSettingsOpen(false)}
         keyStatus={keyStatus}
         onSaveKey={saveKey}
+        onSwitchProvider={switchProvider}
+        provider={activeProvider}
+        conversationProvider={currentProvider}
+        conversationKind={isWritingMode ? "story" : "chat"}
+        onMoveToProvider={isWritingMode && activeStoryId ? moveStoryToActiveProvider : null}
         chats={chats}
         activeChatId={activeChatId}
         models={models}

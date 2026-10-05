@@ -83,6 +83,7 @@ export function isBatchModel(model) {
 
 export function isFreeModel(model) {
   if (String(model.id || "").endsWith(":free")) return true;
+  if (model.pricing?.prompt == null && model.pricing?.completion == null) return false;
   const prompt = Number(model.pricing?.prompt || 0);
   const completion = Number(model.pricing?.completion || 0);
   return prompt === 0 && completion === 0;

@@ -10,8 +10,8 @@ from backend.chats.chatRows import row_to_chat, row_to_message
 from backend.core.database import get_db, message_order_clause, next_message_order
 from backend.core.reasoningEffort import coerce_reasoning_effort
 from backend.core.utils import coerce_bool_int, float_or_none, int_or_none, utc_now
-from backend.providers.openrouter.client import DEFAULT_MAX_TOKENS
-from backend.providers.openrouter.models import default_model_id
+from backend.providers.base import DEFAULT_MAX_TOKENS
+from backend.providers.registry import getActiveProvider, providerIdForImport
 from backend.webSearch.sources import normalize_sources, serialize_sources
 
 router = APIRouter()
@@ -63,20 +63,26 @@ def import_chats(payload: ChatImportRequest) -> dict[str, Any]:
             chat_id_map[source_id] = chat_id
             imported_chat_ids.add(chat_id)
             imported_temperature = float_or_none(item.get("temperature"))
+            importedModel = str(item.get("model") or "")
+            importedProvider = providerIdForImport(item.get("provider"), importedModel)
+            if not importedModel:
+                importedModel = getActiveProvider().defaultModelId()
+                importedProvider = getActiveProvider().id
 
             conn.execute(
                 """
                 INSERT INTO chats (
-                  id, title, model, system_prompt, temperature, max_tokens,
+                  id, title, model, provider, system_prompt, temperature, max_tokens,
                   thinking_enabled, reasoning_effort, web_search_enabled, pinned,
                   created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     chat_id,
                     str(item.get("title") or "Imported chat")[:120],
-                    str(item.get("model") or default_model_id()),
+                    importedModel,
+                    importedProvider,
                     str(item.get("system_prompt") or ""),
                     0.7 if imported_temperature is None else imported_temperature,
                     int_or_none(item.get("max_tokens")) or DEFAULT_MAX_TOKENS,

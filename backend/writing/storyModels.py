@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 from backend.brainstorm.brainstormModels import StoryArchiveBrainstorm
 from backend.core.reasoningEffort import LenientReasoningEffort, ReasoningEffort
 from backend.lorebook.lorebookModels import StoryArchiveLorebookEntry
-from backend.providers.openrouter.client import DEFAULT_MAX_TOKENS
+from backend.providers.base import DEFAULT_MAX_TOKENS
 
 
 class StoryCreateRequest(BaseModel):
@@ -66,6 +66,7 @@ class StoryArchiveStory(BaseModel):
     language: str = "English"
     synopsis: str = ""
     model: str | None = None
+    provider: str | None = None
     system_prompt: str = ""
     temperature: float = 0.7
     max_tokens: int = Field(default=DEFAULT_MAX_TOKENS, gt=0)

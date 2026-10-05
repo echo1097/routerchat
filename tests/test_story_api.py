@@ -19,11 +19,11 @@ import backend.core.database as database
 import backend.core.utils as utils
 import backend.providers.openrouter.client as openrouterClient
 import backend.core.reasoningEffort as reasoningEffort
-import backend.settings.settingsRoutes as settingsRoutes
 import backend.tos.loadTos as loadTos
 import backend.tos.tosAcceptance as tosAcceptance
 import backend.providers.openrouter.models as models
 import backend.providers.openrouter.requestOptions as requestOptions
+from backend.providers.registry import getActiveProvider, getProvider
 import backend.core.migrations as migrations
 import backend.core.paths as paths
 from backend.brainstorm.brainstormLayout import (
@@ -419,9 +419,9 @@ class StoryApiTest(unittest.TestCase):
                 return FakeResponse()
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.writing.storyGeneration.httpx.AsyncClient", FakeClient
+            "backend.providers.streaming.httpx.AsyncClient", FakeClient
         ), patch(
-            "backend.lorebook.runUpdate.httpx.AsyncClient", FakeClient
+            "backend.providers.streaming.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
                 f"/api/stories/{story['id']}/chapters/{chapter['id']}/generate/stream",
@@ -479,7 +479,7 @@ class StoryApiTest(unittest.TestCase):
                 return fakeLorebookStream(content)
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.lorebook.runUpdate.httpx.AsyncClient", FakeClient
+            "backend.providers.streaming.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
                 f"/api/stories/{story['id']}/lorebook/update",
@@ -519,7 +519,7 @@ class StoryApiTest(unittest.TestCase):
 
         endpoint = "update/stream" if streaming else "update"
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.lorebook.runUpdate.httpx.AsyncClient", FakeClient
+            "backend.providers.streaming.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
                 f"/api/stories/{story['id']}/lorebook/{endpoint}",
@@ -576,7 +576,7 @@ class StoryApiTest(unittest.TestCase):
                 return FakeResponse()
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.brainstorm.generateBrainstorm.httpx.AsyncClient", FakeClient
+            "backend.providers.streaming.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
                 f"/api/stories/{story['id']}/brainstorm/generate/stream",
@@ -643,7 +643,7 @@ class StoryApiTest(unittest.TestCase):
                 return FakeResponse()
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.lorebook.timelineRepair.httpx.AsyncClient", FakeClient
+            "backend.providers.streaming.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
                 f"/api/stories/{story['id']}/lorebook/timeline/repair/stream",
@@ -684,7 +684,7 @@ class StoryApiTest(unittest.TestCase):
                 return FakeResponse()
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.lorebook.generateEntry.httpx.AsyncClient", FakeClient
+            "backend.providers.streaming.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
                 f"/api/stories/{story['id']}/lorebook/generate/stream",
@@ -725,7 +725,7 @@ class StoryApiTest(unittest.TestCase):
                 return FakeResponse()
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.lorebook.repairLorebook.httpx.AsyncClient", FakeClient
+            "backend.providers.streaming.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
                 f"/api/stories/{story['id']}/lorebook/repair/stream"
@@ -2258,7 +2258,7 @@ class StoryApiTest(unittest.TestCase):
                 return fakeLorebookStream(content, "weighing whether the lantern matters")
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.lorebook.runUpdate.httpx.AsyncClient", FakeClient
+            "backend.providers.streaming.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
                 f"/api/stories/{story['id']}/lorebook/update/stream",
@@ -3449,9 +3449,9 @@ class StoryApiTest(unittest.TestCase):
             providerClient.__aenter__.return_value = providerClient
             endpoint = chapterRoutes.stream_story_chapter_generation
             with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-                "backend.writing.storyGeneration.httpx.AsyncClient", return_value=providerClient,
+                "backend.providers.streaming.httpx.AsyncClient", return_value=providerClient,
             ), patch("backend.writing.storyGeneration.run_lorebook_update") as lorebookRun, patch.object(
-                storyGeneration, "fetch_generation_usage", waitForUsage,
+                getActiveProvider(), "fetchFinalUsage", waitForUsage,
             ):
                 response = await endpoint(story["id"], chapter["id"], chatModels.StreamMessageRequest(
                     message="continue", model="test/model", write_generation_mode=mode,
@@ -3598,7 +3598,7 @@ class StoryApiTest(unittest.TestCase):
                 fakeClient.__aenter__.return_value = fakeClient
                 fakeClient.stream = lambda *args, **kwargs: fakeLorebookStream("Partial prose.")
                 with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-                    "backend.writing.storyGeneration.httpx.AsyncClient", return_value=fakeClient,
+                    "backend.providers.streaming.httpx.AsyncClient", return_value=fakeClient,
                 ) as providerClient:
                     asyncio.run(disconnectResponse())
                     if stopEvent:
@@ -3896,7 +3896,7 @@ class StoryApiTest(unittest.TestCase):
                 return FakeResponse()
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.writing.storyGeneration.httpx.AsyncClient", FakeClient
+            "backend.providers.streaming.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
                 f"/api/stories/{story['id']}/chapters/{chapter['id']}/generate/stream",
@@ -3983,7 +3983,7 @@ class StoryApiTest(unittest.TestCase):
                 return FakeResponse()
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.writing.storyGeneration.httpx.AsyncClient", FakeClient
+            "backend.providers.streaming.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
                 f"/api/stories/{story['id']}/chapters/{chapter['id']}/generate/stream",
@@ -4029,6 +4029,7 @@ class StoryApiTest(unittest.TestCase):
             {
                 "backend.writing.storyRoutes",
                 "backend.writing.storyImportExport",
+                "backend.writing.storyProviderRoutes",
                 "backend.writing.chapterRoutes",
                 "backend.brainstorm.brainstormRoutes",
                 "backend.brainstorm.generateBrainstorm",
@@ -4046,16 +4047,151 @@ class StoryApiTest(unittest.TestCase):
             detail="Could not reach OpenRouter.",
         )
 
-        with patch.object(settingsRoutes, "read_openrouter_key", return_value="test-key"):
-            with patch.object(settingsRoutes, "validate_key", side_effect=transportError):
+        with patch.object(getActiveProvider(), "readKey", return_value="test-key"):
+            with patch.object(getActiveProvider(), "validateKey", side_effect=transportError):
                 statusResponse = self.client.get("/api/settings/key-status")
 
-            with patch.object(settingsRoutes, "fetch_models_from_openrouter", side_effect=transportError):
+            with patch.object(getActiveProvider(), "listModels", side_effect=transportError):
                 modelsResponse = self.client.get("/api/models")
 
         self.assertEqual(statusResponse.status_code, 200)
         self.assertTrue(statusResponse.json()["has_key"])
         self.assertEqual(modelsResponse.status_code, 502)
+
+    def test_providers_route_lists_openrouter_as_the_active_provider(self):
+        response = self.client.get("/api/providers")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["cache-control"], "no-store")
+        payload = response.json()
+        self.assertEqual(payload["active"], "openrouter")
+        self.assertEqual(
+            [provider["id"] for provider in payload["providers"]], ["openrouter", "anthropic"]
+        )
+        provider = payload["providers"][0]
+        self.assertTrue(provider["active"])
+        self.assertEqual(provider["name"], "OpenRouter")
+        self.assertEqual(
+            provider["capabilities"],
+            {
+                "webSearch": True,
+                "pdfParsing": True,
+                "cost": True,
+                "routingOptions": True,
+                "transcription": True,
+                "freeModels": True,
+                "maxImageBytes": None,
+                "maxRequestAttachmentBytes": None,
+            },
+        )
+
+    def test_switching_the_active_provider_is_saved_and_changes_the_models_route(self):
+        response = self.client.post("/api/providers/active", json={"id": "anthropic"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["active"], "anthropic")
+        self.assertEqual(self.client.get("/api/providers").json()["active"], "anthropic")
+        self.assertEqual(getActiveProvider().id, "anthropic")
+
+        with patch.object(getActiveProvider(), "readKey", return_value=None):
+            modelsResponse = self.client.get("/api/models")
+        self.assertEqual(modelsResponse.status_code, 401)
+        self.assertIn("Anthropic", modelsResponse.json()["detail"])
+
+        unknownResponse = self.client.post("/api/providers/active", json={"id": "nope"})
+        self.assertEqual(unknownResponse.status_code, 404)
+
+    def test_story_keeps_its_provider_after_the_active_provider_changes(self):
+        story = self.client.post("/api/stories", json={"title": "Pinned"}).json()["story"]
+        self.assertEqual(story["provider"], "openrouter")
+
+        self.client.post("/api/providers/active", json={"id": "anthropic"})
+
+        loaded = self.client.get(f"/api/stories/{story['id']}").json()["story"]
+        self.assertEqual(loaded["provider"], "openrouter")
+
+        with patch.object(getProvider("openrouter"), "readKey", return_value=None):
+            with patch.object(getProvider("anthropic"), "readKey", return_value="sk-ant-test"):
+                response = self.client.post(f"/api/stories/{story['id']}/lorebook/repair/stream")
+        self.assertEqual(response.status_code, 401)
+        self.assertIn("OpenRouter", response.json()["detail"])
+
+        newStory = self.client.post("/api/stories", json={"title": "Fresh"}).json()["story"]
+        self.assertEqual(newStory["provider"], "anthropic")
+
+    def test_moving_a_story_switches_provider_and_resets_its_models(self):
+        story = self.client.post(
+            "/api/stories",
+            json={"title": "Mover", "model": "test/story-model", "lorebook_model": "test/lore-model"},
+        ).json()["story"]
+
+        response = self.client.post(f"/api/stories/{story['id']}/provider", json={"id": "anthropic"})
+
+        self.assertEqual(response.status_code, 200)
+        moved = response.json()["story"]
+        self.assertEqual(moved["provider"], "anthropic")
+        self.assertEqual(moved["model"], getProvider("anthropic").defaultModelId())
+        self.assertEqual(moved["lorebook_model"], "")
+
+        unknown = self.client.post(f"/api/stories/{story['id']}/provider", json={"id": "nope"})
+        self.assertEqual(unknown.status_code, 404)
+        missing = self.client.post("/api/stories/missing/provider", json={"id": "anthropic"})
+        self.assertEqual(missing.status_code, 404)
+
+    def test_chat_remembers_the_provider_it_was_created_with(self):
+        chat = self.client.post("/api/chats", json={}).json()["chat"]
+        self.assertEqual(chat["provider"], "openrouter")
+
+        self.client.post("/api/providers/active", json={"id": "anthropic"})
+
+        loaded = self.client.get(f"/api/chats/{chat['id']}").json()["chat"]
+        self.assertEqual(loaded["provider"], "openrouter")
+        self.assertEqual(self.client.post("/api/chats", json={}).json()["chat"]["provider"], "anthropic")
+
+    def test_models_route_can_ask_for_a_specific_provider(self):
+        self.client.post("/api/providers/active", json={"id": "anthropic"})
+
+        with patch.object(getProvider("openrouter"), "readKey", return_value=None):
+            with patch.object(getProvider("openrouter"), "cachedModels", return_value=[]):
+                response = self.client.get("/api/models?provider=openrouter")
+
+        self.assertEqual(response.status_code, 401)
+        self.assertIn("OpenRouter", response.json()["detail"])
+
+    def test_provider_column_migration_marks_claude_rows_as_anthropic(self):
+        from backend.core.database import get_db
+        from backend.core.migrations import ensureProviderColumns
+
+        chat = self.client.post("/api/chats", json={"model": "claude-sonnet-5-5"}).json()["chat"]
+        other = self.client.post("/api/chats", json={"model": "anthropic/claude-sonnet-5.5"}).json()["chat"]
+
+        with get_db() as conn:
+            conn.execute("ALTER TABLE chats DROP COLUMN provider")
+            conn.execute("ALTER TABLE stories DROP COLUMN provider")
+            ensureProviderColumns(conn)
+            rows = {
+                row["id"]: row["provider"]
+                for row in conn.execute("SELECT id, provider FROM chats").fetchall()
+            }
+
+        self.assertEqual(rows[chat["id"]], "anthropic")
+        self.assertEqual(rows[other["id"]], "openrouter")
+
+    def test_saving_a_provider_key_validates_it_first(self):
+        anthropic = getProvider("anthropic")
+
+        async def acceptKey(_apiKey):
+            return {}
+
+        with patch.object(anthropic, "validateKey", side_effect=acceptKey):
+            with patch.object(anthropic, "writeKey") as writeKey:
+                response = self.client.post(
+                    "/api/providers/anthropic/key", json={"api_key": " sk-ant-test "}
+                )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["has_key"])
+        writeKey.assert_called_once_with("sk-ant-test")
 
     def test_openrouter_headers_use_the_public_routerchat_identity(self):
         self.assertEqual(
@@ -4115,7 +4251,7 @@ class StoryApiTest(unittest.TestCase):
             requestOptions.resolved_reasoning_effort("test/mandatory", "low"), "medium"
         )
 
-        with patch.object(settingsRoutes, "read_openrouter_key", return_value=None):
+        with patch.object(getActiveProvider(), "readKey", return_value=None):
             modelsResponse = self.client.get("/api/models")
         self.assertEqual(modelsResponse.headers["cache-control"], "no-store")
         responseModel = next(
@@ -4180,7 +4316,7 @@ class StoryApiTest(unittest.TestCase):
                 return FakeResponse()
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.chats.streamMessage.httpx.AsyncClient", FakeClient
+            "backend.providers.streaming.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
                 f"/api/chats/{chat['id']}/messages/stream",
@@ -4721,7 +4857,7 @@ class StoryApiTest(unittest.TestCase):
                 return FakeResponse()
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.brainstorm.generateBrainstorm.httpx.AsyncClient", FakeClient
+            "backend.providers.streaming.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
                 f"/api/stories/{story['id']}/brainstorm/generate/stream",
@@ -4776,7 +4912,7 @@ class StoryApiTest(unittest.TestCase):
             node for node in graph["nodes"] if node["node_type"] == "idea"
         )
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.brainstorm.generateBrainstorm.httpx.AsyncClient", FakeClient
+            "backend.providers.streaming.httpx.AsyncClient", FakeClient
         ):
             branchResponse = self.client.post(
                 f"/api/stories/{story['id']}/brainstorm/generate/stream",
@@ -4830,7 +4966,7 @@ class StoryApiTest(unittest.TestCase):
                 return FakeResponse()
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.brainstorm.generateBrainstorm.httpx.AsyncClient", FakeClient
+            "backend.providers.streaming.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
                 f"/api/stories/{story['id']}/brainstorm/generate/stream",

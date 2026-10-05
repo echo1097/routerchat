@@ -1,11 +1,10 @@
 import asyncio
-import json
 import sqlite3
 import time
 import uuid
+from contextlib import aclosing
 from typing import Any, AsyncIterator
 
-import httpx
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
@@ -27,21 +26,11 @@ from backend.chats.chatModels import StreamMessageRequest
 from backend.core.database import get_db
 from backend.core.streamEvents import stream_event
 from backend.core.utils import utc_now
-from backend.providers.openrouter.apiKey import read_openrouter_key
-from backend.providers.openrouter.client import (
-    OPENROUTER_BASE_URL,
-    OPENROUTER_TIMEOUT,
-    headers_for_key,
-)
-from backend.providers.openrouter.errors import openrouter_error_message
-from backend.providers.openrouter.models import model_supports_structured_output
-from backend.providers.openrouter.requestOptions import (
-    effective_thinking_enabled,
-    enabled_reasoning_config,
-    openrouter_provider_options,
-    openrouter_request_model,
-)
-from backend.providers.openrouter.usage import fetch_generation_usage, normalize_usage
+from backend.providers.base import ChatOptions
+from backend.providers.registry import providerForRow
+from backend.writing.storyProvider import storyProvider
+from backend.providers.streaming import streamChat
+from backend.usage.recordUsage import recordUsage
 
 router = APIRouter()
 
@@ -56,38 +45,35 @@ async def stream_brainstorm_generation(
     prompt_node: sqlite3.Row,
     prompt_edges: list[sqlite3.Row],
 ) -> AsyncIterator[bytes]:
-    api_key = read_openrouter_key()
-    if not api_key:
-        raise HTTPException(status_code=401, detail="Add an OpenRouter API key first.")
+    provider = providerForRow(story)
+    api_key = provider.requireKey()
 
     prompt_node_id = prompt_node["id"]
     generation_row_id = str(uuid.uuid4())
     messages = build_brainstorm_messages(
         story, chapters, lorebook_rows, branch_nodes, payload.message, payload.brainstorm_idea_count
     )
-    body: dict[str, Any] = {
-        "model": openrouter_request_model(payload.model, payload.nitro_mode),
-        "messages": messages,
-        "temperature": payload.temperature,
-        "max_tokens": payload.max_tokens,
-        "stream": True,
-    }
-    providerOptions = openrouter_provider_options()
-    if providerOptions:
-        body["provider"] = providerOptions
 
-    effectiveThinkingEnabled = effective_thinking_enabled(
+    responseFormat = None
+    if provider.supportsStructuredOutput(payload.model):
+        responseFormat = brainstorm_response_format(payload.brainstorm_idea_count)
+
+    request = provider.buildRequest(
+        messages,
+        payload.model,
+        ChatOptions(
+            apiKey=api_key,
+            temperature=payload.temperature,
+            maxTokens=payload.max_tokens,
+            nitro=payload.nitro_mode,
+            thinkingEnabled=payload.thinking_enabled,
+            reasoningEffort=payload.reasoning_effort,
+            responseFormat=responseFormat,
+        ),
+    )
+    effectiveThinkingEnabled = provider.effectiveThinkingEnabled(
         payload.model, payload.thinking_enabled
     )
-    reasoningConfig = enabled_reasoning_config(
-        payload.model, payload.thinking_enabled, payload.reasoning_effort
-    )
-    if reasoningConfig:
-        body["reasoning"] = reasoningConfig
-    if model_supports_structured_output(payload.model):
-        body["response_format"] = brainstorm_response_format(
-            payload.brainstorm_idea_count
-        )
 
     generated_text: list[str] = []
     reasoning_text: list[str] = []
@@ -124,6 +110,7 @@ async def stream_brainstorm_generation(
             "UPDATE brainstorm_nodes SET status = ?, updated_at = ? WHERE id = ?",
             (status, utc_now(), prompt_node_id),
         )
+        createdAt = utc_now()
         conn.execute(
             """
             INSERT INTO brainstorm_generations (
@@ -154,8 +141,11 @@ async def stream_brainstorm_generation(
                 usage.get("provider_name"),
                 usage.get("generation_time"),
                 usage.get("latency"),
-                utc_now(),
+                createdAt,
             ),
+        )
+        recordUsage(
+            "brainstorm", generation_row_id, payload.model, usage, createdAt, generation_id, provider.id
         )
 
     try:
@@ -169,56 +159,36 @@ async def stream_brainstorm_generation(
             },
         )
         working_started = False
-        async with httpx.AsyncClient(timeout=OPENROUTER_TIMEOUT) as client:
-            async with client.stream(
-                "POST",
-                f"{OPENROUTER_BASE_URL}/chat/completions",
-                headers={**headers_for_key(api_key), "Content-Type": "application/json"},
-                json=body,
-            ) as response:
-                if response.status_code >= 400:
-                    raw_error = (await response.aread()).decode("utf-8", errors="replace")
-                    error = openrouter_error_message(response.status_code, raw_error)
-                    save_generation("failed", error)
-                    yield stream_event("error", error)
+        async with aclosing(streamChat(provider, request)) as events:
+            async for event in events:
+                if event["type"] == "error":
+                    save_generation("failed", event["message"])
+                    yield stream_event("error", event["message"])
                     return
-                generation_id = response.headers.get("X-Generation-Id")
+                if event["type"] == "open":
+                    generation_id = event["generationId"]
+                    continue
+                if event["type"] == "done":
+                    receivedDone = True
+                    continue
 
-                async for line in response.aiter_lines():
-                    if not line.startswith("data:"):
-                        continue
-                    data = line.removeprefix("data:").strip()
-                    if data == "[DONE]":
-                        receivedDone = True
-                        break
-                    try:
-                        chunk = json.loads(data)
-                    except json.JSONDecodeError:
-                        continue
-                    generation_id = generation_id or chunk.get("id")
-                    next_usage = normalize_usage(chunk.get("usage"))
-                    if next_usage:
-                        usage.update(next_usage)
-                    choices = chunk.get("choices") or []
-                    if not choices:
-                        continue
-                    choice = choices[0]
-                    finish_reason = choice.get("finish_reason") or finish_reason
-                    delta = choice.get("delta") or {}
-                    reasoning = delta.get("reasoning") or delta.get("reasoning_content")
-                    if reasoning and effectiveThinkingEnabled:
-                        reasoningValue = str(reasoning)
-                        reasoning_text.append(reasoningValue)
-                        yield stream_event("reasoning", reasoningValue)
-                    content = delta.get("content")
-                    if content:
-                        if not working_started:
-                            working_started = True
-                            yield stream_event("working", None)
-                        generated_text.append(str(content))
+                generation_id = generation_id or event["id"]
+                if event["usage"]:
+                    usage.update(event["usage"])
+                if not event["hasChoice"]:
+                    continue
+                finish_reason = event["finishReason"] or finish_reason
+                if event["reasoning"] and effectiveThinkingEnabled:
+                    reasoning_text.append(event["reasoning"])
+                    yield stream_event("reasoning", event["reasoning"])
+                if event["content"]:
+                    if not working_started:
+                        working_started = True
+                        yield stream_event("working", None)
+                    generated_text.append(event["content"])
 
         if generation_id:
-            generation_usage = await fetch_generation_usage(api_key, generation_id)
+            generation_usage = await provider.fetchFinalUsage(api_key, generation_id)
             if generation_usage:
                 usage.update(generation_usage)
 
@@ -311,8 +281,8 @@ async def generate_brainstorm(
     story_id: str,
     payload: StreamMessageRequest,
 ) -> StreamingResponse:
-    if not read_openrouter_key():
-        raise HTTPException(status_code=401, detail="Add an OpenRouter API key first.")
+    provider = storyProvider(story_id)
+    provider.requireKey()
     if not payload.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
 

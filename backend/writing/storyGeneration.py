@@ -1,12 +1,10 @@
 import asyncio
-import json
 import sqlite3
 import time
 import uuid
+from contextlib import aclosing
 from typing import Any, AsyncIterator
 
-import httpx
-from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 
 from backend.attachments.attachmentContent import (
@@ -21,22 +19,10 @@ from backend.core.streamEvents import stream_event
 from backend.core.utils import display_model_name, format_duration, utc_now
 from backend.lorebook.lorebookHistory import lorebook_run_history_actions
 from backend.lorebook.runUpdate import run_lorebook_update
-from backend.providers.openrouter.apiKey import read_openrouter_key
-from backend.providers.openrouter.client import (
-    OPENROUTER_BASE_URL,
-    OPENROUTER_TIMEOUT,
-    headers_for_key,
-)
-from backend.providers.openrouter.errors import openrouter_error_message
-from backend.providers.openrouter.models import model_supports_structured_output
-from backend.providers.openrouter.requestOptions import (
-    effective_thinking_enabled,
-    enabled_reasoning_config,
-    openrouter_provider_options,
-    openrouter_request_model,
-    prompt_cache_control,
-)
-from backend.providers.openrouter.usage import fetch_generation_usage, normalize_usage
+from backend.providers.base import ChatOptions
+from backend.providers.registry import providerForRow
+from backend.providers.streaming import streamChat
+from backend.usage.recordUsage import recordUsage
 from backend.writing.chapterEdits.anchors import chapter_blocks
 from backend.writing.chapterEdits.applyEdits import (
     append_chapter_text,
@@ -102,9 +88,8 @@ async def stream_story_generation(
         metadata = {**event_metadata, "revision": revision}
         return stream_event(event_type, value, metadata)
 
-    api_key = read_openrouter_key()
-    if not api_key:
-        raise HTTPException(status_code=401, detail="Add an OpenRouter API key first.")
+    provider = providerForRow(story)
+    api_key = provider.requireKey()
 
     generation_mode = effective_generation_mode(
         getattr(payload, "write_generation_mode", None),
@@ -134,35 +119,32 @@ async def stream_story_generation(
         attachmentParts,
         previous_chapters,
     )
-    cacheControl = prompt_cache_control()
+    cacheControl = provider.promptCacheControl()
     if cacheControl:
         messages = mark_story_cache_points(messages, cacheControl)
 
-    body: dict[str, Any] = {
-        "model": openrouter_request_model(payload.model, payload.nitro_mode),
-        "messages": messages,
-        "temperature": payload.temperature,
-        "max_tokens": payload.max_tokens,
-        "stream": True,
-    }
-    if cacheControl:
-        body["session_id"] = story_id
-    providerOptions = openrouter_provider_options()
-    if providerOptions:
-        body["provider"] = providerOptions
-    if needsPdfParser:
-        body["plugins"] = pdf_parser_plugins()
+    responseFormat = None
+    if generation_mode == "edit" and provider.supportsStructuredOutput(payload.model):
+        responseFormat = chapter_edit_response_format()
 
-    effectiveThinkingEnabled = effective_thinking_enabled(
+    request = provider.buildRequest(
+        messages,
+        payload.model,
+        ChatOptions(
+            apiKey=api_key,
+            temperature=payload.temperature,
+            maxTokens=payload.max_tokens,
+            nitro=payload.nitro_mode,
+            thinkingEnabled=payload.thinking_enabled,
+            reasoningEffort=payload.reasoning_effort,
+            responseFormat=responseFormat,
+            plugins=pdf_parser_plugins() if needsPdfParser and provider.capabilities.pdfParsing else [],
+            sessionId=story_id if cacheControl else None,
+        ),
+    )
+    effectiveThinkingEnabled = provider.effectiveThinkingEnabled(
         payload.model, payload.thinking_enabled
     )
-    reasoningConfig = enabled_reasoning_config(
-        payload.model, payload.thinking_enabled, payload.reasoning_effort
-    )
-    if reasoningConfig:
-        body["reasoning"] = reasoningConfig
-    if generation_mode == "edit" and model_supports_structured_output(payload.model):
-        body["response_format"] = chapter_edit_response_format()
 
     generated_text: list[str] = []
     reasoning_text: list[str] = []
@@ -221,80 +203,60 @@ async def stream_story_generation(
             "history",
             save_history("User prompt", " ".join(payload.message.split()), kind="prompt"),
         )
-        async with httpx.AsyncClient(timeout=OPENROUTER_TIMEOUT) as client:
-            async with client.stream(
-                "POST",
-                f"{OPENROUTER_BASE_URL}/chat/completions",
-                headers={**headers_for_key(api_key), "Content-Type": "application/json"},
-                json=body,
-            ) as response:
-                if response.status_code >= 400:
-                    raw_error = (await response.aread()).decode("utf-8", errors="replace")
-                    error_text = openrouter_error_message(response.status_code, raw_error)
+        async with aclosing(streamChat(provider, request)) as events:
+            async for event in events:
+                if event["type"] == "error":
+                    error_text = event["message"]
                     yield emit("error", error_text)
                     return
-                generation_id = response.headers.get("X-Generation-Id") or generation_id
+                if event["type"] == "open":
+                    generation_id = event["generationId"] or generation_id
+                    continue
+                if event["type"] == "done":
+                    received_done = True
+                    continue
 
-                async for line in response.aiter_lines():
-                    if not line.startswith("data:"):
-                        continue
-                    data = line.removeprefix("data:").strip()
-                    if data == "[DONE]":
-                        received_done = True
-                        break
-                    try:
-                        chunk = json.loads(data)
-                    except json.JSONDecodeError:
-                        continue
-                    generation_id = generation_id or chunk.get("id")
-                    next_usage = normalize_usage(chunk.get("usage"))
-                    if next_usage:
-                        usage = next_usage
-                        continue
-                    choices = chunk.get("choices") or []
-                    if not choices:
-                        continue
-                    choice = choices[0]
-                    finish_reason = choice.get("finish_reason") or finish_reason
-                    delta = choice.get("delta") or {}
-                    reasoning = delta.get("reasoning") or delta.get("reasoning_content")
-                    if reasoning and effectiveThinkingEnabled:
-                        if reasoning_started_at is None:
-                            reasoning_started_at = time.perf_counter()
-                        value = str(reasoning)
-                        reasoning_text.append(value)
-                        yield emit("reasoning", value)
-                    content = delta.get("content")
-                    if content:
-                        if reasoning_started_at is not None:
-                            duration_ms = (time.perf_counter() - reasoning_started_at) * 1000
-                            thoughts = "".join(reasoning_text[reasoning_saved_chunks:]).strip()
-                            reasoning_saved_chunks = len(reasoning_text)
-                            yield emit(
-                                "history",
-                                save_history(
-                                    f"{model_label} thought for {format_duration(duration_ms)}",
-                                    detail=thoughts,
-                                    kind="thinking",
-                                ),
-                            )
-                            reasoning_started_at = None
-                        if content_started_at is None:
-                            content_started_at = time.perf_counter()
-                        value = str(content)
-                        generated_text.append(value)
-                        yield emit("content", value)
+                generation_id = generation_id or event["id"]
+                if event["usage"]:
+                    usage = event["usage"]
+                    continue
+                if not event["hasChoice"]:
+                    continue
+                finish_reason = event["finishReason"] or finish_reason
+                if event["reasoning"] and effectiveThinkingEnabled:
+                    if reasoning_started_at is None:
+                        reasoning_started_at = time.perf_counter()
+                    reasoning_text.append(event["reasoning"])
+                    yield emit("reasoning", event["reasoning"])
+                if event["content"]:
+                    if reasoning_started_at is not None:
+                        duration_ms = (time.perf_counter() - reasoning_started_at) * 1000
+                        thoughts = "".join(reasoning_text[reasoning_saved_chunks:]).strip()
+                        reasoning_saved_chunks = len(reasoning_text)
+                        yield emit(
+                            "history",
+                            save_history(
+                                f"{model_label} thought for {format_duration(duration_ms)}",
+                                detail=thoughts,
+                                kind="thinking",
+                            ),
+                        )
+                        reasoning_started_at = None
+                    if content_started_at is None:
+                        content_started_at = time.perf_counter()
+                    generated_text.append(event["content"])
+                    yield emit("content", event["content"])
 
-                if generation_id:
-                    generation_usage = await fetch_generation_usage(api_key, generation_id)
-                    if generation_usage:
-                        usage = {**(usage or {}), **generation_usage}
-                if usage:
-                    yield emit(
-                        "usage",
-                        {"generation_id": generation_id, "model": payload.model, **usage},
-                    )
-                stream_completed = received_done or bool(finish_reason)
+        if generation_id:
+            generation_usage = await provider.fetchFinalUsage(api_key, generation_id)
+            if generation_usage:
+                usage = {**(usage or {}), **generation_usage}
+        if usage:
+            yield emit(
+                "usage",
+                {"generation_id": generation_id, "model": payload.model, **usage},
+            )
+        stream_completed = received_done or bool(finish_reason)
     except (asyncio.CancelledError, GeneratorExit):
         cancelled = True
         stream_completed = received_done or bool(finish_reason)
@@ -491,6 +453,9 @@ async def stream_story_generation(
                     now,
                     story_generation_id,
                 ),
+            )
+            recordUsage(
+                "story", story_generation_id, payload.model, usage, now, generation_id, provider.id
             )
             conn.execute(
                 "UPDATE stories SET updated_at = ? WHERE id = ?",

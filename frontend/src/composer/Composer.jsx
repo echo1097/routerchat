@@ -19,6 +19,7 @@ import { ChevronDown, Square, Plus, SlidersHorizontal } from "lucide-react";
 import { ContextWindowMeter } from "../components/ContextWindowMeter.jsx";
 import { WriteHistoryModal } from "../writing/WriteHistoryModal.jsx";
 import { SystemPromptModal } from "../settings/SystemPromptModal.jsx";
+import { DEFAULT_PROVIDER } from "../providers/providerApi.js";
 
 const WRITE_GENERATION_MODES = {
   edit: "Edit Chapter",
@@ -88,11 +89,15 @@ export function Composer({
   dragActive = false,
   webSearchEnabled = false,
   onToggleWebSearch = null,
+  provider = DEFAULT_PROVIDER,
 }) {
   const canThink = supportsThinking(models, settings.model) || forceShowThinking;
   const canAttach = Boolean(onAttachFiles);
   const canSeeImages = supportsImageInput(models, settings.model);
-  const canWebSearch = Boolean(onToggleWebSearch) && !writeGenerationMode;
+  const canWebSearch = Boolean(onToggleWebSearch) && !writeGenerationMode && provider.capabilities.webSearch;
+  const webSearchOnLabel = provider.capabilities.cost
+    ? `Web search is on, ${provider.name} bills each search`
+    : "Web search is on";
   const reasoningRequired = requiresThinking(models, settings.model);
   const thinkingEnabled = effectiveThinkingEnabled(
     models, settings.model, settings.thinking_enabled,
@@ -260,7 +265,7 @@ export function Composer({
                   aria-label="Web search"
                   title={
                     webSearchEnabled
-                      ? "Web search is on, OpenRouter bills each search"
+                      ? webSearchOnLabel
                       : "Search the web before answering"
                   }
                   className={cx(
@@ -379,7 +384,9 @@ export function Composer({
                 </div>
               </div>
 
-            <VoiceInput value={value} setValue={setValue} onSubmit={onSubmit} disabled={disabled || isStreaming} contextKey={contextKey} />
+            {provider.transcriptionAvailable !== false && (
+              <VoiceInput value={value} setValue={setValue} onSubmit={onSubmit} disabled={disabled || isStreaming} contextKey={contextKey} />
+            )}
             <button
               type="submit"
               data-tour="send-button"

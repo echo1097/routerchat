@@ -6,6 +6,8 @@ from typing import Any
 from fastapi import HTTPException
 from pydantic import BaseModel
 
+from backend.providers.registry import providerForRow
+
 
 def word_count(value: str) -> int:
     return len(value.split())
@@ -66,6 +68,7 @@ def row_to_story(row: sqlite3.Row) -> dict[str, Any]:
         "language": row["language"],
         "synopsis": row["synopsis"],
         "model": row["model"],
+        "provider": providerForRow(row).id,
         "system_prompt": row["system_prompt"],
         "temperature": row["temperature"],
         "max_tokens": row["max_tokens"],

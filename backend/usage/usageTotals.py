@@ -76,7 +76,7 @@ def finishModels(modelTotals):
     return models
 
 
-def getUsage(conn, offsetMinutes=0, now=None, timeZone=None):
+def getUsage(conn, offsetMinutes=0, now=None, timeZone=None, provider=None):
     localZone = ZoneInfo(timeZone) if timeZone else timezone(timedelta(minutes=-offsetMinutes))
     currentTime = now or datetime.now(timezone.utc)
     today = currentTime.astimezone(localZone).date()
@@ -95,63 +95,54 @@ def getUsage(conn, offsetMinutes=0, now=None, timeZone=None):
         date = (startDate + timedelta(days=dayIndex)).isoformat()
         days[date] = {**emptyTotals(), "date": date, "models": {}}
 
-    usageColumns = "model, generation_id, prompt_tokens, completion_tokens, reasoning_tokens, cached_tokens, total_tokens, cost, created_at"
-    transcriptionColumns = usageColumns.replace("cached_tokens", "NULL AS cached_tokens")
-    queries = [
-        f"SELECT {usageColumns} FROM messages WHERE role = 'assistant'",
-        f"SELECT {usageColumns} FROM story_generations WHERE 1 = 1",
-        f"SELECT {usageColumns} FROM brainstorm_generations WHERE 1 = 1",
-        f"SELECT {usageColumns} FROM lorebook_usage WHERE 1 = 1",
-        f"SELECT {transcriptionColumns} FROM transcription_usage WHERE 1 = 1",
-        """SELECT NULL AS model, openrouter_generation_id AS generation_id,
-                  NULL AS prompt_tokens, NULL AS completion_tokens,
-                  NULL AS reasoning_tokens, NULL AS cached_tokens, NULL AS total_tokens, cost, created_at
-           FROM lorebook_update_runs
-           WHERE NOT EXISTS (
-               SELECT 1 FROM lorebook_usage WHERE lorebook_usage.id = lorebook_update_runs.id
-           )""",
-    ]
-    for query in queries:
-        rows = conn.execute(
-            query + " AND julianday(created_at) <= julianday(?) ORDER BY created_at",
-            (upperBound.isoformat(),),
-        )
-        for row in rows:
-            try:
-                rowTime = datetime.fromisoformat(row["created_at"])
-                if rowTime.tzinfo is None:
-                    rowTime = rowTime.replace(tzinfo=timezone.utc)
-                rowDate = rowTime.astimezone(localZone).date()
-            except (TypeError, ValueError, OverflowError):
-                continue
-            if rowTime > upperBound:
-                continue
-            generationId = row["generation_id"]
-            modelId = row["model"] or "unknown"
-            if not generationId or generationId not in seenGenerations:
-                if modelId not in lifetimeTotals:
-                    lifetimeTotals[modelId] = emptyTotals()
-                addUsage(lifetimeTotals[modelId], row)
-                if generationId:
-                    seenGenerations.add(generationId)
-            if rowDate < previousDate:
-                continue
-            if generationId and generationId in seenWeeklyGenerations:
-                continue
+    query = """
+        SELECT model, generation_id, prompt_tokens, completion_tokens, reasoning_tokens,
+               cached_tokens, total_tokens, cost, created_at
+        FROM usage_entries
+        WHERE julianday(created_at) <= julianday(?)
+    """
+    parameters = [upperBound.isoformat()]
+    if provider:
+        query += " AND provider = ?"
+        parameters.append(provider)
+    rows = conn.execute(query + " ORDER BY created_at", parameters)
+
+    for row in rows:
+        try:
+            rowTime = datetime.fromisoformat(row["created_at"])
+            if rowTime.tzinfo is None:
+                rowTime = rowTime.replace(tzinfo=timezone.utc)
+            rowDate = rowTime.astimezone(localZone).date()
+        except (TypeError, ValueError, OverflowError):
+            continue
+        if rowTime > upperBound:
+            continue
+        generationId = row["generation_id"]
+        modelId = row["model"] or "unknown"
+        if not generationId or generationId not in seenGenerations:
+            if modelId not in lifetimeTotals:
+                lifetimeTotals[modelId] = emptyTotals()
+            addUsage(lifetimeTotals[modelId], row)
             if generationId:
-                seenWeeklyGenerations.add(generationId)
-            if rowDate < startDate:
-                addUsage(previousTotals, row)
-                continue
-            addUsage(currentTotals, row)
-            day = days[rowDate.isoformat()]
-            addUsage(day, row)
-            if modelId not in modelTotals:
-                modelTotals[modelId] = emptyTotals()
-            addUsage(modelTotals[modelId], row)
-            modelCost = day["models"].get(modelId, 0)
-            rowCost = cleanNumber(row["cost"])
-            day["models"][modelId] = modelCost + rowCost if modelCost is not None and rowCost is not None else None
+                seenGenerations.add(generationId)
+        if rowDate < previousDate:
+            continue
+        if generationId and generationId in seenWeeklyGenerations:
+            continue
+        if generationId:
+            seenWeeklyGenerations.add(generationId)
+        if rowDate < startDate:
+            addUsage(previousTotals, row)
+            continue
+        addUsage(currentTotals, row)
+        day = days[rowDate.isoformat()]
+        addUsage(day, row)
+        if modelId not in modelTotals:
+            modelTotals[modelId] = emptyTotals()
+        addUsage(modelTotals[modelId], row)
+        modelCost = day["models"].get(modelId, 0)
+        rowCost = cleanNumber(row["cost"])
+        day["models"][modelId] = modelCost + rowCost if modelCost is not None and rowCost is not None else None
 
     return {
         "startDate": startDate.isoformat(),

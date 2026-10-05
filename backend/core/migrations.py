@@ -12,6 +12,14 @@ def ensureCachedTokenColumns(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN cached_tokens INTEGER")
 
 
+def ensureAttachmentPageCountColumn(conn: sqlite3.Connection) -> None:
+    existingColumns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(attachments)").fetchall()
+    }
+    if "page_count" not in existingColumns:
+        conn.execute("ALTER TABLE attachments ADD COLUMN page_count INTEGER")
+
+
 def ensureGenerationSettledColumn(conn: sqlite3.Connection) -> None:
     existingColumns = {
         row["name"] for row in conn.execute("PRAGMA table_info(story_generations)").fetchall()
@@ -69,6 +77,18 @@ def ensure_story_settings_columns(conn: sqlite3.Connection) -> None:
     if "lorebook_model" not in existingColumns:
         #blank means the author never picked one, so the story's own model keeps doing the lorebook work
         conn.execute("ALTER TABLE stories ADD COLUMN lorebook_model TEXT NOT NULL DEFAULT ''")
+
+
+def ensureProviderColumns(conn: sqlite3.Connection) -> None:
+    for table in ("chats", "stories"):
+        existingColumns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        if "provider" in existingColumns:
+            continue
+
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN provider TEXT NOT NULL DEFAULT 'openrouter'")
+        conn.execute(
+            f"UPDATE {table} SET provider = 'anthropic' WHERE model LIKE 'claude-%' AND model NOT LIKE '%/%'"
+        )
 
 
 def ensure_chapter_context_column(conn: sqlite3.Connection) -> None:

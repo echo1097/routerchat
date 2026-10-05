@@ -1,9 +1,8 @@
 import json
 import sqlite3
 import uuid
+from contextlib import aclosing
 from typing import Any, AsyncIterator
-
-import httpx
 
 from backend.core.database import get_db
 from backend.core.utils import display_model_name, utc_now
@@ -26,21 +25,9 @@ from backend.lorebook.updateSchema import (
     LOREBOOK_UPDATE_SYSTEM_PROMPT,
     lorebook_update_response_format,
 )
-from backend.providers.openrouter.apiKey import read_openrouter_key
-from backend.providers.openrouter.client import (
-    OPENROUTER_BASE_URL,
-    OPENROUTER_TIMEOUT,
-    headers_for_key,
-)
-from backend.providers.openrouter.errors import openrouter_error_message
-from backend.providers.openrouter.models import model_supports_structured_output
-from backend.providers.openrouter.requestOptions import (
-    effective_thinking_enabled,
-    enabled_reasoning_config,
-    openrouter_provider_options,
-    openrouter_request_model,
-)
-from backend.providers.openrouter.usage import normalize_usage
+from backend.providers.base import ChatOptions
+from backend.writing.storyProvider import storyProvider
+from backend.providers.streaming import streamChat
 from backend.writing.storyRows import insert_chapter_history_entry, row_to_story
 
 
@@ -55,7 +42,8 @@ async def run_lorebook_update(
     max_tokens: int,
     generation_row_id: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
-    api_key = read_openrouter_key()
+    provider = storyProvider(story_id)
+    api_key = provider.readKey()
     if not api_key or not source_text.strip():
         yield {
             "type": "result",
@@ -102,23 +90,23 @@ async def run_lorebook_update(
         {"role": "system", "content": LOREBOOK_UPDATE_SYSTEM_PROMPT},
         {"role": "user", "content": json.dumps(prompt)},
     ]
-    body: dict[str, Any] = {
-        "model": openrouter_request_model(model, False),
-        "messages": messages,
-        "temperature": 0.1,
-        "max_tokens": max_tokens,
-        "stream": True,
-    }
-    providerOptions = openrouter_provider_options()
-    if providerOptions:
-        body["provider"] = providerOptions
+    responseFormat = None
+    if provider.supportsStructuredOutput(model):
+        responseFormat = lorebook_update_response_format()
 
-    thinking_enabled = effective_thinking_enabled(model, True)
-    reasoning_config = enabled_reasoning_config(model, True, story["reasoning_effort"])
-    if reasoning_config:
-        body["reasoning"] = reasoning_config
-    if model_supports_structured_output(model):
-        body["response_format"] = lorebook_update_response_format()
+    request = provider.buildRequest(
+        messages,
+        model,
+        ChatOptions(
+            apiKey=api_key,
+            temperature=0.1,
+            maxTokens=max_tokens,
+            thinkingEnabled=True,
+            reasoningEffort=story["reasoning_effort"],
+            responseFormat=responseFormat,
+        ),
+    )
+    thinking_enabled = provider.effectiveThinkingEnabled(model, True)
 
     raw_output = ""
     error_text: str | None = None
@@ -130,48 +118,33 @@ async def run_lorebook_update(
     receivedDone = False
     content_started = False
     try:
-        async with httpx.AsyncClient(timeout=OPENROUTER_TIMEOUT) as client, usageRun:
-            async with client.stream(
-                "POST",
-                f"{OPENROUTER_BASE_URL}/chat/completions",
-                headers={**headers_for_key(api_key), "Content-Type": "application/json"},
-                json=body,
-            ) as response:
-                usageRun.generationId = response.headers.get("X-Generation-Id")
-                if response.status_code >= 400:
-                    raw_error = (await response.aread()).decode("utf-8", errors="replace")
-                    error_text = openrouter_error_message(response.status_code, raw_error)
-                else:
-                    async for line in response.aiter_lines():
-                        if not line.startswith("data:"):
-                            continue
-                        data = line.removeprefix("data:").strip()
-                        if data == "[DONE]":
-                            receivedDone = True
-                            break
-                        try:
-                            chunk = json.loads(data)
-                        except json.JSONDecodeError:
-                            continue
+        async with usageRun:
+            async with aclosing(streamChat(provider, request)) as events:
+                async for event in events:
+                    if event["type"] in ("error", "open"):
+                        usageRun.generationId = event["generationId"]
+                    if event["type"] == "error":
+                        error_text = event["message"]
+                        continue
+                    if event["type"] == "open":
+                        continue
+                    if event["type"] == "done":
+                        receivedDone = True
+                        continue
 
-                        usageRun.generationId = usageRun.generationId or chunk.get("id")
-                        usageRun.addUsage(normalize_usage(chunk.get("usage")))
+                    usageRun.generationId = usageRun.generationId or event["id"]
+                    usageRun.addUsage(event["usage"])
 
-                        choices = chunk.get("choices") or []
-                        if not choices:
-                            continue
-                        choice = choices[0]
-                        finish_reason = choice.get("finish_reason") or finish_reason
-                        delta = choice.get("delta") or {}
-                        reasoning = delta.get("reasoning") or delta.get("reasoning_content")
-                        if reasoning and thinking_enabled:
-                            yield {"type": "reasoning", "value": str(reasoning)}
-                        content = delta.get("content")
-                        if content:
-                            if not content_started:
-                                content_started = True
-                                yield {"type": "content"}
-                            generated_text.append(str(content))
+                    if not event["hasChoice"]:
+                        continue
+                    finish_reason = event["finishReason"] or finish_reason
+                    if event["reasoning"] and thinking_enabled:
+                        yield {"type": "reasoning", "value": event["reasoning"]}
+                    if event["content"]:
+                        if not content_started:
+                            content_started = True
+                            yield {"type": "content"}
+                        generated_text.append(event["content"])
 
         raw_output = "".join(generated_text)
         #a cut off response is never valid json anyway, so say why instead of letting the parser guess

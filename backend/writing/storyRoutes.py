@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException
 from backend.attachments.attachmentCleanup import delete_attachments_for_story
 from backend.core.database import get_db
 from backend.core.utils import utc_now
-from backend.providers.openrouter.models import default_model_id
+from backend.providers.registry import getActiveProvider
 from backend.writing.storyBundle import get_story_bundle
 from backend.writing.storyModels import (
     StoryCreateRequest,
@@ -36,16 +36,17 @@ def list_stories() -> dict[str, Any]:
 def create_story(payload: StoryCreateRequest) -> dict[str, Any]:
     now = utc_now()
     story_id = str(uuid.uuid4())
-    model = payload.model or default_model_id()
+    provider = getActiveProvider()
+    model = payload.model or provider.defaultModelId()
     with get_db() as conn:
         conn.execute(
             """
             INSERT INTO stories (
-              id, title, author, language, synopsis, model, system_prompt,
+              id, title, author, language, synopsis, model, provider, system_prompt,
               temperature, max_tokens, thinking_enabled, reasoning_effort, temporary,
               lorebook_auto, lorebook_model, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 story_id,
@@ -54,6 +55,7 @@ def create_story(payload: StoryCreateRequest) -> dict[str, Any]:
                 payload.language,
                 payload.synopsis,
                 model,
+                provider.id,
                 payload.system_prompt,
                 payload.temperature,
                 payload.max_tokens,
@@ -77,7 +79,8 @@ def create_story_with_initial_chapter(
     now = utc_now()
     story_id = str(uuid.uuid4())
     chapter_id = str(uuid.uuid4())
-    model = payload.model or default_model_id()
+    provider = getActiveProvider()
+    model = payload.model or provider.defaultModelId()
     initial_chapter = payload.initial_chapter
     content = initial_chapter.content
 
@@ -85,11 +88,11 @@ def create_story_with_initial_chapter(
         conn.execute(
             """
             INSERT INTO stories (
-              id, title, author, language, synopsis, model, system_prompt,
+              id, title, author, language, synopsis, model, provider, system_prompt,
               temperature, max_tokens, thinking_enabled, reasoning_effort, temporary,
               lorebook_auto, lorebook_model, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 story_id,
@@ -98,6 +101,7 @@ def create_story_with_initial_chapter(
                 payload.language,
                 payload.synopsis,
                 model,
+                provider.id,
                 payload.system_prompt,
                 payload.temperature,
                 payload.max_tokens,

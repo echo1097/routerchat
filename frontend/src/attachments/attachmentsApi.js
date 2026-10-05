@@ -49,7 +49,14 @@ function sizeLimitForKind(kind) {
   return MAX_TEXT_BYTES;
 }
 
-export function rejectionReason(file, allowImages) {
+function providerImageLimit(kind, maxImageBytes) {
+  if (kind !== "image") return null;
+
+  const limit = Number(maxImageBytes) || 0;
+  return limit > 0 && limit < MAX_IMAGE_BYTES ? limit : null;
+}
+
+export function rejectionReason(file, allowImages, providerLimits = {}) {
   const kind = attachmentKind(file.name);
 
   if (!kind) {
@@ -58,6 +65,12 @@ export function rejectionReason(file, allowImages) {
 
   if (kind === "image" && !allowImages) {
     return "This model cannot read images.";
+  }
+
+  const providerLimit = providerImageLimit(kind, providerLimits.maxImageBytes);
+  if (providerLimit && file.size > providerLimit) {
+    const providerName = providerLimits.providerName || "this provider";
+    return `${file.name} is larger than ${readableSize(providerLimit)}, the most ${providerName} accepts for an image.`;
   }
 
   const limit = sizeLimitForKind(kind);
@@ -70,6 +83,27 @@ export function rejectionReason(file, allowImages) {
   }
 
   return null;
+}
+
+export function totalAttachmentBytes(attachments) {
+  return (attachments || []).reduce(
+    (total, attachment) => total + (Number(attachment.size_bytes ?? attachment.size) || 0),
+    0,
+  );
+}
+
+export function requestSizeRejection(file, usedBytes, providerLimits = {}) {
+  const limit = Number(providerLimits.maxRequestAttachmentBytes) || 0;
+  if (limit <= 0 || usedBytes + file.size <= limit) return null;
+
+  const providerName = providerLimits.providerName || "This provider";
+  const limitNote = `${providerName} accepts about ${readableSize(limit)} of files per request`;
+
+  if (providerLimits.earlierBytes > 0) {
+    return `${file.name} does not fit. ${limitNote}, and earlier files in this chat are sent again with every message.`;
+  }
+
+  return `${file.name} does not fit. ${limitNote}.`;
 }
 
 export function attachmentPreviewUrl(attachmentId) {

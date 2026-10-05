@@ -37,6 +37,14 @@ export const storyApi = {
     return payload.story;
   },
 
+  async moveStoryToProvider(storyId, providerId) {
+    const payload = await api(`/api/stories/${encodeURIComponent(storyId)}/provider`, {
+      method: "POST",
+      body: JSON.stringify({ id: providerId }),
+    });
+    return payload.story;
+  },
+
   async deleteStory(storyId) {
     return api(`/api/stories/${encodeURIComponent(storyId)}`, { method: "DELETE" });
   },

@@ -3,7 +3,9 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
-from backend.providers.openrouter.requestOptions import effective_thinking_enabled
+from backend.core.database import get_db
+from backend.providers.base import Provider
+from backend.providers.registry import getActiveProvider, providerForRow
 from backend.webSearch.sources import deserialize_sources
 
 
@@ -12,10 +14,11 @@ def row_to_chat(row: sqlite3.Row) -> dict[str, Any]:
         "id": row["id"],
         "title": row["title"],
         "model": row["model"],
+        "provider": providerForRow(row).id,
         "system_prompt": row["system_prompt"],
         "temperature": row["temperature"],
         "max_tokens": row["max_tokens"],
-        "thinking_enabled": effective_thinking_enabled(
+        "thinking_enabled": providerForRow(row).effectiveThinkingEnabled(
             row["model"], bool(row["thinking_enabled"])
         ),
         "reasoning_effort": row["reasoning_effort"],
@@ -26,6 +29,19 @@ def row_to_chat(row: sqlite3.Row) -> dict[str, Any]:
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
+
+
+def chatProvider(conn: sqlite3.Connection, chatId: str) -> Provider:
+    row = conn.execute("SELECT provider FROM chats WHERE id = ?", (chatId,)).fetchone()
+    return providerForRow(row)
+
+
+def sendingProvider(chatId: str) -> Provider:
+    with get_db() as conn:
+        chat = conn.execute("SELECT provider FROM chats WHERE id = ?", (chatId,)).fetchone()
+        hasMessages = chat is not None and chat_has_messages(conn, chatId)
+
+    return providerForRow(chat) if hasMessages else getActiveProvider()
 
 
 def row_to_folder(row: sqlite3.Row) -> dict[str, Any]:

@@ -1,30 +1,41 @@
 import asyncio
 import sqlite3
 import tempfile
+from contextlib import closing
 import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
+import backend.core.paths as paths
 import backend.lorebook.lorebookUsage as lorebookUsage
 from backend.lorebook.lorebookUsage import LorebookUsage, ensureLorebookUsageTable
 from backend.providers.openrouter.usage import normalize_generation_usage
+from backend.providers.registry import getActiveProvider
+from backend.usage.usageDatabase import getUsageDb, initUsageDb
 
 
 class LorebookUsageTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.tempDir = tempfile.TemporaryDirectory()
         self.addCleanup(self.tempDir.cleanup)
-        self.dbPath = Path(self.tempDir.name) / "usage.sqlite3"
+        self.dbPath = Path(self.tempDir.name) / "lorebook.sqlite3"
+        pathPatch = patch.object(paths, "DB_PATH", Path(self.tempDir.name) / "routerchat.sqlite3")
+        pathPatch.start()
+        self.addCleanup(pathPatch.stop)
+        with closing(getUsageDb()) as usageConn:
+            initUsageDb(usageConn)
         self.lookup = AsyncMock(return_value=None)
         replacements = {
             "get_db": self.getDb,
             "utc_now": lambda: "2026-09-10T12:00:00Z",
-            "fetch_generation_usage": self.lookup,
         }
         for name, value in replacements.items():
             namePatch = patch.object(lorebookUsage, name, value)
             namePatch.start()
             self.addCleanup(namePatch.stop)
+        lookupPatch = patch.object(getActiveProvider(), "fetchFinalUsage", self.lookup)
+        lookupPatch.start()
+        self.addCleanup(lookupPatch.stop)
         with self.getDb() as conn:
             conn.execute("CREATE TABLE stories (id TEXT PRIMARY KEY)")
             conn.execute("CREATE TABLE chapters (id TEXT PRIMARY KEY)")
@@ -40,6 +51,10 @@ class LorebookUsageTest(unittest.IsolatedAsyncioTestCase):
 
     def newRun(self, chapterId=None):
         return LorebookUsage("test-key", "story", "test/model", "generate", chapterId)
+
+    def ledgerRows(self):
+        with closing(getUsageDb()) as conn:
+            return [dict(row) for row in conn.execute("SELECT * FROM usage_entries")]
 
     def savedRows(self):
         with self.getDb() as conn:
@@ -74,6 +89,12 @@ class LorebookUsageTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(saved[0]["total_tokens"], 14)
         self.assertEqual(saved[0]["cost"], 0)
         self.lookup.assert_not_awaited()
+        ledger = self.ledgerRows()
+        self.assertEqual(len(ledger), 1)
+        self.assertEqual(ledger[0]["source_id"], saved[0]["id"])
+        self.assertEqual(ledger[0]["provider"], "openrouter")
+        self.assertEqual(ledger[0]["total_tokens"], 14)
+        self.assertEqual(ledger[0]["cost"], 0)
 
     async def testLookupFillsGapsWithoutErasingStreamingCounts(self):
         self.lookup.return_value = {"cost": 0, "prompt_tokens": None, "completion_tokens": 8, "reasoning_tokens": None, "total_tokens": None}

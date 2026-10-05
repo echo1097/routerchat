@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import re
 from typing import Any
 
@@ -11,14 +10,9 @@ from backend.chats.chatRoutes import get_chat
 from backend.core.appSettings import read_app_setting
 from backend.core.database import get_db, message_order_clause
 from backend.core.reasoningEffort import ReasoningEffort
-from backend.providers.openrouter.apiKey import read_openrouter_key
-from backend.providers.openrouter.client import OPENROUTER_BASE_URL, headers_for_key
-from backend.providers.openrouter.models import model_supports_reasoning
-from backend.providers.openrouter.requestOptions import (
-    enabled_reasoning_config,
-    openrouter_provider_options,
-    openrouter_request_model,
-)
+from backend.providers.base import ChatOptions, ChatRequest, Provider
+from backend.providers.registry import getActiveProvider, providerForRow
+from backend.providers.streaming import sendChat
 
 router = APIRouter()
 
@@ -100,11 +94,12 @@ async def name_chat(chat_id: str) -> dict[str, Any]:
         return get_chat(chat_id)
 
     message = first["content"]
-    api_key = read_openrouter_key()
+    provider = providerForRow(chat)
+    api_key = provider.readKey()
     title = None
     if api_key:
         title = await generate_chat_title(
-            api_key, chat["model"], chat["reasoning_effort"], message
+            api_key, chat["model"], chat["reasoning_effort"], message, provider
         )
 
     #a chat that cannot be named is still better off with the old derived title than a placeholder
@@ -125,30 +120,28 @@ async def name_chat(chat_id: str) -> dict[str, Any]:
 CHAT_TITLE_TIMEOUT = httpx.Timeout(connect=10.0, read=30.0, write=15.0, pool=10.0)
 
 
-def chat_title_request_body(model_id: str, reasoning_effort: ReasoningEffort, message: str) -> dict[str, Any]:
-    body: dict[str, Any] = {
-        "model": openrouter_request_model(model_id, bool(read_app_setting("nitro_mode"))),
-        "messages": [{"role": "user", "content": f"{CHAT_TITLE_PROMPT}\n\n{message}"}],
-        "temperature": 0.3,
-        "max_tokens": 32,
-        "stream": False,
-    }
-
-    providerOptions = openrouter_provider_options()
-    if providerOptions:
-        body["provider"] = providerOptions
-
+def chat_title_request(
+    api_key: str,
+    model_id: str,
+    reasoning_effort: ReasoningEffort,
+    message: str,
+    provider: Provider | None = None,
+) -> ChatRequest:
     #asking for thinking off means passing False here, which still lets a mandatory model keep it
-    reasoningConfig = enabled_reasoning_config(model_id, False, reasoning_effort)
-    if reasoningConfig:
-        body["reasoning"] = reasoningConfig
-        body["reasoning_effort"] = reasoningConfig["effort"]
-    elif model_supports_reasoning(model_id):
-        body["reasoning"] = {"enabled": False, "exclude": True}
-        body["reasoning_effort"] = "none"
-        body["include_reasoning"] = False
-
-    return body
+    return (provider or getActiveProvider()).buildRequest(
+        [{"role": "user", "content": f"{CHAT_TITLE_PROMPT}\n\n{message}"}],
+        model_id,
+        ChatOptions(
+            apiKey=api_key,
+            temperature=0.3,
+            maxTokens=32,
+            stream=False,
+            nitro=bool(read_app_setting("nitro_mode")),
+            thinkingEnabled=False,
+            reasoningEffort=reasoning_effort,
+            explicitReasoning=True,
+        ),
+    )
 
 
 async def generate_chat_title(
@@ -156,25 +149,13 @@ async def generate_chat_title(
     model_id: str,
     reasoning_effort: ReasoningEffort,
     message: str,
+    provider: Provider | None = None,
 ) -> str | None:
-    body = chat_title_request_body(model_id, reasoning_effort, message)
+    provider = provider or getActiveProvider()
+    request = chat_title_request(api_key, model_id, reasoning_effort, message, provider)
 
-    try:
-        async with httpx.AsyncClient(timeout=CHAT_TITLE_TIMEOUT) as client:
-            response = await client.post(
-                f"{OPENROUTER_BASE_URL}/chat/completions",
-                headers={**headers_for_key(api_key), "Content-Type": "application/json"},
-                json=body,
-            )
-        if response.status_code >= 400:
-            return None
-        payload = response.json()
-    except (httpx.HTTPError, json.JSONDecodeError, ValueError):
+    payload = await sendChat(provider, request, CHAT_TITLE_TIMEOUT)
+    if payload is None:
         return None
 
-    choices = payload.get("choices") or []
-    if not choices:
-        return None
-    content = (choices[0].get("message") or {}).get("content")
-
-    return chat_title_from_model_output(content)
+    return chat_title_from_model_output(provider.completionText(payload))

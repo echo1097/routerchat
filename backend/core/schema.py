@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import sqlite3
+from contextlib import closing
+
 from backend.core.database import get_db
 from backend.core.migrations import (
     clean_lorebook_categories,
@@ -15,11 +18,15 @@ from backend.core.migrations import (
     ensure_message_source_column,
     ensure_message_usage_columns,
     ensure_story_settings_columns,
+    ensureProviderColumns,
     ensureCachedTokenColumns,
+    ensureAttachmentPageCountColumn,
     ensureGenerationSettledColumn,
 )
 from backend.lorebook.lorebookUsage import ensureLorebookUsageTable
 from backend.transcription.transcriptionUsage import ensureTranscriptionUsageTable
+from backend.usage.migrateLegacyUsage import migrateLegacyUsage
+from backend.usage.usageDatabase import getUsageDb, initUsageDb
 
 
 def init_db() -> None:
@@ -291,6 +298,7 @@ def init_db() -> None:
         ensure_message_usage_columns(conn)
         ensure_chat_settings_columns(conn)
         ensure_story_settings_columns(conn)
+        ensureProviderColumns(conn)
         ensureGenerationSettledColumn(conn)
         ensure_chapter_context_column(conn)
         ensure_chapter_revision_column(conn)
@@ -302,4 +310,12 @@ def init_db() -> None:
         ensureLorebookUsageTable(conn)
         ensureTranscriptionUsageTable(conn)
         ensureCachedTokenColumns(conn)
+        ensureAttachmentPageCountColumn(conn)
         clean_lorebook_categories(conn)
+
+    with closing(get_db()) as mainConn, closing(getUsageDb()) as usageConn:
+        initUsageDb(usageConn)
+        try:
+            migrateLegacyUsage(mainConn, usageConn)
+        except sqlite3.Error:
+            pass

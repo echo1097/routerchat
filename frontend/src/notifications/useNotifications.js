@@ -40,8 +40,15 @@ export function useNotifications() {
     setNotifications((current) => current.filter((notification) => notification.kind !== kind));
   }
 
+  function isAlreadyShowing(message, kind) {
+    const activeTimers = [...notificationTimersRef.current.values()];
+
+    return activeTimers.some((timers) => timers.kind === kind && timers.message === message);
+  }
+
   function enqueueNotification(message, kind) {
     if (!message) return;
+    if (isAlreadyShowing(message, kind)) return;
 
     const id = `${kind}-${nextNotificationIdRef.current++}`;
     setNotifications((current) => [
@@ -65,7 +72,7 @@ export function useNotifications() {
       );
     }, NOTIFICATION_VISIBLE_MS);
 
-    notificationTimersRef.current.set(id, { kind, closeTimer, removeTimer: null });
+    notificationTimersRef.current.set(id, { kind, message, closeTimer, removeTimer: null });
   }
 
   function setStatus(message) {

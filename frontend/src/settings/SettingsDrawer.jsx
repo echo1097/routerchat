@@ -20,6 +20,8 @@ import { MaskIcon, IconButton } from "../components/IconButton.jsx";
 import { UsagePanel } from "./UsagePanel.jsx";
 import { useChatSystemPromptAutosave } from "./useChatSystemPromptAutosave.js";
 import { useLingeringPage } from "./useLingeringPage.js";
+import { DEFAULT_PROVIDER } from "../providers/providerApi.js";
+import { PROVIDER_OPTIONS } from "../providers/providerOptions.js";
 
 const REASONING_EFFORTS = [
   { value: "low", label: "Low" },
@@ -89,6 +91,11 @@ export function SettingsDrawer({
   onClose,
   keyStatus,
   onSaveKey,
+  onSwitchProvider,
+  provider = DEFAULT_PROVIDER,
+  conversationProvider = provider,
+  conversationKind = "chat",
+  onMoveToProvider,
   chats,
   activeChatId,
   models,
@@ -131,6 +138,7 @@ export function SettingsDrawer({
   onNotify,
 }) {
   const [apiKey, setApiKey] = useState("");
+  const [selectedProviderId, setSelectedProviderId] = useState(provider.id);
   const [query, setQuery] = useState("");
   const [lorebookQuery, setLorebookQuery] = useState("");
   const [saving, setSaving] = useState(false);
@@ -166,7 +174,12 @@ export function SettingsDrawer({
   const selectedModelContext = Number.isFinite(selectedModelContextLimit)
     ? `${formatTokens(selectedModelContextLimit)} context`
     : "";
+  const temperatureLocked = selectedModel?.temperature === false;
   const keyConnected = Boolean(keyStatus.has_key);
+  const providerDiffers = conversationProvider.id !== provider.id;
+  const providerName = provider.name;
+  const keyPlaceholder = provider.keyPlaceholder;
+  const capabilities = provider.capabilities || DEFAULT_PROVIDER.capabilities;
   const activePageIndex = SETTINGS_PAGES.findIndex((page) => page.id === activePage) + 1;
   const selectedCloudChat = chats.find((chat) => chat.id === selectedCloudChatId);
   const activeCloudChat = chats.find((chat) => chat.id === activeChatId);
@@ -301,6 +314,17 @@ export function SettingsDrawer({
     }, shakeMs + holdMs);
   }, [filteredModels.length, query]);
 
+  function chooseProvider(providerId) {
+    setSelectedProviderId(providerId);
+    setApiKey("");
+
+    if (providerId !== provider.id) onSwitchProvider?.(providerId);
+  }
+
+  useEffect(() => {
+    setSelectedProviderId(provider.id);
+  }, [provider.id]);
+
   async function saveKey() {
     if (!apiKey.trim()) return;
     setSaving(true);
@@ -351,7 +375,7 @@ export function SettingsDrawer({
   }
 
   function setSelectedModelAsDefault() {
-    if (!settings.model || settings.model === defaultModel) return;
+    if (providerDiffers || !settings.model || settings.model === defaultModel) return;
     onSetDefaultModel(settings.model);
   }
 
@@ -424,8 +448,8 @@ export function SettingsDrawer({
 
   const StatusDot = (
     <span
-      aria-label={keyConnected ? "OpenRouter key connected" : "OpenRouter key not set"}
-      title={keyConnected ? "OpenRouter key connected" : "OpenRouter key not set"}
+      aria-label={keyConnected ? `${providerName} key connected` : `${providerName} key not set`}
+      title={keyConnected ? `${providerName} key connected` : `${providerName} key not set`}
       className={cx(
         "relative top-px inline-block h-2 w-2 rounded-full",
         keyConnected
@@ -435,11 +459,36 @@ export function SettingsDrawer({
     />
   );
 
+  const providerSection = (
+    <section className="border-b border-white/[0.08] pb-4">
+      <SettingRow
+        title="Provider"
+        description="Where your messages are sent"
+      />
+      <SlidingTabs
+        options={PROVIDER_OPTIONS}
+        value={selectedProviderId}
+        onChange={chooseProvider}
+        getValue={(option) => option.id}
+        getLabel={(option) => option.tabLabel}
+        ariaLabel="API provider"
+        className="provider-tabs mt-3 flex w-full"
+      />
+    </section>
+  );
+
+  const saveButtonClass = cx(
+    "h-10 rounded-xl bg-neutral-100 px-3 text-sm font-semibold text-neutral-950 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:cursor-not-allowed disabled:bg-neutral-800 disabled:text-neutral-500 disabled:shadow-[var(--shadow-border)] disabled:active:scale-100",
+    CONTROL_MOTION,
+  );
+
+  const fieldClass = "h-10 min-w-0 flex-1 rounded-xl bg-black/20 px-3 text-sm text-neutral-100 shadow-[var(--shadow-border)] outline-none transition-[background-color,box-shadow] duration-150 ease-out placeholder:text-neutral-600 focus:bg-black/25 focus:shadow-[0_0_0_1px_rgba(255,255,255,0.16)]";
+
   const keySection = (
-    <section className="border-b border-white/[0.08] pb-3">
+    <section className="border-b border-white/[0.08] py-3">
       <div className="mb-2.5 flex items-center justify-between gap-3">
         <h2 className="flex items-center gap-2 text-balance text-sm font-semibold text-neutral-100">
-          OpenRouter key
+          {providerName} key
           {StatusDot}
         </h2>
       </div>
@@ -448,17 +497,15 @@ export function SettingsDrawer({
           type="password"
           value={apiKey}
           onChange={(event) => setApiKey(event.target.value)}
-          placeholder="sk-or-v1-..."
-          className="h-10 min-w-0 flex-1 rounded-xl bg-black/20 px-3 text-sm text-neutral-100 shadow-[var(--shadow-border)] outline-none transition-[background-color,box-shadow] duration-150 ease-out placeholder:text-neutral-600 focus:bg-black/25 focus:shadow-[0_0_0_1px_rgba(255,255,255,0.16)]"
+          placeholder={keyPlaceholder}
+          aria-label={`${providerName} key`}
+          className={fieldClass}
         />
         <button
           type="button"
           onClick={saveKey}
           disabled={saving || !apiKey.trim()}
-          className={cx(
-            "h-10 rounded-xl bg-neutral-100 px-3 text-sm font-semibold text-neutral-950 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:cursor-not-allowed disabled:bg-neutral-800 disabled:text-neutral-500 disabled:shadow-[var(--shadow-border)] disabled:active:scale-100",
-            CONTROL_MOTION,
-          )}
+          className={saveButtonClass}
         >
           {saving ? "Saving" : "Save"}
         </button>
@@ -485,7 +532,7 @@ export function SettingsDrawer({
     <section className="border-b border-white/[0.08] py-3">
       <SettingRow
         title="Disable free models"
-        description="Don't show free OpenRouter models in the model picker"
+        description={`Don't show free ${providerName} models in the model picker`}
       >
         <SettingSwitch
           checked={hideFreeModels}
@@ -531,7 +578,7 @@ export function SettingsDrawer({
     <section className="border-b border-white/[0.08] py-3">
       <SettingRow
         title="Disable batch models"
-        description="Don't show batch OpenRouter models in the model picker"
+        description={`Don't show batch ${providerName} models in the model picker`}
       >
         <SettingSwitch
           checked={hideBatchModels}
@@ -544,7 +591,7 @@ export function SettingsDrawer({
 
   const turboSection = (
     <section className="border-b border-white/[0.08] py-3">
-      <SettingRow title="Turbo" description="Prioritize the fastest OpenRouter providers">
+      <SettingRow title="Turbo" description={`Prioritize the fastest ${providerName} providers`}>
         <SettingSwitch checked={nitroMode} onChange={onToggleNitroMode} label="Turbo" />
       </SettingRow>
     </section>
@@ -554,7 +601,7 @@ export function SettingsDrawer({
     <section className="border-b border-white/[0.08] py-3">
       <SettingRow
         title="Cheapest first"
-        description="Prioritize the lowest priced OpenRouter providers"
+        description={`Prioritize the lowest priced ${providerName} providers`}
       >
         <SettingSwitch
           checked={cheapestMode}
@@ -837,7 +884,7 @@ export function SettingsDrawer({
             )}
             <button
               type="button"
-              disabled={!settings.model || settings.model === defaultModel}
+              disabled={providerDiffers || !settings.model || settings.model === defaultModel}
               onClick={setSelectedModelAsDefault}
               className={cx(
                 "inline-flex min-h-5 shrink-0 items-center rounded-full px-2 text-[11px] font-medium leading-none shadow-[var(--shadow-border)] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 disabled:cursor-default disabled:active:scale-100",
@@ -852,6 +899,26 @@ export function SettingsDrawer({
           </p>
         </div>
       </div>
+
+      {providerDiffers && (
+        <div className="mb-3 flex items-center justify-between gap-3 rounded-xl bg-white/[0.035] px-3 py-2.5 shadow-[var(--shadow-border)]">
+          <p className="min-w-0 text-pretty text-xs leading-5 text-neutral-400">
+            This {conversationKind} uses {conversationProvider.name}, not {provider.name}.
+          </p>
+          {onMoveToProvider && (
+            <button
+              type="button"
+              onClick={onMoveToProvider}
+              className={cx(
+                "inline-flex h-8 shrink-0 items-center rounded-lg bg-white/[0.065] px-3 text-xs font-medium text-neutral-200 shadow-[var(--shadow-border)] hover:bg-white/[0.1] hover:text-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
+                CONTROL_MOTION,
+              )}
+            >
+              Move to {provider.name}
+            </button>
+          )}
+        </div>
+      )}
 
       <ModelPicker
         models={filteredModels}
@@ -957,7 +1024,7 @@ export function SettingsDrawer({
           <div className="mb-2.5 flex items-center justify-between text-xs font-medium">
             <span className="text-neutral-400">Temperature</span>
             <span className="min-w-9 rounded-full bg-white/[0.055] px-2 py-0.5 text-center tabular-nums text-neutral-200 shadow-[var(--shadow-border)]">
-              {settings.temperature}
+              {temperatureLocked ? "Auto" : settings.temperature}
             </span>
           </div>
           <input
@@ -970,8 +1037,14 @@ export function SettingsDrawer({
             onMouseUp={() => onPersist(settings)}
             onTouchEnd={() => onPersist(settings)}
             style={{ "--range-progress": rangeProgress(settings.temperature, 0, 1.5) }}
-            className="settings-range"
+            disabled={temperatureLocked}
+            className={cx("settings-range", temperatureLocked && "cursor-not-allowed opacity-40")}
           />
+          {temperatureLocked && (
+            <p className="mt-2 text-pretty text-xs leading-5 text-neutral-500">
+              {selectedModelOutputName} picks its own temperature
+            </p>
+          )}
         </div>
         <div className="settings-slider-row">
           <div className="mb-2.5 flex items-center justify-between text-xs font-medium">
@@ -1145,16 +1218,21 @@ export function SettingsDrawer({
               data-page-id="1"
               aria-label="API settings"
             >
+              {providerSection}
               {keySection}
               {chatNameSection}
-              {modelFilterSection}
+              {capabilities.freeModels && modelFilterSection}
               {promptCachingSection}
               {hourPromptCacheSection}
               {batchFilterSection}
-              {turboSection}
-              {cheapestSection}
-              {privacySection}
-              {zdrSection}
+              {capabilities.routingOptions && (
+                <>
+                  {turboSection}
+                  {cheapestSection}
+                  {privacySection}
+                  {zdrSection}
+                </>
+              )}
             </section>
             <section
               className="t-page flex min-h-0 flex-col settings-inline py-4 md:py-5"
@@ -1164,6 +1242,11 @@ export function SettingsDrawer({
               {modelList}
             </section>
             <section className="t-page flex min-h-0 flex-col settings-inline py-4 md:py-5" data-page-id="3" aria-label="Transcription settings">
+              {!provider.capabilities?.transcription && (
+                <p className="mb-3 text-pretty text-xs leading-5 text-neutral-500">
+                  {provider.name} has no voice typing of its own. Voice input uses OpenRouter, so it needs an OpenRouter key saved under API.
+                </p>
+              )}
               {transcriptionPage.mounted && <TranscriptionSettings key={transcriptionPage.session} />}
             </section>
             <section

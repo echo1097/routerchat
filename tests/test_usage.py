@@ -12,20 +12,25 @@ from fastapi.testclient import TestClient
 import backend.main as main
 import backend.core.paths as paths
 from backend.usage import usageRoutes
+from backend.usage.migrateLegacyUsage import migrateLegacyUsage
 from backend.usage.usageTotals import getUsage
 
 
 class UsageTest(unittest.TestCase):
     def setUp(self):
         self.tempDir = tempfile.TemporaryDirectory()
-        self.dbPath = Path(self.tempDir.name) / "usage.sqlite3"
+        self.dbPath = Path(self.tempDir.name) / "routerchat.sqlite3"
+        self.usagePath = Path(self.tempDir.name) / "usage.sqlite3"
         with patch.object(paths, "DATA_DIR", Path(self.tempDir.name)), patch.object(paths, "DB_PATH", self.dbPath):
             main.init_db()
         self.conn = sqlite3.connect(self.dbPath)
         self.conn.row_factory = sqlite3.Row
+        self.usageConn = sqlite3.connect(self.usagePath)
+        self.usageConn.row_factory = sqlite3.Row
         self.now = datetime(2026, 9, 10, 2, 0, tzinfo=timezone.utc)
 
     def tearDown(self):
+        self.usageConn.close()
         self.conn.close()
         self.tempDir.cleanup()
 
@@ -47,8 +52,20 @@ class UsageTest(unittest.TestCase):
         self.conn.execute(f"INSERT INTO {table} ({columns}) VALUES ({placeholders})", tuple(row.values()))
         self.conn.commit()
 
+    def migrateRows(self):
+        self.usageConn.execute("DELETE FROM usage_entries")
+        self.usageConn.execute("PRAGMA user_version = 0")
+        self.usageConn.commit()
+        migrateLegacyUsage(self.conn, self.usageConn)
+
+    def openUsageDb(self):
+        conn = sqlite3.connect(self.usagePath)
+        conn.row_factory = sqlite3.Row
+        return conn
+
     def summary(self, offsetMinutes=420):
-        return getUsage(self.conn, offsetMinutes=offsetMinutes, now=self.now)
+        self.migrateRows()
+        return getUsage(self.usageConn, offsetMinutes=offsetMinutes, now=self.now)
 
     def testEmptyWeekHasSevenDaysAndNoInventedRate(self):
         result = self.summary()
@@ -212,7 +229,8 @@ class UsageTest(unittest.TestCase):
             with self.subTest(currentTime=currentTime):
                 self.conn.execute("DELETE FROM messages")
                 self.addRow(created_at=rowTime)
-                result = getUsage(self.conn, now=datetime.fromisoformat(currentTime), timeZone="America/Los_Angeles")
+                self.migrateRows()
+                result = getUsage(self.usageConn, now=datetime.fromisoformat(currentTime), timeZone="America/Los_Angeles")
                 if expectedDate < result["startDate"]:
                     self.assertEqual(result["previous"]["requests"], 1)
                     self.assertEqual(result["current"]["requests"], 0)
@@ -279,14 +297,10 @@ class UsageTest(unittest.TestCase):
             zoneinfo.ZoneInfo.clear_cache()
 
     def testEndpointValidatesOffsetAndDoesNotCallProvider(self):
-        def getDb():
-            conn = sqlite3.connect(self.dbPath)
-            conn.row_factory = sqlite3.Row
-            return conn
-
+        self.migrateRows()
         app = FastAPI()
         app.include_router(usageRoutes.router)
-        with patch.object(usageRoutes, "get_db", getDb), patch.object(usageRoutes, "read_app_setting", lambda key: None), \
+        with patch.object(usageRoutes, "getUsageDb", self.openUsageDb), patch.object(usageRoutes, "read_app_setting", lambda key: None), \
              TestClient(app) as client, patch("httpx.AsyncClient", side_effect=AssertionError("Provider call forbidden")):
             self.assertEqual(client.get("/api/usage?offsetMinutes=420").status_code, 200)
             self.assertEqual(client.get("/api/usage?offsetMinutes=900").status_code, 422)
@@ -313,14 +327,10 @@ class UsageTest(unittest.TestCase):
 
     def testTranscriptionCatalogNamesAreIncludedWithoutProviderRequests(self):
         self.addRow("transcription_usage", model="openai/whisper-1")
-        def getDb():
-            conn = sqlite3.connect(self.dbPath)
-            conn.row_factory = sqlite3.Row
-            return conn
-
+        self.migrateRows()
         app = FastAPI()
         app.include_router(usageRoutes.router)
-        with patch.object(usageRoutes, "get_db", getDb), \
+        with patch.object(usageRoutes, "getUsageDb", self.openUsageDb), \
              patch.object(usageRoutes, "read_app_setting", lambda key: [{"id": "openai/whisper-1", "name": "Whisper"}]), \
              TestClient(app) as client, patch("httpx.AsyncClient", side_effect=AssertionError("Provider call forbidden")):
             result = client.get("/api/usage").json()

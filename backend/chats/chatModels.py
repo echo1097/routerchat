@@ -5,7 +5,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from backend.core.reasoningEffort import ReasoningEffort
-from backend.providers.openrouter.client import DEFAULT_MAX_TOKENS
+from backend.providers.base import DEFAULT_MAX_TOKENS
 
 
 class ChatCreateRequest(BaseModel):

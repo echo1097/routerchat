@@ -13,7 +13,7 @@ from backend.chats.folderRoutes import folder_or_404
 from backend.chats.systemPrompts import chatSystemPrompt
 from backend.core.database import get_db, message_order_clause
 from backend.core.utils import patch_updates, utc_now
-from backend.providers.openrouter.models import default_model_id
+from backend.providers.registry import getActiveProvider
 
 router = APIRouter()
 
@@ -35,7 +35,8 @@ def list_chats() -> dict[str, Any]:
 def create_chat(payload: ChatCreateRequest) -> dict[str, Any]:
     now = utc_now()
     chat_id = str(uuid.uuid4())
-    model = payload.model or default_model_id()
+    provider = getActiveProvider()
+    model = payload.model or provider.defaultModelId()
     folder_id = (payload.folder_id or "").strip() or None
     with get_db() as conn:
         if folder_id:
@@ -43,16 +44,17 @@ def create_chat(payload: ChatCreateRequest) -> dict[str, Any]:
         conn.execute(
             """
             INSERT INTO chats (
-              id, title, model, system_prompt, temperature, max_tokens,
+              id, title, model, provider, system_prompt, temperature, max_tokens,
               thinking_enabled, reasoning_effort, web_search_enabled, temporary,
               folder_id, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 chat_id,
                 payload.title or "New chat",
                 model,
+                provider.id,
                 chatSystemPrompt(payload),
                 payload.temperature,
                 payload.max_tokens,

@@ -12,18 +12,7 @@ from backend.core.appSettings import (
     write_app_setting,
 )
 from backend.core.utils import patch_updates
-from backend.providers.openrouter.apiKey import (
-    normalize_key_status,
-    read_openrouter_key,
-    validate_key,
-    write_openrouter_key,
-)
-from backend.providers.openrouter.models import (
-    cache_models,
-    cached_models,
-    default_model_id,
-    fetch_models_from_openrouter,
-)
+from backend.providers.registry import getActiveProvider, getProvider
 from backend.settings.settingsModels import ApiKeyRequest, AppSettingsPatchRequest
 
 router = APIRouter()
@@ -32,7 +21,7 @@ router = APIRouter()
 def app_settings_payload() -> dict[str, Any]:
     return {
         "transcription_model": read_app_setting("transcription_model") or "openai/whisper-1",
-        "default_model": default_model_id(),
+        "default_model": getActiveProvider().defaultModelId(),
         "generate_chat_name": bool(read_app_setting("generate_chat_name")),
         "hide_free_models": bool(read_app_setting("hide_free_models")),
         "hide_batch_models": bool(read_app_setting("hide_batch_models")),
@@ -50,21 +39,16 @@ def app_settings_payload() -> dict[str, Any]:
 
 @router.get("/api/settings/key-status")
 async def key_status() -> dict[str, Any]:
-    api_key = read_openrouter_key()
-    if not api_key:
-        return normalize_key_status(None, False)
-    try:
-        return normalize_key_status(await validate_key(api_key), True)
-    except HTTPException:
-        return {"has_key": True, "label": None, "limit_remaining": None, "usage": None}
+    return await getActiveProvider().keyStatus()
 
 
 @router.post("/api/settings/openrouter-key")
 async def save_openrouter_key(payload: ApiKeyRequest) -> dict[str, Any]:
+    provider = getActiveProvider()
     api_key = payload.api_key.strip()
-    data = await validate_key(api_key)
-    write_openrouter_key(api_key)
-    return normalize_key_status(data, True)
+    data = await provider.validateKey(api_key)
+    provider.writeKey(api_key)
+    return provider.normalizeKeyStatus(data, True)
 
 
 @router.get("/api/settings")
@@ -83,10 +67,11 @@ def update_app_settings(payload: AppSettingsPatchRequest) -> dict[str, Any]:
         write_app_setting("transcription_model", modelId)
     if payload.default_model is not None:
         model_id = payload.default_model.strip()
-        ids = {model["id"] for model in cached_models() if model.get("id")}
+        provider = getActiveProvider()
+        ids = {model["id"] for model in provider.cachedModels() if model.get("id")}
         if ids and model_id not in ids:
             raise HTTPException(status_code=400, detail="Unknown model.")
-        write_app_setting("default_model", model_id)
+        write_app_setting(provider.defaultModelSetting, model_id)
     if payload.generate_chat_name is not None:
         write_app_setting("generate_chat_name", payload.generate_chat_name)
     if payload.hide_free_models is not None:
@@ -119,21 +104,22 @@ def update_app_settings(payload: AppSettingsPatchRequest) -> dict[str, Any]:
 
 
 @router.get("/api/models")
-async def get_models(response: Response) -> dict[str, Any]:
+async def get_models(response: Response, provider: str | None = None) -> dict[str, Any]:
     response.headers["Cache-Control"] = "no-store"
-    api_key = read_openrouter_key()
+    provider = getProvider(provider or "") or getActiveProvider()
+    api_key = provider.readKey()
     if not api_key:
-        models = cached_models()
+        models = provider.cachedModels()
         if models:
             return {"models": models, "cached": True}
-        raise HTTPException(status_code=401, detail="Add an OpenRouter API key first.")
+        raise HTTPException(status_code=401, detail=provider.missingKeyMessage)
 
     try:
-        models = await fetch_models_from_openrouter(api_key)
-        cache_models(models)
+        models = await provider.listModels(api_key)
+        provider.cacheModels(models)
         return {"models": models, "cached": False}
     except HTTPException:
-        models = cached_models()
+        models = provider.cachedModels()
         if models:
             return {"models": models, "cached": True}
         raise

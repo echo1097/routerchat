@@ -3,9 +3,9 @@ import json
 import sqlite3
 import time
 import uuid
+from contextlib import aclosing
 from typing import Any, AsyncIterator
 
-import httpx
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
@@ -17,21 +17,10 @@ from backend.lorebook.lorebookRows import lorebook_model_for, row_to_lorebook_en
 from backend.lorebook.lorebookUsage import LorebookUsage
 from backend.lorebook.parseLorebook import parse_lorebook_json
 from backend.lorebook.timeline import normalize_timeline_description
-from backend.providers.openrouter.apiKey import read_openrouter_key
-from backend.providers.openrouter.client import (
-    OPENROUTER_BASE_URL,
-    OPENROUTER_TIMEOUT,
-    headers_for_key,
-)
-from backend.providers.openrouter.errors import openrouter_error_message
-from backend.providers.openrouter.models import model_supports_structured_output
-from backend.providers.openrouter.requestOptions import (
-    effective_thinking_enabled,
-    enabled_reasoning_config,
-    openrouter_provider_options,
-    openrouter_request_model,
-)
-from backend.providers.openrouter.usage import normalize_usage
+from backend.providers.base import ChatOptions
+from backend.providers.registry import providerForRow
+from backend.writing.storyProvider import storyProvider
+from backend.providers.streaming import streamChat
 
 router = APIRouter()
 
@@ -74,9 +63,8 @@ async def stream_timeline_repair(
     current_timeline: str,
 ) -> AsyncIterator[bytes]:
     startedAt = time.perf_counter()
-    apiKey = read_openrouter_key()
-    if not apiKey:
-        raise HTTPException(status_code=401, detail="Add an OpenRouter API key first.")
+    provider = providerForRow(story)
+    apiKey = provider.requireKey()
 
     timelineSnapshot = (
         {
@@ -130,25 +118,23 @@ async def stream_timeline_repair(
         },
         {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
     ]
-    body: dict[str, Any] = {
-        "model": openrouter_request_model(lorebook_model_for(story), False),
-        "messages": messages,
-        "temperature": 0.1,
-        "max_tokens": story["max_tokens"],
-        "stream": True,
-    }
-    providerOptions = openrouter_provider_options()
-    if providerOptions:
-        body["provider"] = providerOptions
+    responseFormat = None
+    if provider.supportsStructuredOutput(lorebook_model_for(story)):
+        responseFormat = timeline_repair_response_format()
 
-    effectiveThinkingEnabled = effective_thinking_enabled(lorebook_model_for(story), True)
-    reasoningConfig = enabled_reasoning_config(
-        lorebook_model_for(story), True, story["reasoning_effort"]
+    request = provider.buildRequest(
+        messages,
+        lorebook_model_for(story),
+        ChatOptions(
+            apiKey=apiKey,
+            temperature=0.1,
+            maxTokens=story["max_tokens"],
+            thinkingEnabled=True,
+            reasoningEffort=story["reasoning_effort"],
+            responseFormat=responseFormat,
+        ),
     )
-    if reasoningConfig:
-        body["reasoning"] = reasoningConfig
-    if model_supports_structured_output(lorebook_model_for(story)):
-        body["response_format"] = timeline_repair_response_format()
+    effectiveThinkingEnabled = provider.effectiveThinkingEnabled(lorebook_model_for(story), True)
 
     generatedText: list[str] = []
     finishReason: str | None = None
@@ -159,54 +145,37 @@ async def stream_timeline_repair(
     yield stream_event("status", "rebuilding")
 
     try:
-        async with httpx.AsyncClient(timeout=OPENROUTER_TIMEOUT) as client, usageRun:
-            async with client.stream(
-                "POST",
-                f"{OPENROUTER_BASE_URL}/chat/completions",
-                headers={**headers_for_key(apiKey), "Content-Type": "application/json"},
-                json=body,
-            ) as response:
-                usageRun.generationId = response.headers.get("X-Generation-Id")
-                if response.status_code >= 400:
-                    rawError = (await response.aread()).decode("utf-8", errors="replace")
-                    message = openrouter_error_message(response.status_code, rawError)
-                    yield stream_event(
-                        "error",
-                        {"code": "timeline_repair_provider_error", "message": message},
-                    )
-                    return
-
-                async for line in response.aiter_lines():
-                    if not line.startswith("data:"):
+        async with usageRun:
+            async with aclosing(streamChat(provider, request)) as events:
+                async for event in events:
+                    if event["type"] in ("error", "open"):
+                        usageRun.generationId = event["generationId"]
+                    if event["type"] == "error":
+                        yield stream_event(
+                            "error",
+                            {"code": "timeline_repair_provider_error", "message": event["message"]},
+                        )
+                        return
+                    if event["type"] == "open":
                         continue
-                    data = line.removeprefix("data:").strip()
-                    if data == "[DONE]":
+                    if event["type"] == "done":
                         receivedDone = True
-                        break
-                    try:
-                        chunk = json.loads(data)
-                    except json.JSONDecodeError:
                         continue
 
-                    usageRun.generationId = usageRun.generationId or chunk.get("id")
-                    usageRun.addUsage(normalize_usage(chunk.get("usage")))
+                    usageRun.generationId = usageRun.generationId or event["id"]
+                    usageRun.addUsage(event["usage"])
 
-                    choices = chunk.get("choices") or []
-                    if not choices:
+                    if not event["hasChoice"]:
                         continue
-                    choice = choices[0]
-                    finishReason = choice.get("finish_reason") or finishReason
-                    delta = choice.get("delta") or {}
-                    reasoning = delta.get("reasoning") or delta.get("reasoning_content")
-                    if reasoning and effectiveThinkingEnabled:
-                        yield stream_event("reasoning", str(reasoning))
-                    content = delta.get("content")
-                    if content:
+                    finishReason = event["finishReason"] or finishReason
+                    if event["reasoning"] and effectiveThinkingEnabled:
+                        yield stream_event("reasoning", event["reasoning"])
+                    if event["content"]:
                         #first real content means the thinking is done and the timeline is being written
                         if not announcedWriting:
                             announcedWriting = True
                             yield stream_event("status", "writing")
-                        generatedText.append(str(content))
+                        generatedText.append(event["content"])
 
         if usageRun.usage:
             yield stream_event(
@@ -337,8 +306,8 @@ async def stream_timeline_repair(
 async def repair_story_timeline(
     story_id: str, payload: TimelineRepairRequest
 ) -> StreamingResponse:
-    if not read_openrouter_key():
-        raise HTTPException(status_code=401, detail="Add an OpenRouter API key first.")
+    provider = storyProvider(story_id)
+    provider.requireKey()
 
     with get_db() as conn:
         story = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()

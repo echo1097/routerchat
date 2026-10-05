@@ -1,16 +1,24 @@
 import os
 import re
 import tempfile
+import zlib
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from starlette.datastructures import UploadFile
 
 import backend.attachments.attachmentCleanup as attachmentCleanup
 import backend.attachments.attachmentContent as attachmentContent
 import backend.attachments.attachmentFiles as attachmentFiles
+from backend.attachments.pdfPages import countPdfPages
+from backend.providers.anthropic.adapter import AnthropicProvider
+from backend.providers.anthropic.client import (
+    ANTHROPIC_MAX_IMAGE_BYTES,
+    ANTHROPIC_MAX_REQUEST_ATTACHMENT_BYTES,
+)
 import backend.main as main
 import backend.core.database as database
 import backend.core.utils as utils
@@ -33,6 +41,57 @@ PNG_BYTES = bytes.fromhex(
     "890000000a49444154789c6360000002000100ffff03000006000557bfabd400"
     "00000049454e44ae426082"
 )
+
+
+def pdfBytes(pageCount, packed=False, extraRevisions=0):
+    kids = " ".join(f"{index + 3} 0 R" for index in range(pageCount))
+    pageBody = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] >>"
+    parts = [
+        "%PDF-1.5\n",
+        "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+        f"2 0 obj\n<< /Type /Pages /Kids [{kids}] /Count {pageCount} >>\nendobj\n",
+    ]
+    raw = "".join(parts).encode()
+
+    if packed:
+        bodies = [pageBody.encode() for _ in range(pageCount)]
+        offsets = []
+        position = 0
+        for body in bodies:
+            offsets.append(position)
+            position += len(body) + 1
+        header = " ".join(f"{index + 3} {offset}" for index, offset in enumerate(offsets)).encode()
+        header += b"\n"
+        stream = zlib.compress(header + b"\n".join(bodies))
+        raw += (
+            f"{pageCount + 3} 0 obj\n<< /Type /ObjStm /N {pageCount} /First {len(header)} "
+            f"/Filter /FlateDecode /Length {len(stream)} >>\nstream\n"
+        ).encode()
+        raw += stream + b"\nendstream\nendobj\n"
+    else:
+        for index in range(pageCount):
+            raw += f"{index + 3} 0 obj\n{pageBody}\nendobj\n".encode()
+
+    for _ in range(extraRevisions):
+        raw += f"3 0 obj\n{pageBody}\nendobj\n".encode()
+
+    return raw + b"trailer\n<< /Root 1 0 R >>\n%%EOF\n"
+
+
+class PdfPageCountTest(unittest.TestCase):
+    def test_counts_plain_page_objects(self):
+        self.assertEqual(countPdfPages(pdfBytes(7)), 7)
+
+    def test_counts_pages_packed_into_a_compressed_object_stream(self):
+        self.assertEqual(countPdfPages(pdfBytes(130, packed=True)), 130)
+
+    def test_a_page_saved_again_is_counted_once(self):
+        self.assertEqual(countPdfPages(pdfBytes(4, extraRevisions=3)), 4)
+
+    def test_unreadable_files_have_no_count(self):
+        self.assertIsNone(countPdfPages(b"not a pdf"))
+        self.assertIsNone(countPdfPages(b"%PDF-1.7\nnothing here"))
+        self.assertIsNone(countPdfPages(pdfBytes(3) + b"<< /Encrypt 9 0 R >>"))
 
 
 class AttachmentApiTest(unittest.TestCase):
@@ -96,6 +155,250 @@ class AttachmentApiTest(unittest.TestCase):
         response = self.client.post("/api/chats", json={"model": "test/model", **payload})
         self.assertEqual(response.status_code, 200)
         return response.json()["chat"]
+
+    def uploadSizedImage(self, byteCount, filename="big.png"):
+        response = self.upload([("files", (filename, b"x" * byteCount, "image/png"))])
+        self.assertEqual(response.status_code, 200, response.text)
+        return response.json()["attachments"][0]
+
+    def sendChatMessage(self, chat, attachment):
+        return self.client.post(
+            f"/api/chats/{chat['id']}/messages/stream",
+            json={
+                "message": "look at this",
+                "model": chat["model"],
+                "attachment_ids": [attachment["id"]],
+            },
+        )
+
+    def test_anthropic_chat_rejects_an_image_over_its_limit(self):
+        self.client.post("/api/providers/active", json={"id": "anthropic"})
+        chat = self.createChat(model="claude-sonnet-5-5")
+        attachment = self.uploadSizedImage(ANTHROPIC_MAX_IMAGE_BYTES + 1)
+
+        with patch.object(AnthropicProvider, "readKey", return_value="sk-ant-test"):
+            response = self.sendChatMessage(chat, attachment)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.json()["detail"],
+            "big.png is larger than 7.5MB, the most Anthropic accepts for an image.",
+        )
+        with database.get_db() as conn:
+            messageCount = conn.execute("SELECT COUNT(*) AS total FROM messages").fetchone()
+            row = conn.execute(
+                "SELECT chat_id FROM attachments WHERE id = ?", (attachment["id"],)
+            ).fetchone()
+        self.assertEqual(messageCount["total"], 0)
+        self.assertIsNone(row["chat_id"])
+
+    def test_provider_image_limit_only_applies_to_images_over_it(self):
+        from backend.attachments.attachmentLimits import checkAttachmentLimits
+        from backend.providers.registry import getProvider
+
+        atLimit = self.uploadSizedImage(ANTHROPIC_MAX_IMAGE_BYTES, "edge.png")
+        overLimit = self.uploadSizedImage(ANTHROPIC_MAX_IMAGE_BYTES + 1)
+        pdf = self.upload(
+            [("files", ("paper.pdf", b"x" * (ANTHROPIC_MAX_IMAGE_BYTES + 1), "application/pdf"))]
+        ).json()["attachments"][0]
+
+        with database.get_db() as conn:
+            checkAttachmentLimits(conn, [atLimit["id"], pdf["id"]], getProvider("anthropic"))
+            checkAttachmentLimits(conn, [overLimit["id"]], getProvider("openrouter"))
+            with self.assertRaises(HTTPException) as raised:
+                checkAttachmentLimits(conn, [atLimit["id"], overLimit["id"]], getProvider("anthropic"))
+
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertIn("big.png is larger than 7.5MB", raised.exception.detail)
+
+    def addEarlierMessage(self, chat, attachments, order=1, error=None):
+        messageId = f"earlier-{order}"
+        with database.get_db() as conn:
+            conn.execute(
+                """
+                INSERT INTO messages (
+                  id, chat_id, role, content, reasoning, model, finish_reason,
+                  error, message_order, created_at
+                )
+                VALUES (?, ?, 'user', 'earlier', NULL, ?, NULL, ?, ?, ?)
+                """,
+                (messageId, chat["id"], chat["model"], error, order, utils.utc_now()),
+            )
+            attachmentCleanup.claim_attachments(
+                conn,
+                [attachment["id"] for attachment in attachments],
+                chat_id=chat["id"],
+                message_id=messageId,
+            )
+        return messageId
+
+    def test_anthropic_chat_rejects_files_that_no_longer_fit_in_one_request(self):
+        self.client.post("/api/providers/active", json={"id": "anthropic"})
+        chat = self.createChat(model="claude-sonnet-5-5")
+        earlier = [
+            self.uploadSizedImage(ANTHROPIC_MAX_IMAGE_BYTES, f"old{index}.png")
+            for index in range(2)
+        ]
+        self.addEarlierMessage(chat, earlier)
+        attachment = self.uploadSizedImage(ANTHROPIC_MAX_IMAGE_BYTES, "new.png")
+
+        with patch.object(AnthropicProvider, "readKey", return_value="sk-ant-test"):
+            response = self.sendChatMessage(chat, attachment)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.json()["detail"],
+            "The files in this chat add up to 22.5MB, and Anthropic accepts about 21MB "
+            "of files per request. Earlier files are sent again with every message, "
+            "so remove a file or start a new chat.",
+        )
+        with database.get_db() as conn:
+            messageCount = conn.execute("SELECT COUNT(*) AS total FROM messages").fetchone()
+        self.assertEqual(messageCount["total"], 1)
+
+    def test_request_size_check_counts_only_what_is_sent(self):
+        from backend.attachments.attachmentLimits import checkAttachmentLimits
+        from backend.providers.registry import getProvider
+
+        anthropic = getProvider("anthropic")
+        chat = self.createChat(model="claude-sonnet-5-5")
+        first = [self.uploadSizedImage(ANTHROPIC_MAX_IMAGE_BYTES, "first.png")]
+        second = [self.uploadSizedImage(ANTHROPIC_MAX_IMAGE_BYTES, "second.png")]
+        failed = [self.uploadSizedImage(ANTHROPIC_MAX_IMAGE_BYTES, "failed.png")]
+        firstMessageId = self.addEarlierMessage(chat, first, order=1)
+        self.addEarlierMessage(chat, second, order=2)
+        self.addEarlierMessage(chat, failed, order=3, error="failed")
+        pending = self.uploadSizedImage(ANTHROPIC_MAX_IMAGE_BYTES, "pending.png")
+        self.assertGreater(3 * ANTHROPIC_MAX_IMAGE_BYTES, ANTHROPIC_MAX_REQUEST_ATTACHMENT_BYTES)
+
+        with database.get_db() as conn:
+            checkAttachmentLimits(conn, [], anthropic, chatId=chat["id"])
+            checkAttachmentLimits(conn, [pending["id"]], getProvider("openrouter"), chatId=chat["id"])
+            checkAttachmentLimits(
+                conn, [pending["id"]], anthropic, chatId=chat["id"], throughMessageId=firstMessageId
+            )
+            checkAttachmentLimits(conn, [second[0]["id"]], anthropic, chatId=chat["id"])
+            with self.assertRaises(HTTPException) as raised:
+                checkAttachmentLimits(conn, [pending["id"]], anthropic, chatId=chat["id"])
+
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertIn("add up to 22.5MB", raised.exception.detail)
+
+    def test_request_size_check_covers_files_sent_without_a_chat(self):
+        from backend.attachments.attachmentLimits import checkAttachmentLimits
+        from backend.providers.registry import getProvider
+
+        attachmentIds = [
+            self.uploadSizedImage(ANTHROPIC_MAX_IMAGE_BYTES, f"shot{index}.png")["id"]
+            for index in range(3)
+        ]
+
+        with database.get_db() as conn:
+            checkAttachmentLimits(conn, attachmentIds[:2], getProvider("anthropic"))
+            with self.assertRaises(HTTPException) as raised:
+                checkAttachmentLimits(conn, attachmentIds, getProvider("anthropic"))
+
+        self.assertEqual(
+            raised.exception.detail,
+            "These files add up to 22.5MB, and Anthropic accepts about 21MB of files per request. "
+            "Remove a file and try again.",
+        )
+
+    def uploadPdf(self, pageCount, filename="paper.pdf"):
+        response = self.upload([("files", (filename, pdfBytes(pageCount), "application/pdf"))])
+        self.assertEqual(response.status_code, 200, response.text)
+        return response.json()["attachments"][0]
+
+    def cacheAnthropicModels(self):
+        AnthropicProvider().cacheModels(
+            [
+                {"id": "claude-haiku-4-5", "context_length": 200000},
+                {"id": "claude-sonnet-5-5", "context_length": 1000000},
+            ]
+        )
+
+    def test_upload_records_how_many_pages_a_pdf_has(self):
+        pdf = self.uploadPdf(12)
+        image = self.uploadImage()
+
+        with database.get_db() as conn:
+            pdfRow = conn.execute(
+                "SELECT page_count FROM attachments WHERE id = ?", (pdf["id"],)
+            ).fetchone()
+            imageRow = conn.execute(
+                "SELECT page_count FROM attachments WHERE id = ?", (image["id"],)
+            ).fetchone()
+
+        self.assertEqual(pdfRow["page_count"], 12)
+        self.assertIsNone(imageRow["page_count"])
+
+    def test_anthropic_chat_rejects_pdfs_with_too_many_pages_for_the_model(self):
+        self.client.post("/api/providers/active", json={"id": "anthropic"})
+        self.cacheAnthropicModels()
+        chat = self.createChat(model="claude-haiku-4-5")
+        earlier = self.uploadPdf(60, "first.pdf")
+        self.addEarlierMessage(chat, [earlier])
+        attachment = self.uploadPdf(41, "second.pdf")
+
+        with patch.object(AnthropicProvider, "readKey", return_value="sk-ant-test"):
+            response = self.sendChatMessage(chat, attachment)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.json()["detail"],
+            "The PDFs in this chat add up to 101 pages, and Anthropic accepts 100 PDF pages "
+            "per request with this model. Earlier files are sent again with every message, "
+            "so remove a PDF or start a new chat.",
+        )
+        with database.get_db() as conn:
+            messageCount = conn.execute("SELECT COUNT(*) AS total FROM messages").fetchone()
+        self.assertEqual(messageCount["total"], 1)
+
+    def test_pdf_page_limit_depends_on_the_model_and_provider(self):
+        from backend.attachments.attachmentLimits import checkAttachmentLimits
+        from backend.providers.registry import getProvider
+
+        self.cacheAnthropicModels()
+        atLimit = self.uploadPdf(100, "edge.pdf")
+        overLimit = self.uploadPdf(101, "long.pdf")
+        anthropic = getProvider("anthropic")
+
+        with database.get_db() as conn:
+            checkAttachmentLimits(conn, [atLimit["id"]], anthropic, modelId="claude-haiku-4-5")
+            checkAttachmentLimits(conn, [overLimit["id"]], anthropic, modelId="claude-sonnet-5-5")
+            checkAttachmentLimits(
+                conn, [overLimit["id"]], getProvider("openrouter"), modelId="test/model"
+            )
+            with self.assertRaises(HTTPException) as raised:
+                checkAttachmentLimits(
+                    conn, [overLimit["id"]], anthropic, modelId="claude-haiku-4-5"
+                )
+
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertEqual(
+            raised.exception.detail,
+            "These PDFs add up to 101 pages, and Anthropic accepts 100 PDF pages per request "
+            "with this model. Remove a PDF and try again.",
+        )
+
+    def test_pdfs_uploaded_before_page_counting_are_counted_when_sent(self):
+        from backend.attachments.attachmentLimits import checkAttachmentLimits
+        from backend.providers.registry import getProvider
+
+        self.cacheAnthropicModels()
+        pdf = self.uploadPdf(101, "old.pdf")
+
+        with database.get_db() as conn:
+            conn.execute("UPDATE attachments SET page_count = NULL WHERE id = ?", (pdf["id"],))
+            with self.assertRaises(HTTPException):
+                checkAttachmentLimits(
+                    conn, [pdf["id"]], getProvider("anthropic"), modelId="claude-haiku-4-5"
+                )
+            row = conn.execute(
+                "SELECT page_count FROM attachments WHERE id = ?", (pdf["id"],)
+            ).fetchone()
+
+        self.assertEqual(row["page_count"], 101)
 
     def test_upload_stores_the_file_and_reports_its_kind(self):
         attachment = self.uploadText()
@@ -495,7 +798,7 @@ class AttachmentApiTest(unittest.TestCase):
                     (messageId, chat["id"], role, content, "test/model", index, utils.utc_now()),
                 )
 
-        messages = buildMessages.build_openrouter_messages(chat["id"], "")
+        messages = buildMessages.build_messages(chat["id"], "")
 
         self.assertEqual(len(messages), 3)
         self.assertIsInstance(messages[0]["content"], list)

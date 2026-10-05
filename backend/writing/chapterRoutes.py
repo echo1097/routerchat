@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from backend.attachments.attachmentCleanup import claim_attachments
+from backend.attachments.attachmentLimits import checkAttachmentLimits
 from backend.chats.chatModels import StreamMessageRequest
 from backend.chats.systemPrompts import writeSystemPrompt
 from backend.core.database import get_db
@@ -14,7 +15,8 @@ from backend.lorebook.chapterSummaries import (
     delete_linked_chapter_summaries,
     rename_linked_chapter_summaries,
 )
-from backend.providers.openrouter.apiKey import read_openrouter_key
+from backend.writing.storyProvider import storyProvider
+from backend.usage.recordUsage import recordUsage
 from backend.writing.storyGeneration import (
     ChapterStreamingResponse,
     stream_story_generation,
@@ -216,8 +218,8 @@ async def stream_story_chapter_generation(
     chapter_id: str,
     payload: StreamMessageRequest,
 ) -> StreamingResponse:
-    if not read_openrouter_key():
-        raise HTTPException(status_code=401, detail="Add an OpenRouter API key first.")
+    provider = storyProvider(story_id)
+    provider.requireKey()
     attachmentIds = list(payload.attachment_ids or [])
     if not payload.message.strip() and not attachmentIds:
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
@@ -232,6 +234,7 @@ async def stream_story_chapter_generation(
         ).fetchone()
         if not chapter:
             raise HTTPException(status_code=404, detail="Chapter not found.")
+        checkAttachmentLimits(conn, attachmentIds, provider, modelId=payload.model)
         base_revision = payload.chapter_revision
         if base_revision is None:
             raise HTTPException(status_code=422, detail="chapter_revision is required.")
@@ -279,6 +282,7 @@ async def stream_story_chapter_generation(
         claim_attachments(conn, attachmentIds, story_id=story_id)
 
         generationId = payload.generation_status_id or str(uuid.uuid4())
+        createdAt = utc_now()
         try:
             conn.execute(
                 """
@@ -286,10 +290,11 @@ async def stream_story_chapter_generation(
                     id, story_id, chapter_id, prompt, generated_text, model, error, created_at
                 ) VALUES (?, ?, ?, ?, '', ?, 'generation_pending', ?)
                 """,
-                (generationId, story_id, chapter_id, payload.message, payload.model, utc_now()),
+                (generationId, story_id, chapter_id, payload.message, payload.model, createdAt),
             )
         except sqlite3.IntegrityError as exc:
             raise HTTPException(status_code=409, detail="Generation status ID is already in use.") from exc
+        recordUsage("story", generationId, payload.model, None, createdAt, provider=provider.id)
 
     def settleUnstartedGeneration():
         with get_db() as conn:

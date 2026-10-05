@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import json
 import uuid
+from contextlib import aclosing
 from typing import Any, AsyncIterator
 
-import httpx
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
@@ -12,13 +11,14 @@ from backend.attachments.attachmentCleanup import (
     claim_attachments,
     delete_attachments_for_missing_messages,
 )
+from backend.attachments.attachmentLimits import checkAttachmentLimits
 from backend.attachments.attachmentContent import (
     chat_has_pdf_attachment,
     pdf_parser_plugins,
 )
-from backend.chats.buildMessages import build_openrouter_messages
+from backend.chats.buildMessages import build_messages
 from backend.chats.chatModels import StreamMessageRequest
-from backend.chats.chatRows import chat_has_messages
+from backend.chats.chatRows import chat_has_messages, chatProvider, sendingProvider
 from backend.chats.chatTitles import chat_title_from_message
 from backend.chats.messageRoutes import refresh_chat_after_message_change
 from backend.chats.systemPrompts import chatSystemPrompt
@@ -26,25 +26,11 @@ from backend.core.appSettings import globalChatSystemPrompt, read_app_setting
 from backend.core.database import get_db, next_message_order
 from backend.core.streamEvents import stream_event
 from backend.core.utils import utc_now
-from backend.providers.openrouter.apiKey import read_openrouter_key
-from backend.providers.openrouter.client import (
-    OPENROUTER_BASE_URL,
-    OPENROUTER_TIMEOUT,
-    headers_for_key,
-)
-from backend.providers.openrouter.errors import openrouter_error_message
-from backend.providers.openrouter.models import model_supports_reasoning
-from backend.providers.openrouter.requestOptions import (
-    effective_thinking_enabled,
-    enabled_reasoning_config,
-    openrouter_provider_options,
-    openrouter_request_model,
-    prompt_cache_control,
-)
-from backend.providers.openrouter.usage import fetch_generation_usage, normalize_usage
+from backend.providers.base import ChatOptions
+from backend.providers.streaming import streamChat
+from backend.usage.recordUsage import recordUsage
 from backend.webSearch.sources import (
     merge_sources,
-    normalize_sources,
     serialize_sources,
     web_search_plugin,
 )
@@ -106,6 +92,7 @@ def saveAssistantReply(
                 conn, chat_id, previous_first_user_content
             )
 
+        createdAt = utc_now()
         conn.execute(
             """
             INSERT INTO messages (
@@ -136,70 +123,69 @@ def saveAssistantReply(
                 usage.get("generation_time") if usage else None,
                 usage.get("latency") if usage else None,
                 next_message_order(conn, chat_id),
-                utc_now(),
+                createdAt,
             ),
+        )
+        recordUsage(
+            "message",
+            assistant_message_id,
+            payload.model,
+            usage,
+            createdAt,
+            generation_id,
+            chatProvider(conn, chat_id).id,
         )
         conn.execute(
             "UPDATE chats SET updated_at = ? WHERE id = ?", (utc_now(), chat_id)
         )
 
 
-async def stream_openrouter_response(
+async def stream_chat_response(
     chat_id: str,
     payload: StreamMessageRequest,
     assistant_message_id: str,
 ) -> AsyncIterator[bytes]:
-    api_key = read_openrouter_key()
-    if not api_key:
-        raise HTTPException(status_code=401, detail="Add an OpenRouter API key first.")
+    with get_db() as conn:
+        provider = chatProvider(conn, chat_id)
 
-    messages = build_openrouter_messages(
+    api_key = provider.requireKey()
+
+    messages = build_messages(
         chat_id,
         globalChatSystemPrompt(),
         payload.regenerate_message_id,
         payload.message.strip(),
     )
-    body: dict[str, Any] = {
-        "model": openrouter_request_model(payload.model, payload.nitro_mode),
-        "messages": messages,
-        "temperature": payload.temperature,
-        "max_tokens": payload.max_tokens,
-        "stream": True,
-    }
-    providerOptions = openrouter_provider_options()
-    if providerOptions:
-        body["provider"] = providerOptions
-
-    cacheControl = prompt_cache_control()
-    if cacheControl:
-        body["cache_control"] = cacheControl
-        body["session_id"] = chat_id
 
     with get_db() as conn:
         needsPdfParser = chat_has_pdf_attachment(conn, chat_id)
 
     plugins: list[dict[str, Any]] = []
-    if needsPdfParser:
+    if needsPdfParser and provider.capabilities.pdfParsing:
         plugins.extend(pdf_parser_plugins())
-    if payload.web_search_enabled:
+    if payload.web_search_enabled and provider.capabilities.webSearch:
         plugins.append(web_search_plugin())
-    if plugins:
-        body["plugins"] = plugins
 
-    supportsReasoning = model_supports_reasoning(payload.model)
-    effectiveThinkingEnabled = effective_thinking_enabled(
+    cacheControl = provider.promptCacheControl()
+    request = provider.buildRequest(
+        messages,
+        payload.model,
+        ChatOptions(
+            apiKey=api_key,
+            temperature=payload.temperature,
+            maxTokens=payload.max_tokens,
+            nitro=payload.nitro_mode,
+            thinkingEnabled=payload.thinking_enabled,
+            reasoningEffort=payload.reasoning_effort,
+            explicitReasoning=True,
+            plugins=plugins,
+            cacheControl=cacheControl,
+            sessionId=chat_id if cacheControl else None,
+        ),
+    )
+    effectiveThinkingEnabled = provider.effectiveThinkingEnabled(
         payload.model, payload.thinking_enabled
     )
-    reasoningConfig = enabled_reasoning_config(
-        payload.model, payload.thinking_enabled, payload.reasoning_effort
-    )
-    if reasoningConfig:
-        body["reasoning"] = reasoningConfig
-        body["reasoning_effort"] = reasoningConfig["effort"]
-    elif supportsReasoning:
-        body["reasoning"] = {"enabled": False, "exclude": True}
-        body["reasoning_effort"] = "none"
-        body["include_reasoning"] = False
 
     assistant_text: list[str] = []
     reasoning_text: list[str] = []
@@ -211,81 +197,54 @@ async def stream_openrouter_response(
     stream_completed = False
 
     try:
-        async with httpx.AsyncClient(timeout=OPENROUTER_TIMEOUT) as client:
-            async with client.stream(
-                "POST",
-                f"{OPENROUTER_BASE_URL}/chat/completions",
-                headers={**headers_for_key(api_key), "Content-Type": "application/json"},
-                json=body,
-            ) as response:
-                if response.status_code >= 400:
-                    raw_error = (await response.aread()).decode(
-                        "utf-8", errors="replace"
-                    )
-                    error_text = openrouter_error_message(
-                        response.status_code, raw_error
-                    )
+        async with aclosing(streamChat(provider, request)) as events:
+            async for event in events:
+                if event["type"] == "error":
+                    error_text = str(event["message"])
                     assistant_text.append(error_text)
                     yield stream_event("error", error_text)
                     return
-                generation_id = response.headers.get("X-Generation-Id") or generation_id
+                if event["type"] == "open":
+                    generation_id = event["generationId"] or generation_id
+                    continue
+                if event["type"] == "done":
+                    stream_completed = True
+                    continue
 
-                async for line in response.aiter_lines():
-                    if not line.startswith("data:"):
-                        continue
-                    data = line.removeprefix("data:").strip()
-                    if data == "[DONE]":
-                        stream_completed = True
-                        break
-                    try:
-                        chunk = json.loads(data)
-                    except json.JSONDecodeError:
-                        continue
-                    generation_id = generation_id or chunk.get("id")
-                    next_usage = normalize_usage(chunk.get("usage"))
-                    if next_usage:
-                        usage = next_usage
-                        continue
-                    choices = chunk.get("choices") or []
-                    if not choices:
-                        continue
-                    choice = choices[0]
-                    finish_reason = choice.get("finish_reason") or finish_reason
-                    if finish_reason:
-                        stream_completed = True
-                    delta = choice.get("delta") or {}
-                    message = choice.get("message") or {}
-                    incomingSources = normalize_sources(
-                        delta.get("annotations") or message.get("annotations")
-                    )
-                    if incomingSources:
-                        merged = merge_sources(sources, incomingSources)
-                        if merged != sources:
-                            sources = merged
-                            yield stream_event("sources", sources)
-                    reasoning = delta.get("reasoning") or delta.get("reasoning_content")
-                    if reasoning and effectiveThinkingEnabled:
-                        value = str(reasoning)
-                        reasoning_text.append(value)
-                        yield stream_event("reasoning", value)
-                    content = delta.get("content")
-                    if content:
-                        value = str(content)
-                        assistant_text.append(value)
-                        yield stream_event("content", value)
-                if generation_id:
-                    generation_usage = await fetch_generation_usage(api_key, generation_id)
-                    if generation_usage:
-                        usage = {**(usage or {}), **generation_usage}
-                if usage:
-                    yield stream_event(
-                        "usage",
-                        {
-                            "generation_id": generation_id,
-                            "model": payload.model,
-                            **usage,
-                        },
-                    )
+                generation_id = generation_id or event["id"]
+                if event["usage"]:
+                    usage = event["usage"]
+                    continue
+                if not event["hasChoice"]:
+                    continue
+                finish_reason = event["finishReason"] or finish_reason
+                if finish_reason:
+                    stream_completed = True
+                if event["sources"]:
+                    merged = merge_sources(sources, event["sources"])
+                    if merged != sources:
+                        sources = merged
+                        yield stream_event("sources", sources)
+                if event["reasoning"] and effectiveThinkingEnabled:
+                    reasoning_text.append(event["reasoning"])
+                    yield stream_event("reasoning", event["reasoning"])
+                if event["content"]:
+                    assistant_text.append(event["content"])
+                    yield stream_event("content", event["content"])
+
+        if generation_id:
+            generation_usage = await provider.fetchFinalUsage(api_key, generation_id)
+            if generation_usage:
+                usage = {**(usage or {}), **generation_usage}
+        if usage:
+            yield stream_event(
+                "usage",
+                {
+                    "generation_id": generation_id,
+                    "model": payload.model,
+                    **usage,
+                },
+            )
     except Exception as exc:  # noqa: BLE001
         error_text = str(exc)
         fallback = f"RouterChat error: {error_text}"
@@ -312,8 +271,8 @@ async def stream_message(
     chat_id: str,
     payload: StreamMessageRequest,
 ) -> StreamingResponse:
-    if not read_openrouter_key():
-        raise HTTPException(status_code=401, detail="Add an OpenRouter API key first.")
+    provider = sendingProvider(chat_id)
+    provider.requireKey()
     message = payload.message.strip()
     attachmentIds = payload.attachment_ids
     if not message and not attachmentIds:
@@ -327,6 +286,14 @@ async def stream_message(
         chat = conn.execute("SELECT * FROM chats WHERE id = ?", (chat_id,)).fetchone()
         if not chat:
             raise HTTPException(status_code=404, detail="Chat not found.")
+        checkAttachmentLimits(
+            conn,
+            attachmentIds,
+            provider,
+            chatId=chat_id,
+            throughMessageId=payload.regenerate_message_id,
+            modelId=payload.model,
+        )
         has_messages = chat_has_messages(conn, chat_id)
         locked_model = chat["model"] if has_messages else payload.model
         if has_messages and payload.model != locked_model:
@@ -388,7 +355,7 @@ async def stream_message(
         conn.execute(
             """
             UPDATE chats
-            SET title = ?, model = ?, system_prompt = ?, temperature = ?,
+            SET title = ?, model = ?, provider = ?, system_prompt = ?, temperature = ?,
                 max_tokens = ?, thinking_enabled = ?, reasoning_effort = ?,
                 web_search_enabled = ?, updated_at = ?
             WHERE id = ?
@@ -396,6 +363,7 @@ async def stream_message(
             (
                 title,
                 locked_model,
+                provider.id,
                 chatSystemPrompt(payload),
                 payload.temperature,
                 payload.max_tokens,
@@ -408,7 +376,7 @@ async def stream_message(
         )
 
     return StreamingResponse(
-        stream_openrouter_response(chat_id, payload, assistant_message_id),
+        stream_chat_response(chat_id, payload, assistant_message_id),
         media_type="application/x-ndjson; charset=utf-8",
         headers={
             "X-User-Message-Id": user_message_id,

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dotenv import load_dotenv
 from fastapi import FastAPI
 
 from backend.attachments import attachmentRoutes
@@ -26,6 +25,8 @@ from backend.lorebook import (
     timelineRepair,
     updateRoutes,
 )
+from backend.providers import providerRoutes
+from backend.providers.envKeys import loadSavedKeys
 from backend.security import bootstrapRoutes
 from backend.security.apiSecurity import enforce_local_api_security
 from backend.security.localAccessConfig import local_access_config
@@ -34,9 +35,9 @@ from backend.tos import tosRoutes
 from backend.transcription import transcriptionRoutes
 from backend.usage import usageRoutes
 from backend.webSearch import faviconRoutes
-from backend.writing import chapterRoutes, storyImportExport, storyRoutes
+from backend.writing import chapterRoutes, storyImportExport, storyProviderRoutes, storyRoutes
 
-load_dotenv(paths.ENV_PATH)
+loadSavedKeys()
 
 app = FastAPI(title="RouterChat", version=APP_VERSION)
 app.middleware("http")(enforce_local_api_security)
@@ -45,6 +46,7 @@ featureRouters = [
     bootstrapRoutes.router,
     tosRoutes.router,
     settingsRoutes.router,
+    providerRoutes.router,
     folderRoutes.router,
     chatRoutes.router,
     chatImportExport.router,
@@ -56,6 +58,7 @@ featureRouters = [
     attachmentRoutes.router,
     storyRoutes.router,
     storyImportExport.router,
+    storyProviderRoutes.router,
     chapterRoutes.router,
     changelogRoutes.router,
     lorebookRoutes.router,

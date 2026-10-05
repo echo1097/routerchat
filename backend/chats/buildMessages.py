@@ -9,7 +9,7 @@ from backend.attachments.attachmentContent import (
 from backend.core.database import get_db
 
 
-def build_openrouter_messages(
+def build_messages(
     chat_id: str,
     system_prompt: str,
     regenerate_message_id: str | None = None,

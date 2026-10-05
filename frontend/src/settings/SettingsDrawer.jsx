@@ -99,6 +99,7 @@ export function SettingsDrawer({
   chats,
   activeChatId,
   models,
+  chatModels,
   chatMode,
   settings,
   setSettings,
@@ -201,11 +202,11 @@ export function SettingsDrawer({
     const normalized = cloudSearch.trim().toLowerCase();
     if (!normalized) return chats;
     return chats.filter((chat) => (
-      [chat.title, promptModelName(models, chat.model)]
+      [chat.title, promptModelName(chatModels, chat.model)]
         .filter(Boolean)
         .some((value) => value.toLowerCase().includes(normalized))
     ));
-  }, [chats, cloudSearch, models]);
+  }, [chats, cloudSearch, chatModels]);
 
   const filteredModels = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -790,7 +791,7 @@ export function SettingsDrawer({
                           {chat.title}
                         </span>
                         <span className="mt-0.5 block truncate text-xs text-neutral-500">
-                          {promptModelName(models, chat.model)}
+                          {promptModelName(chatModels, chat.model)}
                         </span>
                       </span>
                       <Check

@@ -168,6 +168,7 @@ function App() {
   const [chatProviderId, setChatProviderId] = useState(null);
   const [storyProviderId, setStoryProviderId] = useState(null);
   const {
+    providers,
     activeProvider,
     providerFor,
     keyStatus,
@@ -177,7 +178,13 @@ function App() {
   } = useProviders({
     onError: (error) => setStatus(error.message),
   });
-  const { models, fetchModels } = useModels();
+  const { models, knownModels, fetchModels, fetchKnownModels } = useModels();
+  const chatModels = useMemo(() => [...models, ...knownModels], [models, knownModels]);
+  const keyedProviderIds = providers.filter((provider) => provider.hasKey).map((provider) => provider.id).join(",");
+
+  useEffect(() => {
+    if (keyedProviderIds) fetchKnownModels(keyedProviderIds.split(","));
+  }, [keyedProviderIds, fetchKnownModels]);
   const [tourForceThinking, setTourForceThinking] = useState(false);
   const [tourSampleChatActive, setTourSampleChatActive] = useState(false);
   const abortRef = useRef(null);
@@ -3408,7 +3415,7 @@ function App() {
         <ConversationRail
           chats={sidebarChats}
           activeChatId={visibleActiveChatId}
-          models={models}
+          models={chatModels}
           onNewChat={() => resetChat({ mode: chatMode })}
           onLoadChat={loadChat}
           onRenameChat={renameChat}
@@ -3665,6 +3672,7 @@ function App() {
         chats={chats}
         activeChatId={activeChatId}
         models={models}
+        chatModels={chatModels}
         chatMode={chatMode}
         settings={settings}
         setSettings={setSettings}

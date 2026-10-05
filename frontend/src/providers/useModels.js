@@ -3,6 +3,7 @@ import { providerApi } from "./providerApi.js";
 
 export function useModels() {
   const [models, setModels] = useState([]);
+  const [knownModels, setKnownModels] = useState([]);
   const latestRequestRef = useRef(0);
 
   const fetchModels = useCallback(async (providerId) => {
@@ -23,5 +24,13 @@ export function useModels() {
     }
   }, []);
 
-  return { models, fetchModels };
+  const fetchKnownModels = useCallback(async (providerIds) => {
+    const lists = await Promise.all(
+      providerIds.map((providerId) => providerApi.listModels(providerId).catch(() => [])),
+    );
+
+    setKnownModels(lists.flat());
+  }, []);
+
+  return { models, knownModels, fetchModels, fetchKnownModels };
 }

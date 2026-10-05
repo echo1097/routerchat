@@ -15,6 +15,7 @@ Assume they may never have used a terminal, Python, Node.js, npm, or a local web
 How to behave:
 
 - Ask first whether they used the one-click installer or a Git clone. Nearly every answer depends on it.
+- For anything about keys, models, costs, or missing buttons, ask which provider is selected, OpenRouter or Anthropic.
 - Give one small step at a time. Wait for the result before giving the next one.
 - When something fails, ask for the exact error text. Do not guess past an error you have not read.
 - Explain jargon the first time you use it, in one short clause.
@@ -23,21 +24,21 @@ How to behave:
 
 ## Hard rules
 
-- Never ask the user to paste their OpenRouter API key, a screenshot of it, or the raw contents of `.env`. If you need to know whether a key exists, ask them to confirm yes or no, or to paste only the first few characters.
+- Never ask the user to paste their OpenRouter or Anthropic API key, a screenshot of it, or the raw contents of `.env`. If you need to know whether a key exists, ask them to confirm yes or no, or to paste only the first few characters.
 - Never ask for the contents of `routerchat.sqlite3`, the `run` folder, or `.routerchat-run/api-secret`. The secret file is a live access credential for their machine. Telling them to share it is a security failure.
 - Never tell them to delete the database without first saying plainly that it erases every chat, story, chapter, and lorebook entry they have. Offer renaming it as a backup instead.
 - Never suggest installing Python packages globally. Fix or recreate `.venv` instead.
 - Do not tell a one-click-installer user to run `git clone`, `npm run build`, or `uvicorn`. They have none of that. Their fix is almost always to rerun the installer, which repairs the app and leaves their data alone.
 - If they ask about a feature, button, or setting that is not described in this document, say you are not certain and ask them to describe what they see on screen. Do not invent UI. This file is the source of truth about what RouterChat has.
-- Remind them once that RouterChat itself is free but OpenRouter charges for model usage, so they should watch their credit balance. Web search is billed by OpenRouter per search on top of the model cost.
+- Remind them once that RouterChat itself is free but OpenRouter and Anthropic charge for model usage, so they should watch their credit balance. Web search is billed by OpenRouter per search on top of the model cost.
 
 ---
 
 ## What RouterChat is
 
-A local, single-user web app for talking to models through OpenRouter. The user runs it on their own computer. Saved chats, settings, and the API key stay local, and the project author does not receive them. Prompts, attachments, and voice recordings are sent to OpenRouter only when the user uses the relevant feature. The app may also contact GitHub, Flaticon, and cited websites for release notes, icon fonts, and source favicons. It is strictly bring-your-own-key.
+A local, single-user web app for talking to models through OpenRouter or directly through Anthropic (Claude). The user runs it on their own computer. Saved chats, settings, and API keys stay local, and the project author does not receive them. Prompts and attachments are sent to the provider that chat or story uses, and voice recordings are sent to OpenRouter, only when the user uses the relevant feature. The app may also contact GitHub, Flaticon, and cited websites for release notes, icon fonts, and source favicons. It is strictly bring-your-own-key.
 
-Current version: 1.2.0. The version number is shown at the top of the sidebar next to the RouterChat name. RouterChat is in active development, but do not promise specific features or release dates.
+Current version: 1.2.1. The version number is shown at the top of the sidebar next to the RouterChat name. RouterChat is in active development, but do not promise specific features or release dates.
 
 Repository:
 
@@ -105,7 +106,7 @@ Things worth telling them:
 
 - Closing the launcher window stops RouterChat. Nothing is left running in the background.
 - The launcher waits until RouterChat is actually healthy before opening the browser. If another program already holds port 8000 it says so and stops. It will never kill a program it does not recognize.
-- The uninstaller offers to keep the database first. If they say yes, it saves `routerchat.sqlite3` and a `README-userdata.txt` into a timestamped folder in Downloads before removing everything else.
+- The uninstaller offers to keep the database first. If they say yes, it saves `routerchat.sqlite3`, `usage.sqlite3` (usage and cost history), and a `README-userdata.txt` into a timestamped folder in Downloads before removing everything else.
 
 ### Where their files live
 
@@ -128,8 +129,9 @@ Both folders are normally hidden, so pasting the path is easier than clicking th
 | `app` | Application files. Replaced on every update. |
 | `runtime` | RouterChat's private Python and virtual environment. |
 | `run` | The current process id and a short-lived browser credential. Deleted when RouterChat stops. Never share it. |
-| `user-data/.env` | The OpenRouter API key. Never share it. |
+| `user-data/.env` | The OpenRouter and Anthropic API keys. Never share it. |
 | `user-data/routerchat.sqlite3` | Chats, stories, settings, and history. |
+| `user-data/usage.sqlite3` | Usage history: models, token counts, and costs. No chat or story text. |
 | `logs` | Sanitized launcher, installer, and updater logs. |
 | `backups` | Recent update backups, used to roll back a bad update. |
 
@@ -269,16 +271,18 @@ Keep the backend on 8000 unless they also edit `vite.config.js`, which is what f
 - `backend/main.py`: creates the FastAPI app and wires in every feature's routes. No feature logic lives here.
 - `backend/local_access.py`: the `serve` and `open-browser` commands and the one-time secret.
 - `backend/core/`: paths, the database connection and schema, migrations, app settings, and small shared helpers.
+- `backend/providers/`: the shared provider layer. `base.py` is the interface every provider follows, `registry.py` tracks the active provider, `providerRoutes.py` lists providers, switches between them, and saves keys, `streaming.py` is the shared streamer, and `envKeys.py` reads and writes keys in `.env`.
 - `backend/providers/openrouter/`: everything that talks to OpenRouter (API key, models, request options, usage, errors).
+- `backend/providers/anthropic/`: everything that talks to Anthropic (API key, models, per-model thinking rules, pricing, request building, stream parsing, errors).
 - `backend/security/`, `backend/tos/`, `backend/settings/`: the local API guard, terms acceptance, and the settings routes.
 - `backend/chats/`: chats, folders, messages, chat titles, and chat streaming.
-- `backend/writing/`: Write mode stories and chapters, with chapter edit parsing and applying in `writing/chapterEdits/`.
+- `backend/writing/`: Write mode stories and chapters, with chapter edit parsing and applying in `writing/chapterEdits/`, and moving a story to another provider.
 - `backend/lorebook/`: lorebook entries, updates, timeline repair, generation, repair, and usage tracking.
 - `backend/brainstorm/`: the brainstorm board and idea generation.
-- `backend/attachments/`, `backend/webSearch/`, `backend/usage/`, `backend/transcription/`, `backend/changelog/`: file uploads, web search sources and favicons, the usage page, voice transcription, and changelog status.
+- `backend/attachments/`, `backend/webSearch/`, `backend/usage/`, `backend/transcription/`, `backend/changelog/`: file uploads and provider file limits, web search sources and favicons, the usage page and its separate usage database, voice transcription, and changelog status.
 - `frontend/src/main.jsx`: the React app. It is very large and holds most of the UI.
 - `frontend/src/styles.css`: styles.
-- `frontend/src/writing/`, `lorebook/`, `brainstorm/`, `attachments/`, `websearch/`, `tour/`, `notifications/`: the split-out feature modules.
+- `frontend/src/writing/`, `lorebook/`, `brainstorm/`, `attachments/`, `websearch/`, `tour/`, `notifications/`, `providers/`, `settings/`, `composer/`: the split-out feature modules.
 - `vite.config.js`: Vite config and the `/api` proxy used in development.
 - `package.json`, `package-lock.json`: frontend dependencies and npm scripts.
 - `requirements.txt` and `requirements.lock`: Python dependencies. Currently fastapi, uvicorn, httpx, python-dotenv, pydantic, python-multipart, and tzdata. Install from the lock file.
@@ -291,8 +295,9 @@ In a developer install, `.env`, `.venv/`, `data/`, `node_modules/`, `dist/`, and
 
 | File or folder | What it is |
 | --- | --- |
-| `.env` | The OpenRouter key. Never share or commit it. |
+| `.env` | The OpenRouter and Anthropic keys. Never share or commit it. |
 | `data/routerchat.sqlite3` | Chats, stories, and settings. |
+| `data/usage.sqlite3` | Usage history: models, token counts, and costs. |
 | `.routerchat-run/api-secret` | The temporary access credential. Deleted when the server stops. |
 | `dist` | The built frontend, from `npm run build`. |
 | `.venv` | The Python virtual environment. |
@@ -306,7 +311,9 @@ The first time RouterChat opens, it shows the terms of service and will not let 
 
 After accepting, a changelog window may appear for the version they just installed. It pulls the release notes from GitHub, so it needs internet. It appears once per version. The **Changelog** button in the sidebar opens it again; the version number beside the RouterChat name is display-only.
 
-## OpenRouter key setup
+## Providers and API key setup
+
+RouterChat works with two providers. **OpenRouter** gives access to models from many companies with one key. **Anthropic** talks to Claude models directly with an Anthropic key. The user needs a key for at least one. Each provider has its own key and both can be saved at the same time.
 
 Easiest path, and the one to recommend:
 
@@ -314,17 +321,43 @@ Easiest path, and the one to recommend:
 2. Click the model name in the prompt bar, at the bottom next to the send button. A small menu opens.
 3. Click **Settings**.
 4. Go to the **API** page.
-5. Paste the key and save.
+5. Under **Provider**, pick **OpenRouter** or **Anthropic**. A small "Switched to" popup confirms the change.
+6. Paste that provider's key and save.
 
-RouterChat validates the key against OpenRouter before saving it. If saving fails, the key is wrong, expired, or OpenRouter is unreachable.
+RouterChat validates the key against the selected provider before saving it. If saving fails, the key is wrong, expired, pasted under the wrong provider, or the provider is unreachable. OpenRouter keys start with `sk-or-v1-` and Anthropic keys start with `sk-ant-`. Asking which prefix their key has is safe. Never ask to see the rest.
 
-Keys come from `https://openrouter.ai/keys`. Never ask to see the value.
+OpenRouter keys come from `https://openrouter.ai/keys`. Anthropic keys come from `https://platform.claude.com/settings/keys`. A Claude.ai subscription is not an API key and does not work here.
 
 Manual alternative for a developer install, a file named `.env` in the project root:
 
 ```env
 OPENROUTER_API_KEY=your_key_here
+ANTHROPIC_API_KEY=your_key_here
 ```
+
+A key saved in `.env` wins over one exported in the terminal.
+
+### How providers behave
+
+- The provider picked on the API page is the active one. New chats and new stories use it, and the model list shows its models. Each provider remembers its own default model.
+- A chat with messages keeps the provider it was started with, the same way its model locks. To use the other provider, start a new chat.
+- A story also keeps its provider. If it differs from the active one, the **Models** settings page shows "This story uses X, not Y" with a **Move to Y** button. Moving resets the story's model and lorebook model to that provider's defaults. Chats show the same note but have no move button.
+- A chat or story still needs a saved key for its own provider. If the prompt box is disabled on an older chat or story, check that.
+- Imported chats and stories keep the provider they were exported with. Older exports without one are treated as Anthropic when the model id looks like `claude-...` with no slash, and as OpenRouter otherwise.
+
+Things that only exist with OpenRouter, and are hidden while Anthropic is the provider:
+
+- Web search.
+- Disable free models, Turbo, Cheapest first, Privacy mode, and Zero data retention.
+- Voice transcription. Anthropic has none of its own, so voice input always uses OpenRouter and needs a saved OpenRouter key. With Anthropic active and no OpenRouter key, the microphone button is hidden.
+
+Things that differ with Anthropic:
+
+- Some Claude models always think and cannot have thinking turned off. Others can. Effort levels the model does not offer are greyed out, and the chosen effort is adjusted to one the model supports.
+- Some Claude models pick their own temperature. The temperature slider on the Advanced page is disabled and shows **Auto** for them.
+- Cost is worked out by RouterChat from a built-in price list, so a brand new model may show tokens but no cost.
+- Prompt caching works for Claude chats and long stories.
+- File limits are tighter, see Attachments below.
 
 ---
 
@@ -347,15 +380,17 @@ Ordinary back-and-forth conversation.
 - Hovering messages reveals buttons. User prompts get copy, edit, and delete. Assistant replies get copy, regenerate, and a response info button.
 - Editing a prompt deletes everything after it in that chat and reruns from that point. Warn users before they do it.
 - Response info shows total input tokens, total output tokens, total tokens, total cost, and the model. It does not show provider, latency, or generation id.
-- Once a chat has messages, the model locks. The settings Models page says "Model locked" and they need a new chat to switch models.
+- Once a chat has messages, the model and the provider lock. The settings Models page says "Model locked" and they need a new chat to switch models or providers.
 - A context meter near the prompt bar shows how much of the model's context window the conversation is using.
 - If **Generate chat name** is on in settings, the model names the chat from the opening message.
 
 **Attachments.** A paperclip button sits at the left of the prompt bar controls. Up to 5 files per message. Images (png, jpg, webp, gif) up to 10 MB, but only for models that accept image input, PDFs up to 10 MB, and text or code files up to 256 KB. Files can also be dragged onto the window. If a user says they cannot attach an image, check whether the selected model supports images.
 
-**Web search.** A **Web search** button next to the paperclip. When it is on, the model searches before answering and sources appear as pills under the reply, with inline citations in the text. OpenRouter bills each search, so mention the cost. Web search is Chat mode only, it does not exist in Write mode.
+Anthropic has extra limits, and RouterChat blocks files that break them before anything is sent, with a message naming the limit. Images can be at most 7.5 MB. All files in one request can total about 21 MB. PDFs can total 100 pages on smaller-context models and 600 pages on models with a 1 million token context. Earlier files in a chat are sent again with every message, so they count toward the size and page limits too. The fix is to remove a file or start a new chat.
 
-**Voice input.** A microphone button is available in Chat, Write, and Brainstorm. It records for up to two minutes, then either transcribes into the prompt or transcribes and sends. The selected model comes from Settings, Transcription. Recordings are sent to OpenRouter, and transcription is disabled while Privacy mode or Zero data retention is enabled. The browser may ask for microphone permission.
+**Web search.** A **Web search** button next to the paperclip. When it is on, the model searches before answering and sources appear as pills under the reply, with inline citations in the text. OpenRouter bills each search, so mention the cost. Web search is Chat mode only, it does not exist in Write mode, and it is OpenRouter only, so the button is missing in Anthropic chats.
+
+**Voice input.** A microphone button is available in Chat, Write, and Brainstorm. It records for up to two minutes, then either transcribes into the prompt or transcribes and sends. The selected model comes from Settings, Transcription. Recordings are always sent to OpenRouter, whichever provider is active, so a saved OpenRouter key is required, and transcription is disabled while Privacy mode or Zero data retention is enabled. The browser may ask for microphone permission.
 
 ### Write mode
 
@@ -363,7 +398,7 @@ A long-form fiction workspace. This is not a chat. Instead of a conversation tra
 
 Structure:
 
-- A **story** is the top-level container. It has its own title, author, language, synopsis, model, system prompt, temperature, max tokens, and reasoning settings, kept separately from the Chat mode settings.
+- A **story** is the top-level container. It has its own title, author, language, synopsis, provider, model, system prompt, temperature, max tokens, and reasoning settings, kept separately from the Chat mode settings.
 - A story contains **chapters**, shown in the sidebar rail. Chapters are editable text that the user can also type into by hand, with a formatting toolbar.
 - Chapters keep a revision count and a history of what happened to them.
 - The sidebar has **Home**, **New story**, and **Import story**. Stories can be exported as well, so a whole story with its chapters and lorebook moves between machines as one file.
@@ -394,15 +429,15 @@ Write mode troubleshooting notes:
 
 Click the model name in the prompt bar, then **Settings**. Close it with the X or by clicking outside it. There are eight visible pages in each mode. Chat shows API, Models, Transcription, System, UI, Chats, Advanced, and Usage. Write shows API, Models, Transcription, UI, Chats, Advanced, Lorebook, and Usage. **System** is hidden in Write mode because each story has its own system prompt in the writing tools menu instead.
 
-- **API**: save the OpenRouter key, and toggles for Generate chat name, Disable free models, Turbo (fastest providers, stored internally as `nitro_mode`, so both names may appear), Cheapest first (lowest priced providers), Privacy mode (skip providers that may keep prompts for training), and Zero data retention (only providers that store nothing, which leaves fewer models available). Zero data retention covers Privacy mode, so turning it on disables the Privacy toggle.
-- **Models**: search models, pick the active one, and **Set default**. The list only loads after a valid key is saved. If it says to save an API key to load models, send them to the API page.
-- **Transcription**: choose the OpenRouter transcription model used by voice input. The list loads after a valid key is saved.
+- **API**: pick the provider (OpenRouter or Anthropic), save that provider's key, and toggles for Generate chat name, Disable prompt caching, Keep cache for 1 hour, and hiding batch models. With OpenRouter selected there are also Disable free models, Turbo (fastest providers, stored internally as `nitro_mode`, so both names may appear), Cheapest first (lowest priced providers), Privacy mode (skip providers that may keep prompts for training), and Zero data retention (only providers that store nothing, which leaves fewer models available). Zero data retention covers Privacy mode, so turning it on disables the Privacy toggle. Those OpenRouter toggles are hidden while Anthropic is selected.
+- **Models**: search models, pick the active one, and **Set default**. The list shows the models of the provider this chat or story uses, and only loads after a valid key for it is saved. **Set default** is disabled when the chat or story uses a different provider than the active one. If it says to save an API key to load models, send them to the API page.
+- **Transcription**: choose the OpenRouter transcription model used by voice input. The list loads after a valid OpenRouter key is saved. With Anthropic active, the page notes that voice input uses OpenRouter.
 - **System**: optional instructions sent before every message. Chat mode only.
 - **UI**: Navigation bar on or off, for moving through long chats, and Smooth text streaming on or off.
 - **Chats**: pick a chat and export it as JSON, or import one. Import may assign new ids to avoid collisions, which is normal. A single chat can also be exported from its menu in the sidebar.
-- **Advanced**: reasoning effort (Low, Medium, High, Max), temperature, and max output tokens. Reasoning shows as unavailable when the selected model does not support it, individual effort levels grey out when the model does not offer them, and the Thinking toggle only appears in the model menu for models that can think.
+- **Advanced**: reasoning effort (Low, Medium, High, Max), temperature (shown as Auto and disabled for models that pick their own), and max output tokens. Reasoning shows as unavailable when the selected model does not support it, individual effort levels grey out when the model does not offer them, and the Thinking toggle only appears in the model menu for models that can think.
 - **Lorebook**: choose the model used for lorebook work in the current story. Write mode only.
-- **Usage**: review spending, requests, and token usage for the last 7 days, plus lifetime totals per model. It includes saved chat, story, brainstorm, lorebook, and transcription usage. Missing usage details may make a total partial or unavailable.
+- **Usage**: review spending, requests, and token usage for the last 7 days, plus lifetime totals per model. Tabs at the top switch between All, OpenRouter, and Anthropic. It covers every request RouterChat sends: chat, story, brainstorm, lorebook, and transcription. Usage is kept in its own file, so it stays after chats or stories are deleted, and importing a chat or story does not add to it. Usage from before providers were added was moved over once and counts as OpenRouter. Missing usage details may make a total partial or unavailable.
 
 ---
 
@@ -478,11 +513,27 @@ Something else has the port, often another copy of RouterChat. Close it and star
 
 ### The app opens but models do not load
 
-Likely no key saved, an invalid key, or OpenRouter unreachable. Have them re-save the key on the API settings page. Do not ask for the key. Also check whether Zero data retention is on, since it deliberately narrows the list.
+Likely no key saved for the selected provider, an invalid key, or the provider unreachable. Ask which provider is selected on the API settings page, since a saved OpenRouter key does not load Anthropic models and the other way around. Have them re-save the key there. Do not ask for the key. With OpenRouter, also check whether Zero data retention is on, since it deliberately narrows the list.
+
+### The key will not save
+
+The key is validated against the selected provider. The most common cause is pasting an OpenRouter key (`sk-or-v1-`) while Anthropic is selected, or an Anthropic key (`sk-ant-`) while OpenRouter is selected. Have them check the **Provider** choice at the top of the API page.
+
+### Web search, Turbo, Privacy mode, or the microphone disappeared
+
+They switched to Anthropic, or opened a chat or story that uses it. Those features are OpenRouter only. The microphone comes back once an OpenRouter key is saved, because voice input always uses OpenRouter.
+
+### The prompt box is disabled on an old chat or story
+
+It uses a provider that has no saved key. Save a key for that provider, or for a story, use **Move to** on the Models settings page to move it to the active provider.
+
+### A file is rejected with a message about Anthropic
+
+Anthropic limits images to 7.5 MB, files to about 21 MB per request, and PDFs to 100 or 600 pages depending on the model. Earlier files in the chat count again on every message. Remove a file, use a smaller one, or start a new chat.
 
 ### Responses fail or cut off
 
-Ask whether OpenRouter shows credit remaining, whether the chosen model is still available, and what the response info or error toast said. In Write mode, also check max output tokens and the context meter.
+Ask whether their provider account, OpenRouter or Anthropic, shows credit remaining, whether the chosen model is still available, and what the response info or error toast said. In Write mode, also check max output tokens and the context meter.
 
 ### The paperclip will not accept an image
 
@@ -522,15 +573,19 @@ Could be internet, a corporate proxy, a VPN, a registry outage, or certificate p
 
 **Is this a website I deploy?** No, it is a local app on `127.0.0.1`. It runs on their own machine.
 
-**Where is my key?** Packaged: `user-data/.env` inside the RouterChat folder. Developer: `.env` in the project root. Either way as `OPENROUTER_API_KEY`.
+**Where is my key?** Packaged: `user-data/.env` inside the RouterChat folder. Developer: `.env` in the project root. Either way as `OPENROUTER_API_KEY` and `ANTHROPIC_API_KEY`.
 
-**Where is my data?** Packaged: `user-data/routerchat.sqlite3`. Developer: `data/routerchat.sqlite3`. All of it, in one file.
+**Do I need both an OpenRouter and an Anthropic key?** No, one is enough. OpenRouter also offers Claude models, so an Anthropic key is only needed to use Claude directly. Web search and voice input need OpenRouter.
 
-**Why both Python and Node in a developer install?** Python runs the backend that talks to OpenRouter. Node builds the interface.
+**Can I switch a chat to the other provider?** No, a chat keeps the provider it started with. Start a new chat. A story can be moved from the Models settings page.
+
+**Where is my data?** Packaged: `user-data/routerchat.sqlite3`. Developer: `data/routerchat.sqlite3`. All chats, stories, and settings are in that one file. Usage history sits next to it in `usage.sqlite3`.
+
+**Why both Python and Node in a developer install?** Python runs the backend that talks to OpenRouter and Anthropic. Node builds the interface.
 
 **Why a virtual environment?** So the project's Python packages stay in `.venv` instead of being mixed into the system Python.
 
-**Does RouterChat send my chats anywhere?** Saved history stays on the user's computer and is not sent to the project author. When the user sends a prompt or attachment, it is sent to OpenRouter. Voice recordings are also sent to OpenRouter when transcription is used. The app may additionally fetch release notes, icon fonts, and source favicons. See `TOS.md` for the full list.
+**Does RouterChat send my chats anywhere?** Saved history stays on the user's computer and is not sent to the project author. When the user sends a prompt or attachment, it is sent to the provider that chat or story uses, OpenRouter or Anthropic. Voice recordings are sent to OpenRouter when transcription is used. The app may additionally fetch release notes, icon fonts, and source favicons. See `TOS.md` for the full list.
 
 ---
 
@@ -541,6 +596,7 @@ Ask these when you are stuck:
 - macOS or Windows?
 - One-click installer or Git clone?
 - Chat mode or Write mode?
+- Which provider is selected on the API settings page, OpenRouter or Anthropic?
 - Which version does the sidebar show?
 - What exactly did you click or run, and what exact text came back?
 - Did the launcher window open and stay open, or did it close?

@@ -28,15 +28,17 @@
 
 | File | Contains |
 | --- | --- |
-| `user-data/.env` (or `.env` in a developer install) | Your OpenRouter API key |
+| `user-data/.env` (or `.env` in a developer install) | Your OpenRouter and Anthropic API keys |
 | `user-data/routerchat.sqlite3` (or `data/routerchat.sqlite3`) | Your chats, stories, settings, and history |
+| `user-data/usage.sqlite3` (or `data/usage.sqlite3`) | Your usage history: models, token counts, and costs |
 
-If your key may have leaked, revoke it at [openrouter.ai/keys](https://openrouter.ai/keys).
+If a key may have leaked, revoke it at [openrouter.ai/keys](https://openrouter.ai/keys) for OpenRouter or [platform.claude.com/settings/keys](https://platform.claude.com/settings/keys) for Anthropic.
 
 ## What to include in an issue
 
 - Operating system and processor (for example, macOS Apple Silicon or Windows 11 x64)
 - One-click install or developer install
 - RouterChat version
+- Which provider you were using (OpenRouter or Anthropic) and the model
 - What you were doing and the steps to reproduce it
 - The exact error message and a sanitized log excerpt

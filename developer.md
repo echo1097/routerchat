@@ -91,7 +91,7 @@ python3 -m backend.local_access open-browser \
   --base-url http://127.0.0.1:8000
 ```
 
-**10. Add your API key.** In settings, go to **API**, paste your OpenRouter key, and save. It's saved to `.env` in the project folder.
+**10. Add your API key.** In settings, go to **API**, pick **OpenRouter** or **Anthropic** under **Provider**, paste that provider's key, and save. Keys are saved to `.env` in the project folder as `OPENROUTER_API_KEY` and `ANTHROPIC_API_KEY`. A key saved in `.env` wins over one exported in your terminal.
 
 ### On Windows
 
@@ -189,8 +189,9 @@ None of these are committed to GitHub.
 
 | File or folder | What it is |
 | --- | --- |
-| `.env` | Your OpenRouter key. Never share or commit it. |
+| `.env` | Your OpenRouter and Anthropic keys. Never share or commit it. |
 | `data/routerchat.sqlite3` | Your chats, stories, and settings. |
+| `data/usage.sqlite3` | Your usage history: models, token counts, and costs. |
 | `.routerchat-run/api-secret` | Temporary access credential, deleted when the server stops. |
 | `dist` | Built frontend from `npm run build`. |
 | `.venv` | Python virtual environment. |

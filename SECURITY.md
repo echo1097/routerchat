@@ -8,7 +8,7 @@ Report issues ONLY through GitHub private vulnerability reporting: **[Report a v
 
 Include the component, your version, your OS, and steps to reproduce. Only the [latest release](https://github.com/echo1097/routerchat/releases/latest) is supported, so update and confirm the problem first.
 
-**Never share `user-data/.env` (your API key) or `user-data/routerchat.sqlite3` (your chats and stories).** Sanitize logs per [SUPPORT.md](SUPPORT.md). If your key may be exposed, revoke it at [openrouter.ai/keys](https://openrouter.ai/keys) first.
+**Never share `user-data/.env` (your API keys) or `user-data/routerchat.sqlite3` (your chats and stories).** Sanitize logs per [SUPPORT.md](SUPPORT.md). If a key may be exposed, revoke it first at [openrouter.ai/keys](https://openrouter.ai/keys) or [platform.claude.com/settings/keys](https://platform.claude.com/settings/keys).
 
 ## What to expect
 
@@ -18,7 +18,7 @@ Reports are reviewed on a best effort basis, with no guaranteed response times, 
 
 In scope:
 
-- exposure of the API key or database
+- exposure of an API key or the database
 - anything off-machine reaching the local backend
 - unintended code or command execution, or file access, through untrusted input
 - third parties altering what the installers and updater run, including checksum bypass and rollback attacks
@@ -27,7 +27,7 @@ Releases are verified by SHA-256 checksum but not signed or notarized. A checksu
 
 Out of scope:
 
-- OpenRouter or third-party model behavior and output
+- OpenRouter, Anthropic, or third-party model behavior and output
 - issues that require arbitrary read or write access as the OS user running RouterChat
 - the backend being reachable from your own machine
 - scanner output with no proof of concept

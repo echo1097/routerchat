@@ -4,7 +4,7 @@
 
 # RouterChat
 
-**A free, local OpenRouter interface for chatting and longform writing.**
+**A free, local interface for chatting and longform writing.**
 
 Bring your own key. Available for macOS and Windows.
 
@@ -31,7 +31,7 @@ RouterChat is licensed under the [Apache License 2.0](LICENSE) as of August 3, 2
 
 ## Install RouterChat
 
-You will need an [OpenRouter API key](https://openrouter.ai/keys). 
+You will need an [OpenRouter API key](https://openrouter.ai/keys) or an [Anthropic API key](https://platform.claude.com/settings/keys). 
 
 ---
 
@@ -58,7 +58,7 @@ irm https://echo1097.github.io/get-routerchat/install.ps1 | iex
 
 ## Features
 
-- **Chat Mode:** Chat with any OpenRouter model, with web search, file attachments, temporary chats, and chat history.
+- **Chat Mode:** Chat with any OpenRouter or Anthropic model, with file attachments, temporary chats, and chat history. Web search is available with OpenRouter.
 - **Writing Mode:** A longform writing workspace. Write stories in chapters, brainstorm ideas, and keep a lorebook of characters and world details.
 
 ## Roadmap
@@ -84,9 +84,9 @@ AI helped with development and documentation for this project. I reviewed all co
 
 ## Local data
 
-Your chats, settings, and API key stay on your computer, and the project author never receives them. Packaged installs keep the OpenRouter key and database outside the app folder, so updates don't replace them. Git clone installs keep using `.env` and `data/routerchat.sqlite3` inside the repository.
+Your chats, settings, and API keys stay on your computer, and the project author never receives them. Packaged installs keep your keys and database outside the app folder, so updates don't replace them. Git clone installs keep using `.env` and `data/routerchat.sqlite3` inside the repository.
 
-When you send a prompt, attachment, or voice recording, that data goes to OpenRouter so it can handle the request. See [TOS.md](TOS.md) for the full list of connections.
+When you send a prompt or attachment, that data goes to the provider you picked, OpenRouter or Anthropic, so it can handle the request. Voice recordings always go to OpenRouter. See [TOS.md](TOS.md) for the full list of connections.
 
 ## Media
 

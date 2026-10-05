@@ -1,4 +1,5 @@
 import json
+import logging
 import sqlite3
 import uuid
 from contextlib import aclosing
@@ -29,6 +30,8 @@ from backend.providers.base import ChatOptions
 from backend.writing.storyProvider import storyProvider
 from backend.providers.streaming import streamChat
 from backend.writing.storyRows import insert_chapter_history_entry, row_to_story
+
+logger = logging.getLogger("uvicorn.error")
 
 
 #used to be one blocking post, now it streams so write mode can show the thinking while it works.
@@ -189,6 +192,15 @@ async def run_lorebook_update(
                 error_text,
                 utc_now(),
             ),
+        )
+
+    if error_text:
+        logger.error(
+            "Lorebook update failed (%s, story %s, chapter %s): %s",
+            model,
+            story_id,
+            chapter_id,
+            error_text,
         )
 
     yield {

@@ -13,6 +13,7 @@ import { useTour } from "./tour/useTour.js";
 import { WRITE_TOUR_STEPS } from "./tour/tourSteps.js";
 import { useNotifications } from "./notifications/useNotifications.js";
 import { useAttachments } from "./attachments/useAttachments.js";
+import { totalAttachmentBytes } from "./attachments/attachmentsApi.js";
 import {
   supportsImageInput,
   requiresThinking,
@@ -591,9 +592,15 @@ function App() {
   const currentProviderId = currentProvider.id;
   const usesActiveProvider = currentProviderId === activeProvider.id;
   const currentProviderHasKey = usesActiveProvider ? keyStatus.has_key : Boolean(currentProvider.hasKey);
+  const earlierAttachmentBytes = activeMessages.reduce(
+    (total, message) => total + totalAttachmentBytes(message.attachments),
+    0,
+  );
   const promptAttachments = useAttachments({
     allowImages: supportsImageInput(models, settings.model),
     maxImageBytes: currentProvider.capabilities.maxImageBytes,
+    maxRequestAttachmentBytes: currentProvider.capabilities.maxRequestAttachmentBytes,
+    earlierBytes: earlierAttachmentBytes,
     providerName: currentProvider.name,
     onError: showToast,
   });

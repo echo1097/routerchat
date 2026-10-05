@@ -12,6 +12,7 @@ const ANTHROPIC_CAPABILITIES = {
   transcription: false,
   freeModels: false,
   maxImageBytes: 7.5 * 1024 * 1024,
+  maxRequestAttachmentBytes: 21 * 1024 * 1024,
 };
 
 export const PROVIDER_OPTIONS = [

@@ -18,6 +18,7 @@ export const DEFAULT_PROVIDER = {
     transcription: true,
     freeModels: true,
     maxImageBytes: null,
+    maxRequestAttachmentBytes: null,
   },
 };
 

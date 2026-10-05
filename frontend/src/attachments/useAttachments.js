@@ -4,10 +4,19 @@ import {
   MAX_FILES_PER_MESSAGE,
   deleteAttachment,
   rejectionReason,
+  requestSizeRejection,
+  totalAttachmentBytes,
   uploadAttachments,
 } from "./attachmentsApi.js";
 
-export function useAttachments({ allowImages, maxImageBytes, providerName, onError }) {
+export function useAttachments({
+  allowImages,
+  maxImageBytes,
+  maxRequestAttachmentBytes,
+  earlierBytes = 0,
+  providerName,
+  onError,
+}) {
   const [attachments, setAttachments] = useState([]);
   const [uploading, setUploading] = useState(false);
   const attachmentsRef = useRef([]);
@@ -31,13 +40,19 @@ export function useAttachments({ allowImages, maxImageBytes, providerName, onErr
       return;
     }
 
+    const providerLimits = { maxImageBytes, maxRequestAttachmentBytes, earlierBytes, providerName };
+    let usedBytes = earlierBytes + totalAttachmentBytes(attachmentsRef.current);
+
     const accepted = [];
     for (const file of picked.slice(0, remainingSlots)) {
-      const reason = rejectionReason(file, allowImages, { maxImageBytes, providerName });
+      const reason = rejectionReason(file, allowImages, providerLimits)
+        || requestSizeRejection(file, usedBytes, providerLimits);
       if (reason) {
         reportError(reason);
         continue;
       }
+
+      usedBytes += file.size;
       accepted.push(file);
     }
 
@@ -56,7 +71,15 @@ export function useAttachments({ allowImages, maxImageBytes, providerName, onErr
     } finally {
       setUploading(false);
     }
-  }, [allowImages, maxImageBytes, providerName, rememberAttachments, reportError]);
+  }, [
+    allowImages,
+    maxImageBytes,
+    maxRequestAttachmentBytes,
+    earlierBytes,
+    providerName,
+    rememberAttachments,
+    reportError,
+  ]);
 
   const removeAttachment = useCallback((attachmentId) => {
     rememberAttachments(

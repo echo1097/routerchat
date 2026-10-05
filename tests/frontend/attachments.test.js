@@ -8,6 +8,8 @@ import {
   fileExtension,
   readableSize,
   rejectionReason,
+  requestSizeRejection,
+  totalAttachmentBytes,
 } from "../../frontend/src/attachments/attachmentsApi.js";
 
 const models = [
@@ -110,6 +112,41 @@ describe("attachment rejection", () => {
 
   it("rejects an empty file", () => {
     expect(rejectionReason(fakeFile("empty.txt", 0), true)).toContain("is empty");
+  });
+});
+
+describe("request size limit", () => {
+  const megabyte = 1024 * 1024;
+  const limits = { maxRequestAttachmentBytes: 21 * megabyte, providerName: "Anthropic" };
+
+  it("adds up attachment sizes", () => {
+    expect(totalAttachmentBytes([{ size_bytes: 5 }, { size_bytes: 7 }, {}])).toBe(12);
+    expect(totalAttachmentBytes(undefined)).toBe(0);
+  });
+
+  it("accepts a file that still fits in the request", () => {
+    expect(requestSizeRejection(fakeFile("shot.png", 7 * megabyte), 14 * megabyte, limits)).toBe(null);
+  });
+
+  it("rejects a file that pushes the request over the limit", () => {
+    expect(requestSizeRejection(fakeFile("shot.png", 7 * megabyte), 15 * megabyte, limits))
+      .toBe("shot.png does not fit. Anthropic accepts about 21.0 MB of files per request.");
+  });
+
+  it("explains that earlier files count when the chat already has some", () => {
+    const reason = requestSizeRejection(
+      fakeFile("shot.png", 7 * megabyte),
+      15 * megabyte,
+      { ...limits, earlierBytes: 15 * megabyte },
+    );
+
+    expect(reason).toContain("earlier files in this chat are sent again with every message");
+  });
+
+  it("has no request limit for providers that do not set one", () => {
+    expect(requestSizeRejection(fakeFile("shot.png", 9 * megabyte), 90 * megabyte)).toBe(null);
+    expect(requestSizeRejection(fakeFile("shot.png", 9 * megabyte), 0, { maxRequestAttachmentBytes: null }))
+      .toBe(null);
   });
 });
 

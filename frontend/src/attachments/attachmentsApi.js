@@ -85,6 +85,27 @@ export function rejectionReason(file, allowImages, providerLimits = {}) {
   return null;
 }
 
+export function totalAttachmentBytes(attachments) {
+  return (attachments || []).reduce(
+    (total, attachment) => total + (Number(attachment.size_bytes ?? attachment.size) || 0),
+    0,
+  );
+}
+
+export function requestSizeRejection(file, usedBytes, providerLimits = {}) {
+  const limit = Number(providerLimits.maxRequestAttachmentBytes) || 0;
+  if (limit <= 0 || usedBytes + file.size <= limit) return null;
+
+  const providerName = providerLimits.providerName || "This provider";
+  const limitNote = `${providerName} accepts about ${readableSize(limit)} of files per request`;
+
+  if (providerLimits.earlierBytes > 0) {
+    return `${file.name} does not fit. ${limitNote}, and earlier files in this chat are sent again with every message.`;
+  }
+
+  return `${file.name} does not fit. ${limitNote}.`;
+}
+
 export function attachmentPreviewUrl(attachmentId) {
   return `/api/attachments/${encodeURIComponent(attachmentId)}/raw`;
 }

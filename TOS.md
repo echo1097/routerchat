@@ -1,6 +1,6 @@
 # RouterChat Terms of Service
 
-**Last updated: September 30, 2026**
+**Last updated: October 4, 2026**
 
 RouterChat is self-hosted software distributed under the Apache License 2.0.
 
@@ -31,15 +31,15 @@ Other jurisdictions may limit the exclusion of warranties or the limitation of l
 
 ## 3. What RouterChat Connects To
 
-RouterChat runs on your computer and contains no analytics or usage tracking. It sends your prompts, chats, settings, and API key only to OpenRouter, as described below. Its other network connections are listed here. Links you open are governed by those websites' own terms and privacy policies.
+RouterChat runs on your computer and contains no analytics or usage tracking. It sends your prompts, chats, settings, and API keys only to the provider you select, OpenRouter or Anthropic, as described below. Its other network connections are listed here. Links you open are governed by those websites' own terms and privacy policies.
 
-**OpenRouter**
+**OpenRouter and Anthropic**
 
-* RouterChat uses the OpenRouter API to validate your key, list models, send model requests, and retrieve usage information.
-* Chat, writing, brainstorming, and lorebook features send the relevant prompts, history, story text, and lorebook context to OpenRouter and the upstream provider serving the model, under their terms and privacy policies.
+* RouterChat uses the API of the provider you select to validate your key, list models, send model requests, and retrieve usage information.
+* Chat, writing, brainstorming, and lorebook features send the relevant prompts, history, story text, and lorebook context to that provider and, with OpenRouter, the upstream provider serving the model, under their terms and privacy policies.
 * Automatic chat naming and optional automatic lorebook updates make additional model requests that can incur charges.
 * Attached images and PDFs are sent with the relevant requests. Text and code attachments are included as text and may be truncated.
-* **Web search** is off unless you turn it on. While on, every message in that chat has OpenRouter run a web search first, sending your search terms to its search provider. Each search is charged in addition to tokens.
+* **Web search** is available with OpenRouter only and is off unless you turn it on. While on, every message in that chat has OpenRouter run a web search first, sending your search terms to its search provider. Each search is charged in addition to tokens.
 
 **Voice input (OpenRouter)**
 
@@ -80,11 +80,11 @@ RouterChat runs on your computer and contains no analytics or usage tracking. It
 
 You are solely responsible for:
 
-* **Eligibility.** Being old enough where you live to enter into this agreement, and meeting any minimum age required by OpenRouter and the providers you access through it.
+* **Eligibility.** Being old enough where you live to enter into this agreement, and meeting any minimum age required by OpenRouter, Anthropic, and the providers you access through them.
 * **Credentials.** Your API keys, tokens, and account security. RouterChat stores credentials locally on your device. The author never receives, transmits, or has access to them.
 * **Local access.** RouterChat listens only on `127.0.0.1` and requires a one-time credential that the launcher gives your browser. If you change the bind address, forward the port, put it behind a proxy, or run it on a machine others can reach, you are exposing your chats and API key, and you are solely responsible for securing that deployment.
 * **Costs and usage.** All charges, rate limits, quotas, outages, suspensions, and account actions imposed by OpenRouter or any other provider, including for transcription, automatic chat naming, lorebook operations, and web search.
-* **Provider compliance.** Reading and following the terms of service, acceptable use policies, and content policies of OpenRouter and every upstream provider you use.
+* **Provider compliance.** Reading and following the terms of service, acceptable use policies, and content policies of OpenRouter, Anthropic, and every upstream provider you use.
 * **Content.** All prompts you submit and all output you receive, store, publish, or distribute, including reviewing output before relying on it.
 * **Your data.** Your local chats, stories, lorebooks, settings, attachments, and backups.
   * Update backups include the database and local credentials. The uninstaller offers to save the database before removal. Neither includes the separate attachment files.
@@ -97,14 +97,14 @@ You are solely responsible for:
 
 RouterChat does not create model output. It sends your requests to the providers you choose and displays the response. Output may be inaccurate, incomplete, offensive, or resemble existing works, and it is not professional advice. Verify anything that matters before acting on it.
 
-Any rights in the output you generate are governed by your agreement with OpenRouter and the upstream provider, and by applicable law. The author grants no rights in model output, makes no claim to it, and cannot tell you whether any particular output is yours to use.
+Any rights in the output you generate are governed by your agreement with the provider you use and any upstream provider, and by applicable law. The author grants no rights in model output, makes no claim to it, and cannot tell you whether any particular output is yours to use.
 
 ## 6. Acceptable Use
 
 RouterChat is a self-hosted interface for third-party model APIs. The author does not endorse or support using it to:
 
 * Circumvent, disable, or evade safety systems, content filters, or usage restrictions of any model provider.
-* Violate the terms of service or acceptable use policy of OpenRouter or any upstream provider.
+* Violate the terms of service or acceptable use policy of OpenRouter, Anthropic, or any upstream provider.
 * Generate content that is illegal in your jurisdiction or in the jurisdiction of the provider you are accessing.
 * Impersonate others, misrepresent affiliation, or evade an account suspension or ban.
 
@@ -123,7 +123,7 @@ If you modify RouterChat, or distribute a modification or fork:
 
 ## 8. Affiliation
 
-RouterChat is an independent project. It is not affiliated with, endorsed by, sponsored by, or in any way officially connected to OpenRouter, GitHub, or any model provider accessible through it. All product names, trademarks, and registered trademarks belong to their respective owners and are used for identification only.
+RouterChat is an independent project. It is not affiliated with, endorsed by, sponsored by, or in any way officially connected to OpenRouter, Anthropic, or any model provider accessible through them. All product names, trademarks, and registered trademarks belong to their respective owners and are used for identification only.
 
 ## 9. Indemnification
 

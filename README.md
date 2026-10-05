@@ -12,7 +12,7 @@ Bring your own key. Available for macOS and Windows.
   <a href="#install-routerchat">Install</a> ·
   <a href="#features">Features</a> ·
   <a href="#media">Screenshots</a> ·
-  <a href="setup.md">Setup guide</a> ·
+  <a href="docs/setup.md">Setup guide</a> ·
   <a href="https://github.com/echo1097/routerchat/releases">Releases</a> ·
   <a href="SUPPORT.md">Support</a>
 </p>
@@ -49,7 +49,7 @@ irm https://echo1097.github.io/get-routerchat/install.ps1 | iex
 
 ---
 
-- **Setup:** The [setup guide](setup.md) covers starting, updating, repairing, and data locations. The [developer guide](developer.md) covers building from source.
+- **Setup:** The [setup guide](docs/setup.md) covers starting, updating, repairing, and data locations. The [developer guide](docs/developer.md) covers building from source.
 - **Help:** See [SUPPORT.md](SUPPORT.md) 
 - **Uninstall:** On macOS, double-click `Uninstall RouterChat.command` in the **RouterChat** folder on your Desktop. On Windows, open **Uninstall RouterChat** from the Start Menu. It can save your database to Downloads before removing the app.
 
@@ -70,7 +70,7 @@ The top priority right now is support for more API providers. Anthropic is added
 
 ## Features added
 
-See [features.md](features.md) for the full list of what has been added so far.
+See [features.md](docs/features.md) for the full list of what has been added so far.
 
 ## AI usage disclaimer
 

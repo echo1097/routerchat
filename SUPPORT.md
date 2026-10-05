@@ -2,8 +2,8 @@
 
 ## Getting help
 
-- **Guides:** the [setup guide](setup.md) for the one-click install, or the [developer guide](developer.md) if you run from source.
-- **AI help:** paste the [support assistant prompt](assistant.md) into any AI assistant for step by step troubleshooting.
+- **Guides:** the [setup guide](docs/setup.md) for the one-click install, or the [developer guide](docs/developer.md) if you run from source.
+- **AI help:** paste the [support assistant prompt](docs/assistant.md) into any AI assistant for step by step troubleshooting.
 - **Feedback:** use the **Feedback** button at the bottom of the sidebar, or [this form](https://forms.gle/gTth2TcXLYAArvGm6).
 - **Bugs:** [open a GitHub issue](https://github.com/echo1097/routerchat/issues).
 - **Security issues:** never report them publicly. Follow [SECURITY.md](SECURITY.md).
@@ -18,7 +18,7 @@
 - **macOS:** `~/Library/Application Support/RouterChat/`
 - **Windows:** `%LOCALAPPDATA%\RouterChat\`
 
-[setup.md](setup.md#3-where-your-files-live) explains how to open it.
+[docs/setup.md](docs/setup.md#3-where-your-files-live) explains how to open it.
 
 **Logs** are in the `logs` folder. They are designed not to contain your API key, but read them before sharing and remove anything personal. Developer installs have no log files, so copy the error from the terminal instead.
 

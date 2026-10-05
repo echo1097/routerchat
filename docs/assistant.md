@@ -264,10 +264,10 @@ Keep the backend on 8000 unless they also edit `vite.config.js`, which is what f
 ### Developer file map
 
 - `README.md`: short overview.
-- `setup.md`: the human-facing setup guide. Point users here for the full walkthrough.
+- `docs/setup.md`: the human-facing setup guide. Point users here for the full walkthrough.
 - `SUPPORT.md`: what is safe to share when reporting a problem.
 - `TOS.md`: the terms the app makes users accept on first run.
-- `assistant.md`: this prompt.
+- `docs/assistant.md`: this prompt.
 - `backend/main.py`: creates the FastAPI app and wires in every feature's routes. No feature logic lives here.
 - `backend/local_access.py`: the `serve` and `open-browser` commands and the one-time secret.
 - `backend/core/`: paths, the database connection and schema, migrations, app settings, and small shared helpers.

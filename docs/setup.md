@@ -78,7 +78,7 @@ These folders are hidden, so paste the path instead of clicking through:
 | `logs` | Sanitized launcher, installer, and updater logs. |
 | `backups` | Recent update backups, used to roll back a bad update. |
 
-Updates and repairs only replace `app`, so `user-data` is always kept. Read [SUPPORT.md](SUPPORT.md) before sharing logs or version info.
+Updates and repairs only replace `app`, so `user-data` is always kept. Read [SUPPORT.md](../SUPPORT.md) before sharing logs or version info.
 
 ---
 
@@ -148,7 +148,7 @@ Click the model name to open settings. Each mode shows eight pages:
 | **Models won't load** | The key for the selected provider is missing or invalid. Check which provider is selected on the API page and re-save its key. |
 | **Web search or the microphone is missing** | Web search only works with OpenRouter. Voice input needs a saved OpenRouter key, even if you chat with Anthropic. |
 | **Your chats vanished** | Packaged installs store them in `user-data/routerchat.sqlite3`, developer installs in `data/routerchat.sqlite3`. Don't delete or share that file. |
-| **Everything is broken** | Rerun the installer to repair. If that fails, follow [SUPPORT.md](SUPPORT.md) and share only sanitized logs. |
+| **Everything is broken** | Rerun the installer to repair. If that fails, follow [SUPPORT.md](../SUPPORT.md) and share only sanitized logs. |
 
 Developer install problems (build, Node, Python) are covered in [developer.md](developer.md#troubleshooting).
 

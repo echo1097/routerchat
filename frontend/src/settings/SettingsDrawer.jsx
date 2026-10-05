@@ -21,7 +21,7 @@ import { UsagePanel } from "./UsagePanel.jsx";
 import { useChatSystemPromptAutosave } from "./useChatSystemPromptAutosave.js";
 import { useLingeringPage } from "./useLingeringPage.js";
 import { DEFAULT_PROVIDER } from "../providers/providerApi.js";
-import { PROVIDER_OPTIONS, findProviderOption } from "../providers/providerOptions.js";
+import { PROVIDER_OPTIONS } from "../providers/providerOptions.js";
 
 const REASONING_EFFORTS = [
   { value: "low", label: "Low" },
@@ -138,7 +138,6 @@ export function SettingsDrawer({
   onNotify,
 }) {
   const [apiKey, setApiKey] = useState("");
-  const [baseUrl, setBaseUrl] = useState("");
   const [selectedProviderId, setSelectedProviderId] = useState(provider.id);
   const [query, setQuery] = useState("");
   const [lorebookQuery, setLorebookQuery] = useState("");
@@ -175,16 +174,12 @@ export function SettingsDrawer({
   const selectedModelContext = Number.isFinite(selectedModelContextLimit)
     ? `${formatTokens(selectedModelContextLimit)} context`
     : "";
-  const selectedProvider = findProviderOption(selectedProviderId);
-  const isPreviewProvider = Boolean(selectedProvider.preview);
   const temperatureLocked = selectedModel?.temperature === false;
-  const keyConnected = !isPreviewProvider && Boolean(keyStatus.has_key);
+  const keyConnected = Boolean(keyStatus.has_key);
   const providerDiffers = conversationProvider.id !== provider.id;
-  const providerName = isPreviewProvider ? selectedProvider.name : provider.name;
-  const keyPlaceholder = isPreviewProvider ? selectedProvider.keyPlaceholder : provider.keyPlaceholder;
-  const capabilities = isPreviewProvider
-    ? selectedProvider.capabilities
-    : provider.capabilities || DEFAULT_PROVIDER.capabilities;
+  const providerName = provider.name;
+  const keyPlaceholder = provider.keyPlaceholder;
+  const capabilities = provider.capabilities || DEFAULT_PROVIDER.capabilities;
   const activePageIndex = SETTINGS_PAGES.findIndex((page) => page.id === activePage) + 1;
   const selectedCloudChat = chats.find((chat) => chat.id === selectedCloudChatId);
   const activeCloudChat = chats.find((chat) => chat.id === activeChatId);
@@ -322,10 +317,8 @@ export function SettingsDrawer({
   function chooseProvider(providerId) {
     setSelectedProviderId(providerId);
     setApiKey("");
-    setBaseUrl("");
 
-    const option = findProviderOption(providerId);
-    if (!option.preview && providerId !== provider.id) onSwitchProvider?.(providerId);
+    if (providerId !== provider.id) onSwitchProvider?.(providerId);
   }
 
   useEffect(() => {
@@ -333,7 +326,7 @@ export function SettingsDrawer({
   }, [provider.id]);
 
   async function saveKey() {
-    if (isPreviewProvider || !apiKey.trim()) return;
+    if (!apiKey.trim()) return;
     setSaving(true);
     try {
       await onSaveKey(apiKey.trim());
@@ -481,11 +474,6 @@ export function SettingsDrawer({
         ariaLabel="API provider"
         className="provider-tabs mt-3 flex w-full"
       />
-      {isPreviewProvider && (
-        <p className="mt-2.5 text-pretty text-xs leading-5 text-neutral-500">
-          {selectedProvider.name} support is coming soon. Chats keep using {provider.name} for now.
-        </p>
-      )}
     </section>
   );
 
@@ -516,50 +504,12 @@ export function SettingsDrawer({
         <button
           type="button"
           onClick={saveKey}
-          disabled={isPreviewProvider || saving || !apiKey.trim()}
+          disabled={saving || !apiKey.trim()}
           className={saveButtonClass}
         >
           {saving ? "Saving" : "Save"}
         </button>
       </div>
-    </section>
-  );
-
-  const localModelSection = (
-    <section className="border-b border-white/[0.08] py-3">
-      <h2 className="mb-2.5 text-balance text-sm font-semibold text-neutral-100">
-        Server address
-      </h2>
-      <div className="space-y-2">
-        <input
-          type="url"
-          value={baseUrl}
-          onChange={(event) => setBaseUrl(event.target.value)}
-          placeholder={selectedProvider.baseUrlPlaceholder}
-          aria-label="Server address"
-          className={cx(fieldClass, "w-full")}
-        />
-        <div className="flex gap-2">
-          <input
-            type="password"
-            value={apiKey}
-            onChange={(event) => setApiKey(event.target.value)}
-            placeholder="API key (optional)"
-            aria-label="Local model API key"
-            className={fieldClass}
-          />
-          <button
-            type="button"
-            disabled
-            className={saveButtonClass}
-          >
-            Connect
-          </button>
-        </div>
-      </div>
-      <p className="mt-2 text-pretty text-xs leading-5 text-neutral-500">
-        Works with Ollama, LM Studio, or any OpenAI-compatible server
-      </p>
     </section>
   );
 
@@ -1269,8 +1219,7 @@ export function SettingsDrawer({
               aria-label="API settings"
             >
               {providerSection}
-              {capabilities.needsKey && keySection}
-              {capabilities.needsBaseUrl && localModelSection}
+              {keySection}
               {chatNameSection}
               {capabilities.freeModels && modelFilterSection}
               {promptCachingSection}

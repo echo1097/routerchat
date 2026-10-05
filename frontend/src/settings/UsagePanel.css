@@ -556,14 +556,6 @@
   font-weight: 600;
 }
 
-.usage-summary.is-compact {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.usage-charts.is-single {
-  grid-template-columns: minmax(0, 1fr);
-}
-
 .usage-state button {
   height: 32px;
   padding: 0 14px;
@@ -658,10 +650,6 @@
 
 @container (max-width: 520px) {
   .usage-summary,
-  .usage-summary.is-compact {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .usage-metric {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 42%;

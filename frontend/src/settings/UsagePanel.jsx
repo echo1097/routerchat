@@ -8,7 +8,7 @@ import "./UsagePanel.css";
 
 const chartColors = ["#c59af5", "#e5ae78", "#7dc7ba", "#e68eb0", "#aebad1", "#b9c984"];
 const usageTabs = [
-  { id: "all", name: "All providers", tabLabel: "All", capabilities: { cost: true } },
+  { id: "all", name: "All providers", tabLabel: "All" },
   ...PROVIDER_OPTIONS,
 ];
 const tokenSeries = [
@@ -292,12 +292,11 @@ function UsageReport({ tab, models }) {
   );
   if (!usage) return <UsageSkeleton />;
 
-  const showCost = tab.capabilities.cost !== false;
   const hasUsage = usage.lifetimeModels?.length || usage.current.requests || usage.previous.requests;
   if (tab.id !== "all" && !hasUsage) return (
     <div className="usage-state">
       <p className="usage-state-title">No {tab.name} usage yet</p>
-      <p>{tab.preview ? `${tab.name} support is coming soon.` : `Requests sent through ${tab.name} will show up here.`}</p>
+      <p>Requests sent through {tab.name} will show up here.</p>
     </div>
   );
 
@@ -321,10 +320,10 @@ function UsageReport({ tab, models }) {
     return values.some((value) => value === null) ? null : values.reduce((sum, value) => sum + (value || 0), 0);
   };
   const metrics = [
-    showCost && { key: "cost", label: "Total spend", money: true, partialKey: "partialCost" },
+    { key: "cost", label: "Total spend", money: true, partialKey: "partialCost" },
     { key: "requests", label: "Requests" },
     { key: "totalTokens", label: "Token volume", partialKey: "partialTokens" },
-  ].filter(Boolean);
+  ];
   const dateRange = `${dateLabel(usage.startDate)} – ${dateLabel(usage.endDate)}`;
 
   return (
@@ -333,13 +332,13 @@ function UsageReport({ tab, models }) {
         <span>Last 7 days</span>
         <span>{dateRange}</span>
       </div>
-      <div className={cx("usage-summary", !showCost && "is-compact")}>
+      <div className="usage-summary">
         {metrics.map((metric) => (
           <UsageMetric key={metric.key} metric={metric} usage={usage} />
         ))}
       </div>
-      <div className={cx("usage-charts", !showCost && "is-single")}>
-        {showCost && <UsageChart title="Usage by model" days={usage.days} series={chartSeries} getValue={getModelSpend} money />}
+      <div className="usage-charts">
+        <UsageChart title="Usage by model" days={usage.days} series={chartSeries} getValue={getModelSpend} money />
         <UsageChart title="Token breakdown" days={usage.days} series={tokenSeries} getValue={(day, item) => day[item.id]} />
       </div>
       <section className="usage-models" aria-label="Lifetime model totals">
@@ -350,7 +349,7 @@ function UsageReport({ tab, models }) {
           <div className="usage-table-wrap">
             <table>
               <thead>
-                <tr><th>Model</th><th>Requests</th><th>Tokens</th>{showCost && <th>Spend</th>}</tr>
+                <tr><th>Model</th><th>Requests</th><th>Tokens</th><th>Spend</th></tr>
               </thead>
               <tbody>
                 {lifetimeModels.map((model) => (
@@ -360,7 +359,7 @@ function UsageReport({ tab, models }) {
                     </td>
                     <td>{formatUsage(model.requests)}</td>
                     <td>{formatUsage(model.totalTokens, false, model.partialTokens)}</td>
-                    {showCost && <td>{formatUsage(model.cost, true, model.partialCost)}</td>}
+                    <td>{formatUsage(model.cost, true, model.partialCost)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -369,7 +368,7 @@ function UsageReport({ tab, models }) {
         ) : <p className="usage-muted">Your model usage will appear here.</p>}
       </section>
       <p className="usage-note">
-        Every request RouterChat sends, including transcription. Usage stays even after chats or stories are deleted, and importing a chat or story does not add to it. Partial totals include recorded usage only; some requests may be missing usage details.{showCost ? " All amounts are USD." : " Local models are free, so no spend is shown."}
+        Every request RouterChat sends, including transcription. Usage stays even after chats or stories are deleted, and importing a chat or story does not add to it. Partial totals include recorded usage only; some requests may be missing usage details. All amounts are USD.
       </p>
     </div>
   );

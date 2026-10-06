@@ -1,4 +1,4 @@
-export const DEFAULT_MODEL = "anthropic/claude-sonnet-5";
+export const DEFAULT_MODEL = "anthropic/claude-sonnet-5.5";
 
 export const newSettings = {
   model: DEFAULT_MODEL,

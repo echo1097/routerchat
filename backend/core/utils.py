@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -55,5 +56,8 @@ def format_duration(ms: float) -> str:
 
 def display_model_name(model: str) -> str:
     name = str(model or "Model").split("/")[-1]
-    name = name.replace(":free", "").replace("-", " ").replace("_", " ")
+    name = name.replace(":free", "")
+    name = re.sub(r"-\d{8}$", "", name)
+    name = re.sub(r"(?<!\d)(\d)-(\d)(?!\d)", r"\1.\2", name)
+    name = name.replace("-", " ").replace("_", " ")
     return " ".join(part[:1].upper() + part[1:] for part in name.split())

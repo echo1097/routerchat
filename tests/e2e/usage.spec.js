@@ -38,7 +38,7 @@ function makeUsage(empty = false) {
   };
 }
 
-async function openUsage(page, data) {
+async function openUsage(page, data, provider) {
   const fixture = await installWriteApi(page);
   await page.route("**/api/usage?**", (route) => route.fulfill({ json: data }));
   await fixture.open();
@@ -46,11 +46,21 @@ async function openUsage(page, data) {
   await page.getByRole("menuitem", { name: /Settings/ }).click();
   const usageControl = page.viewportSize().width < 768 ? page.getByRole("tab", { name: "Usage", exact: true }) : page.getByRole("button", { name: "Usage", exact: true });
   await usageControl.click();
-  return page.getByRole("dialog", { name: "Usage", exact: true });
+  const dialog = page.getByRole("dialog", { name: "Usage", exact: true });
+  if (provider) await dialog.getByLabel("Usage by provider").getByRole("tab", { name: provider, exact: true }).click();
+  return dialog;
 }
 
-test("shows weekly spending and model details without provider requests", async ({ page }, testInfo) => {
+test("all tab shows only the usage by model chart", async ({ page }) => {
   const dialog = await openUsage(page, makeUsage());
+  await expect(dialog.getByRole("region", { name: "Usage by model", exact: true })).toBeVisible();
+  await expect(dialog.getByRole("region", { name: "Token breakdown", exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole("region", { name: "Lifetime model totals" })).toHaveCount(0);
+  await expect(dialog.getByRole("table")).toHaveCount(0);
+});
+
+test("shows weekly spending and model details without provider requests", async ({ page }, testInfo) => {
+  const dialog = await openUsage(page, makeUsage(), "OpenRouter");
   await expect(dialog.getByRole("region", { name: "Total spend", exact: true })).toContainText("$2.30");
   await expect(dialog.getByRole("region", { name: "Requests", exact: true })).toContainText("35");
   await expect(dialog.getByRole("region", { name: "Usage by model", exact: true })).toBeVisible();
@@ -71,7 +81,7 @@ test("fits the empty usage page on a narrow screen", async ({ page }, testInfo) 
   await page.setViewportSize({ width: 390, height: 844 });
   const dialog = await openUsage(page, makeUsage(true));
   await expect(dialog).toContainText("No recorded spend this week");
-  await expect(dialog).toContainText("Your model usage will appear here.");
+  await expect(dialog.getByRole("region", { name: "Lifetime model totals" })).toHaveCount(0);
   await expect(dialog.getByRole("region", { name: "Cost / 1M tokens", exact: true })).toHaveCount(0);
   const overflow = await dialog.evaluate((element) => element.scrollWidth > element.clientWidth);
   expect(overflow).toBe(false);
@@ -108,7 +118,7 @@ test("distinguishes missing costs from free usage", async ({ page }) => {
   data.lifetimeModels[0].totalTokens = null;
   data.days[0].models["test/model"] = null;
   data.current.missingTokens = 2;
-  const dialog = await openUsage(page, data);
+  const dialog = await openUsage(page, data, "OpenRouter");
   await expect(dialog.getByRole("region", { name: "Total spend", exact: true })).toContainText("Unavailable");
   await expect(dialog).not.toContainText("requests have no recorded cost");
   await expect(dialog.getByRole("region", { name: "Token volume", exact: true })).toContainText("Unavailable");
@@ -126,7 +136,7 @@ test("shows clean summary totals and labels partial lifetime totals", async ({ p
   data.days[0].partialCost = true;
   data.lifetimeModels[0].partialCost = true;
   data.lifetimeModels[0].partialTokens = true;
-  const dialog = await openUsage(page, data);
+  const dialog = await openUsage(page, data, "OpenRouter");
   const spendCard = dialog.getByRole("region", { name: "Total spend", exact: true });
   await expect(spendCard.locator("strong")).toHaveText("$2.30");
   await expect(spendCard).toContainText("No comparison available");

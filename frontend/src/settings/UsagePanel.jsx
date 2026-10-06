@@ -325,6 +325,7 @@ function UsageReport({ tab, models }) {
     { key: "totalTokens", label: "Token volume", partialKey: "partialTokens" },
   ];
   const dateRange = `${dateLabel(usage.startDate)} – ${dateLabel(usage.endDate)}`;
+  const isAllTab = tab.id === "all";
 
   return (
     <div className="usage-panel">
@@ -337,36 +338,40 @@ function UsageReport({ tab, models }) {
           <UsageMetric key={metric.key} metric={metric} usage={usage} />
         ))}
       </div>
-      <div className="usage-charts">
+      <div className={isAllTab ? "usage-charts is-single" : "usage-charts"}>
         <UsageChart title="Usage by model" days={usage.days} series={chartSeries} getValue={getModelSpend} money />
-        <UsageChart title="Token breakdown" days={usage.days} series={tokenSeries} getValue={(day, item) => day[item.id]} />
+        {!isAllTab && (
+          <UsageChart title="Token breakdown" days={usage.days} series={tokenSeries} getValue={(day, item) => day[item.id]} />
+        )}
       </div>
-      <section className="usage-models" aria-label="Lifetime model totals">
-        <div className="usage-section-heading">
-          <h3>Lifetime model totals</h3>
-        </div>
-        {lifetimeModels.length ? (
-          <div className="usage-table-wrap">
-            <table>
-              <thead>
-                <tr><th>Model</th><th>Requests</th><th>Tokens</th><th>Spend</th></tr>
-              </thead>
-              <tbody>
-                {lifetimeModels.map((model) => (
-                  <tr key={model.id}>
-                    <td>
-                      <span className="usage-model-name"><i style={{ background: model.color }} /><span>{model.name}</span></span>
-                    </td>
-                    <td>{formatUsage(model.requests)}</td>
-                    <td>{formatUsage(model.totalTokens, false, model.partialTokens)}</td>
-                    <td>{formatUsage(model.cost, true, model.partialCost)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {!isAllTab && (
+        <section className="usage-models" aria-label="Lifetime model totals">
+          <div className="usage-section-heading">
+            <h3>Lifetime model totals</h3>
           </div>
-        ) : <p className="usage-muted">Your model usage will appear here.</p>}
-      </section>
+          {lifetimeModels.length ? (
+            <div className="usage-table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Model</th><th>Requests</th><th>Tokens</th><th>Spend</th></tr>
+                </thead>
+                <tbody>
+                  {lifetimeModels.map((model) => (
+                    <tr key={model.id}>
+                      <td>
+                        <span className="usage-model-name"><i style={{ background: model.color }} /><span>{model.name}</span></span>
+                      </td>
+                      <td>{formatUsage(model.requests)}</td>
+                      <td>{formatUsage(model.totalTokens, false, model.partialTokens)}</td>
+                      <td>{formatUsage(model.cost, true, model.partialCost)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <p className="usage-muted">Your model usage will appear here.</p>}
+        </section>
+      )}
       <p className="usage-note">
         Every request RouterChat sends, including transcription. Usage stays even after chats or stories are deleted, and importing a chat or story does not add to it. Partial totals include recorded usage only; some requests may be missing usage details. All amounts are USD.
       </p>

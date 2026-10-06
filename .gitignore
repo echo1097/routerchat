@@ -20,3 +20,8 @@ planning/
 PRODUCT.md
 DESIGN.md
 tosgate.sh
+media.sh
+scripts/mediaSeed.py
+scripts/mediaCapture.mjs
+media/new-*/
+scripts/mediaVite.config.mjs

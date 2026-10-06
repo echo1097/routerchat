@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import sqlite3
 from contextlib import closing
 
@@ -27,6 +28,8 @@ from backend.lorebook.lorebookUsage import ensureLorebookUsageTable
 from backend.transcription.transcriptionUsage import ensureTranscriptionUsageTable
 from backend.usage.migrateLegacyUsage import migrateLegacyUsage
 from backend.usage.usageDatabase import getUsageDb, initUsageDb
+
+logger = logging.getLogger("uvicorn.error")
 
 
 def init_db() -> None:
@@ -318,4 +321,4 @@ def init_db() -> None:
         try:
             migrateLegacyUsage(mainConn, usageConn)
         except sqlite3.Error:
-            pass
+            logger.exception("Could not move usage history into usage.sqlite3. It will be retried on the next start.")

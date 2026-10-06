@@ -2,6 +2,12 @@
 
 - One-click installer
     - macOS and Windows
+- API providers
+    - Use OpenRouter or Anthropic (Claude), each with its own API key
+    - Switch providers in API settings
+    - Chats and stories remember the provider they were started with, and stories can be moved to another one
+    - Claude thinking, with effort limited to what each model supports
+    - Files Anthropic would reject are blocked before sending
 - UI improvements
     - Navigation bar for moving through long chats
     - Context meter that shows how full a model's context is
@@ -35,13 +41,15 @@
     - Spending, request counts, and token usage for the last 7 days
     - Token breakdown split into input, cached reads, output, and reasoning
     - Lifetime totals per model
+    - Tabs for all providers, OpenRouter, and Anthropic
+    - Usage is kept even after chats or stories are deleted
 - Prompt caching
-    - On by default in Chat and Write modes to save on repeat tokens
+    - On by default in Chat and Write modes to save on repeat tokens, with OpenRouter and Anthropic
     - Cache is kept for 1 hour by default on models that support it, or 5 minutes if you turn that off
     - Write mode keeps the cache when you move to a new chapter
     - Can be turned off in API settings
 - Model settings
     - Option to hide batch models
     - Reasoning level shown on the model button
-    - Provider preference for fastest or lowest price
-    - Privacy and Zero Data Retention routing options
+    - Provider preference for fastest or lowest price (OpenRouter)
+    - Privacy and Zero Data Retention routing options (OpenRouter)

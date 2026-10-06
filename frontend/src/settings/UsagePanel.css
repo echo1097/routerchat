@@ -162,6 +162,10 @@
   margin-bottom: 12px;
 }
 
+.usage-charts.is-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .usage-chart-card, .usage-models {
   min-width: 0;
   padding: 15px 16px 14px;

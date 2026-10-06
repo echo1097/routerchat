@@ -36,6 +36,7 @@ from backend.brainstorm.brainstormLayout import (
 from backend.brainstorm.tidyBrainstorm import tidy_brainstorm_positions
 from backend.brainstorm.brainstormMessages import brainstorm_response_format, build_brainstorm_messages, parse_brainstorm_ideas
 from backend.lorebook.lorebookHistory import lorebook_history_label
+from backend.lorebook.runUpdate import run_lorebook_update
 from backend.lorebook.timeline import normalize_timeline_description
 from backend.lorebook.updateSchema import lorebook_update_response_format
 from backend.local_access import create_secret_file
@@ -3037,6 +3038,34 @@ class StoryApiTest(unittest.TestCase):
         savedChapter = self.client.get(f"/api/stories/{story['id']}").json()["chapters"][0]
         self.assertEqual(savedChapter["id"], chapter["id"])
         self.assertEqual(savedChapter["content"], "Rain pressed against the windows.")
+
+    def test_failed_lorebook_update_writes_the_error_to_the_log(self):
+        scaffold = self.client.post(
+            "/api/stories/with-initial-chapter",
+            json={"title": "Log Story", "initial_chapter": {"title": "Chapter 1", "content": "opening words"}},
+        ).json()
+
+        async def failingStream(provider, request):
+            yield {"type": "open", "generationId": "gen-1"}
+            yield {"type": "error", "message": "provider said no", "generationId": "gen-1"}
+
+        async def runUpdate():
+            return [
+                event
+                async for event in run_lorebook_update(
+                    scaffold["story"]["id"], scaffold["chapter"]["id"], "some prose", "test/model", 1000
+                )
+            ]
+
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
+            "backend.lorebook.runUpdate.streamChat", failingStream
+        ), self.assertLogs("uvicorn.error", level="ERROR") as logs:
+            events = asyncio.run(runUpdate())
+
+        self.assertEqual(events[-1]["value"]["error"], "provider said no")
+        self.assertIn("Lorebook update failed", logs.output[0])
+        self.assertIn("test/model", logs.output[0])
+        self.assertIn("provider said no", logs.output[0])
 
     def test_story_scaffold_creates_both_records_or_neither(self):
         response = self.client.post(

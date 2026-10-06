@@ -128,7 +128,10 @@ class UsageLedgerTest(unittest.TestCase):
         self.resetLedger()
         self.addLegacyMessage("legacy-1", 0.5)
         with patch.object(migrateLegacyUsage, "saveUsageEntries", side_effect=sqlite3.OperationalError("disk full")):
-            main.init_db()
+            with self.assertLogs("uvicorn.error", level="ERROR") as logs:
+                main.init_db()
+        self.assertIn("Could not move usage history", logs.output[0])
+        self.assertIn("disk full", logs.output[0])
         self.assertEqual(self.ledgerRows(), [])
         self.assertEqual(self.migrationFlag(), [])
 

@@ -1,6 +1,6 @@
 # RouterChat Setup
 
-RouterChat runs on your own computer and uses an [OpenRouter API key](https://openrouter.ai/keys) for model features. RouterChat is free, but models and searches may cost money. Installing, updates, release notes, and some optional UI features also use the internet.
+RouterChat runs on your own computer and uses an [OpenRouter API key](https://openrouter.ai/keys) or an [Anthropic API key](https://platform.claude.com/settings/keys) for model features. RouterChat is free, but models and searches may cost money. Installing, updates, release notes, and some optional UI features also use the internet.
 
 **Contents**
 
@@ -30,7 +30,7 @@ curl -fsSL https://echo1097.github.io/get-routerchat/install.sh | sh
 irm https://echo1097.github.io/get-routerchat/install.ps1 | iex
 ```
 
-RouterChat then opens at `http://127.0.0.1:8000`. Open settings, go to **API**, paste your OpenRouter key, and save.
+RouterChat then opens at `http://127.0.0.1:8000`. Open settings, go to **API**, pick **OpenRouter** or **Anthropic** under **Provider**, paste that provider's key, and save.
 
 ---
 
@@ -50,7 +50,7 @@ Good to know:
 
 - Closing the launcher window fully stops RouterChat. Nothing keeps running in the background.
 - Repair replaces the app files but keeps your chats and API key.
-- The uninstaller asks if you want to keep your database. If yes, it saves `routerchat.sqlite3` and `README-userdata.txt` to a timestamped folder in Downloads first.
+- The uninstaller asks if you want to keep your database. If yes, it saves `routerchat.sqlite3`, `usage.sqlite3`, and `README-userdata.txt` to a timestamped folder in Downloads first.
 - The launcher only opens your browser once RouterChat is healthy. If another program is using port 8000, it tells you and stops. It never kills a program it doesn't recognize.
 
 ---
@@ -72,12 +72,13 @@ These folders are hidden, so paste the path instead of clicking through:
 | `app` | Application files. Replaced on every update. |
 | `runtime` | Private Python and virtual environment. |
 | `run` | Current process ID and a short-lived browser credential. Deleted when RouterChat stops. **Never share.** |
-| `user-data/.env` | Your OpenRouter API key. **Never share.** |
+| `user-data/.env` | Your OpenRouter and Anthropic API keys. **Never share.** |
 | `user-data/routerchat.sqlite3` | Your chats, stories, settings, and history. |
+| `user-data/usage.sqlite3` | Your usage history: models, token counts, and costs. |
 | `logs` | Sanitized launcher, installer, and updater logs. |
 | `backups` | Recent update backups, used to roll back a bad update. |
 
-Updates and repairs only replace `app`, so `user-data` is always kept. Read [SUPPORT.md](SUPPORT.md) before sharing logs or version info.
+Updates and repairs only replace `app`, so `user-data` is always kept. Read [SUPPORT.md](../SUPPORT.md) before sharing logs or version info.
 
 ---
 
@@ -97,17 +98,26 @@ RouterChat has two modes, switched with the toggle at the top of the left sideba
 
 Write mode also has a **Lorebook**, which automatically tracks your characters, places, and events so the AI remembers them fifty chapters later, and **Brainstorm**, for exploring ideas without changing the story. Both are in the menu next to the prompt box.
 
-**Voice input** is the microphone button next to the prompt box in Chat, Write, and Brainstorm. It records up to two minutes, then either fills in the prompt or transcribes and sends. Recordings go to OpenRouter for transcription, so voice input is off while Privacy mode or Zero data retention is on.
+**Voice input** is the microphone button next to the prompt box in Chat, Write, and Brainstorm. It records up to two minutes, then either fills in the prompt or transcribes and sends. Recordings always go to OpenRouter for transcription, even when you chat with Anthropic, so voice input needs a saved OpenRouter key. While Anthropic is selected, the microphone is hidden until one is saved. It is also off while Privacy mode or Zero data retention is on.
+
+### Providers
+
+RouterChat can talk to **OpenRouter** or **Anthropic** (Claude). Pick one under **Provider** on the **API** settings page. Each has its own key, and switching does not remove the other one.
+
+- New chats and stories use the provider that is selected at the time.
+- A chat keeps the provider it was started with.
+- A story also keeps its provider, but you can move it. Open settings inside the story, go to **Models**, and click **Move to** the provider you have selected. This resets the story's model and lorebook model to that provider's defaults.
+- Web search, free-model filtering, Turbo, Cheapest first, Privacy mode, and Zero data retention are OpenRouter only, so they are hidden while Anthropic is selected.
 
 ### Chat basics
 
 - **Enter** sends, **Shift + Enter** adds a new line.
 - The round button sends. Click it while the AI is replying to stop it.
-- The plus icon attaches up to five files per message: images and PDFs up to 10 MB each, text or code files up to 256 KB. Images only work with models that support image input.
-- **Web search** searches before answering and shows sources and citations. OpenRouter bills each search.
+- The plus icon attaches up to five files per message: images and PDFs up to 10 MB each, text or code files up to 256 KB. Images only work with models that support image input. Anthropic has tighter limits: images up to 7.5 MB, about 21 MB of files per request, and 100 or 600 PDF pages depending on the model. Earlier files in a chat are sent again with every message, so they count too.
+- **Web search** searches before answering and shows sources and citations. OpenRouter bills each search. It is only available with OpenRouter.
 - **New chat** and your old chats are in the left sidebar.
 - Hover to reveal buttons: rename or delete chats, edit your messages, copy or regenerate AI replies.
-- Once a chat has messages, its model is **locked**. Start a new chat to switch models.
+- Once a chat has messages, its model and provider are **locked**. Start a new chat to switch.
 
 ### Settings
 
@@ -118,15 +128,15 @@ Click the model name to open settings. Each mode shows eight pages:
 
 | Page | What it does |
 | --- | --- |
-| **API** | OpenRouter key, chat naming, free-model filtering, Turbo, Cheapest first, Privacy mode, Zero data retention |
+| **API** | Provider, API key, chat naming, prompt caching, model filtering, and for OpenRouter: Turbo, Cheapest first, Privacy mode, Zero data retention |
 | **Models** | Search, pick, and set a default model |
 | **Transcription** | OpenRouter model used for voice input |
 | **System** | Instruction sent before every Chat message (Write uses a per-story system prompt instead) |
 | **UI** | Navigation bar and smooth text streaming |
 | **Chats** | Export or import chats as files |
-| **Advanced** | Reasoning effort, temperature, max response length |
+| **Advanced** | Reasoning effort, temperature, max response length. Some Claude models pick their own temperature, shown as **Auto** |
 | **Lorebook** | Model used for a story's lorebook work (Write only) |
-| **Usage** | Last 7 days of spending, requests, and tokens, plus lifetime totals per model |
+| **Usage** | Last 7 days of spending, requests, and tokens, plus lifetime totals per model, with tabs for all providers, OpenRouter, and Anthropic |
 
 ---
 
@@ -135,9 +145,10 @@ Click the model name to open settings. Each mode shows eight pages:
 | Problem | Fix |
 | --- | --- |
 | **"Port 8000 is already in use"** | Another program, often another RouterChat, is using it. Close it and start again. |
-| **Models won't load** | Your key is missing or invalid. Re-save it on the API page. |
+| **Models won't load** | The key for the selected provider is missing or invalid. Check which provider is selected on the API page and re-save its key. |
+| **Web search or the microphone is missing** | Web search only works with OpenRouter. Voice input needs a saved OpenRouter key, even if you chat with Anthropic. |
 | **Your chats vanished** | Packaged installs store them in `user-data/routerchat.sqlite3`, developer installs in `data/routerchat.sqlite3`. Don't delete or share that file. |
-| **Everything is broken** | Rerun the installer to repair. If that fails, follow [SUPPORT.md](SUPPORT.md) and share only sanitized logs. |
+| **Everything is broken** | Rerun the installer to repair. If that fails, follow [SUPPORT.md](../SUPPORT.md) and share only sanitized logs. |
 
 Developer install problems (build, Node, Python) are covered in [developer.md](developer.md#troubleshooting).
 

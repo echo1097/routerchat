@@ -22,7 +22,7 @@ def acceptCurrentTos():
     tosAcceptance.record_tos_acceptance(tos["hash"], tos["date"])
 
 
-def fakeChatStream(content, usage=None):
+def fakeChatStream(content, usage=None, usageInContentChunk=False):
     class FakeStreamResponse:
         status_code = 200
         headers = {}
@@ -34,6 +34,11 @@ def fakeChatStream(content, usage=None):
             return False
 
         async def aiter_lines(self):
+            if usageInContentChunk:
+                chunk = {"choices": [{"delta": {"content": content}, "finish_reason": "stop"}], "usage": usage}
+                yield f"data: {json.dumps(chunk)}"
+                yield "data: [DONE]"
+                return
             yield f"data: {json.dumps({'choices': [{'delta': {'content': content}}]})}"
             if usage:
                 yield f"data: {json.dumps({'choices': [], 'usage': usage})}"
@@ -42,7 +47,7 @@ def fakeChatStream(content, usage=None):
     return FakeStreamResponse()
 
 
-def fakeClientFor(calls, usage=None):
+def fakeClientFor(calls, usage=None, usageInContentChunk=False):
     class FakeClient:
         def __init__(self, *_args, **_kwargs):
             pass
@@ -55,7 +60,7 @@ def fakeClientFor(calls, usage=None):
 
         def stream(self, *_args, **kwargs):
             calls.append(kwargs.get("json") or {})
-            return fakeChatStream("the reply", usage)
+            return fakeChatStream("the reply", usage, usageInContentChunk)
 
     return FakeClient
 
@@ -104,14 +109,14 @@ class PromptCachingTest(unittest.TestCase):
         paths.DB_PATH = self.originalDbPath
         self.tempDir.cleanup()
 
-    def sendMessage(self, usage=None):
+    def sendMessage(self, usage=None, usageInContentChunk=False):
         chatResponse = self.client.post("/api/chats", json={"model": "test/model"})
         self.assertEqual(chatResponse.status_code, 200)
         chat = chatResponse.json()["chat"]
 
         calls = []
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.providers.streaming.httpx.AsyncClient", fakeClientFor(calls, usage)
+            "backend.providers.streaming.httpx.AsyncClient", fakeClientFor(calls, usage, usageInContentChunk)
         ):
             response = self.client.post(
                 f"/api/chats/{chat['id']}/messages/stream",
@@ -165,6 +170,15 @@ class PromptCachingTest(unittest.TestCase):
         chat, _ = self.sendMessage(usage)
 
         messages = self.client.get(f"/api/chats/{chat['id']}").json()["messages"]
+        self.assertEqual(messages[-1]["cached_tokens"], 700)
+
+    def test_a_chunk_carrying_both_content_and_usage_keeps_its_content(self):
+        usage = {"prompt_tokens": 900, "completion_tokens": 10, "prompt_tokens_details": {"cached_tokens": 700}}
+
+        chat, _ = self.sendMessage(usage, usageInContentChunk=True)
+
+        messages = self.client.get(f"/api/chats/{chat['id']}").json()["messages"]
+        self.assertEqual(messages[-1]["content"], "the reply")
         self.assertEqual(messages[-1]["cached_tokens"], 700)
 
     def test_chat_requests_skip_caching_when_disabled(self):

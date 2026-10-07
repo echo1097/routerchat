@@ -27,7 +27,7 @@ from backend.core.database import get_db, next_message_order
 from backend.core.streamEvents import stream_event
 from backend.core.utils import utc_now
 from backend.providers.base import ChatOptions
-from backend.providers.streaming import streamChat
+from backend.providers.modelStream import ModelStream
 from backend.usage.recordUsage import recordUsage
 from backend.webSearch.sources import (
     merge_sources,
@@ -187,62 +187,38 @@ async def stream_chat_response(
         payload.model, payload.thinking_enabled
     )
 
-    assistant_text: list[str] = []
-    reasoning_text: list[str] = []
+    modelStream = ModelStream(provider, request, effectiveThinkingEnabled)
+    assistant_text = modelStream.textParts
     sources: list[dict[str, str]] = []
-    finish_reason: str | None = None
     error_text: str | None = None
-    generation_id: str | None = None
-    usage: dict[str, Any] | None = None
-    stream_completed = False
 
     try:
-        async with aclosing(streamChat(provider, request)) as events:
+        async with aclosing(modelStream.events()) as events:
             async for event in events:
-                if event["type"] == "error":
-                    error_text = str(event["message"])
-                    assistant_text.append(error_text)
-                    yield stream_event("error", error_text)
-                    return
-                if event["type"] == "open":
-                    generation_id = event["generationId"] or generation_id
-                    continue
-                if event["type"] == "done":
-                    stream_completed = True
-                    continue
-
-                generation_id = generation_id or event["id"]
-                if event["usage"]:
-                    usage = event["usage"]
-                    continue
-                if not event["hasChoice"]:
-                    continue
-                finish_reason = event["finishReason"] or finish_reason
-                if finish_reason:
-                    stream_completed = True
-                if event["sources"]:
-                    merged = merge_sources(sources, event["sources"])
+                if event["type"] == "sources":
+                    merged = merge_sources(sources, event["value"])
                     if merged != sources:
                         sources = merged
                         yield stream_event("sources", sources)
-                if event["reasoning"] and effectiveThinkingEnabled:
-                    reasoning_text.append(event["reasoning"])
-                    yield stream_event("reasoning", event["reasoning"])
-                if event["content"]:
-                    assistant_text.append(event["content"])
-                    yield stream_event("content", event["content"])
+                elif event["type"] == "reasoning":
+                    yield stream_event("reasoning", event["value"])
+                elif event["type"] == "content":
+                    yield stream_event("content", event["value"])
 
-        if generation_id:
-            generation_usage = await provider.fetchFinalUsage(api_key, generation_id)
-            if generation_usage:
-                usage = {**(usage or {}), **generation_usage}
-        if usage:
+        if modelStream.errorMessage:
+            error_text = modelStream.errorMessage
+            assistant_text.append(error_text)
+            yield stream_event("error", error_text)
+            return
+
+        await modelStream.fetchFinalUsage(api_key)
+        if modelStream.usage:
             yield stream_event(
                 "usage",
                 {
-                    "generation_id": generation_id,
+                    "generation_id": modelStream.generationId,
                     "model": payload.model,
-                    **usage,
+                    **modelStream.usage,
                 },
             )
     except Exception as exc:  # noqa: BLE001
@@ -251,18 +227,19 @@ async def stream_chat_response(
         assistant_text.append(fallback)
         yield stream_event("error", fallback)
     finally:
+        stream_completed = modelStream.receivedDone or bool(modelStream.finishReason)
         if not (payload.regenerate_message_id and (error_text or not stream_completed)):
             saveAssistantReply(
                 chat_id,
                 payload,
                 assistant_message_id,
                 assistant_text,
-                reasoning_text,
+                modelStream.reasoningParts,
                 sources,
-                finish_reason,
+                modelStream.finishReason,
                 error_text,
-                generation_id,
-                usage,
+                modelStream.generationId,
+                modelStream.usage or None,
             )
 
 

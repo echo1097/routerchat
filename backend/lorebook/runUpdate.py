@@ -19,6 +19,7 @@ from backend.lorebook.lorebookRows import (
     row_to_lorebook_entry,
     sanitize_lorebook_aliases,
 )
+from backend.lorebook.lorebookStream import LorebookStream
 from backend.lorebook.lorebookUsage import LorebookUsage
 from backend.lorebook.parseLorebook import parse_lorebook_json
 from backend.lorebook.targetedUpdates import apply_lorebook_updates
@@ -28,7 +29,6 @@ from backend.lorebook.updateSchema import (
 )
 from backend.providers.base import ChatOptions
 from backend.writing.storyProvider import storyProvider
-from backend.providers.streaming import streamChat
 from backend.writing.storyRows import insert_chapter_history_entry, row_to_story
 
 logger = logging.getLogger("uvicorn.error")
@@ -116,44 +116,21 @@ async def run_lorebook_update(
     applied: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
     usageRun = LorebookUsage(api_key, story_id, model, "update", chapter_id)
-    generated_text: list[str] = []
-    finish_reason: str | None = None
-    receivedDone = False
-    content_started = False
+    lorebookStream = LorebookStream(provider, request, usageRun, thinking_enabled)
     try:
-        async with usageRun:
-            async with aclosing(streamChat(provider, request)) as events:
-                async for event in events:
-                    if event["type"] in ("error", "open"):
-                        usageRun.generationId = event["generationId"]
-                    if event["type"] == "error":
-                        error_text = event["message"]
-                        continue
-                    if event["type"] == "open":
-                        continue
-                    if event["type"] == "done":
-                        receivedDone = True
-                        continue
+        async with aclosing(lorebookStream.events()) as events:
+            async for event in events:
+                if event["type"] == "reasoning":
+                    yield {"type": "reasoning", "value": event["value"]}
+                elif event["type"] == "contentStart":
+                    yield {"type": "content"}
+        error_text = lorebookStream.errorMessage
 
-                    usageRun.generationId = usageRun.generationId or event["id"]
-                    usageRun.addUsage(event["usage"])
-
-                    if not event["hasChoice"]:
-                        continue
-                    finish_reason = event["finishReason"] or finish_reason
-                    if event["reasoning"] and thinking_enabled:
-                        yield {"type": "reasoning", "value": event["reasoning"]}
-                    if event["content"]:
-                        if not content_started:
-                            content_started = True
-                            yield {"type": "content"}
-                        generated_text.append(event["content"])
-
-        raw_output = "".join(generated_text)
+        raw_output = lorebookStream.text
         #a cut off response is never valid json anyway, so say why instead of letting the parser guess
-        if finish_reason == "length":
+        if lorebookStream.finishReason == "length":
             error_text = "The lorebook update hit the model token limit before it finished."
-        elif not receivedDone and not error_text:
+        elif not lorebookStream.receivedDone and not error_text:
             error_text = "The lorebook update ended before the provider completed the stream."
         elif not error_text:
             parsed = parse_lorebook_json(raw_output)

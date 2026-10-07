@@ -14,13 +14,13 @@ from backend.core.streamEvents import stream_event
 from backend.core.utils import utc_now
 from backend.lorebook.lorebookModels import TimelineRepairRequest
 from backend.lorebook.lorebookRows import lorebook_model_for, row_to_lorebook_entry
+from backend.lorebook.lorebookStream import LorebookStream
 from backend.lorebook.lorebookUsage import LorebookUsage
 from backend.lorebook.parseLorebook import parse_lorebook_json
 from backend.lorebook.timeline import normalize_timeline_description
 from backend.providers.base import ChatOptions
 from backend.providers.registry import providerForRow
 from backend.writing.storyProvider import storyProvider
-from backend.providers.streaming import streamChat
 
 router = APIRouter()
 
@@ -136,54 +136,31 @@ async def stream_timeline_repair(
     )
     effectiveThinkingEnabled = provider.effectiveThinkingEnabled(lorebook_model_for(story), True)
 
-    generatedText: list[str] = []
-    finishReason: str | None = None
     usageRun = LorebookUsage(apiKey, story_id, lorebook_model_for(story), "timeline_repair")
-    receivedDone = False
-    announcedWriting = False
+    lorebookStream = LorebookStream(provider, request, usageRun, effectiveThinkingEnabled)
 
     yield stream_event("status", "rebuilding")
 
     try:
-        async with usageRun:
-            async with aclosing(streamChat(provider, request)) as events:
-                async for event in events:
-                    if event["type"] in ("error", "open"):
-                        usageRun.generationId = event["generationId"]
-                    if event["type"] == "error":
-                        yield stream_event(
-                            "error",
-                            {"code": "timeline_repair_provider_error", "message": event["message"]},
-                        )
-                        return
-                    if event["type"] == "open":
-                        continue
-                    if event["type"] == "done":
-                        receivedDone = True
-                        continue
+        async with aclosing(lorebookStream.events()) as events:
+            async for event in events:
+                if event["type"] == "reasoning":
+                    yield stream_event("reasoning", event["value"])
+                elif event["type"] == "contentStart":
+                    yield stream_event("status", "writing")
 
-                    usageRun.generationId = usageRun.generationId or event["id"]
-                    usageRun.addUsage(event["usage"])
-
-                    if not event["hasChoice"]:
-                        continue
-                    finishReason = event["finishReason"] or finishReason
-                    if event["reasoning"] and effectiveThinkingEnabled:
-                        yield stream_event("reasoning", event["reasoning"])
-                    if event["content"]:
-                        #first real content means the thinking is done and the timeline is being written
-                        if not announcedWriting:
-                            announcedWriting = True
-                            yield stream_event("status", "writing")
-                        generatedText.append(event["content"])
-
-        if usageRun.usage:
+        if lorebookStream.errorMessage:
             yield stream_event(
-                "usage",
-                {"generation_id": usageRun.generationId, "model": usageRun.model, **usageRun.usage},
+                "error",
+                {"code": "timeline_repair_provider_error", "message": lorebookStream.errorMessage},
             )
+            return
 
-        if not receivedDone:
+        usageValue = lorebookStream.usageEventValue()
+        if usageValue:
+            yield stream_event("usage", usageValue)
+
+        if not lorebookStream.receivedDone:
             yield stream_event(
                 "error",
                 {
@@ -192,7 +169,7 @@ async def stream_timeline_repair(
                 },
             )
             return
-        if finishReason == "length":
+        if lorebookStream.finishReason == "length":
             yield stream_event(
                 "error",
                 {
@@ -203,7 +180,7 @@ async def stream_timeline_repair(
             return
 
         try:
-            nextTimeline = parse_timeline_repair("".join(generatedText))
+            nextTimeline = parse_timeline_repair(lorebookStream.text)
         except ValueError as exc:
             yield stream_event(
                 "error",

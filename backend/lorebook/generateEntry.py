@@ -16,12 +16,12 @@ from backend.lorebook.lorebookRows import (
     normalize_lorebook_category,
     sanitize_lorebook_aliases,
 )
+from backend.lorebook.lorebookStream import LorebookStream
 from backend.lorebook.lorebookUsage import LorebookUsage
 from backend.lorebook.parseLorebook import parse_lorebook_json
 from backend.providers.base import ChatOptions
 from backend.providers.registry import providerForRow
 from backend.writing.storyProvider import storyProvider
-from backend.providers.streaming import streamChat
 
 GENERATE_CATEGORIES = ["character", "location", "item", "event", "note", "synopsis"]
 
@@ -203,60 +203,37 @@ async def stream_entry_generation(
     )
     effectiveThinkingEnabled = provider.effectiveThinkingEnabled(lorebook_model_for(story), True)
 
-    generatedText: list[str] = []
-    finishReason: str | None = None
     usageRun = LorebookUsage(
         apiKey, story["id"], lorebook_model_for(story), "generate",
         chapter["id"] if chapter is not None else None,
     )
-    receivedDone = False
-    announcedWriting = False
+    lorebookStream = LorebookStream(provider, request, usageRun, effectiveThinkingEnabled)
 
     #a model with thinking off never sends reasoning, so the editor should say Writing from the start
     yield stream_event("status", "thinking" if effectiveThinkingEnabled else "writing")
 
     try:
-        async with usageRun:
-            async with aclosing(streamChat(provider, request)) as events:
-                async for event in events:
-                    if event["type"] in ("error", "open"):
-                        usageRun.generationId = event["generationId"]
-                    if event["type"] == "error":
-                        yield stream_event(
-                            "error",
-                            {"code": "lorebook_generate_provider_error", "message": event["message"]},
-                        )
-                        return
-                    if event["type"] == "open":
-                        continue
-                    if event["type"] == "done":
-                        receivedDone = True
-                        continue
+        async with aclosing(lorebookStream.events()) as events:
+            async for event in events:
+                if event["type"] == "reasoning":
+                    yield stream_event("reasoning", event["value"])
+                elif event["type"] == "contentStart":
+                    yield stream_event("status", "writing")
+                elif event["type"] == "content":
+                    yield stream_event("content", event["value"])
 
-                    usageRun.generationId = usageRun.generationId or event["id"]
-                    usageRun.addUsage(event["usage"])
-
-                    if not event["hasChoice"]:
-                        continue
-                    finishReason = event["finishReason"] or finishReason
-                    if event["reasoning"] and effectiveThinkingEnabled:
-                        yield stream_event("reasoning", event["reasoning"])
-                    if event["content"]:
-                        #first real content means the thinking is done and the entry is being written
-                        if not announcedWriting:
-                            announcedWriting = True
-                            yield stream_event("status", "writing")
-                        generatedText.append(event["content"])
-                        #the editor renders the entry as it lands, so the raw delta goes out too
-                        yield stream_event("content", event["content"])
-
-        if usageRun.usage:
+        if lorebookStream.errorMessage:
             yield stream_event(
-                "usage",
-                {"generation_id": usageRun.generationId, "model": usageRun.model, **usageRun.usage},
+                "error",
+                {"code": "lorebook_generate_provider_error", "message": lorebookStream.errorMessage},
             )
+            return
 
-        if not receivedDone:
+        usageValue = lorebookStream.usageEventValue()
+        if usageValue:
+            yield stream_event("usage", usageValue)
+
+        if not lorebookStream.receivedDone:
             yield stream_event(
                 "error",
                 {
@@ -265,7 +242,7 @@ async def stream_entry_generation(
                 },
             )
             return
-        if finishReason == "length":
+        if lorebookStream.finishReason == "length":
             yield stream_event(
                 "error",
                 {
@@ -276,7 +253,7 @@ async def stream_entry_generation(
             return
 
         try:
-            entry = parse_generated_entry("".join(generatedText), category)
+            entry = parse_generated_entry(lorebookStream.text, category)
         except ValueError as exc:
             yield stream_event(
                 "error",

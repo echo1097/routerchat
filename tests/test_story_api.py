@@ -3058,7 +3058,7 @@ class StoryApiTest(unittest.TestCase):
             ]
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.lorebook.runUpdate.streamChat", failingStream
+            "backend.lorebook.lorebookStream.streamChat", failingStream
         ), self.assertLogs("uvicorn.error", level="ERROR") as logs:
             events = asyncio.run(runUpdate())
 

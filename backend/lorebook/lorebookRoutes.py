@@ -12,6 +12,15 @@ from backend.lorebook.chapterSummaries import (
     lorebook_summary_chapter_id,
 )
 from backend.lorebook.lorebookModels import LorebookEntryRequest
+from backend.lorebook.lorebookQueries import (
+    deleteStoryEntry,
+    getEntry,
+    getStoryEntry,
+    insertEntry,
+    listEntries,
+    refreshSummaryEntry,
+    updateEntryAtRevision,
+)
 from backend.lorebook.lorebookRows import (
     normalize_lorebook_category,
     row_to_lorebook_entry,
@@ -44,14 +53,7 @@ router = APIRouter()
 def list_lorebook_entries(story_id: str) -> dict[str, Any]:
     with get_db() as conn:
         story = requireStory(conn, story_id)
-        rows = conn.execute(
-            """
-            SELECT * FROM lorebook_entries
-            WHERE story_id = ?
-            ORDER BY updated_at DESC, created_at DESC
-            """,
-            (story_id,),
-        ).fetchall()
+        rows = listEntries(conn, story_id)
     return {"entries": [row_to_lorebook_entry(row) for row in rows]}
 
 
@@ -79,13 +81,8 @@ def create_lorebook_entry(story_id: str, payload: LorebookEntryRequest) -> dict[
 
         if existingSummary:
             entry_id = str(existingSummary["id"])
-            conn.execute(
-                """
-                UPDATE lorebook_entries
-                SET name = ?, description = ?, aliases_json = '[]', tags_json = '[]',
-                    metadata_json = ?, disabled = ?, revision = revision + 1, updated_at = ?
-                WHERE id = ?
-                """,
+            refreshSummaryEntry(
+                conn,
                 (
                     entryName,
                     payload.description,
@@ -95,20 +92,11 @@ def create_lorebook_entry(story_id: str, payload: LorebookEntryRequest) -> dict[
                     entry_id,
                 ),
             )
-            row = conn.execute(
-                "SELECT * FROM lorebook_entries WHERE id = ?",
-                (entry_id,),
-            ).fetchone()
+            row = getEntry(conn, entry_id)
             return {"entry": row_to_lorebook_entry(row)}
 
-        conn.execute(
-            """
-            INSERT INTO lorebook_entries (
-              id, story_id, name, category, description, aliases_json,
-              tags_json, metadata_json, disabled, created_at, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+        insertEntry(
+            conn,
             (
                 entry_id,
                 story_id,
@@ -127,7 +115,7 @@ def create_lorebook_entry(story_id: str, payload: LorebookEntryRequest) -> dict[
                 now,
             ),
         )
-        row = conn.execute("SELECT * FROM lorebook_entries WHERE id = ?", (entry_id,)).fetchone()
+        row = getEntry(conn, entry_id)
     return {"entry": row_to_lorebook_entry(row)}
 
 
@@ -139,10 +127,7 @@ def update_lorebook_entry(
     category = normalize_lorebook_category(payload.category)
     baseRevision = payload.revision
     with get_db() as conn:
-        entry = conn.execute(
-            "SELECT * FROM lorebook_entries WHERE id = ? AND story_id = ?",
-            (entry_id, story_id),
-        ).fetchone()
+        entry = getStoryEntry(conn, story_id, entry_id)
         if not entry:
             raise HTTPException(status_code=404, detail="Lorebook entry not found.")
         metadata = sanitize_lorebook_metadata(category, payload.metadata)
@@ -157,14 +142,8 @@ def update_lorebook_entry(
                 if not chapter:
                     raise HTTPException(status_code=422, detail="The summary chapter was not found.")
                 entryName = str(chapter["title"])
-        result = conn.execute(
-            """
-            UPDATE lorebook_entries
-            SET name = ?, category = ?, description = ?, aliases_json = ?,
-                tags_json = ?, metadata_json = ?, disabled = ?,
-                revision = revision + 1, updated_at = ?
-            WHERE id = ? AND story_id = ? AND (? IS NULL OR revision = ?)
-            """,
+        result = updateEntryAtRevision(
+            conn,
             (
                 entryName,
                 category,
@@ -185,10 +164,7 @@ def update_lorebook_entry(
             ),
         )
         if result.rowcount != 1:
-            current = conn.execute(
-                "SELECT * FROM lorebook_entries WHERE id = ? AND story_id = ?",
-                (entry_id, story_id),
-            ).fetchone()
+            current = getStoryEntry(conn, story_id, entry_id)
             raise HTTPException(
                 status_code=409,
                 detail={
@@ -197,17 +173,14 @@ def update_lorebook_entry(
                     "entry": row_to_lorebook_entry(current),
                 },
             )
-        row = conn.execute("SELECT * FROM lorebook_entries WHERE id = ?", (entry_id,)).fetchone()
+        row = getEntry(conn, entry_id)
     return {"entry": row_to_lorebook_entry(row)}
 
 
 @router.delete("/api/stories/{story_id}/lorebook/{entry_id}")
 def delete_lorebook_entry(story_id: str, entry_id: str) -> dict[str, Any]:
     with get_db() as conn:
-        result = conn.execute(
-            "DELETE FROM lorebook_entries WHERE id = ? AND story_id = ?",
-            (entry_id, story_id),
-        )
+        result = deleteStoryEntry(conn, story_id, entry_id)
     if result.rowcount == 0:
         raise HTTPException(status_code=404, detail="Lorebook entry not found.")
     return {"ok": True}

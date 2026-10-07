@@ -12,6 +12,7 @@ from backend.lorebook.chapterSummaries import (
     normalize_required_summary_update,
 )
 from backend.lorebook.lorebookHistory import lorebook_run_history_actions
+from backend.lorebook.lorebookQueries import insertUpdateRun, listEntries, listEntriesByUpdated
 from backend.lorebook.lorebookRows import (
     json_list,
     lorebook_model_for,
@@ -58,10 +59,7 @@ async def run_lorebook_update(
     with get_db() as conn:
         story = getStory(conn, story_id)
         chapter = getChapter(conn, story_id, chapter_id)
-        lorebook = conn.execute(
-            "SELECT * FROM lorebook_entries WHERE story_id = ? ORDER BY updated_at DESC",
-            (story_id,),
-        ).fetchall()
+        lorebook = listEntriesByUpdated(conn, story_id)
 
     current_lore = [
         {
@@ -146,14 +144,8 @@ async def run_lorebook_update(
         error_text = str(exc)
 
     with get_db() as conn:
-        conn.execute(
-            """
-            INSERT INTO lorebook_update_runs (
-              id, story_id, chapter_id, generation_id, openrouter_generation_id,
-              raw_output, applied_updates_json, rejected_updates_json, cost, error, created_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+        insertUpdateRun(
+            conn,
             (
                 usageRun.requestId,
                 story_id,
@@ -224,14 +216,7 @@ def finalize_lorebook_update(
                 )
             )
 
-        rows = conn.execute(
-            """
-            SELECT * FROM lorebook_entries
-            WHERE story_id = ?
-            ORDER BY updated_at DESC, created_at DESC
-            """,
-            (story_id,),
-        ).fetchall()
+        rows = listEntries(conn, story_id)
 
     return {
         "applied": applied,

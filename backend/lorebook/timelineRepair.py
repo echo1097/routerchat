@@ -13,6 +13,7 @@ from backend.core.database import get_db
 from backend.core.streamEvents import stream_event
 from backend.core.utils import utc_now
 from backend.lorebook.lorebookModels import TimelineRepairRequest
+from backend.lorebook.lorebookQueries import getTimelineEntry
 from backend.lorebook.lorebookRows import lorebook_model_for, row_to_lorebook_entry
 from backend.lorebook.lorebookStream import LorebookStream
 from backend.lorebook.lorebookUsage import LorebookUsage
@@ -21,7 +22,7 @@ from backend.lorebook.timeline import normalize_timeline_description
 from backend.providers.base import ChatOptions
 from backend.providers.registry import providerForRow
 from backend.stories.storyProvider import storyProvider
-from backend.stories.storyQueries import requireStory
+from backend.stories.storyQueries import listEnabledChapters, requireStory
 
 router = APIRouter()
 
@@ -289,25 +290,8 @@ async def repair_story_timeline(
 
     with get_db() as conn:
         story = requireStory(conn, story_id)
-        visibleChapters = conn.execute(
-            """
-            SELECT * FROM chapters
-            WHERE story_id = ? AND disabled = 0
-            ORDER BY order_index ASC, created_at ASC
-            """,
-            (story_id,),
-        ).fetchall()
-        timelineRow = conn.execute(
-            """
-            SELECT * FROM lorebook_entries
-            WHERE story_id = ?
-              AND disabled = 0
-              AND (category = 'timeline' OR lower(name) = lower('Timeline'))
-            ORDER BY updated_at DESC, created_at DESC
-            LIMIT 1
-            """,
-            (story_id,),
-        ).fetchone()
+        visibleChapters = listEnabledChapters(conn, story_id)
+        timelineRow = getTimelineEntry(conn, story_id)
 
     if not any(str(chapter["content"] or "").strip() for chapter in visibleChapters):
         raise HTTPException(

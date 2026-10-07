@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from backend.core.database import get_db
 from backend.core.streamEvents import stream_event
 from backend.lorebook.chapterSummaries import SUMMARY_INSTRUCTION
+from backend.lorebook.lorebookQueries import listEnabledEntries
 from backend.lorebook.lorebookRows import (
     lorebook_model_for,
     normalize_lorebook_category,
@@ -22,7 +23,7 @@ from backend.lorebook.parseLorebook import parse_lorebook_json
 from backend.providers.base import ChatOptions
 from backend.providers.registry import providerForRow
 from backend.stories.storyProvider import storyProvider
-from backend.stories.storyQueries import requireStory
+from backend.stories.storyQueries import getEnabledChapter, requireStory
 
 GENERATE_CATEGORIES = ["character", "location", "item", "event", "note", "synopsis"]
 
@@ -303,25 +304,12 @@ async def generate_lorebook_entry(
             chapterId = str(payload.chapter_id or "").strip()
             if not chapterId:
                 raise HTTPException(status_code=422, detail="Choose a chapter to summarize.")
-            chapter = conn.execute(
-                """
-                SELECT * FROM chapters
-                WHERE id = ? AND story_id = ? AND disabled = 0
-                """,
-                (chapterId, story_id),
-            ).fetchone()
+            chapter = getEnabledChapter(conn, story_id, chapterId)
             if not chapter:
                 raise HTTPException(status_code=404, detail="Chapter not found or hidden from context.")
             if not str(chapter["content"] or "").strip():
                 raise HTTPException(status_code=422, detail="Write something in this chapter first.")
-        existingEntries = conn.execute(
-            """
-            SELECT * FROM lorebook_entries
-            WHERE story_id = ? AND disabled = 0
-            ORDER BY updated_at DESC, created_at DESC
-            """,
-            (story_id,),
-        ).fetchall()
+        existingEntries = listEnabledEntries(conn, story_id)
 
     return StreamingResponse(
         stream_entry_generation(story, category, brief, existingEntries, chapter),

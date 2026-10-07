@@ -16,6 +16,7 @@ from backend.lorebook.chapterSummaries import (
     SUMMARY_INSTRUCTION,
     lorebook_summary_chapter_id,
 )
+from backend.lorebook.lorebookQueries import listEnabledEntries
 from backend.lorebook.lorebookRows import (
     lorebook_model_for,
     normalize_lorebook_category,
@@ -29,7 +30,7 @@ from backend.lorebook.timeline import normalize_timeline_description
 from backend.providers.base import ChatOptions
 from backend.providers.registry import providerForRow
 from backend.stories.storyProvider import storyProvider
-from backend.stories.storyQueries import requireStory
+from backend.stories.storyQueries import listEnabledChapters, listHiddenChapterIds, requireStory
 
 REPAIR_CATEGORIES = ["character", "location", "item", "event", "note", "timeline"]
 
@@ -420,29 +421,12 @@ async def repair_story_lorebook(story_id: str) -> StreamingResponse:
 
     with get_db() as conn:
         story = requireStory(conn, story_id)
-        visibleChapters = conn.execute(
-            """
-            SELECT * FROM chapters
-            WHERE story_id = ? AND disabled = 0
-            ORDER BY order_index ASC, created_at ASC
-            """,
-            (story_id,),
-        ).fetchall()
+        visibleChapters = listEnabledChapters(conn, story_id)
         hiddenChapterIds = {
             str(row["id"])
-            for row in conn.execute(
-                "SELECT id FROM chapters WHERE story_id = ? AND disabled = 1",
-                (story_id,),
-            ).fetchall()
+            for row in listHiddenChapterIds(conn, story_id)
         }
-        visibleLorebook = conn.execute(
-            """
-            SELECT * FROM lorebook_entries
-            WHERE story_id = ? AND disabled = 0
-            ORDER BY updated_at DESC, created_at DESC
-            """,
-            (story_id,),
-        ).fetchall()
+        visibleLorebook = listEnabledEntries(conn, story_id)
         preservedSummaries = [
             row
             for row in visibleLorebook

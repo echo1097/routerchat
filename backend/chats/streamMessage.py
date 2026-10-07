@@ -18,6 +18,18 @@ from backend.attachments.attachmentContent import (
 )
 from backend.chats.buildMessages import build_messages
 from backend.chats.chatModels import StreamMessageRequest
+from backend.chats.chatQueries import (
+    deleteMessagesAfter,
+    getFirstUserMessage,
+    getUserMessage,
+    insertAssistantMessage,
+    insertUserMessage,
+    requireChat,
+    requireMessage,
+    touchChat,
+    updateChatAfterSend,
+    updateMessageContent,
+)
 from backend.chats.chatRows import chat_has_messages, chatProvider, sendingProvider
 from backend.chats.chatTitles import chat_title_from_message
 from backend.chats.messageRoutes import refresh_chat_after_message_change
@@ -53,56 +65,25 @@ def saveAssistantReply(
     content = "".join(assistant_text)
     with get_db() as conn:
         if payload.regenerate_message_id:
-            regenerate_message = conn.execute(
-                """
-                SELECT * FROM messages
-                WHERE id = ? AND chat_id = ? AND role = 'user'
-                """,
-                (payload.regenerate_message_id, chat_id),
-            ).fetchone()
+            regenerate_message = getUserMessage(conn, chat_id, payload.regenerate_message_id)
             if not regenerate_message:
                 return
-            previous_first_user = conn.execute(
-                """
-                SELECT content FROM messages
-                WHERE chat_id = ? AND role = 'user'
-                ORDER BY message_order ASC, created_at ASC, rowid ASC
-                LIMIT 1
-                """,
-                (chat_id,),
-            ).fetchone()
+            previous_first_user = getFirstUserMessage(conn, chat_id)
             previous_first_user_content = (
                 previous_first_user["content"] if previous_first_user else None
             )
-            conn.execute(
-                """
-                DELETE FROM messages
-                WHERE chat_id = ? AND message_order > ?
-                """,
-                (chat_id, regenerate_message["message_order"]),
-            )
+            deleteMessagesAfter(conn, chat_id, regenerate_message["message_order"])
             delete_attachments_for_missing_messages(conn)
-            conn.execute(
-                """
-                UPDATE messages SET content = ? WHERE id = ? AND chat_id = ?
-                """,
-                (payload.message.strip(), payload.regenerate_message_id, chat_id),
+            updateMessageContent(
+                conn, chat_id, payload.regenerate_message_id, payload.message.strip()
             )
             refresh_chat_after_message_change(
                 conn, chat_id, previous_first_user_content
             )
 
         createdAt = utc_now()
-        conn.execute(
-            """
-            INSERT INTO messages (
-              id, chat_id, role, content, reasoning, sources, model, finish_reason,
-              error, generation_id, prompt_tokens, completion_tokens,
-              reasoning_tokens, cached_tokens, total_tokens, cost, provider_name,
-              generation_time, latency, message_order, created_at
-            )
-            VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+        insertAssistantMessage(
+            conn,
             (
                 assistant_message_id,
                 chat_id,
@@ -135,9 +116,7 @@ def saveAssistantReply(
             generation_id,
             chatProvider(conn, chat_id).id,
         )
-        conn.execute(
-            "UPDATE chats SET updated_at = ? WHERE id = ?", (utc_now(), chat_id)
-        )
+        touchChat(conn, chat_id, utc_now())
 
 
 async def stream_chat_response(
@@ -260,9 +239,7 @@ async def stream_message(
     assistant_message_id = str(uuid.uuid4())
 
     with get_db() as conn:
-        chat = conn.execute("SELECT * FROM chats WHERE id = ?", (chat_id,)).fetchone()
-        if not chat:
-            raise HTTPException(status_code=404, detail="Chat not found.")
+        chat = requireChat(conn, chat_id)
         checkAttachmentLimits(
             conn,
             attachmentIds,
@@ -280,15 +257,7 @@ async def stream_message(
             )
 
         if payload.regenerate_message_id:
-            regenerateMessage = conn.execute(
-                """
-                SELECT * FROM messages
-                WHERE id = ? AND chat_id = ?
-                """,
-                (payload.regenerate_message_id, chat_id),
-            ).fetchone()
-            if not regenerateMessage:
-                raise HTTPException(status_code=404, detail="Message not found.")
+            regenerateMessage = requireMessage(conn, chat_id, payload.regenerate_message_id)
             if regenerateMessage["role"] != "user":
                 raise HTTPException(
                     status_code=400,
@@ -301,14 +270,8 @@ async def stream_message(
                 message_id=user_message_id,
             )
         else:
-            conn.execute(
-                """
-                INSERT INTO messages (
-                  id, chat_id, role, content, reasoning, model, finish_reason,
-                  error, message_order, created_at
-                )
-                VALUES (?, ?, 'user', ?, NULL, ?, NULL, NULL, ?, ?)
-                """,
+            insertUserMessage(
+                conn,
                 (
                     user_message_id,
                     chat_id,
@@ -329,14 +292,8 @@ async def stream_message(
         #the naming route fills this in once the run is done, so leave the placeholder alone for it
         if title == "New chat" and not bool(read_app_setting("generate_chat_name")):
             title = chat_title_from_message(message)
-        conn.execute(
-            """
-            UPDATE chats
-            SET title = ?, model = ?, provider = ?, system_prompt = ?, temperature = ?,
-                max_tokens = ?, thinking_enabled = ?, reasoning_effort = ?,
-                web_search_enabled = ?, updated_at = ?
-            WHERE id = ?
-            """,
+        updateChatAfterSend(
+            conn,
             (
                 title,
                 locked_model,

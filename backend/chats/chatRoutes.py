@@ -8,10 +8,20 @@ from fastapi import APIRouter, HTTPException
 from backend.attachments.attachmentCleanup import delete_attachments_for_chat
 from backend.attachments.attachmentContent import attachments_by_message
 from backend.chats.chatModels import ChatCreateRequest, ChatPatchRequest
+from backend.chats.chatQueries import (
+    deleteChat,
+    getChat,
+    getChatTemporary,
+    insertChat,
+    listChats,
+    listMessages,
+    requireChat,
+    updateChatColumns,
+)
 from backend.chats.chatRows import chat_has_messages, row_to_chat, row_to_message
 from backend.chats.folderRoutes import folder_or_404
 from backend.chats.systemPrompts import chatSystemPrompt
-from backend.core.database import get_db, message_order_clause
+from backend.core.database import get_db
 from backend.core.utils import patch_updates, utc_now
 from backend.providers.registry import getActiveProvider
 
@@ -21,13 +31,7 @@ router = APIRouter()
 @router.get("/api/chats")
 def list_chats() -> dict[str, Any]:
     with get_db() as conn:
-        rows = conn.execute(
-            """
-            SELECT * FROM chats
-            WHERE temporary = 0
-            ORDER BY pinned DESC, updated_at DESC, created_at DESC
-            """
-        ).fetchall()
+        rows = listChats(conn)
     return {"chats": [row_to_chat(row) for row in rows]}
 
 
@@ -41,15 +45,8 @@ def create_chat(payload: ChatCreateRequest) -> dict[str, Any]:
     with get_db() as conn:
         if folder_id:
             folder_or_404(conn, folder_id)
-        conn.execute(
-            """
-            INSERT INTO chats (
-              id, title, model, provider, system_prompt, temperature, max_tokens,
-              thinking_enabled, reasoning_effort, web_search_enabled, temporary,
-              folder_id, created_at, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+        insertChat(
+            conn,
             (
                 chat_id,
                 payload.title or "New chat",
@@ -67,20 +64,15 @@ def create_chat(payload: ChatCreateRequest) -> dict[str, Any]:
                 now,
             ),
         )
-        row = conn.execute("SELECT * FROM chats WHERE id = ?", (chat_id,)).fetchone()
+        row = getChat(conn, chat_id)
     return {"chat": row_to_chat(row)}
 
 
 @router.get("/api/chats/{chat_id}")
 def get_chat(chat_id: str) -> dict[str, Any]:
     with get_db() as conn:
-        chat = conn.execute("SELECT * FROM chats WHERE id = ?", (chat_id,)).fetchone()
-        if not chat:
-            raise HTTPException(status_code=404, detail="Chat not found.")
-        messages = conn.execute(
-            f"SELECT * FROM messages WHERE chat_id = ? ORDER BY {message_order_clause()}",
-            (chat_id,),
-        ).fetchall()
+        chat = requireChat(conn, chat_id)
+        messages = listMessages(conn, chat_id)
         attachmentsByMessage = attachments_by_message(conn, chat_id)
 
     return {
@@ -107,9 +99,7 @@ def update_chat(chat_id: str, payload: ChatPatchRequest) -> dict[str, Any]:
     assignments: list[str] = []
     values: list[Any] = []
     with get_db() as conn:
-        chat = conn.execute("SELECT * FROM chats WHERE id = ?", (chat_id,)).fetchone()
-        if not chat:
-            raise HTTPException(status_code=404, detail="Chat not found.")
+        chat = requireChat(conn, chat_id)
         if (
             "model" in updates
             and updates["model"] != chat["model"]
@@ -134,9 +124,7 @@ def update_chat(chat_id: str, payload: ChatPatchRequest) -> dict[str, Any]:
         #settings, renames, pins and folder moves are housekeeping, so they leave updated_at alone
         #and the chat keeps its place in the sidebar until someone actually talks in it
         values.append(chat_id)
-        conn.execute(
-            f"UPDATE chats SET {', '.join(assignments)} WHERE id = ?", values
-        )
+        updateChatColumns(conn, assignments, values)
     return get_chat(chat_id)
 
 
@@ -144,8 +132,7 @@ def update_chat(chat_id: str, payload: ChatPatchRequest) -> dict[str, Any]:
 def delete_chat(chat_id: str) -> dict[str, Any]:
     with get_db() as conn:
         delete_attachments_for_chat(conn, chat_id)
-        conn.execute("DELETE FROM messages WHERE chat_id = ?", (chat_id,))
-        result = conn.execute("DELETE FROM chats WHERE id = ?", (chat_id,))
+        result = deleteChat(conn, chat_id)
     if result.rowcount == 0:
         raise HTTPException(status_code=404, detail="Chat not found.")
     return {"ok": True}
@@ -154,14 +141,11 @@ def delete_chat(chat_id: str) -> dict[str, Any]:
 @router.post("/api/chats/{chat_id}/close")
 def close_chat(chat_id: str) -> dict[str, Any]:
     with get_db() as conn:
-        chat = conn.execute(
-            "SELECT temporary FROM chats WHERE id = ?", (chat_id,)
-        ).fetchone()
+        chat = getChatTemporary(conn, chat_id)
         if not chat:
             return {"ok": True}
         if not bool(chat["temporary"]):
             return {"ok": True}
         delete_attachments_for_chat(conn, chat_id)
-        conn.execute("DELETE FROM messages WHERE chat_id = ?", (chat_id,))
-        conn.execute("DELETE FROM chats WHERE id = ?", (chat_id,))
+        deleteChat(conn, chat_id)
     return {"ok": True}

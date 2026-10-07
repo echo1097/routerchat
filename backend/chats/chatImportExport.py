@@ -3,11 +3,19 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
+from backend.chats.chatQueries import (
+    insertImportedChat,
+    insertImportedMessage,
+    listChatIds,
+    listMessageIds,
+    listMessages,
+    requireChat,
+)
 from backend.chats.chatModels import ChatImportRequest
 from backend.chats.chatRows import row_to_chat, row_to_message
-from backend.core.database import get_db, message_order_clause, next_message_order
+from backend.core.database import get_db, next_message_order
 from backend.core.reasoningEffort import coerce_reasoning_effort
 from backend.core.utils import coerce_bool_int, float_or_none, int_or_none, utc_now
 from backend.providers.base import DEFAULT_MAX_TOKENS
@@ -20,21 +28,12 @@ router = APIRouter()
 @router.get("/api/chats/{chat_id}/export")
 def export_chat(chat_id: str) -> dict[str, Any]:
     with get_db() as conn:
-        chat = conn.execute("SELECT * FROM chats WHERE id = ?", (chat_id,)).fetchone()
-        if not chat:
-            raise HTTPException(status_code=404, detail="Chat not found.")
-        chat_rows = conn.execute(
-            "SELECT * FROM chats WHERE id = ?",
-            (chat_id,),
-        ).fetchall()
-        message_rows = conn.execute(
-            f"SELECT * FROM messages WHERE chat_id = ? ORDER BY {message_order_clause()}",
-            (chat_id,),
-        ).fetchall()
+        chat = requireChat(conn, chat_id)
+        message_rows = listMessages(conn, chat_id)
     return {
         "schema": "routerchat.chats.v1",
         "exported_at": utc_now(),
-        "chats": [row_to_chat(row) for row in chat_rows],
+        "chats": [row_to_chat(chat)],
         "messages": [row_to_message(row) for row in message_rows],
     }
 
@@ -49,10 +48,10 @@ def import_chats(payload: ChatImportRequest) -> dict[str, Any]:
 
     with get_db() as conn:
         existing_chat_ids = {
-            row["id"] for row in conn.execute("SELECT id FROM chats").fetchall()
+            row["id"] for row in listChatIds(conn)
         }
         existing_message_ids = {
-            row["id"] for row in conn.execute("SELECT id FROM messages").fetchall()
+            row["id"] for row in listMessageIds(conn)
         }
 
         for item in payload.chats:
@@ -69,15 +68,8 @@ def import_chats(payload: ChatImportRequest) -> dict[str, Any]:
                 importedModel = getActiveProvider().defaultModelId()
                 importedProvider = getActiveProvider().id
 
-            conn.execute(
-                """
-                INSERT INTO chats (
-                  id, title, model, provider, system_prompt, temperature, max_tokens,
-                  thinking_enabled, reasoning_effort, web_search_enabled, pinned,
-                  created_at, updated_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
+            insertImportedChat(
+                conn,
                 (
                     chat_id,
                     str(item.get("title") or "Imported chat")[:120],
@@ -109,16 +101,8 @@ def import_chats(payload: ChatImportRequest) -> dict[str, Any]:
             messageOrder = nextMessageOrders[chat_id]
             nextMessageOrders[chat_id] += 1
 
-            conn.execute(
-                """
-                INSERT INTO messages (
-                  id, chat_id, role, content, reasoning, sources, model, finish_reason,
-                  error, generation_id, prompt_tokens, completion_tokens,
-                  reasoning_tokens, cached_tokens, total_tokens, cost, provider_name,
-                  generation_time, latency, message_order, created_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
+            insertImportedMessage(
+                conn,
                 (
                     message_id,
                     chat_id,

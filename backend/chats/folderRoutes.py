@@ -8,6 +8,18 @@ from fastapi import APIRouter, HTTPException
 
 from backend.attachments.attachmentCleanup import delete_attachments_for_chat
 from backend.chats.chatModels import FolderCreateRequest, FolderPatchRequest
+from backend.chats.chatQueries import (
+    countChatsByFolder,
+    countFolderChats,
+    deleteChat,
+    deleteFolder,
+    getFolder,
+    insertFolder,
+    listFolderChatIds,
+    listFolders,
+    unsetFolder,
+    updateFolderColumns,
+)
 from backend.chats.chatRows import row_to_folder
 from backend.core.database import get_db
 from backend.core.utils import patch_updates, utc_now
@@ -16,9 +28,7 @@ router = APIRouter()
 
 
 def folder_or_404(conn: sqlite3.Connection, folder_id: str) -> sqlite3.Row:
-    folder = conn.execute(
-        "SELECT * FROM chat_folders WHERE id = ?", (folder_id,)
-    ).fetchone()
+    folder = getFolder(conn, folder_id)
     if not folder:
         raise HTTPException(status_code=404, detail="Folder not found.")
     return folder
@@ -27,16 +37,8 @@ def folder_or_404(conn: sqlite3.Connection, folder_id: str) -> sqlite3.Row:
 @router.get("/api/folders")
 def list_folders() -> dict[str, Any]:
     with get_db() as conn:
-        rows = conn.execute(
-            "SELECT * FROM chat_folders ORDER BY created_at ASC"
-        ).fetchall()
-        counts = conn.execute(
-            """
-            SELECT folder_id, COUNT(*) AS chat_count FROM chats
-            WHERE temporary = 0 AND folder_id IS NOT NULL
-            GROUP BY folder_id
-            """
-        ).fetchall()
+        rows = listFolders(conn)
+        counts = countChatsByFolder(conn)
 
     chat_counts = {row["folder_id"]: row["chat_count"] for row in counts}
     folders = []
@@ -52,16 +54,8 @@ def create_folder(payload: FolderCreateRequest) -> dict[str, Any]:
     now = utc_now()
     folder_id = str(uuid.uuid4())
     with get_db() as conn:
-        conn.execute(
-            """
-            INSERT INTO chat_folders (id, name, created_at, updated_at)
-            VALUES (?, ?, ?, ?)
-            """,
-            (folder_id, payload.name.strip(), now, now),
-        )
-        row = conn.execute(
-            "SELECT * FROM chat_folders WHERE id = ?", (folder_id,)
-        ).fetchone()
+        insertFolder(conn, folder_id, payload.name.strip(), now)
+        row = getFolder(conn, folder_id)
 
     folder = row_to_folder(row)
     folder["chat_count"] = 0
@@ -82,17 +76,10 @@ def update_folder(folder_id: str, payload: FolderPatchRequest) -> dict[str, Any]
             assignments.append("updated_at = ?")
             values.append(utc_now())
             values.append(folder_id)
-            conn.execute(
-                f"UPDATE chat_folders SET {', '.join(assignments)} WHERE id = ?", values
-            )
+            updateFolderColumns(conn, assignments, values)
 
-        row = conn.execute(
-            "SELECT * FROM chat_folders WHERE id = ?", (folder_id,)
-        ).fetchone()
-        count = conn.execute(
-            "SELECT COUNT(*) AS chat_count FROM chats WHERE folder_id = ? AND temporary = 0",
-            (folder_id,),
-        ).fetchone()
+        row = getFolder(conn, folder_id)
+        count = countFolderChats(conn, folder_id)
 
     folder = row_to_folder(row)
     folder["chat_count"] = count["chat_count"]
@@ -106,17 +93,12 @@ def delete_folder(folder_id: str, delete_chats: bool = False) -> dict[str, Any]:
         if delete_chats:
             chat_ids = [
                 row["id"]
-                for row in conn.execute(
-                    "SELECT id FROM chats WHERE folder_id = ?", (folder_id,)
-                ).fetchall()
+                for row in listFolderChatIds(conn, folder_id)
             ]
             for chat_id in chat_ids:
                 delete_attachments_for_chat(conn, chat_id)
-                conn.execute("DELETE FROM messages WHERE chat_id = ?", (chat_id,))
-                conn.execute("DELETE FROM chats WHERE id = ?", (chat_id,))
+                deleteChat(conn, chat_id)
         else:
-            conn.execute(
-                "UPDATE chats SET folder_id = NULL WHERE folder_id = ?", (folder_id,)
-            )
-        conn.execute("DELETE FROM chat_folders WHERE id = ?", (folder_id,))
+            unsetFolder(conn, folder_id)
+        deleteFolder(conn, folder_id)
     return {"ok": True}

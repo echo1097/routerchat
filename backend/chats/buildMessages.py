@@ -6,6 +6,7 @@ from backend.attachments.attachmentContent import (
     attachments_by_message,
     user_content_with_attachments,
 )
+from backend.chats.chatQueries import listContextMessages
 from backend.core.database import get_db
 
 
@@ -19,14 +20,7 @@ def build_messages(
     if system_prompt.strip():
         messages.append({"role": "system", "content": system_prompt.strip()})
     with get_db() as conn:
-        rows = conn.execute(
-            """
-            SELECT id, role, content FROM messages
-            WHERE chat_id = ? AND error IS NULL
-            ORDER BY message_order ASC, created_at ASC, rowid ASC
-            """,
-            (chat_id,),
-        ).fetchall()
+        rows = listContextMessages(conn, chat_id)
         attachmentsByMessage = attachments_by_message(conn, chat_id)
 
         for row in rows:

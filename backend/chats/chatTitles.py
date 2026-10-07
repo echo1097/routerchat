@@ -4,11 +4,12 @@ import re
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
+from backend.chats.chatQueries import getFirstUserMessageForTitle, nameNewChat, requireChat
 from backend.chats.chatRoutes import get_chat
 from backend.core.appSettings import read_app_setting
-from backend.core.database import get_db, message_order_clause
+from backend.core.database import get_db
 from backend.core.reasoningEffort import ReasoningEffort
 from backend.providers.base import ChatOptions, ChatRequest, Provider
 from backend.providers.registry import getActiveProvider, providerForRow
@@ -74,21 +75,11 @@ def chat_title_from_model_output(raw: str | None) -> str | None:
 @router.post("/api/chats/{chat_id}/title")
 async def name_chat(chat_id: str) -> dict[str, Any]:
     with get_db() as conn:
-        chat = conn.execute("SELECT * FROM chats WHERE id = ?", (chat_id,)).fetchone()
-        if not chat:
-            raise HTTPException(status_code=404, detail="Chat not found.")
+        chat = requireChat(conn, chat_id)
         #a rename or an earlier naming run already settled this, and neither should be overwritten
         if chat["title"] != "New chat":
             return get_chat(chat_id)
-        first = conn.execute(
-            f"""
-            SELECT content FROM messages
-            WHERE chat_id = ? AND role = 'user'
-            ORDER BY {message_order_clause()}
-            LIMIT 1
-            """,
-            (chat_id,),
-        ).fetchone()
+        first = getFirstUserMessageForTitle(conn, chat_id)
 
     if not first or not (first["content"] or "").strip():
         return get_chat(chat_id)
@@ -107,10 +98,7 @@ async def name_chat(chat_id: str) -> dict[str, Any]:
         title = chat_title_from_message(message)
 
     with get_db() as conn:
-        conn.execute(
-            "UPDATE chats SET title = ? WHERE id = ? AND title = 'New chat'",
-            (title, chat_id),
-        )
+        nameNewChat(conn, chat_id, title)
 
     return get_chat(chat_id)
 

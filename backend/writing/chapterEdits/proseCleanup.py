@@ -7,7 +7,7 @@ from backend.writing.chapterEdits.editErrors import (
 )
 
 
-def clean_insert_text(value: Any) -> str:
+def cleanInsertText(value: Any) -> str:
     return str(value or "").strip()
 
 
@@ -21,7 +21,7 @@ MARKDOWN_LINE_PATTERN = re.compile(
 )
 
 
-def paragraphize_unbroken_prose(text: str) -> str:
+def paragraphizeUnbrokenProse(text: str) -> str:
     if "\n" in text or len(text.split()) <= UNBROKEN_PROSE_WORD_LIMIT:
         return text
 
@@ -43,7 +43,7 @@ def paragraphize_unbroken_prose(text: str) -> str:
     return "\n\n".join(paragraphs) if len(paragraphs) > 1 else text
 
 
-def chapter_edit_text_source(value: Any) -> str:
+def chapterEditTextSource(value: Any) -> str:
     #paragraphs arrive as a list so the model never has to type an escape sequence, a plain string still works for anything that sends the old shape
     if isinstance(value, (list, tuple)):
         paragraphs = [str(item or "").strip() for item in value]
@@ -51,7 +51,7 @@ def chapter_edit_text_source(value: Any) -> str:
     return str(value or "")
 
 
-def ends_an_initial(text: str, index: int) -> bool:
+def endsAnInitial(text: str, index: int) -> bool:
     #"G.H." and "A.J." are initials, so the dot after a lone capital is punctuation rather than a sentence end
     letter = index - 1
     if letter < 0 or not text[letter].isupper():
@@ -59,7 +59,7 @@ def ends_an_initial(text: str, index: int) -> bool:
     return letter == 0 or not text[letter - 1].isalpha()
 
 
-def quote_opens_dialogue(text: str, quoteIndex: int) -> bool:
+def quoteOpensDialogue(text: str, quoteIndex: int) -> bool:
     #a straight quote reads as both ends of a quotation, so parity over the ones already used says which end this is. an apostrophe inside a word is punctuation and never counts
     quote = text[quoteIndex]
     used = 0
@@ -75,25 +75,25 @@ def quote_opens_dialogue(text: str, quoteIndex: int) -> bool:
     return used % 2 == 0
 
 
-def repair_run_together_sentences(text: str) -> str:
+def repairRunTogetherSentences(text: str) -> str:
     def spaceOut(match: re.Match[str]) -> str:
         index = match.start()
         #the last dot of an ellipsis is normal punctuation, "...Fine." is not two sentences
         if text[max(0, index - 2):index] == "..":
             return match.group(0)
-        if ends_an_initial(text, index):
+        if endsAnInitial(text, index):
             return match.group(0)
 
         sentenceEnd, quote, nextSentence = match.groups()
         #the space belongs in front of a quote that is opening the next line of dialogue, not behind it
-        if quote in AMBIGUOUS_QUOTES and quote_opens_dialogue(text, match.start(2)):
+        if quote in AMBIGUOUS_QUOTES and quoteOpensDialogue(text, match.start(2)):
             return f"{sentenceEnd} {quote}{nextSentence}"
         return f"{sentenceEnd}{quote} {nextSentence}"
 
     return RUN_TOGETHER_SENTENCE_PATTERN.sub(spaceOut, text)
 
 
-def repair_prose_lines(text: str) -> str:
+def repairProseLines(text: str) -> str:
     repairedLines: list[str] = []
     inFence = False
     for line in text.split("\n"):
@@ -101,7 +101,7 @@ def repair_prose_lines(text: str) -> str:
         isFence = stripped.startswith("```") or stripped.startswith("~~~")
 
         if not inFence and not isFence:
-            line = repair_run_together_sentences(line)
+            line = repairRunTogetherSentences(line)
 
         repairedLines.append(line)
         if isFence:
@@ -110,10 +110,10 @@ def repair_prose_lines(text: str) -> str:
     return "\n".join(repairedLines)
 
 
-def normalize_chapter_edit_text(value: Any) -> str:
-    text = chapter_edit_text_source(value).replace("\r\n", "\n").replace("\r", "\n")
-    text = repair_prose_lines(text)
-    text = paragraphize_unbroken_prose(text)
+def normalizeChapterEditText(value: Any) -> str:
+    text = chapterEditTextSource(value).replace("\r\n", "\n").replace("\r", "\n")
+    text = repairProseLines(text)
+    text = paragraphizeUnbrokenProse(text)
     lines = [line.rstrip() for line in text.split("\n")]
 
     normalizedLines: list[str] = []
@@ -154,9 +154,9 @@ def normalize_chapter_edit_text(value: Any) -> str:
     return "\n".join(compactLines).strip()
 
 
-def validate_chapter_edit_text(value: Any) -> str:
+def validateChapterEditText(value: Any) -> str:
     #formatting is repaired on the way in rather than rejected, prose the author paid for is never thrown away over punctuation
-    normalized = normalize_chapter_edit_text(value)
+    normalized = normalizeChapterEditText(value)
     if not normalized:
         raise ChapterEditError(
             CHAPTER_EDIT_INVALID_OPERATION,

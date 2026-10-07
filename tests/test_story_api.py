@@ -28,21 +28,21 @@ import backend.core.migrations as migrations
 import backend.core.paths as paths
 from backend.brainstorm.brainstormLayout import (
     COLUMN_OFFSET_X,
-    brainstorm_idea_positions,
-    next_brainstorm_branch_position,
-    next_brainstorm_root_position,
-    node_bounds,
+    brainstormIdeaPositions,
+    nextBrainstormBranchPosition,
+    nextBrainstormRootPosition,
+    nodeBounds,
 )
-from backend.brainstorm.tidyBrainstorm import tidy_brainstorm_positions
-from backend.brainstorm.brainstormMessages import brainstorm_response_format, build_brainstorm_messages, parse_brainstorm_ideas
-from backend.lorebook.lorebookHistory import lorebook_history_label
-from backend.lorebook.runUpdate import run_lorebook_update
-from backend.lorebook.timeline import normalize_timeline_description
-from backend.lorebook.updateSchema import lorebook_update_response_format
-from backend.local_access import create_secret_file
-from backend.writing.chapterEdits.anchors import chapter_blocks
-from backend.writing.chapterEdits.editSchema import chapter_edit_response_format
-from backend.writing.storyMessages import build_story_messages, effective_generation_mode
+from backend.brainstorm.tidyBrainstorm import tidyBrainstormPositions
+from backend.brainstorm.brainstormMessages import brainstormResponseFormat, buildBrainstormMessages, parseBrainstormIdeas
+from backend.lorebook.lorebookHistory import lorebookHistoryLabel
+from backend.lorebook.runUpdate import runLorebookUpdate
+from backend.lorebook.timeline import normalizeTimelineDescription
+from backend.lorebook.updateSchema import lorebookUpdateResponseFormat
+from backend.local_access import createSecretFile
+from backend.writing.chapterEdits.anchors import chapterBlocks
+from backend.writing.chapterEdits.editSchema import chapterEditResponseFormat
+from backend.writing.storyMessages import buildStoryMessages, effectiveGenerationMode
 
 
 def messageText(message):
@@ -91,10 +91,10 @@ def fakeLorebookStream(
 
 def acceptCurrentTos():
     #every /api route is behind the tos gate now, so a fresh test db needs an acceptance row or everything 403s
-    tos = loadTos.load_tos()
+    tos = loadTos.loadTos()
     if not tos:
         raise RuntimeError("TOS.md is missing, restore it before running the tests")
-    tosAcceptance.record_tos_acceptance(tos["hash"], tos["date"])
+    tosAcceptance.recordTosAcceptance(tos["hash"], tos["date"])
 
 
 class StoryApiTest(unittest.TestCase):
@@ -106,7 +106,7 @@ class StoryApiTest(unittest.TestCase):
         paths.DB_PATH = paths.DATA_DIR / "routerchat-test.sqlite3"
         self.baseUrl = "http://127.0.0.1:8000"
         self.apiSecretPath = paths.DATA_DIR / "run" / "api-secret"
-        self.apiSecret = create_secret_file(self.apiSecretPath)
+        self.apiSecret = createSecretFile(self.apiSecretPath)
         self.localAccessEnvironment = patch.dict(
             os.environ,
             {
@@ -116,8 +116,8 @@ class StoryApiTest(unittest.TestCase):
             },
         )
         self.localAccessEnvironment.start()
-        main.reset_local_access_config()
-        main.init_db()
+        main.resetLocalAccessConfig()
+        main.initDb()
         acceptCurrentTos()
         self.client = TestClient(
             main.app,
@@ -135,7 +135,7 @@ class StoryApiTest(unittest.TestCase):
 
     def tearDown(self):
         self.client.close()
-        main.reset_local_access_config()
+        main.resetLocalAccessConfig()
         self.localAccessEnvironment.stop()
         paths.DATA_DIR = self.originalDataDir
         paths.DB_PATH = self.originalDbPath
@@ -163,8 +163,8 @@ class StoryApiTest(unittest.TestCase):
             "INSERT INTO chapter_history_entries VALUES ('e1','s1','c1','r1','User prompt','hi',0,'now')"
         )
 
-        migrations.ensure_chapter_history_columns(conn)
-        migrations.ensure_chapter_history_columns(conn) #running twice must not blow up or duplicate anything
+        migrations.ensureChapterHistoryColumns(conn)
+        migrations.ensureChapterHistoryColumns(conn) #running twice must not blow up or duplicate anything
 
         columns = [row["name"] for row in conn.execute("PRAGMA table_info(chapter_history_entries)")]
         self.assertEqual(columns.count("words_added"), 1)
@@ -213,8 +213,8 @@ class StoryApiTest(unittest.TestCase):
                 (f"e{index}", label, index),
             )
 
-        migrations.ensure_chapter_history_columns(conn)
-        migrations.ensure_chapter_history_columns(conn) #twice, must not blow up or double apply
+        migrations.ensureChapterHistoryColumns(conn)
+        migrations.ensureChapterHistoryColumns(conn) #twice, must not blow up or double apply
 
         columns = [row["name"] for row in conn.execute("PRAGMA table_info(chapter_history_entries)")]
         self.assertEqual(columns.count("kind"), 1)
@@ -255,13 +255,13 @@ class StoryApiTest(unittest.TestCase):
                 "position_y": ideaY,
             }
             for index, (ideaX, ideaY) in enumerate(
-                brainstorm_idea_positions(promptX, promptY, ideaCount)
+                brainstormIdeaPositions(promptX, promptY, ideaCount)
             )
         ]
         return [prompt, *ideas]
 
     def assertBrainstormNodesDoNotOverlap(self, nodes):
-        bounds = [node_bounds(node) for node in nodes]
+        bounds = [nodeBounds(node) for node in nodes]
         for index, first in enumerate(bounds):
             for second in bounds[index + 1:]:
                 overlaps = (
@@ -273,33 +273,33 @@ class StoryApiTest(unittest.TestCase):
                 self.assertFalse(overlaps, f"{first} overlaps {second}")
 
     def test_brainstorm_root_layout_reuses_the_nearest_open_slot(self):
-        self.assertEqual(next_brainstorm_root_position([], 3), (0.0, 180.0))
+        self.assertEqual(nextBrainstormRootPosition([], 3), (0.0, 180.0))
         firstNodes = self.brainstormRound("root-1", 0.0, 180.0, 3)
 
-        secondPosition = next_brainstorm_root_position(firstNodes, 3)
+        secondPosition = nextBrainstormRootPosition(firstNodes, 3)
         self.assertEqual(secondPosition, (0.0, 436.0))
         secondNodes = self.brainstormRound("root-2", *secondPosition, 3)
         self.assertBrainstormNodesDoNotOverlap([*firstNodes, *secondNodes])
 
-        thirdPosition = next_brainstorm_root_position([*firstNodes, *secondNodes], 3)
+        thirdPosition = nextBrainstormRootPosition([*firstNodes, *secondNodes], 3)
         self.assertEqual(thirdPosition, (0.0, -76.0))
         thirdNodes = self.brainstormRound("root-3", *thirdPosition, 3)
         self.assertBrainstormNodesDoNotOverlap([*firstNodes, *secondNodes, *thirdNodes])
 
-        reusedPosition = next_brainstorm_root_position(secondNodes, 3)
+        reusedPosition = nextBrainstormRootPosition(secondNodes, 3)
         self.assertEqual(reusedPosition, (0.0, 180.0))
 
     def test_brainstorm_branches_from_neighbouring_ideas_do_not_collide(self):
         rootNodes = self.brainstormRound("root", 0.0, 180.0, 3)
         firstIdea, secondIdea = rootNodes[1], rootNodes[2]
 
-        firstBranch = next_brainstorm_branch_position(rootNodes, [firstIdea], 4)
+        firstBranch = nextBrainstormBranchPosition(rootNodes, [firstIdea], 4)
         self.assertEqual(firstBranch[0], firstIdea["position_x"] + COLUMN_OFFSET_X)
         self.assertEqual(firstBranch[1], firstIdea["position_y"])
         firstBranchNodes = self.brainstormRound("branch-1", *firstBranch, 4)
 
         allNodes = [*rootNodes, *firstBranchNodes]
-        secondBranch = next_brainstorm_branch_position(allNodes, [secondIdea], 4)
+        secondBranch = nextBrainstormBranchPosition(allNodes, [secondIdea], 4)
         secondBranchNodes = self.brainstormRound("branch-2", *secondBranch, 4)
         self.assertBrainstormNodesDoNotOverlap([*allNodes, *secondBranchNodes])
 
@@ -321,7 +321,7 @@ class StoryApiTest(unittest.TestCase):
             {"source_node_id": "second-root", "target_node_id": "idea-d"},
         ]
 
-        positions = tidy_brainstorm_positions(nodes, edges)
+        positions = tidyBrainstormPositions(nodes, edges)
 
         self.assertEqual(set(positions), {node["id"] for node in nodes})
         self.assertEqual(positions["root"], (0.0, 180.0))
@@ -539,7 +539,7 @@ class StoryApiTest(unittest.TestCase):
         supportedParameters=None,
     ):
         modelId = "test/brainstorm-guards"
-        models.cache_models([models.normalize_model({
+        models.cacheModels([models.normalizeModel({
             "id": modelId,
             "supported_parameters": list(supportedParameters or []),
         })])
@@ -742,7 +742,7 @@ class StoryApiTest(unittest.TestCase):
         return story, chapter
 
     def lorebookRow(self, story, name):
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             return conn.execute(
                 "SELECT * FROM lorebook_entries WHERE story_id = ? AND lower(name) = lower(?)",
                 (story["id"], name),
@@ -820,7 +820,7 @@ class StoryApiTest(unittest.TestCase):
         for action in ("update", "update_stream", "generate", "generate_summary", "repair", "timeline_repair"):
             with self.subTest(action=action):
                 story, chapter = self.storyWithChapter("Usage test", "A visitor arrives.")
-                models.cache_models([models.normalize_model({"id": "test/lorebook", "supported_parameters": []})])
+                models.cacheModels([models.normalizeModel({"id": "test/lorebook", "supported_parameters": []})])
                 self.client.patch(f"/api/stories/{story['id']}", json={"lorebook_model": "test/lorebook"})
                 response, requests = self.callTrackedLorebook(story, chapter, action)
                 self.assertEqual(response.status_code, 200)
@@ -830,7 +830,7 @@ class StoryApiTest(unittest.TestCase):
                     events = [json.loads(line) for line in response.text.splitlines() if line]
                     self.assertEqual(events[-1]["type"], "complete")
                     self.assertFalse(events[-1]["value"].get("error"))
-                with database.get_db() as conn:
+                with database.getDb() as conn:
                     rows = conn.execute("SELECT * FROM lorebook_usage WHERE story_id = ?", (story["id"],)).fetchall()
                     history = conn.execute("SELECT id FROM lorebook_update_runs WHERE story_id = ?", (story["id"],)).fetchone()
                 self.assertEqual(len(rows), 1)
@@ -867,7 +867,7 @@ class StoryApiTest(unittest.TestCase):
                     else:
                         events = [json.loads(line) for line in response.text.splitlines() if line]
                         self.assertEqual(events[-1]["type"], "error")
-                    with database.get_db() as conn:
+                    with database.getDb() as conn:
                         rows = conn.execute("SELECT * FROM lorebook_usage WHERE story_id = ?", (story["id"],)).fetchall()
                     self.assertEqual(len(rows), 1)
                     self.assertEqual(rows[0]["total_tokens"], None if failure == "provider_error" else 130)
@@ -888,7 +888,7 @@ class StoryApiTest(unittest.TestCase):
                 expectedCode = "lorebook_repair_conflict" if action == "repair" else "timeline_repair_conflict"
                 self.assertEqual(events[-1]["value"]["code"], expectedCode)
                 self.assertEqual(self.lorebookRow(story, "Timeline")["description"], "- Manual timeline")
-                with database.get_db() as conn:
+                with database.getDb() as conn:
                     row = conn.execute("SELECT total_tokens FROM lorebook_usage WHERE story_id = ?", (story["id"],)).fetchone()
                 self.assertEqual(row["total_tokens"], 130)
 
@@ -901,7 +901,7 @@ class StoryApiTest(unittest.TestCase):
                 )
                 self.callTrackedLorebook(story, chapter, "generate_summary")
                 self.callTrackedLorebook(story, chapter, "generate")
-                with database.get_db() as conn:
+                with database.getDb() as conn:
                     self.assertEqual(conn.execute("SELECT COUNT(*) FROM lorebook_usage WHERE story_id = ?", (story["id"],)).fetchone()[0], 2)
 
                 if cleanup == "chapter":
@@ -910,11 +910,11 @@ class StoryApiTest(unittest.TestCase):
                     self.client.delete(f"/api/stories/{story['id']}")
                 else:
                     if cleanup == "startup":
-                        main.on_startup()
+                        main.onStartup()
                     else:
                         self.client.post(f"/api/stories/{story['id']}/close")
 
-                with database.get_db() as conn:
+                with database.getDb() as conn:
                     rows = conn.execute("SELECT chapter_id FROM lorebook_usage WHERE story_id = ?", (story["id"],)).fetchall()
                 self.assertEqual(len(rows), 1 if cleanup == "chapter" else 0)
                 if rows:
@@ -922,18 +922,18 @@ class StoryApiTest(unittest.TestCase):
 
     def testLorebookUsageStartupMigrationPreservesLegacyRuns(self):
         story, chapter = self.storyWithChapter("Migration usage test", "A visitor arrives.")
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             conn.execute("DROP TABLE lorebook_usage")
             conn.execute(
                 """
                 INSERT INTO lorebook_update_runs (id, story_id, chapter_id, raw_output, applied_updates_json, cost, created_at)
                 VALUES ('legacy', ?, ?, '{}', '[]', 0.5, ?)
                 """,
-                (story["id"], chapter["id"], utils.utc_now()),
+                (story["id"], chapter["id"], utils.utcNow()),
             )
-        main.init_db()
-        main.init_db()
-        with database.get_db() as conn:
+        main.initDb()
+        main.initDb()
+        with database.getDb() as conn:
             self.assertEqual(conn.execute("SELECT cost FROM lorebook_update_runs WHERE id = 'legacy'").fetchone()[0], 0.5)
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM lorebook_usage").fetchone()[0], 0)
 
@@ -944,7 +944,7 @@ class StoryApiTest(unittest.TestCase):
             self.client.post(f"/api/stories/{story['id']}/lorebook/generate/stream", json={"category": "character", "brief": ""})
             self.client.post(f"/api/stories/{story['id']}/lorebook/repair/stream")
             self.client.post(f"/api/stories/{story['id']}/lorebook/timeline/repair/stream", json={"current_timeline": ""})
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM lorebook_usage").fetchone()[0], 0)
 
     def test_manual_lorebook_update_applies_entries_and_records_the_run(self):
@@ -974,7 +974,7 @@ class StoryApiTest(unittest.TestCase):
         self.assertTrue(any(label.endswith("added Chloe to Lorebook") for label in labels))
         self.assertIn("finished editing Lorebook after", labels[-1])
 
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             run = conn.execute(
                 "SELECT * FROM lorebook_update_runs WHERE story_id = ?", (story["id"],)
             ).fetchone()
@@ -1155,7 +1155,7 @@ class StoryApiTest(unittest.TestCase):
         kaelAfter = next(entry for entry in payload["entries"] if entry["id"] == kael["id"])
         self.assertEqual(kaelAfter["description"], "red cloak, red boots\n\nHe returned at dusk.")
         self.assertIn("1 targeted lorebook edit was skipped", payload["history"][-1]["detail"])
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             run = conn.execute(
                 "SELECT rejected_updates_json FROM lorebook_update_runs WHERE story_id = ?",
                 (story["id"],),
@@ -1273,12 +1273,12 @@ class StoryApiTest(unittest.TestCase):
     def test_lorebook_update_structured_output_follows_model_capability(self):
         supportedModel = "test/lorebook-structured"
         unsupportedModel = "test/lorebook-plain"
-        models.cache_models([
-            models.normalize_model({
+        models.cacheModels([
+            models.normalizeModel({
                 "id": supportedModel,
                 "supported_parameters": ["structured_outputs"],
             }),
-            models.normalize_model({
+            models.normalizeModel({
                 "id": unsupportedModel,
                 "supported_parameters": [],
             }),
@@ -1292,7 +1292,7 @@ class StoryApiTest(unittest.TestCase):
         _, supportedCalls = self.callLorebookUpdate(story, chapter, updates=[])
         self.assertEqual(
             supportedCalls[0]["response_format"],
-            lorebook_update_response_format(),
+            lorebookUpdateResponseFormat(),
         )
 
         self.client.patch(
@@ -1305,9 +1305,9 @@ class StoryApiTest(unittest.TestCase):
     def test_lorebook_uses_its_own_model_when_one_is_picked(self):
         storyModel = "test/story-writer"
         lorebookModel = "test/lorebook-keeper"
-        models.cache_models([
-            models.normalize_model({"id": storyModel, "supported_parameters": []}),
-            models.normalize_model({"id": lorebookModel, "supported_parameters": []}),
+        models.cacheModels([
+            models.normalizeModel({"id": storyModel, "supported_parameters": []}),
+            models.normalizeModel({"id": lorebookModel, "supported_parameters": []}),
         ])
         story, chapter = self.storyWithChapter("Own Model", "Mara opens the gate.")
         self.client.patch(f"/api/stories/{story['id']}", json={"model": storyModel})
@@ -1328,9 +1328,9 @@ class StoryApiTest(unittest.TestCase):
     def test_clearing_the_lorebook_model_goes_back_to_the_story_model(self):
         storyModel = "test/story-writer"
         lorebookModel = "test/lorebook-keeper"
-        models.cache_models([
-            models.normalize_model({"id": storyModel, "supported_parameters": []}),
-            models.normalize_model({"id": lorebookModel, "supported_parameters": []}),
+        models.cacheModels([
+            models.normalizeModel({"id": storyModel, "supported_parameters": []}),
+            models.normalizeModel({"id": lorebookModel, "supported_parameters": []}),
         ])
         story, chapter = self.storyWithChapter("Back To Global", "Mara opens the gate.")
         self.client.patch(
@@ -1426,7 +1426,7 @@ class StoryApiTest(unittest.TestCase):
                 self.assertEqual(payload["error"], expectedError)
                 self.assertEqual(payload["applied"], [])
                 self.assertIsNone(self.lorebookRow(story, "Mara"))
-                with database.get_db() as conn:
+                with database.getDb() as conn:
                     run = conn.execute(
                         "SELECT * FROM lorebook_update_runs WHERE story_id = ?",
                         (story["id"],),
@@ -1759,8 +1759,8 @@ class StoryApiTest(unittest.TestCase):
 
     def test_timeline_repair_streams_reasoning_and_rebuilds_from_visible_story(self):
         modelId = "test/timeline-repair"
-        models.cache_models([
-            models.normalize_model({
+        models.cacheModels([
+            models.normalizeModel({
                 "id": modelId,
                 "name": "Timeline repair model",
                 "supported_parameters": ["reasoning", "structured_outputs"],
@@ -1883,10 +1883,10 @@ class StoryApiTest(unittest.TestCase):
         self.assertEqual(self.lorebookRow(story, "Timeline")["description"], "- original timeline")
 
         def changeTimeline():
-            with database.get_db() as conn:
+            with database.getDb() as conn:
                 conn.execute(
                     "UPDATE lorebook_entries SET description = ?, updated_at = ? WHERE id = ?",
-                    ("- newer manual edit", utils.utc_now(), timeline["id"]),
+                    ("- newer manual edit", utils.utcNow(), timeline["id"]),
                 )
 
         conflictResponse, _ = self.callTimelineRepair(
@@ -1957,18 +1957,18 @@ class StoryApiTest(unittest.TestCase):
 
     def test_timeline_normalizer_leaves_good_bullets_and_spaced_hyphens_alone(self):
         multiline = "- 2341, 03:17: ISB arrests Lilac Thorne\n- 2341, 04:00: Lilac steals a code cylinder"
-        self.assertEqual(normalize_timeline_description(multiline), multiline)
+        self.assertEqual(normalizeTimelineDescription(multiline), multiline)
 
         #one real event that happens to hold a date range must not get chopped at the hyphen
         dateRange = "- 2341 - 2350: the long war grinds on across the outer colonies"
-        self.assertEqual(normalize_timeline_description(dateRange), dateRange)
+        self.assertEqual(normalizeTimelineDescription(dateRange), dateRange)
 
         prose = "- The war lasted from 2341 - 2350 and ended very badly indeed"
-        self.assertEqual(normalize_timeline_description(prose), prose)
+        self.assertEqual(normalizeTimelineDescription(prose), prose)
 
         #no sentence endings to go on, but three markers on one line is past being prose
         self.assertEqual(
-            normalize_timeline_description("* alpha event happens * beta event happens * gamma event happens"),
+            normalizeTimelineDescription("* alpha event happens * beta event happens * gamma event happens"),
             "- alpha event happens\n- beta event happens\n- gamma event happens",
         )
 
@@ -2365,7 +2365,7 @@ class StoryApiTest(unittest.TestCase):
 
         #hidden means invisible, so the model cannot land on it and writes a new entry instead
         self.assertEqual([update["action"] for update in response.json()["applied"]], ["create"])
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             rows = conn.execute(
                 "SELECT description, disabled FROM lorebook_entries WHERE story_id = ? AND lower(name) = 'mara' ORDER BY disabled",
                 (story["id"],),
@@ -2423,7 +2423,7 @@ class StoryApiTest(unittest.TestCase):
         )
 
         self.assertEqual([update["action"] for update in response.json()["applied"]], ["create"])
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             rows = conn.execute(
                 "SELECT description, disabled FROM lorebook_entries WHERE story_id = ? AND lower(name) = 'timeline' ORDER BY disabled",
                 (story["id"],),
@@ -2479,7 +2479,7 @@ class StoryApiTest(unittest.TestCase):
         self.assertEqual(row["disabled"], 1)
         self.assertEqual(row["description"], "still stands")
 
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             storyRow = conn.execute(
                 "SELECT * FROM stories WHERE id = ?", (story["id"],)
             ).fetchone()
@@ -2490,7 +2490,7 @@ class StoryApiTest(unittest.TestCase):
                 "SELECT * FROM lorebook_entries WHERE story_id = ?", (story["id"],)
             ).fetchall()
 
-        context = storyContext(build_story_messages(storyRow, chapterRow, loreRows, "continue", ""))
+        context = storyContext(buildStoryMessages(storyRow, chapterRow, loreRows, "continue", ""))
         self.assertNotIn("still stands", context)
 
     def test_manual_lorebook_update_refuses_to_delete_the_timeline(self):
@@ -2545,7 +2545,7 @@ class StoryApiTest(unittest.TestCase):
         self.assertTrue(patched.json()["story"]["lorebook_auto"])
 
         self.assertTrue(self.client.get(f"/api/stories/{story['id']}").json()["story"]["lorebook_auto"])
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             row = conn.execute(
                 "SELECT lorebook_auto FROM stories WHERE id = ?", (story["id"],)
             ).fetchone()
@@ -2581,7 +2581,7 @@ class StoryApiTest(unittest.TestCase):
         story, chapter = self.storyWithChapter(
             "Replace Stats", "first paragraph\n\nsecond paragraph"
         )
-        blocks = chapter_blocks(chapter["content"])
+        blocks = chapterBlocks(chapter["content"])
         operation = {
             "operation": "replaceBlock",
             "chapterRevision": chapter["revision"],
@@ -2658,12 +2658,12 @@ class StoryApiTest(unittest.TestCase):
         entries = self.client.get(f"/api/stories/{story['id']}/lorebook").json()["entries"]
         self.assertIn("Chloe", [entry["name"] for entry in entries])
 
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             run = conn.execute(
                 "SELECT * FROM lorebook_update_runs WHERE story_id = ?", (story["id"],)
             ).fetchone()
         self.assertIsNotNone(run["generation_id"]) #an auto run is tied to the generation that caused it
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             usageRow = conn.execute("SELECT * FROM lorebook_usage WHERE id = ?", (run["id"],)).fetchone()
         self.assertEqual(usageRow["model"], self.lastLorebookCalls[0]["model"])
         self.assertEqual(usageRow["total_tokens"], 130)
@@ -2822,8 +2822,8 @@ class StoryApiTest(unittest.TestCase):
             )
             """
         )
-        migrations.ensure_lorebook_revision_column(conn)
-        migrations.ensure_lorebook_revision_column(conn)
+        migrations.ensureLorebookRevisionColumn(conn)
+        migrations.ensureLorebookRevisionColumn(conn)
         columns = [row["name"] for row in conn.execute("PRAGMA table_info(lorebook_entries)")]
         self.assertEqual(columns.count("revision"), 1)
         conn.close()
@@ -3009,7 +3009,7 @@ class StoryApiTest(unittest.TestCase):
             f"/api/stories/{story['id']}/chapters",
             json={"title": "Chapter 1"},
         ).json()["chapter"]
-        models.cache_models([{
+        models.cacheModels([{
             "id": "test/model",
             "name": "test model",
             "architecture": {"output_modalities": ["text"]},
@@ -3029,7 +3029,7 @@ class StoryApiTest(unittest.TestCase):
             "Return only the prose",
             "\n".join(messageText(message) for message in requestBody["messages"]),
         )
-        self.assertEqual(effective_generation_mode("edit", "  \n"), "new")
+        self.assertEqual(effectiveGenerationMode("edit", "  \n"), "new")
 
         events = [json.loads(line) for line in response.text.splitlines() if line]
         self.assertNotIn("error", [event["type"] for event in events])
@@ -3052,7 +3052,7 @@ class StoryApiTest(unittest.TestCase):
         async def runUpdate():
             return [
                 event
-                async for event in run_lorebook_update(
+                async for event in runLorebookUpdate(
                     scaffold["story"]["id"], scaffold["chapter"]["id"], "some prose", "test/model", 1000
                 )
             ]
@@ -3081,7 +3081,7 @@ class StoryApiTest(unittest.TestCase):
         self.assertEqual(scaffold["chapter"]["content"], "opening words")
         self.assertEqual(scaffold["chapter"]["revision"], 0)
 
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             conn.execute(
                 """
                 CREATE TRIGGER reject_scaffold_chapter
@@ -3108,7 +3108,7 @@ class StoryApiTest(unittest.TestCase):
             },
         )
         self.assertEqual(failed.status_code, 500)
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             rows = conn.execute(
                 "SELECT id FROM stories WHERE title = 'Rolled back story'"
             ).fetchall()
@@ -3135,8 +3135,8 @@ class StoryApiTest(unittest.TestCase):
         originalDbPath = paths.DB_PATH
         paths.DB_PATH = legacyPath
         try:
-            main.init_db()
-            with database.get_db() as conn:
+            main.initDb()
+            with database.getDb() as conn:
                 columns = {
                     row["name"] for row in conn.execute("PRAGMA table_info(chapters)").fetchall()
                 }
@@ -3346,7 +3346,7 @@ class StoryApiTest(unittest.TestCase):
         persisted = self.client.get(f"/api/stories/{story['id']}").json()["chapters"][0]
         self.assertEqual(persisted["content"], "unchanged")
         self.assertEqual(persisted["revision"], 0)
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             generation = conn.execute(
                 "SELECT generated_text, error FROM story_generations WHERE chapter_id = ?",
                 (chapter["id"],),
@@ -3476,10 +3476,10 @@ class StoryApiTest(unittest.TestCase):
             providerClient = AsyncMock()
             providerClient.stream = lambda *args, **kwargs: providerResponse
             providerClient.__aenter__.return_value = providerClient
-            endpoint = chapterRoutes.stream_story_chapter_generation
+            endpoint = chapterRoutes.streamStoryChapterGeneration
             with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
                 "backend.providers.streaming.httpx.AsyncClient", return_value=providerClient,
-            ), patch("backend.writing.storyGeneration.run_lorebook_update") as lorebookRun, patch.object(
+            ), patch("backend.writing.storyGeneration.runLorebookUpdate") as lorebookRun, patch.object(
                 getActiveProvider(), "fetchFinalUsage", waitForUsage,
             ):
                 response = await endpoint(story["id"], chapter["id"], chatModels.StreamMessageRequest(
@@ -3505,7 +3505,7 @@ class StoryApiTest(unittest.TestCase):
                         {"settled": stopEvent == "chapter_updated"},
                     )
                     if concurrentEdit:
-                        with database.get_db() as conn:
+                        with database.getDb() as conn:
                             conn.execute(
                                 "UPDATE chapters SET content = ?, revision = revision + 1 WHERE id = ?",
                                 ("A newer user edit.", chapter["id"]),
@@ -3549,7 +3549,7 @@ class StoryApiTest(unittest.TestCase):
         if mode == "new" and hasContent and stopEvent != "chapter_updated" and not concurrentEdit and not completionSignal:
             writeEntry = next(entry for entry in savedChapter["history"] if entry["kind"] == "write")
             self.assertTrue(writeEntry["label"].endswith("before the run stopped"))
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             generations = conn.execute(
                 "SELECT * FROM story_generations WHERE chapter_id = ?", (chapter["id"],),
             ).fetchall()
@@ -3580,7 +3580,7 @@ class StoryApiTest(unittest.TestCase):
                 )
 
                 async def disconnectResponse():
-                    endpoint = chapterRoutes.stream_story_chapter_generation
+                    endpoint = chapterRoutes.streamStoryChapterGeneration
                     response = await endpoint(story["id"], chapter["id"], chatModels.StreamMessageRequest(
                         message="continue", model="test/model", chapter_revision=chapter["revision"],
                         generation_status_id=generationId, write_generation_mode="new",
@@ -3591,7 +3591,7 @@ class StoryApiTest(unittest.TestCase):
                             generation_status_id=generationId,
                         ))
                     self.assertEqual(duplicateError.exception.status_code, 409)
-                    with database.get_db() as conn:
+                    with database.getDb() as conn:
                         pendingRow = conn.execute(
                             "SELECT error, settled FROM story_generations WHERE id = ?", (generationId,),
                         ).fetchone()
@@ -3643,7 +3643,7 @@ class StoryApiTest(unittest.TestCase):
                     self.assertEqual([entry["kind"] for entry in savedChapter["history"]], ["prompt", "write"])
                 else:
                     self.assertEqual(savedChapter["history"], [])
-                with database.get_db() as conn:
+                with database.getDb() as conn:
                     rows = conn.execute(
                         "SELECT * FROM story_generations WHERE id = ?", (generationId,),
                     ).fetchall()
@@ -3737,7 +3737,7 @@ class StoryApiTest(unittest.TestCase):
 
         persisted = self.client.get(f"/api/stories/{story['id']}").json()["chapters"][0]
         self.assertEqual(persisted["content"], "saved text\n\npartial provider output")
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             generation = conn.execute(
                 "SELECT generated_text, error FROM story_generations WHERE chapter_id = ?",
                 (chapter["id"],),
@@ -3767,7 +3767,7 @@ class StoryApiTest(unittest.TestCase):
         updateEvent = next(event for event in events if event["type"] == "chapter_updated")
         self.assertEqual(updateEvent["value"]["chapter"]["content"], "a full chapter's worth of prose")
         self.assertFalse(updateEvent["value"]["truncated"])
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             generation = conn.execute(
                 "SELECT finish_reason, error FROM story_generations WHERE chapter_id = ?",
                 (chapter["id"],),
@@ -3838,7 +3838,7 @@ class StoryApiTest(unittest.TestCase):
         self.assertEqual(errorEvents[0]["value"]["code"], "chapter_edit_truncated")
         self.assertTrue(errorEvents[0]["value"]["repairable"])
         self.assertEqual(self.client.get(f"/api/stories/{story['id']}").json()["chapters"][0]["content"], "unchanged")
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             generation = conn.execute(
                 "SELECT error FROM story_generations WHERE chapter_id = ?",
                 (chapter["id"],),
@@ -3904,7 +3904,7 @@ class StoryApiTest(unittest.TestCase):
 
             async def aiter_lines(self):
                 yield f"data: {json.dumps({'choices': [{'delta': {'content': operation}}]})}"
-                with database.get_db() as conn:
+                with database.getDb() as conn:
                     conn.execute(
                         "UPDATE chapters SET content = ?, word_count = ?, revision = revision + 1 WHERE id = ?",
                         ("manual text", 2, chapter["id"]),
@@ -3959,14 +3959,14 @@ class StoryApiTest(unittest.TestCase):
             "chapterRevision": 0,
             "newText": "more",
         })
-        models.cache_models([{
+        models.cacheModels([{
             "id": "test/model",
             "name": "test model",
             "architecture": {"output_modalities": ["text"]},
             "supported_parameters": ["structured_outputs"],
         }])
         _, requestBody = self.streamChapterGeneration(story, chapter, output)
-        self.assertEqual(requestBody["response_format"], chapter_edit_response_format())
+        self.assertEqual(requestBody["response_format"], chapterEditResponseFormat())
 
     def test_generation_conflict_does_not_commit_or_emit_chapter_update(self):
         story = self.client.post("/api/stories", json={"title": "Generation Revision"}).json()["story"]
@@ -3987,7 +3987,7 @@ class StoryApiTest(unittest.TestCase):
 
             async def aiter_lines(self):
                 yield f"data: {json.dumps({'choices': [{'delta': {'content': 'the generated continuation'}}]})}"
-                with database.get_db() as conn:
+                with database.getDb() as conn:
                     conn.execute(
                         """
                         UPDATE chapters
@@ -4188,13 +4188,13 @@ class StoryApiTest(unittest.TestCase):
         self.assertIn("OpenRouter", response.json()["detail"])
 
     def test_provider_column_migration_marks_claude_rows_as_anthropic(self):
-        from backend.core.database import get_db
+        from backend.core.database import getDb
         from backend.core.migrations import ensureProviderColumns
 
         chat = self.client.post("/api/chats", json={"model": "claude-sonnet-5-5"}).json()["chat"]
         other = self.client.post("/api/chats", json={"model": "anthropic/claude-sonnet-5.5"}).json()["chat"]
 
-        with get_db() as conn:
+        with getDb() as conn:
             conn.execute("ALTER TABLE chats DROP COLUMN provider")
             conn.execute("ALTER TABLE stories DROP COLUMN provider")
             ensureProviderColumns(conn)
@@ -4224,7 +4224,7 @@ class StoryApiTest(unittest.TestCase):
 
     def test_openrouter_headers_use_the_public_routerchat_identity(self):
         self.assertEqual(
-            openrouterClient.headers_for_key("test-key"),
+            openrouterClient.headersForKey("test-key"),
             {
                 "Authorization": "Bearer test-key",
                 "HTTP-Referer": "https://echo1097.github.io/get-routerchat/",
@@ -4234,7 +4234,7 @@ class StoryApiTest(unittest.TestCase):
         )
 
     def test_model_reasoning_metadata_round_trips_and_drives_capabilities(self):
-        mandatoryModel = models.normalize_model({
+        mandatoryModel = models.normalizeModel({
             "id": "test/mandatory",
             "name": "Mandatory model",
             "supported_parameters": ["reasoning"],
@@ -4245,39 +4245,39 @@ class StoryApiTest(unittest.TestCase):
                 "mandatory": True,
             },
         })
-        optionalModel = models.normalize_model({
+        optionalModel = models.normalizeModel({
             "id": "test/optional",
             "supported_parameters": ["reasoning"],
             "reasoning": {"mandatory": False},
         })
-        instantModel = models.normalize_model({
+        instantModel = models.normalizeModel({
             "id": "test/instant",
             "supported_parameters": [],
         })
 
-        models.cache_models([mandatoryModel, optionalModel, instantModel])
+        models.cacheModels([mandatoryModel, optionalModel, instantModel])
 
         cachedModel = next(
-            model for model in models.cached_models() if model["id"] == "test/mandatory"
+            model for model in models.cachedModels() if model["id"] == "test/mandatory"
         )
         self.assertTrue(cachedModel["reasoning"]["mandatory"])
-        self.assertTrue(models.model_supports_reasoning("test/mandatory:nitro"))
-        self.assertTrue(models.model_requires_reasoning("test/mandatory:nitro"))
-        self.assertTrue(requestOptions.effective_thinking_enabled("test/mandatory", False))
-        self.assertFalse(requestOptions.effective_thinking_enabled("test/optional", False))
-        self.assertIsNone(requestOptions.enabled_reasoning_config("test/optional", False, "medium"))
-        self.assertIsNone(requestOptions.enabled_reasoning_config("test/instant", True, "medium"))
+        self.assertTrue(models.modelSupportsReasoning("test/mandatory:nitro"))
+        self.assertTrue(models.modelRequiresReasoning("test/mandatory:nitro"))
+        self.assertTrue(requestOptions.effectiveThinkingEnabled("test/mandatory", False))
+        self.assertFalse(requestOptions.effectiveThinkingEnabled("test/optional", False))
+        self.assertIsNone(requestOptions.enabledReasoningConfig("test/optional", False, "medium"))
+        self.assertIsNone(requestOptions.enabledReasoningConfig("test/instant", True, "medium"))
         self.assertEqual(
-            requestOptions.enabled_reasoning_config("test/mandatory", False, "high"),
+            requestOptions.enabledReasoningConfig("test/mandatory", False, "high"),
             {"enabled": True, "exclude": False, "effort": "high"},
         )
         self.assertEqual(
-            requestOptions.enabled_reasoning_config("test/mandatory", False, "xhigh"),
+            requestOptions.enabledReasoningConfig("test/mandatory", False, "xhigh"),
             {"enabled": True, "exclude": False, "effort": "high"},
         )
-        self.assertEqual(reasoningEffort.coerce_reasoning_effort("xhigh"), "max")
+        self.assertEqual(reasoningEffort.coerceReasoningEffort("xhigh"), "max")
         self.assertEqual(
-            requestOptions.resolved_reasoning_effort("test/mandatory", "low"), "medium"
+            requestOptions.resolvedReasoningEffort("test/mandatory", "low"), "medium"
         )
 
         with patch.object(getActiveProvider(), "readKey", return_value=None):
@@ -4306,7 +4306,7 @@ class StoryApiTest(unittest.TestCase):
         )
 
     def test_mandatory_reasoning_is_enabled_for_chat_when_preference_is_off(self):
-        models.cache_models([models.normalize_model({
+        models.cacheModels([models.normalizeModel({
             "id": "test/model",
             "supported_parameters": ["reasoning"],
             "reasoning": {"mandatory": True},
@@ -4364,7 +4364,7 @@ class StoryApiTest(unittest.TestCase):
         )
         self.assertEqual(requestBody["reasoning_effort"], "high")
         self.assertNotIn("include_reasoning", requestBody)
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             savedChat = conn.execute(
                 "SELECT thinking_enabled FROM chats WHERE id = ?", (chat["id"],)
             ).fetchone()
@@ -4373,7 +4373,7 @@ class StoryApiTest(unittest.TestCase):
         self.assertTrue(loadedChat["thinking_enabled"])
 
     def test_mandatory_reasoning_is_enabled_for_chapter_when_preference_is_off(self):
-        models.cache_models([models.normalize_model({
+        models.cacheModels([models.normalizeModel({
             "id": "test/model",
             "supported_parameters": ["reasoning"],
             "reasoning": {"mandatory": True},
@@ -4398,9 +4398,9 @@ class StoryApiTest(unittest.TestCase):
 
     def test_brainstorm_graph_persists_edits_viewport_and_cascade_deletion(self):
         story = self.client.post("/api/stories", json={"title": "Branch Test"}).json()["story"]
-        now = utils.utc_now()
+        now = utils.utcNow()
         nodeIds = [str(uuid.uuid4()) for _ in range(4)]
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             for index, nodeId in enumerate(nodeIds):
                 nodeType = "prompt" if index % 2 == 0 else "idea"
                 conn.execute(
@@ -4458,7 +4458,7 @@ class StoryApiTest(unittest.TestCase):
 
     def test_brainstorm_tidy_route_saves_positions_and_waits_for_generation(self):
         story = self.client.post("/api/stories", json={"title": "Tidy Test"}).json()["story"]
-        now = utils.utc_now()
+        now = utils.utcNow()
         nodeRows = [
             ("root", "prompt", "complete"),
             ("idea-a", "idea", "complete"),
@@ -4467,7 +4467,7 @@ class StoryApiTest(unittest.TestCase):
             ("idea-c", "idea", "complete"),
         ]
         edgeRows = [("root", "idea-a"), ("root", "idea-b"), ("idea-a", "branch"), ("branch", "idea-c")]
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             for nodeId, nodeType, status in nodeRows:
                 conn.execute(
                     """
@@ -4506,7 +4506,7 @@ class StoryApiTest(unittest.TestCase):
             for nodeId, nodeType, _ in nodeRows
         ])
 
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             conn.execute(
                 "UPDATE brainstorm_nodes SET status = 'generating' WHERE id = 'branch'",
             )
@@ -4538,7 +4538,7 @@ class StoryApiTest(unittest.TestCase):
             json={"name": "Secret", "category": "note", "description": "never include this", "disabled": True},
         )
 
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             storyRow = conn.execute("SELECT * FROM stories WHERE id = ?", (story["id"],)).fetchone()
             chapterRows = conn.execute(
                 "SELECT * FROM chapters WHERE id IN (?, ?) ORDER BY order_index ASC",
@@ -4550,7 +4550,7 @@ class StoryApiTest(unittest.TestCase):
             ).fetchall()
             branchRows = []
 
-        messages = build_brainstorm_messages(
+        messages = buildBrainstormMessages(
             storyRow,
             chapterRows,
             loreRows,
@@ -4582,7 +4582,7 @@ class StoryApiTest(unittest.TestCase):
             json={"name": "Secret", "category": "note", "description": "keep this out", "disabled": True},
         )
 
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             storyRow = conn.execute("SELECT * FROM stories WHERE id = ?", (story["id"],)).fetchone()
             chapterRow = conn.execute("SELECT * FROM chapters WHERE id = ?", (chapter["id"],)).fetchone()
             loreRows = conn.execute(
@@ -4590,19 +4590,19 @@ class StoryApiTest(unittest.TestCase):
                 (story["id"],),
             ).fetchall()
 
-        messages = build_story_messages(storyRow, chapterRow, loreRows, "continue", "")
+        messages = buildStoryMessages(storyRow, chapterRow, loreRows, "continue", "")
         context = storyContext(messages)
         self.assertIn("Mara (character): remembered", context)
         self.assertNotIn("keep this out", context)
 
-        editMessages = build_story_messages(
+        editMessages = buildStoryMessages(
             storyRow,
             chapterRow,
             loreRows,
             "rewrite the opening",
             "",
             generation_mode="edit",
-            blocks=chapter_blocks(chapterRow["content"]),
+            blocks=chapterBlocks(chapterRow["content"]),
         )
         editContext = storyContext(editMessages)
         self.assertIn("chapter revision: 0", editContext)
@@ -4629,7 +4629,7 @@ class StoryApiTest(unittest.TestCase):
             json={"name": "Chloe", "category": "character", "description": "A smith."},
         )
 
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             storyRow = conn.execute("SELECT * FROM stories WHERE id = ?", (story["id"],)).fetchone()
             chapterRow = conn.execute(
                 "SELECT * FROM chapters WHERE id = ?", (chapter["id"],)
@@ -4639,7 +4639,7 @@ class StoryApiTest(unittest.TestCase):
                 (story["id"],),
             ).fetchall()
 
-        context = storyContext(build_story_messages(storyRow, chapterRow, loreRows, "continue", ""))
+        context = storyContext(buildStoryMessages(storyRow, chapterRow, loreRows, "continue", ""))
 
         #every top level bullet must be a real entry, timeline bullets stay indented under theirs
         topLevel = [
@@ -4661,8 +4661,8 @@ class StoryApiTest(unittest.TestCase):
         ).json()["chapter"]
         brainstormSentinel = "SENTINEL_BRAINSTORM_IDEA_MUST_STAY_OUT"
 
-        with database.get_db() as conn:
-            now = utils.utc_now()
+        with database.getDb() as conn:
+            now = utils.utcNow()
             conn.execute(
                 """
                 INSERT INTO brainstorm_nodes (
@@ -4692,7 +4692,7 @@ class StoryApiTest(unittest.TestCase):
         self.assertNotIn(brainstormSentinel, json.dumps(writeRequest["messages"]))
 
     def test_brainstorm_output_parser_accepts_a_single_complete_idea(self):
-        parsed = parse_brainstorm_ideas(
+        parsed = parseBrainstormIdeas(
             '{"ideas": ['
             '{"title": "one", "content": "first path"},'
             '{"title": "two", "content": "second path"},'
@@ -4700,19 +4700,19 @@ class StoryApiTest(unittest.TestCase):
             ']}'
         )
         self.assertEqual(len(parsed), 3)
-        singleIdea = parse_brainstorm_ideas(
+        singleIdea = parseBrainstormIdeas(
             '{"ideas": [{"title": "one", "content": "one complete path"}]}'
         )
         self.assertEqual(len(singleIdea), 1)
         with self.assertRaises(ValueError):
-            parse_brainstorm_ideas('{"ideas": []}')
+            parseBrainstormIdeas('{"ideas": []}')
         with self.assertRaisesRegex(ValueError, "must be an object"):
-            parse_brainstorm_ideas('{"ideas": ["not an idea"]}')
+            parseBrainstormIdeas('{"ideas": ["not an idea"]}')
         with self.assertRaisesRegex(ValueError, "must include a title and content"):
-            parse_brainstorm_ideas('{"ideas": [{"title": "missing content"}]}')
+            parseBrainstormIdeas('{"ideas": [{"title": "missing content"}]}')
 
     def test_brainstorm_schema_requires_the_exact_requested_count(self):
-        schema = brainstorm_response_format(7)["json_schema"]["schema"]
+        schema = brainstormResponseFormat(7)["json_schema"]["schema"]
         ideas = schema["properties"]["ideas"]
 
         self.assertEqual(ideas["minItems"], 7)
@@ -4761,7 +4761,7 @@ class StoryApiTest(unittest.TestCase):
                 self.assertEqual(len(graph["nodes"]), 1)
                 self.assertEqual(graph["nodes"][0]["status"], "failed")
                 self.assertEqual(graph["edges"], [])
-                with database.get_db() as conn:
+                with database.getDb() as conn:
                     run = conn.execute(
                         "SELECT * FROM brainstorm_generations WHERE story_id = ?",
                         (story["id"],),
@@ -4813,7 +4813,7 @@ class StoryApiTest(unittest.TestCase):
                 {"title": "three", "content": "third path"},
             ]
         })
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             conn.execute(
                 """
                 CREATE TRIGGER block_complete_generation
@@ -4835,7 +4835,7 @@ class StoryApiTest(unittest.TestCase):
         self.assertEqual(graph["edges"], [])
 
     def test_brainstorm_generation_saves_complete_branch_atomically(self):
-        models.cache_models([models.normalize_model({
+        models.cacheModels([models.normalizeModel({
             "id": "test/model",
             "supported_parameters": ["reasoning", "structured_outputs"],
             "reasoning": {"mandatory": True},
@@ -4903,7 +4903,7 @@ class StoryApiTest(unittest.TestCase):
             requestBody["reasoning"],
             {"enabled": True, "exclude": False, "effort": "medium"},
         )
-        self.assertEqual(requestBody["response_format"], brainstorm_response_format(3))
+        self.assertEqual(requestBody["response_format"], brainstormResponseFormat(3))
         events = [json.loads(line) for line in response.text.splitlines() if line]
         self.assertEqual(
             [event["type"] for event in events],
@@ -5021,19 +5021,19 @@ class StoryApiTest(unittest.TestCase):
         modelLabel = "Glm 5.2"
 
         self.assertEqual(
-            lorebook_history_label(modelLabel, {"action": "update", "name": "Chloe"}),
+            lorebookHistoryLabel(modelLabel, {"action": "update", "name": "Chloe"}),
             "Glm 5.2 updated Chloe in Lorebook",
         )
         self.assertEqual(
-            lorebook_history_label(modelLabel, {"action": "create", "name": "The Blackwall"}),
+            lorebookHistoryLabel(modelLabel, {"action": "create", "name": "The Blackwall"}),
             "Glm 5.2 added The Blackwall to Lorebook",
         )
         self.assertEqual(
-            lorebook_history_label(modelLabel, {"action": "update", "name": "timeline"}),
+            lorebookHistoryLabel(modelLabel, {"action": "update", "name": "timeline"}),
             "Glm 5.2 updated Timeline",
         )
         self.assertEqual(
-            lorebook_history_label(modelLabel, {"action": "delete", "name": "The Blackwall"}),
+            lorebookHistoryLabel(modelLabel, {"action": "delete", "name": "The Blackwall"}),
             "Glm 5.2 excluded The Blackwall from context",
         )
 
@@ -5056,7 +5056,7 @@ class StoryApiTest(unittest.TestCase):
         self.assertEqual([chat["id"] for chat in chats], [first["id"], second["id"]])
         self.assertNotIn(temporary["id"], [chat["id"] for chat in chats])
 
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             columns = {
                 row["name"]
                 for row in conn.execute("PRAGMA table_info(chats)").fetchall()
@@ -5111,7 +5111,7 @@ class StoryApiTest(unittest.TestCase):
         ).json()["entry"]
 
         now = "2026-02-03T04:05:06+00:00"
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             conn.execute(
                 "UPDATE lorebook_entries SET revision = 7 WHERE id = ?",
                 (lorebook["id"],),

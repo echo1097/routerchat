@@ -17,14 +17,14 @@ import backend.core.paths as paths
 import backend.webSearch.faviconFetch as faviconFetch
 import backend.webSearch.faviconSafety as faviconSafety
 import backend.webSearch.sources as sources
-from backend.local_access import create_secret_file
+from backend.local_access import createSecretFile
 
 
 def acceptCurrentTos():
-    tos = loadTos.load_tos()
+    tos = loadTos.loadTos()
     if not tos:
         raise RuntimeError("TOS.md is missing, restore it before running the tests")
-    tosAcceptance.record_tos_acceptance(tos["hash"], tos["date"])
+    tosAcceptance.recordTosAcceptance(tos["hash"], tos["date"])
 
 
 PDF_BYTES = b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n"
@@ -39,7 +39,7 @@ class WebSearchHarness:
         paths.DB_PATH = paths.DATA_DIR / "routerchat-test.sqlite3"
         self.baseUrl = "http://127.0.0.1:8000"
         self.apiSecretPath = paths.DATA_DIR / "run" / "api-secret"
-        self.apiSecret = create_secret_file(self.apiSecretPath)
+        self.apiSecret = createSecretFile(self.apiSecretPath)
         self.localAccessEnvironment = patch.dict(
             os.environ,
             {
@@ -49,8 +49,8 @@ class WebSearchHarness:
             },
         )
         self.localAccessEnvironment.start()
-        main.reset_local_access_config()
-        main.init_db()
+        main.resetLocalAccessConfig()
+        main.initDb()
         acceptCurrentTos()
         self.client = TestClient(
             main.app,
@@ -68,7 +68,7 @@ class WebSearchHarness:
 
     def tearDown(self):
         self.client.close()
-        main.reset_local_access_config()
+        main.resetLocalAccessConfig()
         self.localAccessEnvironment.stop()
         paths.DATA_DIR = self.originalDataDir
         paths.DB_PATH = self.originalDbPath
@@ -179,21 +179,21 @@ class WebSearchToggleTest(WebSearchHarness, unittest.TestCase):
         self.assertEqual(patched.status_code, 200, patched.text)
         self.assertTrue(patched.json()["chat"]["web_search_enabled"])
 
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             stored = conn.execute(
                 "SELECT web_search_enabled FROM chats WHERE id = ?", (chat["id"],)
             ).fetchone()
         self.assertEqual(stored["web_search_enabled"], 1)
 
     def test_an_older_database_gains_the_column(self):
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             conn.execute("ALTER TABLE chats DROP COLUMN web_search_enabled")
             columns = {
                 row["name"] for row in conn.execute("PRAGMA table_info(chats)").fetchall()
             }
             self.assertNotIn("web_search_enabled", columns)
 
-            migrations.ensure_chat_settings_columns(conn)
+            migrations.ensureChatSettingsColumns(conn)
             columns = {
                 row["name"] for row in conn.execute("PRAGMA table_info(chats)").fetchall()
             }
@@ -264,9 +264,9 @@ class SourceCaptureTest(WebSearchHarness, unittest.TestCase):
         self.assertEqual(assistant["sources"], [])
 
     def test_an_older_database_gains_the_sources_column(self):
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             conn.execute("ALTER TABLE messages DROP COLUMN sources")
-            migrations.ensure_message_source_column(conn)
+            migrations.ensureMessageSourceColumn(conn)
             columns = {
                 row["name"] for row in conn.execute("PRAGMA table_info(messages)").fetchall()
             }
@@ -275,7 +275,7 @@ class SourceCaptureTest(WebSearchHarness, unittest.TestCase):
 
 class SourceNormalizationTest(unittest.TestCase):
     def test_it_keeps_only_usable_web_citations(self):
-        normalized = sources.normalize_sources(
+        normalized = sources.normalizeSources(
             [
                 {"url_citation": {"url": "https://example.com/a", "title": "A"}},
                 {"url_citation": {"url": "ftp://example.com/b", "title": "B"}},
@@ -290,26 +290,26 @@ class SourceNormalizationTest(unittest.TestCase):
         )
 
     def test_merging_drops_repeats_and_keeps_order(self):
-        first = sources.normalize_sources(
+        first = sources.normalizeSources(
             [{"url_citation": {"url": "https://a.com/1", "title": "one"}}]
         )
-        second = sources.normalize_sources(
+        second = sources.normalizeSources(
             [
                 {"url_citation": {"url": "https://a.com/1", "title": "one again"}},
                 {"url_citation": {"url": "https://b.com/2", "title": "two"}},
             ]
         )
-        merged = sources.merge_sources(first, second)
+        merged = sources.mergeSources(first, second)
         self.assertEqual([source["url"] for source in merged], ["https://a.com/1", "https://b.com/2"])
 
     def test_a_broken_stored_value_reads_back_as_no_sources(self):
-        self.assertEqual(sources.deserialize_sources("{not json"), [])
-        self.assertEqual(sources.deserialize_sources(None), [])
+        self.assertEqual(sources.deserializeSources("{not json"), [])
+        self.assertEqual(sources.deserializeSources(None), [])
 
 
 class FaviconDomainTest(unittest.TestCase):
     def test_it_accepts_a_plain_hostname(self):
-        self.assertEqual(faviconSafety.safe_favicon_domain("Support.Google.com."), "support.google.com")
+        self.assertEqual(faviconSafety.safeFaviconDomain("Support.Google.com."), "support.google.com")
 
     def test_it_refuses_anything_that_could_reach_the_local_network(self):
         for hostile in [
@@ -326,7 +326,7 @@ class FaviconDomainTest(unittest.TestCase):
             "singlelabel",
         ]:
             with self.subTest(hostile=hostile):
-                self.assertIsNone(faviconSafety.safe_favicon_domain(hostile))
+                self.assertIsNone(faviconSafety.safeFaviconDomain(hostile))
 
 
 ICON_BYTES = b"\x00\x00\x01\x00fake icon"

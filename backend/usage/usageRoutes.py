@@ -3,7 +3,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, HTTPException, Query
 
-from backend.core.appSettings import read_app_setting
+from backend.core.appSettings import readAppSetting
 from backend.usage.usageDatabase import getUsageDb
 from backend.usage.usageTotals import getUsage
 
@@ -29,7 +29,7 @@ def usageOverview(
             raise HTTPException(status_code=422, detail="Invalid timezone") from error
     with closing(getUsageDb()) as conn:
         result = getUsage(conn, offsetMinutes, timeZone=timeZone, provider=provider)
-    catalog = read_app_setting("transcription_models")
+    catalog = readAppSetting("transcription_models")
     modelNames = {model["id"]: model.get("name") for model in (catalog or [])}
     for model in result["models"] + result["lifetimeModels"]:
         if modelNames.get(model["id"]):

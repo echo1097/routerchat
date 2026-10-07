@@ -14,39 +14,39 @@ from backend.chats.chatQueries import (
     requireChat,
 )
 from backend.chats.chatModels import ChatImportRequest
-from backend.chats.chatRows import row_to_chat, row_to_message
-from backend.core.database import get_db, next_message_order
-from backend.core.reasoningEffort import coerce_reasoning_effort
-from backend.core.utils import coerce_bool_int, float_or_none, int_or_none, utc_now
+from backend.chats.chatRows import rowToChat, rowToMessage
+from backend.core.database import getDb, nextMessageOrder
+from backend.core.reasoningEffort import coerceReasoningEffort
+from backend.core.utils import coerceBoolInt, floatOrNone, intOrNone, utcNow
 from backend.providers.base import DEFAULT_MAX_TOKENS
 from backend.providers.registry import getActiveProvider, providerIdForImport
-from backend.webSearch.sources import normalize_sources, serialize_sources
+from backend.webSearch.sources import normalizeSources, serializeSources
 
 router = APIRouter()
 
 
 @router.get("/api/chats/{chat_id}/export")
-def export_chat(chat_id: str) -> dict[str, Any]:
-    with get_db() as conn:
+def exportChat(chat_id: str) -> dict[str, Any]:
+    with getDb() as conn:
         chat = requireChat(conn, chat_id)
         message_rows = listMessages(conn, chat_id)
     return {
         "schema": "routerchat.chats.v1",
-        "exported_at": utc_now(),
-        "chats": [row_to_chat(chat)],
-        "messages": [row_to_message(row) for row in message_rows],
+        "exported_at": utcNow(),
+        "chats": [rowToChat(chat)],
+        "messages": [rowToMessage(row) for row in message_rows],
     }
 
 
 @router.post("/api/chats/import")
-def import_chats(payload: ChatImportRequest) -> dict[str, Any]:
-    now = utc_now()
+def importChats(payload: ChatImportRequest) -> dict[str, Any]:
+    now = utcNow()
     chat_id_map: dict[str, str] = {}
     imported_chat_ids: set[str] = set()
     imported_messages = 0
     nextMessageOrders: dict[str, int] = {}
 
-    with get_db() as conn:
+    with getDb() as conn:
         existing_chat_ids = {
             row["id"] for row in listChatIds(conn)
         }
@@ -61,7 +61,7 @@ def import_chats(payload: ChatImportRequest) -> dict[str, Any]:
                 chat_id = str(uuid.uuid4())
             chat_id_map[source_id] = chat_id
             imported_chat_ids.add(chat_id)
-            imported_temperature = float_or_none(item.get("temperature"))
+            imported_temperature = floatOrNone(item.get("temperature"))
             importedModel = str(item.get("model") or "")
             importedProvider = providerIdForImport(item.get("provider"), importedModel)
             if not importedModel:
@@ -77,11 +77,11 @@ def import_chats(payload: ChatImportRequest) -> dict[str, Any]:
                     importedProvider,
                     str(item.get("system_prompt") or ""),
                     0.7 if imported_temperature is None else imported_temperature,
-                    int_or_none(item.get("max_tokens")) or DEFAULT_MAX_TOKENS,
-                    coerce_bool_int(item.get("thinking_enabled")),
-                    coerce_reasoning_effort(item.get("reasoning_effort")),
-                    coerce_bool_int(item.get("web_search_enabled")),
-                    coerce_bool_int(item.get("pinned")),
+                    intOrNone(item.get("max_tokens")) or DEFAULT_MAX_TOKENS,
+                    coerceBoolInt(item.get("thinking_enabled")),
+                    coerceReasoningEffort(item.get("reasoning_effort")),
+                    coerceBoolInt(item.get("web_search_enabled")),
+                    coerceBoolInt(item.get("pinned")),
                     str(item.get("created_at") or now),
                     str(item.get("updated_at") or now),
                 ),
@@ -97,7 +97,7 @@ def import_chats(payload: ChatImportRequest) -> dict[str, Any]:
                 message_id = str(uuid.uuid4())
             existing_message_ids.add(message_id)
             if chat_id not in nextMessageOrders:
-                nextMessageOrders[chat_id] = next_message_order(conn, chat_id)
+                nextMessageOrders[chat_id] = nextMessageOrder(conn, chat_id)
             messageOrder = nextMessageOrders[chat_id]
             nextMessageOrders[chat_id] += 1
 
@@ -109,20 +109,20 @@ def import_chats(payload: ChatImportRequest) -> dict[str, Any]:
                     str(item.get("role") or "user"),
                     str(item.get("content") or ""),
                     item.get("reasoning"),
-                    serialize_sources(normalize_sources(item.get("sources"))),
+                    serializeSources(normalizeSources(item.get("sources"))),
                     item.get("model"),
                     item.get("finish_reason"),
                     item.get("error"),
                     item.get("generation_id"),
-                    int_or_none(item.get("prompt_tokens")),
-                    int_or_none(item.get("completion_tokens")),
-                    int_or_none(item.get("reasoning_tokens")),
-                    int_or_none(item.get("cached_tokens")),
-                    int_or_none(item.get("total_tokens")),
-                    float_or_none(item.get("cost")),
+                    intOrNone(item.get("prompt_tokens")),
+                    intOrNone(item.get("completion_tokens")),
+                    intOrNone(item.get("reasoning_tokens")),
+                    intOrNone(item.get("cached_tokens")),
+                    intOrNone(item.get("total_tokens")),
+                    floatOrNone(item.get("cost")),
                     item.get("provider_name"),
-                    float_or_none(item.get("generation_time")),
-                    float_or_none(item.get("latency")),
+                    floatOrNone(item.get("generation_time")),
+                    floatOrNone(item.get("latency")),
                     messageOrder,
                     str(item.get("created_at") or now),
                 ),

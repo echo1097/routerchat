@@ -8,11 +8,11 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 
 
-def utc_now() -> str:
+def utcNow() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def patch_updates(payload: BaseModel) -> dict[str, Any]:
+def patchUpdates(payload: BaseModel) -> dict[str, Any]:
     if hasattr(payload, "model_dump"):
         updates = payload.model_dump(exclude_unset=True)
     else:
@@ -27,11 +27,11 @@ def patch_updates(payload: BaseModel) -> dict[str, Any]:
     return updates
 
 
-def coerce_bool_int(value: Any) -> int:
+def coerceBoolInt(value: Any) -> int:
     return int(bool(value))
 
 
-def int_or_none(value: Any) -> int | None:
+def intOrNone(value: Any) -> int | None:
     if value is None:
         return None
     try:
@@ -40,7 +40,7 @@ def int_or_none(value: Any) -> int | None:
         return None
 
 
-def float_or_none(value: Any) -> float | None:
+def floatOrNone(value: Any) -> float | None:
     if value is None:
         return None
     try:
@@ -49,12 +49,12 @@ def float_or_none(value: Any) -> float | None:
         return None
 
 
-def format_duration(ms: float) -> str:
+def formatDuration(ms: float) -> str:
     seconds = max(1, round(ms / 1000))
     return f"{seconds} {'second' if seconds == 1 else 'seconds'}"
 
 
-def display_model_name(model: str) -> str:
+def displayModelName(model: str) -> str:
     name = str(model or "Model").split("/")[-1]
     name = name.replace(":free", "")
     name = re.sub(r"-\d{8}$", "", name)

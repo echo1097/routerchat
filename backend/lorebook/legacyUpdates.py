@@ -3,21 +3,21 @@ import sqlite3
 import uuid
 from typing import Any
 
-from backend.lorebook.chapterSummaries import find_enabled_chapter_summary
+from backend.lorebook.chapterSummaries import findEnabledChapterSummary
 from backend.lorebook.lorebookRows import (
-    json_dict,
-    json_list,
-    lorebook_entry_snapshot,
-    lorebook_row_snapshot,
-    normalize_lorebook_category,
-    sanitize_lorebook_aliases,
-    sanitize_lorebook_metadata,
+    jsonDict,
+    jsonList,
+    lorebookEntrySnapshot,
+    lorebookRowSnapshot,
+    normalizeLorebookCategory,
+    sanitizeLorebookAliases,
+    sanitizeLorebookMetadata,
 )
-from backend.lorebook.timeline import normalize_timeline_description
-from backend.stories.storyRows import word_diff_counts
+from backend.lorebook.timeline import normalizeTimelineDescription
+from backend.stories.storyRows import wordDiffCounts
 
 
-def apply_legacy_lorebook_updates(
+def applyLegacyLorebookUpdates(
     conn: sqlite3.Connection,
     story_id: str,
     updates: list[dict[str, Any]],
@@ -27,7 +27,7 @@ def apply_legacy_lorebook_updates(
     for update in updates:
         action = str(update.get("action") or "create").lower()
         name = str(update.get("name") or "").strip()
-        category = normalize_lorebook_category(update.get("category"))
+        category = normalizeLorebookCategory(update.get("category"))
         if category == "timeline":
             name = "Timeline"
             #everything timeline shaped is an update, except a delete which gets refused below
@@ -37,10 +37,10 @@ def apply_legacy_lorebook_updates(
             continue
         description = str(update.get("description") or "").strip()
         if category == "timeline":
-            description = normalize_timeline_description(description)
-        aliases = sanitize_lorebook_aliases(category, update.get("aliases"), name)
+            description = normalizeTimelineDescription(description)
+        aliases = sanitizeLorebookAliases(category, update.get("aliases"), name)
         tags = update.get("tags") if isinstance(update.get("tags"), list) else []
-        metadata = sanitize_lorebook_metadata(category, update.get("metadata"))
+        metadata = sanitizeLorebookMetadata(category, update.get("metadata"))
 
         #disabled = 0 on every lookup, a hidden entry has to stay untouched by automatic updates
         if category == "timeline":
@@ -53,7 +53,7 @@ def apply_legacy_lorebook_updates(
                 (story_id,),
             ).fetchone()
         elif category == "synopsis" and metadata.get("chapter_id"):
-            existing = find_enabled_chapter_summary(
+            existing = findEnabledChapterSummary(
                 conn,
                 story_id,
                 str(metadata["chapter_id"]),
@@ -77,8 +77,8 @@ def apply_legacy_lorebook_updates(
                 "UPDATE lorebook_entries SET disabled = 1, revision = revision + 1, updated_at = ? WHERE id = ?",
                 (now, existing["id"]),
             )
-            wordsAdded, wordsRemoved = word_diff_counts(
-                lorebook_row_snapshot(existing), ""
+            wordsAdded, wordsRemoved = wordDiffCounts(
+                lorebookRowSnapshot(existing), ""
             )
             applied.append(
                 {
@@ -98,27 +98,27 @@ def apply_legacy_lorebook_updates(
         if action == "update" and existing:
             next_description = description or existing["description"]
             #empty means no opinion, not "wipe it". the system prompt hands the model a template containing aliases:[] tags:[] metadata:{} so it echoes those back on every single update whether it meant anything by them or not
-            next_aliases = sanitize_lorebook_aliases(
+            next_aliases = sanitizeLorebookAliases(
                 category,
                 update["aliases"]
                 if isinstance(update.get("aliases"), list) and update["aliases"]
-                else json_list(existing["aliases_json"]),
+                else jsonList(existing["aliases_json"]),
                 name,
             )
             next_tags = (
                 update["tags"]
                 if isinstance(update.get("tags"), list) and update["tags"]
-                else json_list(existing["tags_json"])
+                else jsonList(existing["tags_json"])
             )
-            next_metadata = sanitize_lorebook_metadata(
+            next_metadata = sanitizeLorebookMetadata(
                 category,
                 update["metadata"]
                 if isinstance(update.get("metadata"), dict) and update["metadata"]
-                else json_dict(existing["metadata_json"]),
+                else jsonDict(existing["metadata_json"]),
             )
 
-            beforeSnapshot = lorebook_row_snapshot(existing)
-            afterSnapshot = lorebook_entry_snapshot(
+            beforeSnapshot = lorebookRowSnapshot(existing)
+            afterSnapshot = lorebookEntrySnapshot(
                 category, next_description, next_aliases, next_tags, next_metadata
             )
             nameChanged = str(existing["name"]) != name
@@ -144,7 +144,7 @@ def apply_legacy_lorebook_updates(
                     existing["id"],
                 ),
             )
-            wordsAdded, wordsRemoved = word_diff_counts(beforeSnapshot, afterSnapshot)
+            wordsAdded, wordsRemoved = wordDiffCounts(beforeSnapshot, afterSnapshot)
             applied.append(
                 {
                     "action": "update",
@@ -181,8 +181,8 @@ def apply_legacy_lorebook_updates(
                 now,
             ),
         )
-        wordsAdded, wordsRemoved = word_diff_counts(
-            "", lorebook_entry_snapshot(category, description, aliases, tags, metadata)
+        wordsAdded, wordsRemoved = wordDiffCounts(
+            "", lorebookEntrySnapshot(category, description, aliases, tags, metadata)
         )
         applied.append(
             {

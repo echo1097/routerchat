@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
-from backend.core.appSettings import read_app_setting, write_app_setting
+from backend.core.appSettings import readAppSetting, writeAppSetting
 from backend.providers.anthropic.adapter import anthropicProvider
 from backend.providers.base import Provider
 from backend.providers.openrouter.adapter import openRouterProvider
@@ -22,7 +22,7 @@ def getProvider(providerId: Any) -> Provider | None:
 
 def getActiveProvider() -> Provider:
     try:
-        savedId = read_app_setting(ACTIVE_PROVIDER_SETTING)
+        savedId = readAppSetting(ACTIVE_PROVIDER_SETTING)
     except sqlite3.Error:
         return openRouterProvider
 
@@ -48,7 +48,7 @@ def providerIdForImport(savedId: Any, modelId: str) -> str:
 
 def setActiveProvider(providerId: str) -> Provider:
     provider = providers[providerId]
-    write_app_setting(ACTIVE_PROVIDER_SETTING, provider.id)
+    writeAppSetting(ACTIVE_PROVIDER_SETTING, provider.id)
     return provider
 
 

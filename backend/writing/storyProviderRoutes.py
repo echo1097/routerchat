@@ -3,9 +3,9 @@ from typing import Any
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from backend.core.database import get_db
+from backend.core.database import getDb
 from backend.providers.providerRoutes import requireProvider
-from backend.writing.storyBundle import get_story_bundle
+from backend.writing.storyBundle import getStoryBundle
 from backend.stories.storyQueries import moveStoryProvider, requireStory
 
 router = APIRouter()
@@ -19,9 +19,9 @@ class StoryProviderRequest(BaseModel):
 def moveStoryToProvider(story_id: str, payload: StoryProviderRequest) -> dict[str, Any]:
     provider = requireProvider(payload.id)
 
-    with get_db() as conn:
+    with getDb() as conn:
         story = requireStory(conn, story_id)
 
         moveStoryProvider(conn, story_id, provider.id, provider.defaultModelId())
 
-    return get_story_bundle(story_id)
+    return getStoryBundle(story_id)

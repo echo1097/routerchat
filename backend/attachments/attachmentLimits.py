@@ -4,7 +4,7 @@ import sqlite3
 
 from fastapi import HTTPException
 
-from backend.attachments.attachmentFiles import read_attachment_bytes, readable_size
+from backend.attachments.attachmentFiles import readAttachmentBytes, readableSize
 from backend.attachments.pdfPages import countPdfPages
 from backend.providers.base import Provider
 
@@ -35,7 +35,7 @@ def checkImageSizes(
         raise HTTPException(
             status_code=400,
             detail=(
-                f"{oversized['filename']} is larger than {readable_size(maxImageBytes)}, "
+                f"{oversized['filename']} is larger than {readableSize(maxImageBytes)}, "
                 f"the most {provider.name} accepts for an image."
             ),
         )
@@ -100,7 +100,7 @@ def pdfPageCount(conn: sqlite3.Connection, row: sqlite3.Row) -> int:
     if row["page_count"] is not None:
         return int(row["page_count"])
 
-    pageCount = countPdfPages(read_attachment_bytes(row)) or 0
+    pageCount = countPdfPages(readAttachmentBytes(row)) or 0
     conn.execute("UPDATE attachments SET page_count = ? WHERE id = ?", (pageCount, row["id"]))
     return pageCount
 
@@ -156,17 +156,17 @@ def checkRequestSize(
         return
 
     limitNote = (
-        f"{provider.name} accepts about {readable_size(maxRequestBytes)} of files per request"
+        f"{provider.name} accepts about {readableSize(maxRequestBytes)} of files per request"
     )
     if earlierBytes:
         detail = (
-            f"The files in this chat add up to {readable_size(totalBytes)}, and {limitNote}. "
+            f"The files in this chat add up to {readableSize(totalBytes)}, and {limitNote}. "
             "Earlier files are sent again with every message, "
             "so remove a file or start a new chat."
         )
     else:
         detail = (
-            f"These files add up to {readable_size(totalBytes)}, and {limitNote}. "
+            f"These files add up to {readableSize(totalBytes)}, and {limitNote}. "
             "Remove a file and try again."
         )
 

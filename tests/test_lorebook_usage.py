@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 import backend.core.paths as paths
 import backend.lorebook.lorebookUsage as lorebookUsage
 from backend.lorebook.lorebookUsage import LorebookUsage, ensureLorebookUsageTable
-from backend.providers.openrouter.usage import normalize_generation_usage
+from backend.providers.openrouter.usage import normalizeGenerationUsage
 from backend.providers.registry import getActiveProvider
 from backend.usage.usageDatabase import getUsageDb, initUsageDb
 
@@ -26,8 +26,8 @@ class LorebookUsageTest(unittest.IsolatedAsyncioTestCase):
             initUsageDb(usageConn)
         self.lookup = AsyncMock(return_value=None)
         replacements = {
-            "get_db": self.getDb,
-            "utc_now": lambda: "2026-09-10T12:00:00Z",
+            "getDb": self.getDb,
+            "utcNow": lambda: "2026-09-10T12:00:00Z",
         }
         for name, value in replacements.items():
             namePatch = patch.object(lorebookUsage, name, value)
@@ -170,7 +170,7 @@ class LorebookUsageTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.savedRows(), [])
 
     def testGenerationNormalizationPreservesZeroAndFallsBackForMissingValues(self):
-        result = normalize_generation_usage({
+        result = normalizeGenerationUsage({
             "native_tokens_prompt": 0, "tokens_prompt": 20,
             "native_tokens_completion": 0, "tokens_completion": 10,
             "total_cost": 0, "usage": 1,
@@ -179,7 +179,7 @@ class LorebookUsageTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["completion_tokens"], 0)
         self.assertEqual(result["total_tokens"], 0)
         self.assertEqual(result["cost"], 0)
-        result = normalize_generation_usage({
+        result = normalizeGenerationUsage({
             "native_tokens_prompt": None, "tokens_prompt": 20,
             "native_tokens_completion": None, "tokens_completion": 10,
             "total_cost": None, "usage": 1,

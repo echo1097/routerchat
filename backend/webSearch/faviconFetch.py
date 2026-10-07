@@ -19,14 +19,14 @@ ICON_LINK_PATTERN = re.compile(
 ICON_HREF_PATTERN = re.compile(r"""href\s*=\s*["']([^"']+)["']""", re.IGNORECASE)
 
 
-def cached_favicon(conn: sqlite3.Connection, domain: str) -> sqlite3.Row | None:
+def cachedFavicon(conn: sqlite3.Connection, domain: str) -> sqlite3.Row | None:
     return conn.execute(
         "SELECT domain, mime, image, fetched_at FROM favicons WHERE domain = ?",
         (domain,),
     ).fetchone()
 
 
-def store_favicon(
+def storeFavicon(
     conn: sqlite3.Connection,
     domain: str,
     mime: str | None,
@@ -43,7 +43,7 @@ def store_favicon(
     )
 
 
-def usable_image(response: httpx.Response) -> bytes | None:
+def usableImage(response: httpx.Response) -> bytes | None:
     if response.status_code >= 400:
         return None
 
@@ -58,7 +58,7 @@ def usable_image(response: httpx.Response) -> bytes | None:
     return image
 
 
-def icon_href_from_html(html: str) -> str | None:
+def iconHrefFromHtml(html: str) -> str | None:
     for tag in ICON_LINK_PATTERN.findall(html):
         href = ICON_HREF_PATTERN.search(tag)
         if href and href.group(1).strip():
@@ -66,7 +66,7 @@ def icon_href_from_html(html: str) -> str | None:
     return None
 
 
-async def fetch_favicon(domain: str) -> tuple[str, bytes] | None:
+async def fetchFavicon(domain: str) -> tuple[str, bytes] | None:
     headers = {"User-Agent": FAVICON_USER_AGENT, "Accept": "image/*,*/*;q=0.5"}
 
     async with httpx.AsyncClient(
@@ -83,7 +83,7 @@ async def fetch_favicon(domain: str) -> tuple[str, bytes] | None:
             direct = None
 
         if direct is not None:
-            image = usable_image(direct)
+            image = usableImage(direct)
             if image:
                 mime = direct.headers["content-type"].split(";")[0].strip().lower()
                 return mime, image
@@ -96,7 +96,7 @@ async def fetch_favicon(domain: str) -> tuple[str, bytes] | None:
         if page.status_code >= 400:
             return None
 
-        href = icon_href_from_html(page.text[:200_000])
+        href = iconHrefFromHtml(page.text[:200_000])
         if not href:
             return None
 
@@ -109,14 +109,14 @@ async def fetch_favicon(domain: str) -> tuple[str, bytes] | None:
         except httpx.HTTPError:
             return None
 
-        image = usable_image(icon)
+        image = usableImage(icon)
         if not image:
             return None
 
         return icon.headers["content-type"].split(";")[0].strip().lower(), image
 
 
-def stale_favicon(fetched_at: str, now: str) -> bool:
+def staleFavicon(fetched_at: str, now: str) -> bool:
     try:
         cachedAt = datetime.fromisoformat((fetched_at or "").replace("Z", "+00:00"))
         checkedAt = datetime.fromisoformat((now or "").replace("Z", "+00:00"))

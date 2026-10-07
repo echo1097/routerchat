@@ -12,7 +12,7 @@ BLOCKED_FAVICON_HOSTS = {"localhost", "localhost.localdomain", "broadcasthost"}
 BLOCKED_FAVICON_SUFFIXES = (".local", ".internal", ".localhost", ".test", ".invalid", ".onion")
 
 
-def safe_favicon_domain(raw: str) -> str | None:
+def safeFaviconDomain(raw: str) -> str | None:
     domain = (raw or "").strip().lower().rstrip(".")
 
     if not domain or len(domain) > 253:
@@ -43,7 +43,7 @@ class FaviconTransport(httpx.AsyncBaseTransport):
         host = request.url.raw_host.decode("ascii")
         if (
             request.url.scheme != "https"
-            or not safe_favicon_domain(host)
+            or not safeFaviconDomain(host)
             or request.url.userinfo
         ):
             raise httpx.ConnectError("Unsafe favicon URL", request=request)

@@ -12,10 +12,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 from backend.local_access import (
-    create_secret_file,
-    open_bootstrap_page,
-    read_secret_file,
-    serve_local_app,
+    createSecretFile,
+    openBootstrapPage,
+    readSecretFile,
+    serveLocalApp,
 )
 
 
@@ -23,10 +23,10 @@ class LocalAccessTest(unittest.TestCase):
     def test_secret_file_has_enough_entropy_and_owner_only_permissions(self):
         with tempfile.TemporaryDirectory() as tempDir:
             secretPath = Path(tempDir) / "run" / "api-secret"
-            secret = create_secret_file(secretPath)
+            secret = createSecretFile(secretPath)
 
             self.assertGreaterEqual(len(secret), 43)
-            self.assertEqual(read_secret_file(secretPath), secret)
+            self.assertEqual(readSecretFile(secretPath), secret)
             if os.name == "posix":
                 self.assertEqual(stat.S_IMODE(secretPath.stat().st_mode), 0o600)
                 self.assertEqual(stat.S_IMODE(secretPath.parent.stat().st_mode), 0o700)
@@ -34,10 +34,10 @@ class LocalAccessTest(unittest.TestCase):
     def test_secret_creation_refuses_to_replace_existing_state_implicitly(self):
         with tempfile.TemporaryDirectory() as tempDir:
             secretPath = Path(tempDir) / "api-secret"
-            create_secret_file(secretPath)
+            createSecretFile(secretPath)
 
             with self.assertRaises(FileExistsError):
-                create_secret_file(secretPath)
+                createSecretFile(secretPath)
 
     def test_secret_reader_rejects_symlinks_and_permissive_files(self):
         if os.name != "posix":
@@ -46,23 +46,23 @@ class LocalAccessTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tempDir:
             root = Path(tempDir)
             realPath = root / "real-secret"
-            secret = create_secret_file(realPath)
+            secret = createSecretFile(realPath)
             linkPath = root / "linked-secret"
             linkPath.symlink_to(realPath)
 
             with self.assertRaises(RuntimeError):
-                read_secret_file(linkPath)
+                readSecretFile(linkPath)
 
             realPath.chmod(0o644)
             with self.assertRaises(RuntimeError):
-                read_secret_file(realPath)
+                readSecretFile(realPath)
 
             self.assertTrue(secret)
 
     def test_one_shot_page_uses_a_non_secret_url_and_suppresses_access_logs(self):
         with tempfile.TemporaryDirectory() as tempDir:
             secretPath = Path(tempDir) / "api-secret"
-            secret = create_secret_file(secretPath)
+            secret = createSecretFile(secretPath)
             opened = []
             output = io.StringIO()
 
@@ -79,7 +79,7 @@ class LocalAccessTest(unittest.TestCase):
                 return True
 
             with redirect_stdout(output), redirect_stderr(output):
-                open_bootstrap_page(
+                openBootstrapPage(
                     secretPath,
                     "http://127.0.0.1:8000",
                     browser_open=browserOpen,
@@ -102,7 +102,7 @@ class LocalAccessTest(unittest.TestCase):
                 observed["appPath"] = appPath
                 observed["host"] = host
                 observed["port"] = port
-                observed["secret"] = read_secret_file(secretPath)
+                observed["secret"] = readSecretFile(secretPath)
                 observed["secretFile"] = os.environ["ROUTERCHAT_API_SECRET_FILE"]
                 observed["baseUrl"] = os.environ["ROUTERCHAT_BASE_URL"]
                 observed["origins"] = os.environ["ROUTERCHAT_TRUSTED_ORIGINS"]
@@ -111,7 +111,7 @@ class LocalAccessTest(unittest.TestCase):
             originalEnvironment = os.environ.copy()
             try:
                 with patch.dict(sys.modules, {"uvicorn": fakeUvicorn}):
-                    serve_local_app(
+                    serveLocalApp(
                         secretPath,
                         "http://127.0.0.1:8000",
                         ["http://127.0.0.1:8000"],

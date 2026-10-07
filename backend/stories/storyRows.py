@@ -10,11 +10,11 @@ from backend.providers.registry import providerForRow
 from backend.stories.storyQueries import insertChapterHistory
 
 
-def word_count(value: str) -> int:
+def wordCount(value: str) -> int:
     return len(value.split())
 
 
-def word_diff_counts(before: str, after: str) -> tuple[int, int]:
+def wordDiffCounts(before: str, after: str) -> tuple[int, int]:
     #words not lines, because a prose line is a whole paragraph and one swapped word would otherwise score the same as a full rewrite
     beforeLines = [line for line in (before or "").splitlines() if line.strip()]
     afterLines = [line for line in (after or "").splitlines() if line.strip()]
@@ -45,7 +45,7 @@ def word_diff_counts(before: str, after: str) -> tuple[int, int]:
     return wordsAdded, wordsRemoved
 
 
-def request_updates(payload: BaseModel, reject_null: bool = False) -> dict[str, Any]:
+def requestUpdates(payload: BaseModel, reject_null: bool = False) -> dict[str, Any]:
     if hasattr(payload, "model_dump"):
         updates = payload.model_dump(exclude_unset=True)
     else:
@@ -61,7 +61,7 @@ def request_updates(payload: BaseModel, reject_null: bool = False) -> dict[str, 
     return updates
 
 
-def row_to_story(row: sqlite3.Row) -> dict[str, Any]:
+def rowToStory(row: sqlite3.Row) -> dict[str, Any]:
     return {
         "id": row["id"],
         "title": row["title"],
@@ -83,7 +83,7 @@ def row_to_story(row: sqlite3.Row) -> dict[str, Any]:
     }
 
 
-def row_to_chapter(row: sqlite3.Row) -> dict[str, Any]:
+def rowToChapter(row: sqlite3.Row) -> dict[str, Any]:
     return {
         "id": row["id"],
         "story_id": row["story_id"],
@@ -98,7 +98,7 @@ def row_to_chapter(row: sqlite3.Row) -> dict[str, Any]:
     }
 
 
-def row_to_chapter_history_entry(row: sqlite3.Row) -> dict[str, Any]:
+def rowToChapterHistoryEntry(row: sqlite3.Row) -> dict[str, Any]:
     return {
         "id": row["id"],
         "story_id": row["story_id"],
@@ -115,7 +115,7 @@ def row_to_chapter_history_entry(row: sqlite3.Row) -> dict[str, Any]:
     }
 
 
-def row_to_story_generation(row: sqlite3.Row) -> dict[str, Any]:
+def rowToStoryGeneration(row: sqlite3.Row) -> dict[str, Any]:
     return {
         "id": row["id"],
         "story_id": row["story_id"],
@@ -134,7 +134,7 @@ def row_to_story_generation(row: sqlite3.Row) -> dict[str, Any]:
     }
 
 
-def next_chapter_order(conn: sqlite3.Connection, story_id: str) -> int:
+def nextChapterOrder(conn: sqlite3.Connection, story_id: str) -> int:
     row = conn.execute(
         """
         SELECT COALESCE(MAX(order_index), -1) + 1 AS next_order
@@ -146,7 +146,7 @@ def next_chapter_order(conn: sqlite3.Connection, story_id: str) -> int:
     return int(row["next_order"])
 
 
-def next_chapter_history_order(conn: sqlite3.Connection, chapter_id: str) -> int:
+def nextChapterHistoryOrder(conn: sqlite3.Connection, chapter_id: str) -> int:
     row = conn.execute(
         """
         SELECT COALESCE(MAX(entry_order), -1) + 1 AS next_order
@@ -158,7 +158,7 @@ def next_chapter_history_order(conn: sqlite3.Connection, chapter_id: str) -> int
     return int(row["next_order"])
 
 
-def insert_chapter_history_entry(
+def insertChapterHistoryEntry(
     conn: sqlite3.Connection,
     *,
     story_id: str,
@@ -173,7 +173,7 @@ def insert_chapter_history_entry(
     cost: float | None = None,
 ) -> dict[str, Any]:
     entry_id = str(uuid.uuid4())
-    entry_order = next_chapter_history_order(conn, chapter_id)
+    entry_order = nextChapterHistoryOrder(conn, chapter_id)
     insertChapterHistory(
         conn,
         (

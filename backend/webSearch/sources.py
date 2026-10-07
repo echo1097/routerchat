@@ -7,16 +7,16 @@ from urllib.parse import urlparse
 WEB_SEARCH_MAX_RESULTS = 5
 
 
-def web_search_plugin() -> dict[str, Any]:
+def webSearchPlugin() -> dict[str, Any]:
     return {"id": "web", "max_results": WEB_SEARCH_MAX_RESULTS}
 
 
-def source_domain(url: str) -> str:
+def sourceDomain(url: str) -> str:
     hostname = (urlparse(url).hostname or "").lower().strip(".")
     return hostname.removeprefix("www.")
 
 
-def normalize_sources(raw: Any) -> list[dict[str, str]]:
+def normalizeSources(raw: Any) -> list[dict[str, str]]:
     if not isinstance(raw, list):
         return []
 
@@ -31,7 +31,7 @@ def normalize_sources(raw: Any) -> list[dict[str, str]]:
         if not url.lower().startswith(("http://", "https://")):
             continue
 
-        domain = source_domain(url)
+        domain = sourceDomain(url)
         if not domain:
             continue
 
@@ -41,7 +41,7 @@ def normalize_sources(raw: Any) -> list[dict[str, str]]:
     return sources
 
 
-def merge_sources(
+def mergeSources(
     existing: Iterable[dict[str, str]], incoming: Iterable[dict[str, str]]
 ) -> list[dict[str, str]]:
     merged: list[dict[str, str]] = []
@@ -57,11 +57,11 @@ def merge_sources(
     return merged
 
 
-def serialize_sources(sources: list[dict[str, str]]) -> str | None:
+def serializeSources(sources: list[dict[str, str]]) -> str | None:
     return json.dumps(sources) if sources else None
 
 
-def deserialize_sources(stored: Any) -> list[dict[str, str]]:
+def deserializeSources(stored: Any) -> list[dict[str, str]]:
     if not stored:
         return []
 
@@ -70,4 +70,4 @@ def deserialize_sources(stored: Any) -> list[dict[str, str]]:
     except (TypeError, ValueError):
         return []
 
-    return normalize_sources(parsed)
+    return normalizeSources(parsed)

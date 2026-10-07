@@ -5,11 +5,11 @@ from typing import Any
 
 import httpx
 
-from backend.core.utils import float_or_none, int_or_none
-from backend.providers.openrouter.client import OPENROUTER_BASE_URL, headers_for_key
+from backend.core.utils import floatOrNone, intOrNone
+from backend.providers.openrouter.client import OPENROUTER_BASE_URL, headersForKey
 
 
-def normalize_usage(usage: dict[str, Any] | None) -> dict[str, Any] | None:
+def normalizeUsage(usage: dict[str, Any] | None) -> dict[str, Any] | None:
     if not usage:
         return None
     completion_details = usage.get("completion_tokens_details") or {}
@@ -21,30 +21,30 @@ def normalize_usage(usage: dict[str, Any] | None) -> dict[str, Any] | None:
     # if current_context_tokens is None and prompt_tokens is not None and completion_tokens is not None:
     #     current_context_tokens = prompt_tokens + completion_tokens
     return {
-        "prompt_tokens": int_or_none(usage.get("prompt_tokens")),
-        "completion_tokens": int_or_none(usage.get("completion_tokens")),
-        "reasoning_tokens": int_or_none(completion_details.get("reasoning_tokens")),
-        "cached_tokens": int_or_none(promptDetails.get("cached_tokens")),
-        "total_tokens": int_or_none(usage.get("total_tokens")),
-        "cost": float_or_none(usage.get("cost")),
+        "prompt_tokens": intOrNone(usage.get("prompt_tokens")),
+        "completion_tokens": intOrNone(usage.get("completion_tokens")),
+        "reasoning_tokens": intOrNone(completion_details.get("reasoning_tokens")),
+        "cached_tokens": intOrNone(promptDetails.get("cached_tokens")),
+        "total_tokens": intOrNone(usage.get("total_tokens")),
+        "cost": floatOrNone(usage.get("cost")),
         "provider_name": usage.get("provider_name"),
-        "generation_time": float_or_none(usage.get("generation_time")),
-        "latency": float_or_none(usage.get("latency")),
+        "generation_time": floatOrNone(usage.get("generation_time")),
+        "latency": floatOrNone(usage.get("latency")),
     }
 
 
-def normalize_generation_usage(data: dict[str, Any] | None) -> dict[str, Any] | None:
+def normalizeGenerationUsage(data: dict[str, Any] | None) -> dict[str, Any] | None:
     if not data:
         return None
-    promptTokens = int_or_none(data.get("native_tokens_prompt"))
+    promptTokens = intOrNone(data.get("native_tokens_prompt"))
     if promptTokens is None:
-        promptTokens = int_or_none(data.get("tokens_prompt"))
-    completionTokens = int_or_none(data.get("native_tokens_completion"))
+        promptTokens = intOrNone(data.get("tokens_prompt"))
+    completionTokens = intOrNone(data.get("native_tokens_completion"))
     if completionTokens is None:
-        completionTokens = int_or_none(data.get("tokens_completion"))
-    cost = float_or_none(data.get("total_cost"))
+        completionTokens = intOrNone(data.get("tokens_completion"))
+    cost = floatOrNone(data.get("total_cost"))
     if cost is None:
-        cost = float_or_none(data.get("usage"))
+        cost = floatOrNone(data.get("usage"))
     totalTokens = (
         promptTokens + completionTokens
         if promptTokens is not None and completionTokens is not None
@@ -53,17 +53,17 @@ def normalize_generation_usage(data: dict[str, Any] | None) -> dict[str, Any] | 
     return {
         "prompt_tokens": promptTokens,
         "completion_tokens": completionTokens,
-        "reasoning_tokens": int_or_none(data.get("native_tokens_reasoning")),
-        "cached_tokens": int_or_none(data.get("native_tokens_cached")),
+        "reasoning_tokens": intOrNone(data.get("native_tokens_reasoning")),
+        "cached_tokens": intOrNone(data.get("native_tokens_cached")),
         "total_tokens": totalTokens,
         "cost": cost,
         "provider_name": data.get("provider_name"),
-        "generation_time": float_or_none(data.get("generation_time")),
-        "latency": float_or_none(data.get("latency")),
+        "generation_time": floatOrNone(data.get("generation_time")),
+        "latency": floatOrNone(data.get("latency")),
     }
 
 
-async def fetch_generation_usage(
+async def fetchGenerationUsage(
     api_key: str, generation_id: str
 ) -> dict[str, Any] | None:
     retry_delays = [0.0, 0.35, 0.8, 1.5]
@@ -73,12 +73,12 @@ async def fetch_generation_usage(
                 await asyncio.sleep(delay)
             response = await client.get(
                 f"{OPENROUTER_BASE_URL}/generation",
-                headers=headers_for_key(api_key),
+                headers=headersForKey(api_key),
                 params={"id": generation_id},
             )
             if response.status_code == 404:
                 continue
             if response.status_code >= 400:
                 return None
-            return normalize_generation_usage(response.json().get("data"))
+            return normalizeGenerationUsage(response.json().get("data"))
     return None

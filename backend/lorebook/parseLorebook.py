@@ -2,7 +2,7 @@ import json
 from typing import Any
 
 
-def strip_json_fence(value: str) -> str:
+def stripJsonFence(value: str) -> str:
     text = value.strip()
     if not text.startswith("```"):
         return text
@@ -15,7 +15,7 @@ def strip_json_fence(value: str) -> str:
     return "\n".join(lines[1:]).strip()
 
 
-def first_json_object(value: str) -> str:
+def firstJsonObject(value: str) -> str:
     start = value.find("{")
     if start < 0:
         raise ValueError("No JSON object found in lorebook output.")
@@ -46,12 +46,12 @@ def first_json_object(value: str) -> str:
     raise ValueError("Unclosed JSON object in lorebook output.")
 
 
-def parse_lorebook_json(raw_output: str) -> dict[str, Any]:
+def parseLorebookJson(raw_output: str) -> dict[str, Any]:
     parse_errors: list[str] = []
-    candidates = [raw_output.strip(), strip_json_fence(raw_output)]
+    candidates = [raw_output.strip(), stripJsonFence(raw_output)]
 
     try:
-        candidates.append(first_json_object(candidates[-1]))
+        candidates.append(firstJsonObject(candidates[-1]))
     except ValueError as exc:
         parse_errors.append(str(exc))
 

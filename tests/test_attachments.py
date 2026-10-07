@@ -26,14 +26,14 @@ import backend.chats.buildMessages as buildMessages
 import backend.tos.loadTos as loadTos
 import backend.tos.tosAcceptance as tosAcceptance
 import backend.core.paths as paths
-from backend.local_access import create_secret_file
+from backend.local_access import createSecretFile
 
 
 def acceptCurrentTos():
-    tos = loadTos.load_tos()
+    tos = loadTos.loadTos()
     if not tos:
         raise RuntimeError("TOS.md is missing, restore it before running the tests")
-    tosAcceptance.record_tos_acceptance(tos["hash"], tos["date"])
+    tosAcceptance.recordTosAcceptance(tos["hash"], tos["date"])
 
 
 PNG_BYTES = bytes.fromhex(
@@ -103,7 +103,7 @@ class AttachmentApiTest(unittest.TestCase):
         paths.DB_PATH = paths.DATA_DIR / "routerchat-test.sqlite3"
         self.baseUrl = "http://127.0.0.1:8000"
         self.apiSecretPath = paths.DATA_DIR / "run" / "api-secret"
-        self.apiSecret = create_secret_file(self.apiSecretPath)
+        self.apiSecret = createSecretFile(self.apiSecretPath)
         self.localAccessEnvironment = patch.dict(
             os.environ,
             {
@@ -113,8 +113,8 @@ class AttachmentApiTest(unittest.TestCase):
             },
         )
         self.localAccessEnvironment.start()
-        main.reset_local_access_config()
-        main.init_db()
+        main.resetLocalAccessConfig()
+        main.initDb()
         acceptCurrentTos()
         self.client = TestClient(
             main.app,
@@ -132,7 +132,7 @@ class AttachmentApiTest(unittest.TestCase):
 
     def tearDown(self):
         self.client.close()
-        main.reset_local_access_config()
+        main.resetLocalAccessConfig()
         self.localAccessEnvironment.stop()
         paths.DATA_DIR = self.originalDataDir
         paths.DB_PATH = self.originalDbPath
@@ -184,7 +184,7 @@ class AttachmentApiTest(unittest.TestCase):
             response.json()["detail"],
             "big.png is larger than 7.5MB, the most Anthropic accepts for an image.",
         )
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             messageCount = conn.execute("SELECT COUNT(*) AS total FROM messages").fetchone()
             row = conn.execute(
                 "SELECT chat_id FROM attachments WHERE id = ?", (attachment["id"],)
@@ -202,7 +202,7 @@ class AttachmentApiTest(unittest.TestCase):
             [("files", ("paper.pdf", b"x" * (ANTHROPIC_MAX_IMAGE_BYTES + 1), "application/pdf"))]
         ).json()["attachments"][0]
 
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             checkAttachmentLimits(conn, [atLimit["id"], pdf["id"]], getProvider("anthropic"))
             checkAttachmentLimits(conn, [overLimit["id"]], getProvider("openrouter"))
             with self.assertRaises(HTTPException) as raised:
@@ -213,7 +213,7 @@ class AttachmentApiTest(unittest.TestCase):
 
     def addEarlierMessage(self, chat, attachments, order=1, error=None):
         messageId = f"earlier-{order}"
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             conn.execute(
                 """
                 INSERT INTO messages (
@@ -222,9 +222,9 @@ class AttachmentApiTest(unittest.TestCase):
                 )
                 VALUES (?, ?, 'user', 'earlier', NULL, ?, NULL, ?, ?, ?)
                 """,
-                (messageId, chat["id"], chat["model"], error, order, utils.utc_now()),
+                (messageId, chat["id"], chat["model"], error, order, utils.utcNow()),
             )
-            attachmentCleanup.claim_attachments(
+            attachmentCleanup.claimAttachments(
                 conn,
                 [attachment["id"] for attachment in attachments],
                 chat_id=chat["id"],
@@ -252,7 +252,7 @@ class AttachmentApiTest(unittest.TestCase):
             "of files per request. Earlier files are sent again with every message, "
             "so remove a file or start a new chat.",
         )
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             messageCount = conn.execute("SELECT COUNT(*) AS total FROM messages").fetchone()
         self.assertEqual(messageCount["total"], 1)
 
@@ -271,7 +271,7 @@ class AttachmentApiTest(unittest.TestCase):
         pending = self.uploadSizedImage(ANTHROPIC_MAX_IMAGE_BYTES, "pending.png")
         self.assertGreater(3 * ANTHROPIC_MAX_IMAGE_BYTES, ANTHROPIC_MAX_REQUEST_ATTACHMENT_BYTES)
 
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             checkAttachmentLimits(conn, [], anthropic, chatId=chat["id"])
             checkAttachmentLimits(conn, [pending["id"]], getProvider("openrouter"), chatId=chat["id"])
             checkAttachmentLimits(
@@ -293,7 +293,7 @@ class AttachmentApiTest(unittest.TestCase):
             for index in range(3)
         ]
 
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             checkAttachmentLimits(conn, attachmentIds[:2], getProvider("anthropic"))
             with self.assertRaises(HTTPException) as raised:
                 checkAttachmentLimits(conn, attachmentIds, getProvider("anthropic"))
@@ -321,7 +321,7 @@ class AttachmentApiTest(unittest.TestCase):
         pdf = self.uploadPdf(12)
         image = self.uploadImage()
 
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             pdfRow = conn.execute(
                 "SELECT page_count FROM attachments WHERE id = ?", (pdf["id"],)
             ).fetchone()
@@ -350,7 +350,7 @@ class AttachmentApiTest(unittest.TestCase):
             "per request with this model. Earlier files are sent again with every message, "
             "so remove a PDF or start a new chat.",
         )
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             messageCount = conn.execute("SELECT COUNT(*) AS total FROM messages").fetchone()
         self.assertEqual(messageCount["total"], 1)
 
@@ -363,7 +363,7 @@ class AttachmentApiTest(unittest.TestCase):
         overLimit = self.uploadPdf(101, "long.pdf")
         anthropic = getProvider("anthropic")
 
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             checkAttachmentLimits(conn, [atLimit["id"]], anthropic, modelId="claude-haiku-4-5")
             checkAttachmentLimits(conn, [overLimit["id"]], anthropic, modelId="claude-sonnet-5-5")
             checkAttachmentLimits(
@@ -388,7 +388,7 @@ class AttachmentApiTest(unittest.TestCase):
         self.cacheAnthropicModels()
         pdf = self.uploadPdf(101, "old.pdf")
 
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             conn.execute("UPDATE attachments SET page_count = NULL WHERE id = ?", (pdf["id"],))
             with self.assertRaises(HTTPException):
                 checkAttachmentLimits(
@@ -469,7 +469,7 @@ class AttachmentApiTest(unittest.TestCase):
                         self.assertEqual(response.status_code, 400)
                         self.assertEqual(
                             response.json()["detail"],
-                            f"{filename} is larger than {attachmentFiles.readable_size(limit)}.",
+                            f"{filename} is larger than {attachmentFiles.readableSize(limit)}.",
                         )
                     else:
                         self.assertEqual(response.status_code, 200, response.text)
@@ -493,7 +493,7 @@ class AttachmentApiTest(unittest.TestCase):
                 self.assertEqual(response.status_code, 400)
                 self.assertEqual(response.json()["detail"], detail)
                 self.assertEqual(list((paths.DATA_DIR / "attachments").iterdir()), [])
-                with database.get_db() as conn:
+                with database.getDb() as conn:
                     row = conn.execute("SELECT COUNT(*) AS total FROM attachments").fetchone()
                 self.assertEqual(row["total"], 0)
 
@@ -517,7 +517,7 @@ class AttachmentApiTest(unittest.TestCase):
         stored = paths.DATA_DIR / "attachments"
         self.assertEqual(list(stored.iterdir()) if stored.exists() else [], [])
 
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             rows = conn.execute("SELECT COUNT(*) AS total FROM attachments").fetchone()
         self.assertEqual(rows["total"], 0)
 
@@ -596,7 +596,7 @@ class AttachmentApiTest(unittest.TestCase):
         ]
         for kind, mime in cases:
             with self.subTest(kind=kind, mime=mime):
-                with database.get_db() as conn:
+                with database.getDb() as conn:
                     conn.execute(
                         "UPDATE attachments SET kind = ?, mime = ? WHERE id = ?",
                         (kind, mime, attachment["id"]),
@@ -643,7 +643,7 @@ class AttachmentApiTest(unittest.TestCase):
             'quote"and\\\\slash.txt',
             "plain.md",
         ]:
-            header = attachmentFiles.content_disposition(filename)
+            header = attachmentFiles.contentDisposition(filename)
             header.encode("latin-1")
             self.assertIn('filename="', header)
             self.assertNotIn('filename=""', header)
@@ -654,7 +654,7 @@ class AttachmentApiTest(unittest.TestCase):
         response = self.client.delete(f"/api/attachments/{attachment['id']}")
         self.assertEqual(response.status_code, 200)
 
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             row = conn.execute(
                 "SELECT * FROM attachments WHERE id = ?", (attachment["id"],)
             ).fetchone()
@@ -664,8 +664,8 @@ class AttachmentApiTest(unittest.TestCase):
     def test_text_attachment_becomes_a_fenced_text_part(self):
         attachment = self.uploadText("script.py", b"print('hello')\n")
 
-        with database.get_db() as conn:
-            parts = attachmentContent.attachment_content_parts(conn, [attachment["id"]])
+        with database.getDb() as conn:
+            parts = attachmentContent.attachmentContentParts(conn, [attachment["id"]])
 
         self.assertEqual(len(parts), 1)
         self.assertEqual(parts[0]["type"], "text")
@@ -676,8 +676,8 @@ class AttachmentApiTest(unittest.TestCase):
     def test_image_attachment_becomes_a_data_url_image_part(self):
         attachment = self.uploadImage()
 
-        with database.get_db() as conn:
-            parts = attachmentContent.attachment_content_parts(conn, [attachment["id"]])
+        with database.getDb() as conn:
+            parts = attachmentContent.attachmentContentParts(conn, [attachment["id"]])
 
         self.assertEqual(len(parts), 1)
         self.assertEqual(parts[0]["type"], "image_url")
@@ -687,8 +687,8 @@ class AttachmentApiTest(unittest.TestCase):
         body = ("line\n" * 26000).encode("utf-8")
         attachment = self.uploadText("long.txt", body)
 
-        with database.get_db() as conn:
-            parts = attachmentContent.attachment_content_parts(conn, [attachment["id"]])
+        with database.getDb() as conn:
+            parts = attachmentContent.attachmentContentParts(conn, [attachment["id"]])
 
         self.assertIn("truncated", parts[0]["text"])
         self.assertLess(len(parts[0]["text"]), len(body.decode("utf-8")))
@@ -697,8 +697,8 @@ class AttachmentApiTest(unittest.TestCase):
         first = self.uploadText("a.txt", b"first")
         second = self.uploadText("b.txt", b"second")
 
-        with database.get_db() as conn:
-            parts = attachmentContent.attachment_content_parts(
+        with database.getDb() as conn:
+            parts = attachmentContent.attachmentContentParts(
                 conn, [second["id"], first["id"]]
             )
 
@@ -708,24 +708,24 @@ class AttachmentApiTest(unittest.TestCase):
     def test_a_missing_attachment_id_is_skipped_rather_than_raising(self):
         attachment = self.uploadText()
 
-        with database.get_db() as conn:
-            parts = attachmentContent.attachment_content_parts(
+        with database.getDb() as conn:
+            parts = attachmentContent.attachmentContentParts(
                 conn, [attachment["id"], "not-a-real-id"]
             )
 
         self.assertEqual(len(parts), 1)
 
     def test_user_content_stays_a_plain_string_without_attachments(self):
-        with database.get_db() as conn:
-            content = attachmentContent.user_content_with_attachments(conn, [], "hello")
+        with database.getDb() as conn:
+            content = attachmentContent.userContentWithAttachments(conn, [], "hello")
 
         self.assertEqual(content, "hello")
 
     def test_user_content_puts_the_prompt_after_the_files(self):
         attachment = self.uploadText()
 
-        with database.get_db() as conn:
-            content = attachmentContent.user_content_with_attachments(
+        with database.getDb() as conn:
+            content = attachmentContent.userContentWithAttachments(
                 conn, [attachment["id"]], "what is this"
             )
 
@@ -735,8 +735,8 @@ class AttachmentApiTest(unittest.TestCase):
     def test_user_content_omits_an_empty_prompt(self):
         attachment = self.uploadText()
 
-        with database.get_db() as conn:
-            content = attachmentContent.user_content_with_attachments(
+        with database.getDb() as conn:
+            content = attachmentContent.userContentWithAttachments(
                 conn, [attachment["id"]], "   "
             )
 
@@ -747,8 +747,8 @@ class AttachmentApiTest(unittest.TestCase):
         chat = self.createChat()
         attachment = self.uploadImage()
 
-        with database.get_db() as conn:
-            attachmentCleanup.claim_attachments(
+        with database.getDb() as conn:
+            attachmentCleanup.claimAttachments(
                 conn,
                 [attachment["id"]],
                 chat_id=chat["id"],
@@ -762,7 +762,7 @@ class AttachmentApiTest(unittest.TestCase):
                 )
                 VALUES ('message-1', ?, 'user', 'look at this', NULL, ?, NULL, NULL, 0, ?)
                 """,
-                (chat["id"], "test/model", utils.utc_now()),
+                (chat["id"], "test/model", utils.utcNow()),
             )
 
         payload = self.client.get(f"/api/chats/{chat['id']}").json()
@@ -775,8 +775,8 @@ class AttachmentApiTest(unittest.TestCase):
         chat = self.createChat()
         attachment = self.uploadImage()
 
-        with database.get_db() as conn:
-            attachmentCleanup.claim_attachments(
+        with database.getDb() as conn:
+            attachmentCleanup.claimAttachments(
                 conn,
                 [attachment["id"]],
                 chat_id=chat["id"],
@@ -795,10 +795,10 @@ class AttachmentApiTest(unittest.TestCase):
                     )
                     VALUES (?, ?, ?, ?, NULL, ?, NULL, NULL, ?, ?)
                     """,
-                    (messageId, chat["id"], role, content, "test/model", index, utils.utc_now()),
+                    (messageId, chat["id"], role, content, "test/model", index, utils.utcNow()),
                 )
 
-        messages = buildMessages.build_messages(chat["id"], "")
+        messages = buildMessages.buildMessages(chat["id"], "")
 
         self.assertEqual(len(messages), 3)
         self.assertIsInstance(messages[0]["content"], list)
@@ -810,8 +810,8 @@ class AttachmentApiTest(unittest.TestCase):
         chat = self.createChat()
         attachment = self.uploadText()
 
-        with database.get_db() as conn:
-            attachmentCleanup.claim_attachments(
+        with database.getDb() as conn:
+            attachmentCleanup.claimAttachments(
                 conn,
                 [attachment["id"]],
                 chat_id=chat["id"],
@@ -820,7 +820,7 @@ class AttachmentApiTest(unittest.TestCase):
 
         self.client.delete(f"/api/chats/{chat['id']}")
 
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             row = conn.execute(
                 "SELECT * FROM attachments WHERE id = ?", (attachment["id"],)
             ).fetchone()
@@ -832,7 +832,7 @@ class AttachmentApiTest(unittest.TestCase):
         kept = self.uploadText("kept.txt")
         dropped = self.uploadText("dropped.txt")
 
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             for index, (messageId, role, attachmentId) in enumerate([
                 ("message-1", "user", kept["id"]),
                 ("message-2", "assistant", None),
@@ -846,17 +846,17 @@ class AttachmentApiTest(unittest.TestCase):
                     )
                     VALUES (?, ?, ?, 'body', NULL, ?, NULL, NULL, ?, ?)
                     """,
-                    (messageId, chat["id"], role, "test/model", index, utils.utc_now()),
+                    (messageId, chat["id"], role, "test/model", index, utils.utcNow()),
                 )
                 if attachmentId:
-                    attachmentCleanup.claim_attachments(
+                    attachmentCleanup.claimAttachments(
                         conn, [attachmentId], chat_id=chat["id"], message_id=messageId
                     )
 
         response = self.client.delete(f"/api/chats/{chat['id']}/messages/message-3")
         self.assertEqual(response.status_code, 200, response.text)
 
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             remaining = {
                 row["id"] for row in conn.execute("SELECT id FROM attachments").fetchall()
             }
@@ -869,8 +869,8 @@ class AttachmentApiTest(unittest.TestCase):
         chat = self.createChat(folder_id=folder["id"])
         attachment = self.uploadText()
 
-        with database.get_db() as conn:
-            attachmentCleanup.claim_attachments(
+        with database.getDb() as conn:
+            attachmentCleanup.claimAttachments(
                 conn, [attachment["id"]], chat_id=chat["id"], message_id="message-1"
             )
 
@@ -879,7 +879,7 @@ class AttachmentApiTest(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200, response.text)
 
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             row = conn.execute(
                 "SELECT * FROM attachments WHERE id = ?", (attachment["id"],)
             ).fetchone()
@@ -892,13 +892,13 @@ class AttachmentApiTest(unittest.TestCase):
         staleOrphan = self.uploadText("stale.txt")
         freshOrphan = self.uploadText("fresh.txt")
 
-        with database.get_db() as conn:
-            attachmentCleanup.claim_attachments(conn, [claimed["id"]], story_id="story-1")
+        with database.getDb() as conn:
+            attachmentCleanup.claimAttachments(conn, [claimed["id"]], story_id="story-1")
             conn.execute(
                 "UPDATE attachments SET created_at = ? WHERE id = ?",
                 ("2020-01-01T00:00:00Z", staleOrphan["id"]),
             )
-            removed = attachmentCleanup.delete_orphaned_attachments(conn)
+            removed = attachmentCleanup.deleteOrphanedAttachments(conn)
             remaining = {
                 row["id"] for row in conn.execute("SELECT id FROM attachments").fetchall()
             }
@@ -910,34 +910,34 @@ class AttachmentApiTest(unittest.TestCase):
         chat = self.createChat()
         textAttachment = self.uploadText()
 
-        with database.get_db() as conn:
-            attachmentCleanup.claim_attachments(
+        with database.getDb() as conn:
+            attachmentCleanup.claimAttachments(
                 conn,
                 [textAttachment["id"]],
                 chat_id=chat["id"],
                 message_id="message-1",
             )
-            self.assertFalse(attachmentContent.chat_has_pdf_attachment(conn, chat["id"]))
+            self.assertFalse(attachmentContent.chatHasPdfAttachment(conn, chat["id"]))
 
         pdfResponse = self.upload([("files", ("paper.pdf", b"%PDF-1.4 fake", "application/pdf"))])
         self.assertEqual(pdfResponse.status_code, 200)
         pdfAttachment = pdfResponse.json()["attachments"][0]
         self.assertEqual(pdfAttachment["kind"], "pdf")
 
-        with database.get_db() as conn:
-            attachmentCleanup.claim_attachments(
+        with database.getDb() as conn:
+            attachmentCleanup.claimAttachments(
                 conn,
                 [pdfAttachment["id"]],
                 chat_id=chat["id"],
                 message_id="message-2",
             )
-            self.assertTrue(attachmentContent.chat_has_pdf_attachment(conn, chat["id"]))
-            parts = attachmentContent.attachment_content_parts(conn, [pdfAttachment["id"]])
+            self.assertTrue(attachmentContent.chatHasPdfAttachment(conn, chat["id"]))
+            parts = attachmentContent.attachmentContentParts(conn, [pdfAttachment["id"]])
 
         self.assertEqual(parts[0]["type"], "file")
         self.assertEqual(parts[0]["file"]["filename"], "paper.pdf")
         self.assertEqual(
-            attachmentContent.pdf_parser_plugins(),
+            attachmentContent.pdfParserPlugins(),
             [{"id": "file-parser", "pdf": {"engine": "pdf-text"}}],
         )
 
@@ -950,7 +950,7 @@ class AttachmentApiTest(unittest.TestCase):
         attachment = response.json()["attachments"][0]
         self.assertEqual(attachment["filename"], "escape.txt")
 
-        with database.get_db() as conn:
+        with database.getDb() as conn:
             row = conn.execute(
                 "SELECT stored_path FROM attachments WHERE id = ?", (attachment["id"],)
             ).fetchone()

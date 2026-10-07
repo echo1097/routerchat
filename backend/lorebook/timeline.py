@@ -5,7 +5,7 @@ INLINE_TIMELINE_BULLET = re.compile(r"\s+[-*•]\s+")
 SENTENCE_ENDINGS = ".!?\"')"
 
 
-def split_crammed_timeline_bullets(line: str) -> list[str]:
+def splitCrammedTimelineBullets(line: str) -> list[str]:
     body = line
     for marker in TIMELINE_BULLET_MARKERS:
         body = body.removeprefix(marker)
@@ -33,14 +33,14 @@ def split_crammed_timeline_bullets(line: str) -> list[str]:
     return parts
 
 
-def normalize_timeline_description(description: str) -> str:
+def normalizeTimelineDescription(description: str) -> str:
     rawLines = [line.strip() for line in str(description or "").splitlines()]
     rawLines = [line for line in rawLines if line]
 
     #some models ignore the newline instruction and cram every bullet onto one line, only worth
     #unpicking when nothing split on its own, otherwise we would go hunting inside good output
     if len(rawLines) == 1:
-        crammedBullets = split_crammed_timeline_bullets(rawLines[0])
+        crammedBullets = splitCrammedTimelineBullets(rawLines[0])
         if crammedBullets:
             rawLines = crammedBullets
 

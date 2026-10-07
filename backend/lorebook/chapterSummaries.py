@@ -1,8 +1,8 @@
 import sqlite3
 from typing import Any
 
-from backend.lorebook.lorebookRows import json_dict, normalize_lorebook_category
-from backend.lorebook.timeline import normalize_timeline_description
+from backend.lorebook.lorebookRows import jsonDict, normalizeLorebookCategory
+from backend.lorebook.timeline import normalizeTimelineDescription
 
 SUMMARY_INSTRUCTION = (
     "Always create or update one synopsis named exactly after the chapter. Make it as short as "
@@ -10,13 +10,13 @@ SUMMARY_INSTRUCTION = (
 )
 
 
-def lorebook_summary_chapter_id(row: sqlite3.Row) -> str:
-    if normalize_lorebook_category(row["category"]) != "synopsis":
+def lorebookSummaryChapterId(row: sqlite3.Row) -> str:
+    if normalizeLorebookCategory(row["category"]) != "synopsis":
         return ""
-    return str(json_dict(row["metadata_json"]).get("chapter_id") or "").strip()
+    return str(jsonDict(row["metadata_json"]).get("chapter_id") or "").strip()
 
 
-def rename_linked_chapter_summaries(
+def renameLinkedChapterSummaries(
     conn: sqlite3.Connection,
     storyId: str,
     chapterId: str,
@@ -28,7 +28,7 @@ def rename_linked_chapter_summaries(
         (storyId,),
     ).fetchall()
     for summaryRow in summaryRows:
-        if lorebook_summary_chapter_id(summaryRow) != chapterId:
+        if lorebookSummaryChapterId(summaryRow) != chapterId:
             continue
         conn.execute(
             "UPDATE lorebook_entries SET name = ?, revision = revision + 1, updated_at = ? WHERE id = ?",
@@ -36,7 +36,7 @@ def rename_linked_chapter_summaries(
         )
 
 
-def delete_linked_chapter_summaries(
+def deleteLinkedChapterSummaries(
     conn: sqlite3.Connection,
     storyId: str,
     chapterId: str,
@@ -48,13 +48,13 @@ def delete_linked_chapter_summaries(
     linkedIds = [
         row["id"]
         for row in summaryRows
-        if lorebook_summary_chapter_id(row) == chapterId
+        if lorebookSummaryChapterId(row) == chapterId
     ]
     for entryId in linkedIds:
         conn.execute("DELETE FROM lorebook_entries WHERE id = ?", (entryId,))
 
 
-def find_enabled_chapter_summary(
+def findEnabledChapterSummary(
     conn: sqlite3.Connection,
     story_id: str,
     chapter_id: str,
@@ -69,7 +69,7 @@ def find_enabled_chapter_summary(
         (story_id,),
     ).fetchall()
 
-    linked = [row for row in rows if lorebook_summary_chapter_id(row) == chapter_id]
+    linked = [row for row in rows if lorebookSummaryChapterId(row) == chapter_id]
     if linked:
         return linked[0]
 
@@ -77,13 +77,13 @@ def find_enabled_chapter_summary(
     legacy = [
         row
         for row in rows
-        if not lorebook_summary_chapter_id(row)
+        if not lorebookSummaryChapterId(row)
         and str(row["name"] or "").casefold() == chapter_title.casefold()
     ]
     return legacy[0] if len(legacy) == 1 else None
 
 
-def normalize_required_summary_update(
+def normalizeRequiredSummaryUpdate(
     updates: list[Any],
     chapter: sqlite3.Row,
     lorebook_rows: list[sqlite3.Row] | None = None,
@@ -98,9 +98,9 @@ def normalize_required_summary_update(
 
         def updateCategory(update: dict[str, Any]) -> str:
             if str(update.get("action") or "").lower() == "create":
-                return normalize_lorebook_category(update.get("category"))
+                return normalizeLorebookCategory(update.get("category"))
             row = rowsById.get(str(update.get("entryId") or ""))
-            return normalize_lorebook_category(row["category"]) if row else ""
+            return normalizeLorebookCategory(row["category"]) if row else ""
 
         summaries = [update for update in validUpdates if updateCategory(update) == "synopsis"]
         if len(summaries) != 1:
@@ -125,7 +125,7 @@ def normalize_required_summary_update(
             summaryRow = rowsById.get(str(summary.get("entryId") or ""))
             if not summaryRow:
                 raise ValueError("The chapter summary target was not found.")
-            linkedChapterId = lorebook_summary_chapter_id(summaryRow)
+            linkedChapterId = lorebookSummaryChapterId(summaryRow)
             legacyTitleMatch = (
                 not linkedChapterId
                 and str(summaryRow["name"] or "").casefold()
@@ -154,7 +154,7 @@ def normalize_required_summary_update(
                 **timeline,
                 "name": "Timeline",
                 "category": "timeline",
-                "description": normalize_timeline_description(
+                "description": normalizeTimelineDescription(
                     str(timeline.get("description") or "")
                 ),
                 "aliases": ["Timeline"],
@@ -185,7 +185,7 @@ def normalize_required_summary_update(
     summaries = [
         update
         for update in validUpdates
-        if normalize_lorebook_category(update.get("category")) == "synopsis"
+        if normalizeLorebookCategory(update.get("category")) == "synopsis"
     ]
     if len(summaries) != 1:
         raise ValueError("The lorebook update must contain exactly one chapter summary.")

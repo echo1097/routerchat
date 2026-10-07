@@ -24,16 +24,16 @@ from backend.brainstorm.brainstormQueries import (
     updateNodePositions,
 )
 from backend.brainstorm.brainstormRows import (
-    row_to_brainstorm_edge,
-    row_to_brainstorm_node,
+    rowToBrainstormEdge,
+    rowToBrainstormNode,
 )
-from backend.brainstorm.tidyBrainstorm import tidy_brainstorm_positions
-from backend.core.database import get_db
-from backend.core.utils import utc_now
+from backend.brainstorm.tidyBrainstorm import tidyBrainstormPositions
+from backend.core.database import getDb
+from backend.core.utils import utcNow
 from backend.stories.storyQueries import requireStory
 
 
-def request_updates(payload: BaseModel, reject_null: bool = False) -> dict[str, Any]:
+def requestUpdates(payload: BaseModel, reject_null: bool = False) -> dict[str, Any]:
     if hasattr(payload, "model_dump"):
         updates = payload.model_dump(exclude_unset=True)
     else:
@@ -52,8 +52,8 @@ router = APIRouter()
 
 
 @router.get("/api/stories/{story_id}/brainstorm")
-def get_brainstorm(story_id: str) -> dict[str, Any]:
-    with get_db() as conn:
+def getBrainstorm(story_id: str) -> dict[str, Any]:
+    with getDb() as conn:
         story = requireStory(conn, story_id)
         nodes = listNodes(conn, story_id)
         edges = listEdges(conn, story_id)
@@ -87,14 +87,14 @@ def get_brainstorm(story_id: str) -> dict[str, Any]:
         }
     return {
         "nodes": [
-            row_to_brainstorm_node(
+            rowToBrainstormNode(
                 row,
                 reasoningByPromptId.get(row["id"]),
                 durationByPromptId.get(row["id"]),
             )
             for row in nodes
         ],
-        "edges": [row_to_brainstorm_edge(row) for row in edges],
+        "edges": [rowToBrainstormEdge(row) for row in edges],
         "viewport": (
             {
                 "x": viewport["position_x"],
@@ -109,16 +109,16 @@ def get_brainstorm(story_id: str) -> dict[str, Any]:
 
 
 @router.patch("/api/stories/{story_id}/brainstorm/nodes/{node_id}")
-def update_brainstorm_node(
+def updateBrainstormNode(
     story_id: str,
     node_id: str,
     payload: BrainstormNodePatchRequest,
 ) -> dict[str, Any]:
-    updates = request_updates(payload, reject_null=True)
+    updates = requestUpdates(payload, reject_null=True)
     if not updates:
         raise HTTPException(status_code=400, detail="No node changes provided.")
 
-    with get_db() as conn:
+    with getDb() as conn:
         node = getStoryNode(conn, story_id, node_id)
         if not node:
             raise HTTPException(status_code=404, detail="Brainstorm node not found.")
@@ -135,16 +135,16 @@ def update_brainstorm_node(
             assignments.append(f"{key} = ?")
             values.append(value)
         assignments.append("updated_at = ?")
-        values.append(utc_now())
+        values.append(utcNow())
         values.extend([node_id, story_id])
         updateNodeColumns(conn, assignments, values)
         updated = getNode(conn, node_id)
-    return {"node": row_to_brainstorm_node(updated)}
+    return {"node": rowToBrainstormNode(updated)}
 
 
 @router.post("/api/stories/{story_id}/brainstorm/tidy")
-def tidy_brainstorm(story_id: str) -> dict[str, Any]:
-    with get_db() as conn:
+def tidyBrainstorm(story_id: str) -> dict[str, Any]:
+    with getDb() as conn:
         story = requireStory(conn, story_id)
         generating = findGeneratingNode(conn, story_id)
         if generating:
@@ -155,7 +155,7 @@ def tidy_brainstorm(story_id: str) -> dict[str, Any]:
         nodes = listNodes(conn, story_id)
         edges = listEdges(conn, story_id)
 
-        positions = tidy_brainstorm_positions(nodes, edges)
+        positions = tidyBrainstormPositions(nodes, edges)
         updateNodePositions(
             conn,
             [
@@ -173,24 +173,24 @@ def tidy_brainstorm(story_id: str) -> dict[str, Any]:
 
 
 @router.patch("/api/stories/{story_id}/brainstorm/viewport")
-def update_brainstorm_viewport(
+def updateBrainstormViewport(
     story_id: str,
     payload: BrainstormViewportRequest,
 ) -> dict[str, Any]:
-    now = utc_now()
-    with get_db() as conn:
+    now = utcNow()
+    with getDb() as conn:
         story = requireStory(conn, story_id)
         saveViewport(conn, (story_id, payload.position_x, payload.position_y, payload.zoom, now))
     return {"viewport": {"x": payload.position_x, "y": payload.position_y, "zoom": payload.zoom}}
 
 
 @router.delete("/api/stories/{story_id}/brainstorm/nodes/{node_id}")
-def delete_brainstorm_node(
+def deleteBrainstormNode(
     story_id: str,
     node_id: str,
     cascade: bool = False,
 ) -> dict[str, Any]:
-    with get_db() as conn:
+    with getDb() as conn:
         nodes = listNodeIds(conn, story_id)
         node_ids = {row["id"] for row in nodes}
         if node_id not in node_ids:

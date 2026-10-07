@@ -15,9 +15,9 @@ from backend.chats import (
 )
 from backend.core import paths
 from backend.core.paths import APP_VERSION
-from backend.startup.initDatabase import init_db
-from backend.core.startupCleanup import delete_temporary_items, reset_stale_brainstorm_generations
-from backend.frontend.staticFiles import configure_static_files
+from backend.startup.initDatabase import initDb
+from backend.core.startupCleanup import deleteTemporaryItems, resetStaleBrainstormGenerations
+from backend.frontend.staticFiles import configureStaticFiles
 from backend.lorebook import (
     generateEntry,
     lorebookRoutes,
@@ -28,8 +28,8 @@ from backend.lorebook import (
 from backend.providers import providerRoutes
 from backend.providers.envKeys import loadSavedKeys
 from backend.security import bootstrapRoutes
-from backend.security.apiSecurity import enforce_local_api_security
-from backend.security.localAccessConfig import local_access_config
+from backend.security.apiSecurity import enforceLocalApiSecurity
+from backend.security.localAccessConfig import localAccessConfig
 from backend.settings import settingsRoutes
 from backend.tos import tosRoutes
 from backend.transcription import transcriptionRoutes
@@ -40,7 +40,7 @@ from backend.writing import chapterRoutes, storyImportExport, storyProviderRoute
 loadSavedKeys()
 
 app = FastAPI(title="RouterChat", version=APP_VERSION)
-app.middleware("http")(enforce_local_api_security)
+app.middleware("http")(enforceLocalApiSecurity)
 
 featureRouters = [
     bootstrapRoutes.router,
@@ -75,18 +75,18 @@ for featureRouter in featureRouters:
     app.include_router(featureRouter)
 
 
-def reset_local_access_config() -> None:
+def resetLocalAccessConfig() -> None:
     if hasattr(app.state, "localAccessConfig"):
         delattr(app.state, "localAccessConfig")
 
 
 @app.on_event("startup")
-def on_startup() -> None:
-    local_access_config(app)
+def onStartup() -> None:
+    localAccessConfig(app)
     paths.DATA_DIR.mkdir(parents=True, exist_ok=True)
-    init_db()
-    delete_temporary_items()
-    reset_stale_brainstorm_generations()
+    initDb()
+    deleteTemporaryItems()
+    resetStaleBrainstormGenerations()
 
 
-configure_static_files(app, paths.STATIC_DIR)
+configureStaticFiles(app, paths.STATIC_DIR)

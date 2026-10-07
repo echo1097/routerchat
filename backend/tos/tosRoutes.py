@@ -7,11 +7,11 @@ from pydantic import BaseModel, Field
 
 from backend.core.paths import APP_VERSION
 from backend.security.apiSecurity import TOS_MISSING_DETAIL
-from backend.tos.loadTos import load_tos
+from backend.tos.loadTos import loadTos
 from backend.tos.tosAcceptance import (
-    latest_tos_acceptance,
-    record_tos_acceptance,
-    tos_payload,
+    latestTosAcceptance,
+    recordTosAcceptance,
+    tosPayload,
 )
 
 router = APIRouter()
@@ -30,16 +30,16 @@ def health() -> dict[str, Any]:
 
 
 @router.get("/api/tos")
-def get_tos() -> dict[str, Any]:
-    tos = load_tos()
+def getTos() -> dict[str, Any]:
+    tos = loadTos()
     if not tos:
         raise HTTPException(status_code=503, detail=TOS_MISSING_DETAIL)
-    return tos_payload(tos)
+    return tosPayload(tos)
 
 
 @router.post("/api/tos/accept")
-def accept_tos(payload: TosAcceptRequest) -> dict[str, Any]:
-    tos = load_tos()
+def acceptTos(payload: TosAcceptRequest) -> dict[str, Any]:
+    tos = loadTos()
     if not tos:
         raise HTTPException(status_code=503, detail=TOS_MISSING_DETAIL)
 
@@ -53,7 +53,7 @@ def accept_tos(payload: TosAcceptRequest) -> dict[str, Any]:
             },
         )
 
-    if not latest_tos_acceptance(tos["hash"]):
-        record_tos_acceptance(tos["hash"], tos["date"])
+    if not latestTosAcceptance(tos["hash"]):
+        recordTosAcceptance(tos["hash"], tos["date"])
 
-    return tos_payload(tos)
+    return tosPayload(tos)

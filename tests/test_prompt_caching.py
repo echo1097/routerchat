@@ -12,14 +12,14 @@ import backend.tos.loadTos as loadTos
 import backend.tos.tosAcceptance as tosAcceptance
 import backend.providers.openrouter.usage as usage
 import backend.core.paths as paths
-from backend.local_access import create_secret_file
+from backend.local_access import createSecretFile
 
 
 def acceptCurrentTos():
-    tos = loadTos.load_tos()
+    tos = loadTos.loadTos()
     if not tos:
         raise RuntimeError("TOS.md is missing, restore it before running the tests")
-    tosAcceptance.record_tos_acceptance(tos["hash"], tos["date"])
+    tosAcceptance.recordTosAcceptance(tos["hash"], tos["date"])
 
 
 def fakeChatStream(content, usage=None, usageInContentChunk=False):
@@ -74,7 +74,7 @@ class PromptCachingTest(unittest.TestCase):
         paths.DB_PATH = paths.DATA_DIR / "routerchat-caching-test.sqlite3"
         self.baseUrl = "http://127.0.0.1:8000"
         self.apiSecretPath = paths.DATA_DIR / "run" / "api-secret"
-        self.apiSecret = create_secret_file(self.apiSecretPath)
+        self.apiSecret = createSecretFile(self.apiSecretPath)
         self.localAccessEnvironment = patch.dict(
             os.environ,
             {
@@ -84,8 +84,8 @@ class PromptCachingTest(unittest.TestCase):
             },
         )
         self.localAccessEnvironment.start()
-        main.reset_local_access_config()
-        main.init_db()
+        main.resetLocalAccessConfig()
+        main.initDb()
         acceptCurrentTos()
         self.client = TestClient(
             main.app,
@@ -103,7 +103,7 @@ class PromptCachingTest(unittest.TestCase):
 
     def tearDown(self):
         self.client.close()
-        main.reset_local_access_config()
+        main.resetLocalAccessConfig()
         self.localAccessEnvironment.stop()
         paths.DATA_DIR = self.originalDataDir
         paths.DB_PATH = self.originalDbPath
@@ -157,12 +157,12 @@ class PromptCachingTest(unittest.TestCase):
         self.assertEqual(calls[0]["cache_control"], {"type": "ephemeral"})
 
     def test_cached_reads_are_read_from_both_usage_shapes(self):
-        streamUsage = usage.normalize_usage({"prompt_tokens": 900, "prompt_tokens_details": {"cached_tokens": 700}})
-        generationUsage = usage.normalize_generation_usage({"native_tokens_prompt": 900, "native_tokens_cached": 700})
+        streamUsage = usage.normalizeUsage({"prompt_tokens": 900, "prompt_tokens_details": {"cached_tokens": 700}})
+        generationUsage = usage.normalizeGenerationUsage({"native_tokens_prompt": 900, "native_tokens_cached": 700})
 
         self.assertEqual(streamUsage["cached_tokens"], 700)
         self.assertEqual(generationUsage["cached_tokens"], 700)
-        self.assertIsNone(usage.normalize_usage({"prompt_tokens": 900})["cached_tokens"])
+        self.assertIsNone(usage.normalizeUsage({"prompt_tokens": 900})["cached_tokens"])
 
     def test_chat_replies_save_their_cached_reads(self):
         usage = {"prompt_tokens": 900, "completion_tokens": 10, "prompt_tokens_details": {"cached_tokens": 700}}

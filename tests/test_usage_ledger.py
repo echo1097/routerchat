@@ -14,15 +14,15 @@ import backend.tos.tosAcceptance as tosAcceptance
 import backend.usage.migrateLegacyUsage as migrateLegacyUsage
 from backend.chats.chatModels import StreamMessageRequest
 from backend.chats.streamMessage import saveAssistantReply
-from backend.local_access import create_secret_file
+from backend.local_access import createSecretFile
 from backend.usage.recordUsage import recordUsage
 
 
 def acceptCurrentTos():
-    tos = loadTos.load_tos()
+    tos = loadTos.loadTos()
     if not tos:
         raise RuntimeError("TOS.md is missing, restore it before running the tests")
-    tosAcceptance.record_tos_acceptance(tos["hash"], tos["date"])
+    tosAcceptance.recordTosAcceptance(tos["hash"], tos["date"])
 
 
 class UsageLedgerTest(unittest.TestCase):
@@ -34,7 +34,7 @@ class UsageLedgerTest(unittest.TestCase):
         paths.DB_PATH = paths.DATA_DIR / "routerchat.sqlite3"
         self.baseUrl = "http://127.0.0.1:8000"
         self.apiSecretPath = paths.DATA_DIR / "run" / "api-secret"
-        self.apiSecret = create_secret_file(self.apiSecretPath)
+        self.apiSecret = createSecretFile(self.apiSecretPath)
         self.localAccessEnvironment = patch.dict(
             os.environ,
             {
@@ -44,8 +44,8 @@ class UsageLedgerTest(unittest.TestCase):
             },
         )
         self.localAccessEnvironment.start()
-        main.reset_local_access_config()
-        main.init_db()
+        main.resetLocalAccessConfig()
+        main.initDb()
         acceptCurrentTos()
         self.client = TestClient(
             main.app,
@@ -63,7 +63,7 @@ class UsageLedgerTest(unittest.TestCase):
 
     def tearDown(self):
         self.client.close()
-        main.reset_local_access_config()
+        main.resetLocalAccessConfig()
         self.localAccessEnvironment.stop()
         paths.DATA_DIR = self.originalDataDir
         paths.DB_PATH = self.originalDbPath
@@ -116,12 +116,12 @@ class UsageLedgerTest(unittest.TestCase):
     def testLegacyUsageIsCopiedOnceAsOpenRouter(self):
         self.resetLedger()
         self.addLegacyMessage("legacy-1", 0.5)
-        main.init_db()
+        main.initDb()
         self.assertEqual(self.ledgerRows(), [("message", "legacy-1", "openrouter", 0.5)])
         self.assertEqual(len(self.migrationFlag()), 1)
 
         self.addLegacyMessage("legacy-2", 0.25)
-        main.init_db()
+        main.initDb()
         self.assertEqual([row[1] for row in self.ledgerRows()], ["legacy-1"])
 
     def testFailedMigrationLeavesNoFlagAndRetriesNextStart(self):
@@ -129,13 +129,13 @@ class UsageLedgerTest(unittest.TestCase):
         self.addLegacyMessage("legacy-1", 0.5)
         with patch.object(migrateLegacyUsage, "saveUsageEntries", side_effect=sqlite3.OperationalError("disk full")):
             with self.assertLogs("uvicorn.error", level="ERROR") as logs:
-                main.init_db()
+                main.initDb()
         self.assertIn("Could not move usage history", logs.output[0])
         self.assertIn("disk full", logs.output[0])
         self.assertEqual(self.ledgerRows(), [])
         self.assertEqual(self.migrationFlag(), [])
 
-        main.init_db()
+        main.initDb()
         self.assertEqual([row[1] for row in self.ledgerRows()], ["legacy-1"])
 
     def testDeletedChatKeepsItsCost(self):

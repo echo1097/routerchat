@@ -16,7 +16,7 @@ from urllib.parse import urlsplit
 SECRET_PATTERN = re.compile(r"^[A-Za-z0-9_-]{43,256}$")
 
 
-def validate_base_url(value: str) -> str:
+def validateBaseUrl(value: str) -> str:
     try:
         parsed = urlsplit(value)
         port = parsed.port
@@ -38,7 +38,7 @@ def validate_base_url(value: str) -> str:
     return f"http://127.0.0.1:{port}"
 
 
-def create_secret_file(secret_path: Path) -> str:
+def createSecretFile(secret_path: Path) -> str:
     secretPath = Path(secret_path)
     secretPath.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     if os.name == "posix":
@@ -61,7 +61,7 @@ def create_secret_file(secret_path: Path) -> str:
     return secret
 
 
-def read_secret_file(secret_path: Path) -> str:
+def readSecretFile(secret_path: Path) -> str:
     secretPath = Path(secret_path)
     try:
         fileInfo = secretPath.lstat()
@@ -90,8 +90,8 @@ def read_secret_file(secret_path: Path) -> str:
     return secret
 
 
-def bootstrap_page(secret: str, base_url: str) -> bytes:
-    baseUrl = validate_base_url(base_url)
+def bootstrapPage(secret: str, base_url: str) -> bytes:
+    baseUrl = validateBaseUrl(base_url)
     bootstrapUrl = html.escape(f"{baseUrl}/api/bootstrap", quote=True)
     escapedSecret = html.escape(secret, quote=True)
     page = f"""<!doctype html>
@@ -114,15 +114,15 @@ def bootstrap_page(secret: str, base_url: str) -> bytes:
     return page.encode("utf-8")
 
 
-def open_bootstrap_page(
+def openBootstrapPage(
     secret_path: Path,
     base_url: str,
     *,
     browser_open: Callable[[str], bool] = webbrowser.open,
     timeout: float = 15.0,
 ) -> None:
-    secret = read_secret_file(secret_path)
-    page = bootstrap_page(secret, base_url)
+    secret = readSecretFile(secret_path)
+    page = bootstrapPage(secret, base_url)
     oneTimePath = f"/{secrets.token_urlsafe(24)}"
     served = False
 
@@ -164,18 +164,18 @@ def open_bootstrap_page(
         server.server_close()
 
 
-def serve_local_app(
+def serveLocalApp(
     secret_path: Path,
     base_url: str,
     trusted_origins: Sequence[str],
 ) -> None:
-    baseUrl = validate_base_url(base_url)
-    origins = [validate_base_url(origin) for origin in trusted_origins]
+    baseUrl = validateBaseUrl(base_url)
+    origins = [validateBaseUrl(origin) for origin in trusted_origins]
     if not origins:
         raise RuntimeError("RouterChat needs at least one trusted frontend origin.")
 
     secretPath = Path(secret_path)
-    create_secret_file(secretPath)
+    createSecretFile(secretPath)
     os.environ["ROUTERCHAT_API_SECRET_FILE"] = str(secretPath.resolve())
     os.environ["ROUTERCHAT_BASE_URL"] = baseUrl
     os.environ["ROUTERCHAT_TRUSTED_ORIGINS"] = ",".join(origins)
@@ -199,7 +199,7 @@ def serve_local_app(
             pass
 
 
-def parse_args(arguments: Sequence[str] | None = None) -> argparse.Namespace:
+def parseArgs(arguments: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Create and deliver RouterChat local API access")
     commands = parser.add_subparsers(dest="command", required=True)
 
@@ -215,20 +215,20 @@ def parse_args(arguments: Sequence[str] | None = None) -> argparse.Namespace:
     serveCommand.add_argument("--secret-file", type=Path, required=True)
     serveCommand.add_argument("--base-url", required=True)
     serveCommand.add_argument("--trusted-origin", action="append", required=True)
-    return parser.parse_args(arguments)
+    return parser.parseArgs(arguments)
 
 
 def main(arguments: Sequence[str] | None = None) -> None:
-    args = parse_args(arguments)
+    args = parseArgs(arguments)
     if args.command == "create-secret":
-        create_secret_file(args.secret_file)
+        createSecretFile(args.secret_file)
         return
 
     if args.command == "serve":
-        serve_local_app(args.secret_file, args.base_url, args.trusted_origin)
+        serveLocalApp(args.secret_file, args.base_url, args.trusted_origin)
         return
 
-    open_bootstrap_page(
+    openBootstrapPage(
         args.secret_file,
         args.base_url,
         timeout=args.timeout,

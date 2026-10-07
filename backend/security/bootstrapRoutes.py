@@ -10,15 +10,15 @@ from backend.security.apiSecurity import (
     API_AUTH_REQUIRED_DETAIL,
     BOOTSTRAP_PATH,
     SESSION_COOKIE_NAME,
-    security_error,
+    securityError,
 )
-from backend.security.localAccessConfig import local_access_config
+from backend.security.localAccessConfig import localAccessConfig
 
 router = APIRouter()
 
 
 @router.post(BOOTSTRAP_PATH, include_in_schema=False)
-async def bootstrap_local_session(request: Request) -> Response:
+async def bootstrapLocalSession(request: Request) -> Response:
     contentType = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
     contentLength = request.headers.get("content-length", "")
     try:
@@ -38,9 +38,9 @@ async def bootstrap_local_session(request: Request) -> Response:
             except (UnicodeDecodeError, ValueError):
                 suppliedSecret = ""
 
-    config = local_access_config(request.app)
+    config = localAccessConfig(request.app)
     if not hmac.compare_digest(suppliedSecret, config.secret):
-        return security_error(401, API_AUTH_REQUIRED_DETAIL)
+        return securityError(401, API_AUTH_REQUIRED_DETAIL)
 
     response = RedirectResponse(url="/", status_code=303)
     response.headers["Cache-Control"] = "no-store"

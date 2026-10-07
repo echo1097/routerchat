@@ -47,20 +47,20 @@ def requireProvider(providerId: str) -> Provider:
 
 
 @router.get("/api/providers")
-def get_providers(response: Response) -> dict[str, Any]:
+def getProviders(response: Response) -> dict[str, Any]:
     response.headers["Cache-Control"] = "no-store"
     return providersPayload()
 
 
 @router.post("/api/providers/active")
-def choose_active_provider(payload: ActiveProviderRequest) -> dict[str, Any]:
+def chooseActiveProvider(payload: ActiveProviderRequest) -> dict[str, Any]:
     provider = requireProvider(payload.id)
     setActiveProvider(provider.id)
     return providersPayload()
 
 
 @router.post("/api/providers/{providerId}/key")
-async def save_provider_key(providerId: str, payload: ProviderKeyRequest) -> dict[str, Any]:
+async def saveProviderKey(providerId: str, payload: ProviderKeyRequest) -> dict[str, Any]:
     provider = requireProvider(providerId)
     apiKey = payload.api_key.strip()
     data = await provider.validateKey(apiKey)

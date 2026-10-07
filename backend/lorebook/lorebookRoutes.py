@@ -5,11 +5,11 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from backend.core.database import get_db
-from backend.core.utils import utc_now
+from backend.core.database import getDb
+from backend.core.utils import utcNow
 from backend.lorebook.chapterSummaries import (
-    find_enabled_chapter_summary,
-    lorebook_summary_chapter_id,
+    findEnabledChapterSummary,
+    lorebookSummaryChapterId,
 )
 from backend.lorebook.lorebookModels import LorebookEntryRequest
 from backend.lorebook.lorebookQueries import (
@@ -22,16 +22,16 @@ from backend.lorebook.lorebookQueries import (
     updateEntryAtRevision,
 )
 from backend.lorebook.lorebookRows import (
-    normalize_lorebook_category,
-    row_to_lorebook_entry,
-    sanitize_lorebook_aliases,
-    sanitize_lorebook_metadata,
+    normalizeLorebookCategory,
+    rowToLorebookEntry,
+    sanitizeLorebookAliases,
+    sanitizeLorebookMetadata,
 )
-from backend.lorebook.timeline import normalize_timeline_description
+from backend.lorebook.timeline import normalizeTimelineDescription
 from backend.stories.storyQueries import getChapter, requireStory
 
 
-def request_updates(payload: BaseModel, reject_null: bool = False) -> dict[str, Any]:
+def requestUpdates(payload: BaseModel, reject_null: bool = False) -> dict[str, Any]:
     if hasattr(payload, "model_dump"):
         updates = payload.model_dump(exclude_unset=True)
     else:
@@ -50,21 +50,21 @@ router = APIRouter()
 
 
 @router.get("/api/stories/{story_id}/lorebook")
-def list_lorebook_entries(story_id: str) -> dict[str, Any]:
-    with get_db() as conn:
+def listLorebookEntries(story_id: str) -> dict[str, Any]:
+    with getDb() as conn:
         story = requireStory(conn, story_id)
         rows = listEntries(conn, story_id)
-    return {"entries": [row_to_lorebook_entry(row) for row in rows]}
+    return {"entries": [rowToLorebookEntry(row) for row in rows]}
 
 
 @router.post("/api/stories/{story_id}/lorebook")
-def create_lorebook_entry(story_id: str, payload: LorebookEntryRequest) -> dict[str, Any]:
-    now = utc_now()
+def createLorebookEntry(story_id: str, payload: LorebookEntryRequest) -> dict[str, Any]:
+    now = utcNow()
     entry_id = str(uuid.uuid4())
-    category = normalize_lorebook_category(payload.category)
-    metadata = sanitize_lorebook_metadata(category, payload.metadata)
+    category = normalizeLorebookCategory(payload.category)
+    metadata = sanitizeLorebookMetadata(category, payload.metadata)
     entryName = payload.name.strip()
-    with get_db() as conn:
+    with getDb() as conn:
         story = requireStory(conn, story_id)
         existingSummary = None
         if category == "synopsis" and metadata.get("chapter_id"):
@@ -72,7 +72,7 @@ def create_lorebook_entry(story_id: str, payload: LorebookEntryRequest) -> dict[
             if not chapter:
                 raise HTTPException(status_code=422, detail="The summary chapter was not found.")
             entryName = str(chapter["title"])
-            existingSummary = find_enabled_chapter_summary(
+            existingSummary = findEnabledChapterSummary(
                 conn,
                 story_id,
                 str(chapter["id"]),
@@ -93,7 +93,7 @@ def create_lorebook_entry(story_id: str, payload: LorebookEntryRequest) -> dict[
                 ),
             )
             row = getEntry(conn, entry_id)
-            return {"entry": row_to_lorebook_entry(row)}
+            return {"entry": rowToLorebookEntry(row)}
 
         insertEntry(
             conn,
@@ -103,11 +103,11 @@ def create_lorebook_entry(story_id: str, payload: LorebookEntryRequest) -> dict[
                 entryName,
                 category,
                 (
-                    normalize_timeline_description(payload.description)
+                    normalizeTimelineDescription(payload.description)
                     if category == "timeline"
                     else payload.description
                 ),
-                json.dumps(sanitize_lorebook_aliases(category, payload.aliases, entryName)),
+                json.dumps(sanitizeLorebookAliases(category, payload.aliases, entryName)),
                 json.dumps(payload.tags),
                 json.dumps(metadata),
                 int(payload.disabled),
@@ -116,26 +116,26 @@ def create_lorebook_entry(story_id: str, payload: LorebookEntryRequest) -> dict[
             ),
         )
         row = getEntry(conn, entry_id)
-    return {"entry": row_to_lorebook_entry(row)}
+    return {"entry": rowToLorebookEntry(row)}
 
 
 @router.patch("/api/stories/{story_id}/lorebook/{entry_id}")
-def update_lorebook_entry(
+def updateLorebookEntry(
     story_id: str, entry_id: str, payload: LorebookEntryRequest
 ) -> dict[str, Any]:
-    now = utc_now()
-    category = normalize_lorebook_category(payload.category)
+    now = utcNow()
+    category = normalizeLorebookCategory(payload.category)
     baseRevision = payload.revision
-    with get_db() as conn:
+    with getDb() as conn:
         entry = getStoryEntry(conn, story_id, entry_id)
         if not entry:
             raise HTTPException(status_code=404, detail="Lorebook entry not found.")
-        metadata = sanitize_lorebook_metadata(category, payload.metadata)
+        metadata = sanitizeLorebookMetadata(category, payload.metadata)
         entryName = payload.name.strip()
         if category == "synopsis":
             chapterId = str(metadata.get("chapter_id") or "").strip()
-            if not chapterId and normalize_lorebook_category(entry["category"]) == "synopsis":
-                chapterId = lorebook_summary_chapter_id(entry)
+            if not chapterId and normalizeLorebookCategory(entry["category"]) == "synopsis":
+                chapterId = lorebookSummaryChapterId(entry)
                 metadata = {"chapter_id": chapterId} if chapterId else {}
             if chapterId:
                 chapter = getChapter(conn, story_id, chapterId)
@@ -148,11 +148,11 @@ def update_lorebook_entry(
                 entryName,
                 category,
                 (
-                    normalize_timeline_description(payload.description)
+                    normalizeTimelineDescription(payload.description)
                     if category == "timeline"
                     else payload.description
                 ),
-                json.dumps(sanitize_lorebook_aliases(category, payload.aliases, entryName)),
+                json.dumps(sanitizeLorebookAliases(category, payload.aliases, entryName)),
                 json.dumps(payload.tags),
                 json.dumps(metadata),
                 int(payload.disabled),
@@ -170,16 +170,16 @@ def update_lorebook_entry(
                 detail={
                     "code": "lorebook_revision_conflict",
                     "message": "Lorebook entry changed on the server.",
-                    "entry": row_to_lorebook_entry(current),
+                    "entry": rowToLorebookEntry(current),
                 },
             )
         row = getEntry(conn, entry_id)
-    return {"entry": row_to_lorebook_entry(row)}
+    return {"entry": rowToLorebookEntry(row)}
 
 
 @router.delete("/api/stories/{story_id}/lorebook/{entry_id}")
-def delete_lorebook_entry(story_id: str, entry_id: str) -> dict[str, Any]:
-    with get_db() as conn:
+def deleteLorebookEntry(story_id: str, entry_id: str) -> dict[str, Any]:
+    with getDb() as conn:
         result = deleteStoryEntry(conn, story_id, entry_id)
     if result.rowcount == 0:
         raise HTTPException(status_code=404, detail="Lorebook entry not found.")

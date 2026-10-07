@@ -93,18 +93,18 @@ KIND_LIMITS = {
 }
 
 
-def attachments_dir() -> Path:
+def attachmentsDir() -> Path:
     directory = paths.DATA_DIR / "attachments"
     directory.mkdir(parents=True, exist_ok=True)
     return directory
 
 
-def file_extension(filename: str) -> str:
+def fileExtension(filename: str) -> str:
     return Path(filename or "").suffix.lower()
 
 
-def classify_upload(filename: str) -> tuple[str, str]:
-    extension = file_extension(filename)
+def classifyUpload(filename: str) -> tuple[str, str]:
+    extension = fileExtension(filename)
 
     if extension in IMAGE_TYPES:
         return "image", IMAGE_TYPES[extension]
@@ -119,19 +119,19 @@ def classify_upload(filename: str) -> tuple[str, str]:
     )
 
 
-def readable_size(byteCount: int) -> str:
+def readableSize(byteCount: int) -> str:
     if byteCount >= 1024 * 1024:
         megabytes = f"{byteCount / (1024 * 1024):.1f}".removesuffix(".0")
         return f"{megabytes}MB"
     return f"{max(1, byteCount // 1024)}KB"
 
 
-def safe_filename(filename: str) -> str:
+def safeFilename(filename: str) -> str:
     cleaned = Path(filename or "file").name.strip()
     return cleaned[:180] or "file"
 
 
-def content_disposition(filename: str, *, inline: bool = False) -> str:
+def contentDisposition(filename: str, *, inline: bool = False) -> str:
     normalized = unicodedata.normalize("NFKD", filename)
     asciiName = "".join(
         character
@@ -149,7 +149,7 @@ def content_disposition(filename: str, *, inline: bool = False) -> str:
     )
 
 
-def read_attachment_bytes(row: sqlite3.Row) -> bytes:
+def readAttachmentBytes(row: sqlite3.Row) -> bytes:
     path = Path(row["stored_path"])
     try:
         return path.read_bytes()

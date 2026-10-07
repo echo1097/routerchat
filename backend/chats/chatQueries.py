@@ -5,7 +5,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
-from backend.core.database import message_order_clause
+from backend.core.database import messageOrderClause
 
 
 def getChat(conn: sqlite3.Connection, chatId: str) -> sqlite3.Row | None:
@@ -154,7 +154,7 @@ def getFirstUserMessageForTitle(conn: sqlite3.Connection, chatId: str) -> sqlite
         f"""
         SELECT content FROM messages
         WHERE chat_id = ? AND role = 'user'
-        ORDER BY {message_order_clause()}
+        ORDER BY {messageOrderClause()}
         LIMIT 1
         """,
         (chatId,),
@@ -163,7 +163,7 @@ def getFirstUserMessageForTitle(conn: sqlite3.Connection, chatId: str) -> sqlite
 
 def listMessages(conn: sqlite3.Connection, chatId: str) -> list[sqlite3.Row]:
     return conn.execute(
-        f"SELECT * FROM messages WHERE chat_id = ? ORDER BY {message_order_clause()}",
+        f"SELECT * FROM messages WHERE chat_id = ? ORDER BY {messageOrderClause()}",
         (chatId,),
     ).fetchall()
 

@@ -5,32 +5,32 @@ import uuid
 from contextlib import aclosing
 from typing import Any, AsyncIterator
 
-from backend.core.database import get_db
-from backend.core.utils import display_model_name, utc_now
+from backend.core.database import getDb
+from backend.core.utils import displayModelName, utcNow
 from backend.lorebook.chapterSummaries import (
-    lorebook_summary_chapter_id,
-    normalize_required_summary_update,
+    lorebookSummaryChapterId,
+    normalizeRequiredSummaryUpdate,
 )
-from backend.lorebook.lorebookHistory import lorebook_run_history_actions
+from backend.lorebook.lorebookHistory import lorebookRunHistoryActions
 from backend.lorebook.lorebookQueries import insertUpdateRun, listEntries, listEntriesByUpdated
 from backend.lorebook.lorebookRows import (
-    json_list,
-    lorebook_model_for,
-    normalize_lorebook_category,
-    row_to_lorebook_entry,
-    sanitize_lorebook_aliases,
+    jsonList,
+    lorebookModelFor,
+    normalizeLorebookCategory,
+    rowToLorebookEntry,
+    sanitizeLorebookAliases,
 )
 from backend.lorebook.lorebookStream import LorebookStream
 from backend.lorebook.lorebookUsage import LorebookUsage
-from backend.lorebook.parseLorebook import parse_lorebook_json
-from backend.lorebook.targetedUpdates import apply_lorebook_updates
+from backend.lorebook.parseLorebook import parseLorebookJson
+from backend.lorebook.targetedUpdates import applyLorebookUpdates
 from backend.lorebook.updateSchema import (
     LOREBOOK_UPDATE_SYSTEM_PROMPT,
-    lorebook_update_response_format,
+    lorebookUpdateResponseFormat,
 )
 from backend.providers.base import ChatOptions
 from backend.stories.storyProvider import storyProvider
-from backend.stories.storyRows import insert_chapter_history_entry, row_to_story
+from backend.stories.storyRows import insertChapterHistoryEntry, rowToStory
 from backend.stories.storyQueries import getChapter, getStory
 
 logger = logging.getLogger("uvicorn.error")
@@ -39,7 +39,7 @@ logger = logging.getLogger("uvicorn.error")
 #used to be one blocking post, now it streams so write mode can show the thinking while it works.
 #yields {"type": "reasoning"} chunks as they land, one {"type": "content"} the moment json generation
 #starts, and exactly one {"type": "result"} at the end
-async def run_lorebook_update(
+async def runLorebookUpdate(
     story_id: str,
     chapter_id: str,
     source_text: str,
@@ -56,7 +56,7 @@ async def run_lorebook_update(
         }
         return
 
-    with get_db() as conn:
+    with getDb() as conn:
         story = getStory(conn, story_id)
         chapter = getChapter(conn, story_id, chapter_id)
         lorebook = listEntriesByUpdated(conn, story_id)
@@ -66,21 +66,21 @@ async def run_lorebook_update(
             "entryId": row["id"],
             "entryRevision": row["revision"],
             "name": row["name"],
-            "category": normalize_lorebook_category(row["category"]),
+            "category": normalizeLorebookCategory(row["category"]),
             "description": row["description"] or "",
-            "aliases": sanitize_lorebook_aliases(
-                normalize_lorebook_category(row["category"]),
-                json_list(row["aliases_json"]),
+            "aliases": sanitizeLorebookAliases(
+                normalizeLorebookCategory(row["category"]),
+                jsonList(row["aliases_json"]),
                 row["name"],
             ),
-            "tags": json_list(row["tags_json"]),
-            "chapterId": lorebook_summary_chapter_id(row) or None,
+            "tags": jsonList(row["tags_json"]),
+            "chapterId": lorebookSummaryChapterId(row) or None,
         }
         for row in lorebook
         if not bool(row["disabled"])
     ]
     prompt = {
-        "story": row_to_story(story),
+        "story": rowToStory(story),
         "chapter": {"id": chapter["id"], "title": chapter["title"]},
         "existing_lorebook": current_lore,
         "new_prose": source_text,
@@ -91,7 +91,7 @@ async def run_lorebook_update(
     ]
     responseFormat = None
     if provider.supportsStructuredOutput(model):
-        responseFormat = lorebook_update_response_format()
+        responseFormat = lorebookUpdateResponseFormat()
 
     request = provider.buildRequest(
         messages,
@@ -129,21 +129,21 @@ async def run_lorebook_update(
         elif not lorebookStream.receivedDone and not error_text:
             error_text = "The lorebook update ended before the provider completed the stream."
         elif not error_text:
-            parsed = parse_lorebook_json(raw_output)
+            parsed = parseLorebookJson(raw_output)
             updates = parsed.get("updates") if isinstance(parsed, dict) else []
             if not isinstance(updates, list):
                 updates = []
-            updates = normalize_required_summary_update(updates, chapter, lorebook)
-            with get_db() as conn:
-                applyResult = apply_lorebook_updates(
-                    conn, story_id, updates, utc_now()
+            updates = normalizeRequiredSummaryUpdate(updates, chapter, lorebook)
+            with getDb() as conn:
+                applyResult = applyLorebookUpdates(
+                    conn, story_id, updates, utcNow()
                 )
                 applied = applyResult["applied"]
                 skipped = applyResult["skipped"]
     except Exception as exc:  # noqa: BLE001
         error_text = str(exc)
 
-    with get_db() as conn:
+    with getDb() as conn:
         insertUpdateRun(
             conn,
             (
@@ -157,7 +157,7 @@ async def run_lorebook_update(
                 json.dumps(skipped),
                 usageRun.usage.get("cost"),
                 error_text,
-                utc_now(),
+                utcNow(),
             ),
         )
 
@@ -183,7 +183,7 @@ async def run_lorebook_update(
 
 
 #the manual and streaming lorebook endpoints both need the same history rows and the same fresh entry list
-def finalize_lorebook_update(
+def finalizeLorebookUpdate(
     story_id: str,
     chapter_id: str,
     story: sqlite3.Row,
@@ -192,23 +192,23 @@ def finalize_lorebook_update(
 ) -> dict[str, Any]:
     applied = result.get("applied") or []
     skipped = result.get("skipped") or []
-    actions = lorebook_run_history_actions(
-        display_model_name(lorebook_model_for(story)), applied, duration_ms, result.get("cost"), skipped
+    actions = lorebookRunHistoryActions(
+        displayModelName(lorebookModelFor(story)), applied, duration_ms, result.get("cost"), skipped
     )
     history_run_id = str(uuid.uuid4())
     history_entries: list[dict[str, Any]] = []
 
-    with get_db() as conn:
+    with getDb() as conn:
         for action in actions:
             history_entries.append(
-                insert_chapter_history_entry(
+                insertChapterHistoryEntry(
                     conn,
                     story_id=story_id,
                     chapter_id=chapter_id,
                     run_id=history_run_id,
                     label=action["label"],
                     detail=action.get("detail") or "",
-                    now=utc_now(),
+                    now=utcNow(),
                     kind=action["kind"],
                     words_added=action["words_added"],
                     words_removed=action["words_removed"],
@@ -223,6 +223,6 @@ def finalize_lorebook_update(
         "error": result.get("error"),
         "skipped": skipped,
         "skipped_run": bool(result.get("skipped_run")),
-        "entries": [row_to_lorebook_entry(row) for row in rows],
+        "entries": [rowToLorebookEntry(row) for row in rows],
         "history": history_entries,
     }

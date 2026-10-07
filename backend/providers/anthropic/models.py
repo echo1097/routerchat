@@ -6,9 +6,9 @@ from typing import Any
 import httpx
 from fastapi import HTTPException
 
-from backend.core.appSettings import read_app_setting
-from backend.core.database import get_db
-from backend.core.utils import utc_now
+from backend.core.appSettings import readAppSetting
+from backend.core.database import getDb
+from backend.core.utils import utcNow
 from backend.providers.anthropic.client import (
     ANTHROPIC_BASE_URL,
     ANTHROPIC_LARGE_CONTEXT_TOKENS,
@@ -134,7 +134,7 @@ async def fetchModels(apiKey: str) -> list[dict[str, Any]]:
 
 
 def cachedModels() -> list[dict[str, Any]]:
-    with get_db() as conn:
+    with getDb() as conn:
         row = conn.execute(
             "SELECT payload_json FROM models_cache WHERE id = ?", (CACHE_ID,)
         ).fetchone()
@@ -144,7 +144,7 @@ def cachedModels() -> list[dict[str, Any]]:
 
 
 def cacheModels(models: list[dict[str, Any]]) -> None:
-    with get_db() as conn:
+    with getDb() as conn:
         conn.execute(
             """
             INSERT INTO models_cache (id, payload_json, fetched_at)
@@ -153,7 +153,7 @@ def cacheModels(models: list[dict[str, Any]]) -> None:
               payload_json = excluded.payload_json,
               fetched_at = excluded.fetched_at
             """,
-            (CACHE_ID, json.dumps(models), utc_now()),
+            (CACHE_ID, json.dumps(models), utcNow()),
         )
 
 
@@ -162,7 +162,7 @@ def defaultModelId() -> str:
     if not ids:
         return FALLBACK_MODEL_ID
 
-    savedDefault = read_app_setting(DEFAULT_MODEL_SETTING)
+    savedDefault = readAppSetting(DEFAULT_MODEL_SETTING)
     if isinstance(savedDefault, str) and savedDefault in ids:
         return savedDefault
 

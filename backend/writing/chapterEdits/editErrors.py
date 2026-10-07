@@ -33,7 +33,7 @@ REPAIRABLE_EDIT_CODES = {
 }
 
 
-def repairable_error_event(code: str, message: str, is_repair: bool = False) -> dict[str, Any]:
+def repairableErrorEvent(code: str, message: str, is_repair: bool = False) -> dict[str, Any]:
     return {
         "code": code,
         "message": message,

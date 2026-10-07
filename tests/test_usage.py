@@ -22,7 +22,7 @@ class UsageTest(unittest.TestCase):
         self.dbPath = Path(self.tempDir.name) / "routerchat.sqlite3"
         self.usagePath = Path(self.tempDir.name) / "usage.sqlite3"
         with patch.object(paths, "DATA_DIR", Path(self.tempDir.name)), patch.object(paths, "DB_PATH", self.dbPath):
-            main.init_db()
+            main.initDb()
         self.conn = sqlite3.connect(self.dbPath)
         self.conn.row_factory = sqlite3.Row
         self.usageConn = sqlite3.connect(self.usagePath)
@@ -300,7 +300,7 @@ class UsageTest(unittest.TestCase):
         self.migrateRows()
         app = FastAPI()
         app.include_router(usageRoutes.router)
-        with patch.object(usageRoutes, "getUsageDb", self.openUsageDb), patch.object(usageRoutes, "read_app_setting", lambda key: None), \
+        with patch.object(usageRoutes, "getUsageDb", self.openUsageDb), patch.object(usageRoutes, "readAppSetting", lambda key: None), \
              TestClient(app) as client, patch("httpx.AsyncClient", side_effect=AssertionError("Provider call forbidden")):
             self.assertEqual(client.get("/api/usage?offsetMinutes=420").status_code, 200)
             self.assertEqual(client.get("/api/usage?offsetMinutes=900").status_code, 422)
@@ -331,7 +331,7 @@ class UsageTest(unittest.TestCase):
         app = FastAPI()
         app.include_router(usageRoutes.router)
         with patch.object(usageRoutes, "getUsageDb", self.openUsageDb), \
-             patch.object(usageRoutes, "read_app_setting", lambda key: [{"id": "openai/whisper-1", "name": "Whisper"}]), \
+             patch.object(usageRoutes, "readAppSetting", lambda key: [{"id": "openai/whisper-1", "name": "Whisper"}]), \
              TestClient(app) as client, patch("httpx.AsyncClient", side_effect=AssertionError("Provider call forbidden")):
             result = client.get("/api/usage").json()
         self.assertEqual(result["lifetimeModels"][0]["name"], "Whisper")

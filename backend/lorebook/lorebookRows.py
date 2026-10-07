@@ -13,7 +13,7 @@ LOREBOOK_CATEGORIES = {
 }
 
 
-def json_list(value: str) -> list[Any]:
+def jsonList(value: str) -> list[Any]:
     try:
         parsed = json.loads(value or "[]")
     except json.JSONDecodeError:
@@ -21,7 +21,7 @@ def json_list(value: str) -> list[Any]:
     return parsed if isinstance(parsed, list) else []
 
 
-def json_dict(value: str) -> dict[str, Any]:
+def jsonDict(value: str) -> dict[str, Any]:
     try:
         parsed = json.loads(value or "{}")
     except json.JSONDecodeError:
@@ -29,7 +29,7 @@ def json_dict(value: str) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {}
 
 
-def lorebook_model_for(story: Any) -> str:
+def lorebookModelFor(story: Any) -> str:
     #blank means the author left it on "Same as global", so the story's own model keeps doing the lorebook work
     try:
         chosen = str(story["lorebook_model"] or "").strip()
@@ -38,7 +38,7 @@ def lorebook_model_for(story: Any) -> str:
     return chosen or story["model"]
 
 
-def normalize_lorebook_category(category: str | None) -> str:
+def normalizeLorebookCategory(category: str | None) -> str:
     value = str(category or "note").strip().lower()
     if value in {"characters", "character"}:
         return "character"
@@ -53,7 +53,7 @@ def normalize_lorebook_category(category: str | None) -> str:
     return value if value in LOREBOOK_CATEGORIES else "note"
 
 
-def sanitize_lorebook_aliases(category: str, aliases: Any, fallback_name: str = "") -> list[Any]:
+def sanitizeLorebookAliases(category: str, aliases: Any, fallback_name: str = "") -> list[Any]:
     if category in {"note", "synopsis"}:
         return []
     if isinstance(aliases, list):
@@ -61,7 +61,7 @@ def sanitize_lorebook_aliases(category: str, aliases: Any, fallback_name: str = 
     return [fallback_name] if fallback_name else []
 
 
-def lorebook_entry_snapshot(
+def lorebookEntrySnapshot(
     category: str,
     description: Any,
     aliases: Any,
@@ -78,17 +78,17 @@ def lorebook_entry_snapshot(
     return "\n".join(lines)
 
 
-def lorebook_row_snapshot(row: sqlite3.Row) -> str:
-    return lorebook_entry_snapshot(
-        normalize_lorebook_category(row["category"]),
+def lorebookRowSnapshot(row: sqlite3.Row) -> str:
+    return lorebookEntrySnapshot(
+        normalizeLorebookCategory(row["category"]),
         row["description"],
-        json_list(row["aliases_json"]),
-        json_list(row["tags_json"]),
-        json_dict(row["metadata_json"]),
+        jsonList(row["aliases_json"]),
+        jsonList(row["tags_json"]),
+        jsonDict(row["metadata_json"]),
     )
 
 
-def sanitize_lorebook_metadata(category: str, metadata: Any) -> dict[str, Any]:
+def sanitizeLorebookMetadata(category: str, metadata: Any) -> dict[str, Any]:
     if not isinstance(metadata, dict):
         return {}
     if category == "character":
@@ -102,17 +102,17 @@ def sanitize_lorebook_metadata(category: str, metadata: Any) -> dict[str, Any]:
     return metadata
 
 
-def row_to_lorebook_entry(row: sqlite3.Row) -> dict[str, Any]:
-    category = normalize_lorebook_category(row["category"])
+def rowToLorebookEntry(row: sqlite3.Row) -> dict[str, Any]:
+    category = normalizeLorebookCategory(row["category"])
     return {
         "id": row["id"],
         "story_id": row["story_id"],
         "name": row["name"],
         "category": category,
         "description": row["description"],
-        "aliases": sanitize_lorebook_aliases(category, json_list(row["aliases_json"]), row["name"]),
-        "tags": json_list(row["tags_json"]),
-        "metadata": sanitize_lorebook_metadata(category, json_dict(row["metadata_json"])),
+        "aliases": sanitizeLorebookAliases(category, jsonList(row["aliases_json"]), row["name"]),
+        "tags": jsonList(row["tags_json"]),
+        "metadata": sanitizeLorebookMetadata(category, jsonDict(row["metadata_json"])),
         "revision": row["revision"],
         "disabled": bool(row["disabled"]),
         "created_at": row["created_at"],
@@ -120,7 +120,7 @@ def row_to_lorebook_entry(row: sqlite3.Row) -> dict[str, Any]:
     }
 
 
-def lorebook_context_line(row: sqlite3.Row) -> str:
+def lorebookContextLine(row: sqlite3.Row) -> str:
     #indent the wrapped lines, otherwise a 20 bullet timeline reads like 20 separate entries
     description = str(row["description"] or "").replace("\n", "\n  ")
     return f"- {row['name']} ({row['category']}): {description}"

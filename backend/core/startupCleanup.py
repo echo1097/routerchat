@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 from backend.attachments.attachmentCleanup import (
-    delete_attachments_for_story,
-    delete_orphaned_attachments,
+    deleteAttachmentsForStory,
+    deleteOrphanedAttachments,
 )
-from backend.core.database import get_db
-from backend.core.utils import utc_now
+from backend.core.database import getDb
+from backend.core.utils import utcNow
 
 
-def delete_temporary_items() -> None:
-    with get_db() as conn:
+def deleteTemporaryItems() -> None:
+    with getDb() as conn:
         conn.execute(
             """
             DELETE FROM messages
@@ -17,13 +17,13 @@ def delete_temporary_items() -> None:
             """
         )
         conn.execute("DELETE FROM chats WHERE temporary = 1")
-        delete_orphaned_attachments(conn)
+        deleteOrphanedAttachments(conn)
         temporaryStoryIds = [
             row["id"]
             for row in conn.execute("SELECT id FROM stories WHERE temporary = 1").fetchall()
         ]
         for storyId in temporaryStoryIds:
-            delete_attachments_for_story(conn, storyId)
+            deleteAttachmentsForStory(conn, storyId)
             conn.execute("DELETE FROM brainstorm_generations WHERE story_id = ?", (storyId,))
             conn.execute("DELETE FROM brainstorm_edges WHERE story_id = ?", (storyId,))
             conn.execute("DELETE FROM brainstorm_nodes WHERE story_id = ?", (storyId,))
@@ -35,13 +35,13 @@ def delete_temporary_items() -> None:
             conn.execute("DELETE FROM stories WHERE id = ?", (storyId,))
 
 
-def reset_stale_brainstorm_generations() -> None:
-    with get_db() as conn:
+def resetStaleBrainstormGenerations() -> None:
+    with getDb() as conn:
         conn.execute(
             """
             UPDATE brainstorm_nodes
             SET status = 'failed', updated_at = ?
             WHERE status = 'generating'
             """,
-            (utc_now(),),
+            (utcNow(),),
         )

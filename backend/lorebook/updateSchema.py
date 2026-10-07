@@ -26,7 +26,7 @@ LOREBOOK_UPDATE_SYSTEM_PROMPT = (
 )
 
 
-def lorebook_edit_operation_schema() -> dict[str, Any]:
+def lorebookEditOperationSchema() -> dict[str, Any]:
     return {
         "type": "object",
         "oneOf": [
@@ -79,7 +79,7 @@ def lorebook_edit_operation_schema() -> dict[str, Any]:
     }
 
 
-def lorebook_update_response_format() -> dict[str, Any]:
+def lorebookUpdateResponseFormat() -> dict[str, Any]:
     createUpdate = {
         "type": "object",
         "additionalProperties": False,
@@ -110,7 +110,7 @@ def lorebook_update_response_format() -> dict[str, Any]:
             "operations": {
                 "type": "array",
                 "minItems": 1,
-                "items": lorebook_edit_operation_schema(),
+                "items": lorebookEditOperationSchema(),
             },
         },
         "required": ["action", "entryId", "entryRevision", "operations"],

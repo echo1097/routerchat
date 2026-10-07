@@ -4,16 +4,16 @@ from typing import Any
 
 from backend.lorebook.lorebookRows import (
     LOREBOOK_CATEGORIES,
-    json_dict,
-    json_list,
-    normalize_lorebook_category,
-    sanitize_lorebook_aliases,
-    sanitize_lorebook_metadata,
+    jsonDict,
+    jsonList,
+    normalizeLorebookCategory,
+    sanitizeLorebookAliases,
+    sanitizeLorebookMetadata,
 )
-from backend.lorebook.timeline import normalize_timeline_description
+from backend.lorebook.timeline import normalizeTimelineDescription
 
 
-def skipped_lorebook_update(
+def skippedLorebookUpdate(
     index: int,
     code: str,
     message: str,
@@ -31,7 +31,7 @@ def skipped_lorebook_update(
     return item
 
 
-def append_lorebook_text(description: str, new_text: str, category: str) -> str:
+def appendLorebookText(description: str, new_text: str, category: str) -> str:
     addition = str(new_text or "").strip()
     if not addition:
         raise ValueError("appendText newText cannot be empty")
@@ -41,23 +41,23 @@ def append_lorebook_text(description: str, new_text: str, category: str) -> str:
     return description.rstrip() + separator + addition
 
 
-def apply_lorebook_edit_operations(
+def applyLorebookEditOperations(
     entry: sqlite3.Row,
     operations: Any,
     update_index: int,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], list[str]]:
     nextEntry = {
         "name": str(entry["name"]),
-        "category": normalize_lorebook_category(entry["category"]),
+        "category": normalizeLorebookCategory(entry["category"]),
         "description": str(entry["description"] or ""),
-        "aliases": json_list(entry["aliases_json"]),
-        "tags": json_list(entry["tags_json"]),
-        "metadata": json_dict(entry["metadata_json"]),
+        "aliases": jsonList(entry["aliases_json"]),
+        "tags": jsonList(entry["tags_json"]),
+        "metadata": jsonDict(entry["metadata_json"]),
     }
     skipped: list[dict[str, Any]] = []
     appliedOperations: list[str] = []
     if not isinstance(operations, list) or not operations:
-        return nextEntry, [skipped_lorebook_update(
+        return nextEntry, [skippedLorebookUpdate(
             update_index,
             "lorebook_edit_invalid_operations",
             "edit operations must contain at least one operation",
@@ -101,7 +101,7 @@ def apply_lorebook_edit_operations(
 
     for operationIndex, operation in enumerate(operations):
         if not isinstance(operation, dict):
-            skipped.append(skipped_lorebook_update(
+            skipped.append(skippedLorebookUpdate(
                 update_index,
                 "lorebook_edit_invalid_operation",
                 "operation must be an object",
@@ -120,7 +120,7 @@ def apply_lorebook_edit_operations(
             elif operationType == "appendText":
                 if operation.get("field") != "description":
                     raise ValueError("appendText only supports the description field")
-                nextEntry["description"] = append_lorebook_text(
+                nextEntry["description"] = appendLorebookText(
                     nextEntry["description"],
                     str(operation.get("newText") or ""),
                     nextEntry["category"],
@@ -133,12 +133,12 @@ def apply_lorebook_edit_operations(
                         raise ValueError("entry name cannot be empty")
                     nextEntry["name"] = value
                 elif field == "category":
-                    normalizedCategory = normalize_lorebook_category(value)
+                    normalizedCategory = normalizeLorebookCategory(value)
                     if value.strip().lower() not in LOREBOOK_CATEGORIES:
                         raise ValueError("setField category is not supported")
                     if (
                         normalizedCategory in {"synopsis", "timeline"}
-                        and normalizedCategory != normalize_lorebook_category(entry["category"])
+                        and normalizedCategory != normalizeLorebookCategory(entry["category"])
                     ):
                         raise ValueError("setField cannot turn a normal entry into a synopsis or Timeline")
                     nextEntry["category"] = normalizedCategory
@@ -172,7 +172,7 @@ def apply_lorebook_edit_operations(
             else:
                 raise ValueError(f"unsupported lorebook edit operation: {operationType or 'missing'}")
         except ValueError as exc:
-            skipped.append(skipped_lorebook_update(
+            skipped.append(skippedLorebookUpdate(
                 update_index,
                 "lorebook_edit_invalid_operation",
                 str(exc),
@@ -183,13 +183,13 @@ def apply_lorebook_edit_operations(
 
         appliedOperations.append(operationType)
 
-    nextEntry["aliases"] = sanitize_lorebook_aliases(
+    nextEntry["aliases"] = sanitizeLorebookAliases(
         nextEntry["category"], nextEntry["aliases"], nextEntry["name"]
     )
-    nextEntry["metadata"] = sanitize_lorebook_metadata(
+    nextEntry["metadata"] = sanitizeLorebookMetadata(
         nextEntry["category"], nextEntry["metadata"]
     )
     if nextEntry["category"] == "timeline":
         nextEntry["name"] = "Timeline"
-        nextEntry["description"] = normalize_timeline_description(nextEntry["description"])
+        nextEntry["description"] = normalizeTimelineDescription(nextEntry["description"])
     return nextEntry, skipped, appliedOperations

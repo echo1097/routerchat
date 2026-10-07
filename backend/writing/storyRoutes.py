@@ -3,11 +3,11 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from backend.attachments.attachmentCleanup import delete_attachments_for_story
-from backend.core.database import get_db
-from backend.core.utils import utc_now
+from backend.attachments.attachmentCleanup import deleteAttachmentsForStory
+from backend.core.database import getDb
+from backend.core.utils import utcNow
 from backend.providers.registry import getActiveProvider
-from backend.writing.storyBundle import get_story_bundle
+from backend.writing.storyBundle import getStoryBundle
 from backend.writing.storyModels import (
     StoryCreateRequest,
     StoryPatchRequest,
@@ -26,29 +26,29 @@ from backend.stories.storyQueries import (
     updateStoryColumns,
 )
 from backend.stories.storyRows import (
-    request_updates,
-    row_to_chapter,
-    row_to_story,
-    word_count,
+    requestUpdates,
+    rowToChapter,
+    rowToStory,
+    wordCount,
 )
 
 router = APIRouter()
 
 
 @router.get("/api/stories")
-def list_stories() -> dict[str, Any]:
-    with get_db() as conn:
+def listStoriesRoute() -> dict[str, Any]:
+    with getDb() as conn:
         rows = listStories(conn)
-    return {"stories": [row_to_story(row) for row in rows]}
+    return {"stories": [rowToStory(row) for row in rows]}
 
 
 @router.post("/api/stories")
-def create_story(payload: StoryCreateRequest) -> dict[str, Any]:
-    now = utc_now()
+def createStory(payload: StoryCreateRequest) -> dict[str, Any]:
+    now = utcNow()
     story_id = str(uuid.uuid4())
     provider = getActiveProvider()
     model = payload.model or provider.defaultModelId()
-    with get_db() as conn:
+    with getDb() as conn:
         insertStory(
             conn,
             (
@@ -72,14 +72,14 @@ def create_story(payload: StoryCreateRequest) -> dict[str, Any]:
             ),
         )
         row = getStory(conn, story_id)
-    return {"story": row_to_story(row)}
+    return {"story": rowToStory(row)}
 
 
 @router.post("/api/stories/with-initial-chapter")
-def create_story_with_initial_chapter(
+def createStoryWithInitialChapter(
     payload: StoryWithInitialChapterRequest,
 ) -> dict[str, Any]:
-    now = utc_now()
+    now = utcNow()
     story_id = str(uuid.uuid4())
     chapter_id = str(uuid.uuid4())
     provider = getActiveProvider()
@@ -87,7 +87,7 @@ def create_story_with_initial_chapter(
     initial_chapter = payload.initial_chapter
     content = initial_chapter.content
 
-    with get_db() as conn:
+    with getDb() as conn:
         insertStory(
             conn,
             (
@@ -117,7 +117,7 @@ def create_story_with_initial_chapter(
                 story_id,
                 initial_chapter.title.strip() or "New chapter",
                 content,
-                word_count(content),
+                wordCount(content),
                 0,
                 now,
                 now,
@@ -126,26 +126,26 @@ def create_story_with_initial_chapter(
         story = getStory(conn, story_id)
         chapter = getChapterById(conn, chapter_id)
 
-    return {"story": row_to_story(story), "chapter": row_to_chapter(chapter)}
+    return {"story": rowToStory(story), "chapter": rowToChapter(chapter)}
 
 
 @router.get("/api/stories/{story_id}/chapters/{chapter_id}/generations/{generationId}")
 def getGenerationStatus(story_id: str, chapter_id: str, generationId: str) -> dict[str, bool]:
-    with get_db() as conn:
+    with getDb() as conn:
         generationRow = getGenerationSettled(conn, story_id, chapter_id, generationId)
     return {"settled": bool(generationRow and generationRow["settled"])}
 
 
 @router.get("/api/stories/{story_id}")
-def get_story(story_id: str) -> dict[str, Any]:
-    return get_story_bundle(story_id)
+def getStoryRoute(story_id: str) -> dict[str, Any]:
+    return getStoryBundle(story_id)
 
 
 @router.patch("/api/stories/{story_id}")
-def update_story(story_id: str, payload: StoryPatchRequest) -> dict[str, Any]:
-    updates = request_updates(payload, reject_null=True)
+def updateStory(story_id: str, payload: StoryPatchRequest) -> dict[str, Any]:
+    updates = requestUpdates(payload, reject_null=True)
     if not updates:
-        return get_story_bundle(story_id)
+        return getStoryBundle(story_id)
     assignments: list[str] = []
     values: list[Any] = []
     for key, value in updates.items():
@@ -159,16 +159,16 @@ def update_story(story_id: str, payload: StoryPatchRequest) -> dict[str, Any]:
     #settings, renames and title edits are housekeeping, so they leave updated_at alone
     #and the story keeps its place in the sidebar until someone actually writes in it
     values.append(story_id)
-    with get_db() as conn:
+    with getDb() as conn:
         story = requireStory(conn, story_id)
         updateStoryColumns(conn, assignments, values)
-    return get_story_bundle(story_id)
+    return getStoryBundle(story_id)
 
 
 @router.delete("/api/stories/{story_id}")
-def delete_story(story_id: str) -> dict[str, Any]:
-    with get_db() as conn:
-        delete_attachments_for_story(conn, story_id)
+def deleteStoryRoute(story_id: str) -> dict[str, Any]:
+    with getDb() as conn:
+        deleteAttachmentsForStory(conn, story_id)
         result = deleteStory(conn, story_id)
     if result.rowcount == 0:
         raise HTTPException(status_code=404, detail="Story not found.")
@@ -176,9 +176,9 @@ def delete_story(story_id: str) -> dict[str, Any]:
 
 
 @router.post("/api/stories/{story_id}/close")
-def close_story(story_id: str) -> dict[str, Any]:
-    with get_db() as conn:
+def closeStory(story_id: str) -> dict[str, Any]:
+    with getDb() as conn:
         story = getStoryTemporary(conn, story_id)
     if not story or not bool(story["temporary"]):
         return {"ok": True}
-    return delete_story(story_id)
+    return deleteStoryRoute(story_id)

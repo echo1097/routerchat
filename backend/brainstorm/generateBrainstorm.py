@@ -29,7 +29,7 @@ from backend.core.utils import utc_now
 from backend.providers.base import ChatOptions
 from backend.providers.modelStream import ModelStream
 from backend.providers.registry import providerForRow
-from backend.writing.storyProvider import storyProvider
+from backend.stories.storyProvider import storyProvider
 from backend.usage.recordUsage import recordUsage
 
 router = APIRouter()

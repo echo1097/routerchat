@@ -19,7 +19,7 @@ from backend.lorebook.lorebookRows import (
 from backend.lorebook.timeline import normalize_timeline_description
 from backend.providers.registry import getActiveProvider, providerIdForImport
 from backend.writing.storyModels import StoryImportRequest
-from backend.writing.storyRows import (
+from backend.stories.storyRows import (
     row_to_chapter,
     row_to_chapter_history_entry,
     row_to_story,

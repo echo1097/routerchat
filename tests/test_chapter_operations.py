@@ -7,7 +7,7 @@ from backend.writing.chapterEdits.editErrors import CHAPTER_EDIT_CONFLICTING_EDI
 from backend.writing.chapterEdits.editSchema import chapter_edit_operation_schema
 from backend.writing.chapterEdits.parseEdits import parse_chapter_edit_batch, parse_chapter_operation
 from backend.writing.chapterEdits.validateEdits import validate_chapter_operation
-from backend.writing.storyRows import word_diff_counts
+from backend.stories.storyRows import word_diff_counts
 
 
 class WordDiffCountsTest(unittest.TestCase):

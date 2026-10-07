@@ -13,7 +13,7 @@ from backend.writing.storyModels import (
     StoryPatchRequest,
     StoryWithInitialChapterRequest,
 )
-from backend.writing.storyRows import (
+from backend.stories.storyRows import (
     request_updates,
     row_to_chapter,
     row_to_story,

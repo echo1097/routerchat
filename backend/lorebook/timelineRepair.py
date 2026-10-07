@@ -20,7 +20,7 @@ from backend.lorebook.parseLorebook import parse_lorebook_json
 from backend.lorebook.timeline import normalize_timeline_description
 from backend.providers.base import ChatOptions
 from backend.providers.registry import providerForRow
-from backend.writing.storyProvider import storyProvider
+from backend.stories.storyProvider import storyProvider
 
 router = APIRouter()
 

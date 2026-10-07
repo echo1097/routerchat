@@ -16,7 +16,7 @@ from backend.lorebook.lorebookRows import (
     sanitize_lorebook_metadata,
 )
 from backend.lorebook.timeline import normalize_timeline_description
-from backend.writing.storyRows import word_diff_counts
+from backend.stories.storyRows import word_diff_counts
 
 
 def apply_targeted_lorebook_update(

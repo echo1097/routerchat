@@ -28,8 +28,8 @@ from backend.lorebook.updateSchema import (
     lorebook_update_response_format,
 )
 from backend.providers.base import ChatOptions
-from backend.writing.storyProvider import storyProvider
-from backend.writing.storyRows import insert_chapter_history_entry, row_to_story
+from backend.stories.storyProvider import storyProvider
+from backend.stories.storyRows import insert_chapter_history_entry, row_to_story
 
 logger = logging.getLogger("uvicorn.error")
 

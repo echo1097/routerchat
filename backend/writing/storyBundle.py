@@ -4,7 +4,7 @@ from fastapi import HTTPException
 
 from backend.core.database import get_db
 from backend.lorebook.lorebookRows import row_to_lorebook_entry
-from backend.writing.storyRows import (
+from backend.stories.storyRows import (
     row_to_chapter,
     row_to_chapter_history_entry,
     row_to_story,

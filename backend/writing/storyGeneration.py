@@ -43,7 +43,7 @@ from backend.writing.storyMessages import (
     effective_generation_mode,
     mark_story_cache_points,
 )
-from backend.writing.storyRows import (
+from backend.stories.storyRows import (
     insert_chapter_history_entry,
     row_to_chapter,
     word_count,

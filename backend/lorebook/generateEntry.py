@@ -21,7 +21,7 @@ from backend.lorebook.lorebookUsage import LorebookUsage
 from backend.lorebook.parseLorebook import parse_lorebook_json
 from backend.providers.base import ChatOptions
 from backend.providers.registry import providerForRow
-from backend.writing.storyProvider import storyProvider
+from backend.stories.storyProvider import storyProvider
 
 GENERATE_CATEGORIES = ["character", "location", "item", "event", "note", "synopsis"]
 

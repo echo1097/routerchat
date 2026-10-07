@@ -3,7 +3,7 @@ import uuid
 
 from backend.core.database import get_db
 from backend.core.utils import utc_now
-from backend.writing.storyProvider import storyProvider
+from backend.stories.storyProvider import storyProvider
 from backend.usage.recordUsage import recordUsage
 
 

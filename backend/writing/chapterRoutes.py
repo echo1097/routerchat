@@ -15,7 +15,7 @@ from backend.lorebook.chapterSummaries import (
     delete_linked_chapter_summaries,
     rename_linked_chapter_summaries,
 )
-from backend.writing.storyProvider import storyProvider
+from backend.stories.storyProvider import storyProvider
 from backend.usage.recordUsage import recordUsage
 from backend.writing.storyGeneration import (
     ChapterStreamingResponse,
@@ -26,7 +26,7 @@ from backend.writing.storyModels import (
     ChapterCreateRequest,
     ChapterPatchRequest,
 )
-from backend.writing.storyRows import (
+from backend.stories.storyRows import (
     next_chapter_order,
     request_updates,
     row_to_chapter,

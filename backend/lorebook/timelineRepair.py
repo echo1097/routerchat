@@ -21,6 +21,7 @@ from backend.lorebook.timeline import normalize_timeline_description
 from backend.providers.base import ChatOptions
 from backend.providers.registry import providerForRow
 from backend.stories.storyProvider import storyProvider
+from backend.stories.storyQueries import requireStory
 
 router = APIRouter()
 
@@ -287,9 +288,7 @@ async def repair_story_timeline(
     provider.requireKey()
 
     with get_db() as conn:
-        story = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
-        if not story:
-            raise HTTPException(status_code=404, detail="Story not found.")
+        story = requireStory(conn, story_id)
         visibleChapters = conn.execute(
             """
             SELECT * FROM chapters

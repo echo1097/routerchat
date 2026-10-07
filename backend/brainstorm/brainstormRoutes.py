@@ -14,6 +14,7 @@ from backend.brainstorm.brainstormRows import (
 from backend.brainstorm.tidyBrainstorm import tidy_brainstorm_positions
 from backend.core.database import get_db
 from backend.core.utils import utc_now
+from backend.stories.storyQueries import requireStory
 
 
 def request_updates(payload: BaseModel, reject_null: bool = False) -> dict[str, Any]:
@@ -37,9 +38,7 @@ router = APIRouter()
 @router.get("/api/stories/{story_id}/brainstorm")
 def get_brainstorm(story_id: str) -> dict[str, Any]:
     with get_db() as conn:
-        story = conn.execute("SELECT id FROM stories WHERE id = ?", (story_id,)).fetchone()
-        if not story:
-            raise HTTPException(status_code=404, detail="Story not found.")
+        story = requireStory(conn, story_id)
         nodes = conn.execute(
             "SELECT * FROM brainstorm_nodes WHERE story_id = ? ORDER BY created_at ASC",
             (story_id,),
@@ -163,9 +162,7 @@ def update_brainstorm_node(
 @router.post("/api/stories/{story_id}/brainstorm/tidy")
 def tidy_brainstorm(story_id: str) -> dict[str, Any]:
     with get_db() as conn:
-        story = conn.execute("SELECT id FROM stories WHERE id = ?", (story_id,)).fetchone()
-        if not story:
-            raise HTTPException(status_code=404, detail="Story not found.")
+        story = requireStory(conn, story_id)
         generating = conn.execute(
             "SELECT 1 FROM brainstorm_nodes WHERE story_id = ? AND status = 'generating' LIMIT 1",
             (story_id,),
@@ -212,9 +209,7 @@ def update_brainstorm_viewport(
 ) -> dict[str, Any]:
     now = utc_now()
     with get_db() as conn:
-        story = conn.execute("SELECT id FROM stories WHERE id = ?", (story_id,)).fetchone()
-        if not story:
-            raise HTTPException(status_code=404, detail="Story not found.")
+        story = requireStory(conn, story_id)
         conn.execute(
             """
             INSERT INTO brainstorm_viewports (

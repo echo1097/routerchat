@@ -1,11 +1,12 @@
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
 
 from backend.core.database import get_db
 from backend.providers.providerRoutes import requireProvider
 from backend.writing.storyBundle import get_story_bundle
+from backend.stories.storyQueries import requireStory
 
 router = APIRouter()
 
@@ -19,9 +20,7 @@ def moveStoryToProvider(story_id: str, payload: StoryProviderRequest) -> dict[st
     provider = requireProvider(payload.id)
 
     with get_db() as conn:
-        story = conn.execute("SELECT id FROM stories WHERE id = ?", (story_id,)).fetchone()
-        if not story:
-            raise HTTPException(status_code=404, detail="Story not found.")
+        story = requireStory(conn, story_id)
 
         conn.execute(
             "UPDATE stories SET provider = ?, model = ?, lorebook_model = '' WHERE id = ?",

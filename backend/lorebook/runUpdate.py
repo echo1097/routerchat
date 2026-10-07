@@ -30,6 +30,7 @@ from backend.lorebook.updateSchema import (
 from backend.providers.base import ChatOptions
 from backend.stories.storyProvider import storyProvider
 from backend.stories.storyRows import insert_chapter_history_entry, row_to_story
+from backend.stories.storyQueries import getChapter, getStory
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -55,11 +56,8 @@ async def run_lorebook_update(
         return
 
     with get_db() as conn:
-        story = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
-        chapter = conn.execute(
-            "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
-            (chapter_id, story_id),
-        ).fetchone()
+        story = getStory(conn, story_id)
+        chapter = getChapter(conn, story_id, chapter_id)
         lorebook = conn.execute(
             "SELECT * FROM lorebook_entries WHERE story_id = ? ORDER BY updated_at DESC",
             (story_id,),

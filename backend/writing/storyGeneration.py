@@ -43,6 +43,7 @@ from backend.writing.storyMessages import (
     effective_generation_mode,
     mark_story_cache_points,
 )
+from backend.stories.storyQueries import getChapter
 from backend.stories.storyRows import (
     insert_chapter_history_entry,
     row_to_chapter,
@@ -183,10 +184,7 @@ async def stream_story_generation(
             )
 
     def revision_conflict_event(conn: sqlite3.Connection) -> dict[str, Any]:
-        currentChapter = conn.execute(
-            "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
-            (chapter_id, story_id),
-        ).fetchone()
+        currentChapter = getChapter(conn, story_id, chapter_id)
         return {
             "code": CHAPTER_REVISION_CONFLICT,
             "message": "Chapter changed while generation was running.",
@@ -298,10 +296,7 @@ async def stream_story_generation(
         with get_db() as conn:
             if (stream_completed or append_truncated or edit_stopped_early) and content:
                 conn.execute("BEGIN IMMEDIATE")
-            current = conn.execute(
-                "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
-                (chapter_id, story_id),
-            ).fetchone()
+            current = getChapter(conn, story_id, chapter_id)
             current_content = current["content"] if current else ""
 
             if (stream_completed or edit_stopped_early) and content and generation_mode == "edit" and edit_batch is not None:
@@ -336,10 +331,7 @@ async def stream_story_generation(
                             error_event = revision_conflict_event(conn)
                             error_text = CHAPTER_REVISION_CONFLICT
                         else:
-                            savedChapter = conn.execute(
-                                "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
-                                (chapter_id, story_id),
-                            ).fetchone()
+                            savedChapter = getChapter(conn, story_id, chapter_id)
                             rejected_edits = operation_result.get("rejected") or []
                             applied_count = len(operation_result["edits"])
                             #a run cut off at the token limit lost whatever it had not written yet, and that work is invisible here: it never became an edit we could reject, so truncation has to count as incomplete on its own
@@ -387,10 +379,7 @@ async def stream_story_generation(
                     ),
                 )
                 if result.rowcount == 1:
-                    savedChapter = conn.execute(
-                        "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
-                        (chapter_id, story_id),
-                    ).fetchone()
+                    savedChapter = getChapter(conn, story_id, chapter_id)
                     chapter_update_event = {
                         "chapter": row_to_chapter(savedChapter),
                         "edits": [

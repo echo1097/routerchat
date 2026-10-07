@@ -26,6 +26,7 @@ from backend.writing.storyModels import (
     ChapterCreateRequest,
     ChapterPatchRequest,
 )
+from backend.stories.storyQueries import getChapter, requireChapter, requireStory
 from backend.stories.storyRows import (
     next_chapter_order,
     request_updates,
@@ -40,9 +41,7 @@ router = APIRouter()
 @router.get("/api/stories/{story_id}/chapters")
 def list_chapters(story_id: str) -> dict[str, Any]:
     with get_db() as conn:
-        story = conn.execute("SELECT id FROM stories WHERE id = ?", (story_id,)).fetchone()
-        if not story:
-            raise HTTPException(status_code=404, detail="Story not found.")
+        story = requireStory(conn, story_id)
         rows = conn.execute(
             """
             SELECT * FROM chapters
@@ -78,9 +77,7 @@ def create_chapter(story_id: str, payload: ChapterCreateRequest) -> dict[str, An
     chapter_id = str(uuid.uuid4())
     content = payload.content
     with get_db() as conn:
-        story = conn.execute("SELECT id FROM stories WHERE id = ?", (story_id,)).fetchone()
-        if not story:
-            raise HTTPException(status_code=404, detail="Story not found.")
+        story = requireStory(conn, story_id)
         conn.execute(
             """
             INSERT INTO chapters (
@@ -115,12 +112,7 @@ def update_chapter(
         updates["title"] = str(updates["title"]).strip() or "New chapter"
     if not updates:
         with get_db() as conn:
-            chapter = conn.execute(
-                "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
-                (chapter_id, story_id),
-            ).fetchone()
-        if not chapter:
-            raise HTTPException(status_code=404, detail="Chapter not found.")
+            chapter = requireChapter(conn, story_id, chapter_id)
         return {"chapter": row_to_chapter(chapter)}
     assignments: list[str] = []
     values: list[Any] = []
@@ -132,12 +124,7 @@ def update_chapter(
     values.append(now)
     content_changed = "content" in updates
     with get_db() as conn:
-        chapter = conn.execute(
-            "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
-            (chapter_id, story_id),
-        ).fetchone()
-        if not chapter:
-            raise HTTPException(status_code=404, detail="Chapter not found.")
+        chapter = requireChapter(conn, story_id, chapter_id)
         if base_revision is None:
             values.extend([chapter_id, story_id])
             conn.execute(
@@ -159,10 +146,7 @@ def update_chapter(
                 values,
             )
             if result.rowcount == 0:
-                current = conn.execute(
-                    "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
-                    (chapter_id, story_id),
-                ).fetchone()
+                current = getChapter(conn, story_id, chapter_id)
                 raise HTTPException(
                     status_code=409,
                     detail={
@@ -180,10 +164,7 @@ def update_chapter(
             rename_linked_chapter_summaries(
                 conn, story_id, chapter_id, updates["title"], now
             )
-        row = conn.execute(
-            "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
-            (chapter_id, story_id),
-        ).fetchone()
+        row = getChapter(conn, story_id, chapter_id)
     return {"chapter": row_to_chapter(row)}
 
 
@@ -225,15 +206,8 @@ async def stream_story_chapter_generation(
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
 
     with get_db() as conn:
-        story = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
-        if not story:
-            raise HTTPException(status_code=404, detail="Story not found.")
-        chapter = conn.execute(
-            "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
-            (chapter_id, story_id),
-        ).fetchone()
-        if not chapter:
-            raise HTTPException(status_code=404, detail="Chapter not found.")
+        story = requireStory(conn, story_id)
+        chapter = requireChapter(conn, story_id, chapter_id)
         checkAttachmentLimits(conn, attachmentIds, provider, modelId=payload.model)
         base_revision = payload.chapter_revision
         if base_revision is None:

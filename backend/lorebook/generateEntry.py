@@ -22,6 +22,7 @@ from backend.lorebook.parseLorebook import parse_lorebook_json
 from backend.providers.base import ChatOptions
 from backend.providers.registry import providerForRow
 from backend.stories.storyProvider import storyProvider
+from backend.stories.storyQueries import requireStory
 
 GENERATE_CATEGORIES = ["character", "location", "item", "event", "note", "synopsis"]
 
@@ -296,9 +297,7 @@ async def generate_lorebook_entry(
         raise HTTPException(status_code=422, detail="Describe what the entry should be first.")
 
     with get_db() as conn:
-        story = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
-        if not story:
-            raise HTTPException(status_code=404, detail="Story not found.")
+        story = requireStory(conn, story_id)
         chapter = None
         if category == "synopsis":
             chapterId = str(payload.chapter_id or "").strip()

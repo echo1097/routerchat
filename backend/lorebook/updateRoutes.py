@@ -9,6 +9,7 @@ from backend.core.streamEvents import stream_event
 from backend.lorebook.lorebookModels import LorebookUpdateRequest
 from backend.lorebook.lorebookRows import lorebook_model_for
 from backend.lorebook.runUpdate import finalize_lorebook_update, run_lorebook_update
+from backend.stories.storyQueries import requireChapter, requireStory
 
 router = APIRouter()
 
@@ -18,15 +19,8 @@ async def update_lorebook_from_chapter(
     story_id: str, payload: LorebookUpdateRequest
 ) -> dict[str, Any]:
     with get_db() as conn:
-        story = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
-        if not story:
-            raise HTTPException(status_code=404, detail="Story not found.")
-        chapter = conn.execute(
-            "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
-            (payload.chapter_id, story_id),
-        ).fetchone()
-        if not chapter:
-            raise HTTPException(status_code=404, detail="Chapter not found.")
+        story = requireStory(conn, story_id)
+        chapter = requireChapter(conn, story_id, payload.chapter_id)
 
     source_text = chapter["content"] or ""
     if not source_text.strip():
@@ -89,15 +83,8 @@ async def update_lorebook_from_chapter_stream(
     story_id: str, payload: LorebookUpdateRequest
 ) -> StreamingResponse:
     with get_db() as conn:
-        story = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
-        if not story:
-            raise HTTPException(status_code=404, detail="Story not found.")
-        chapter = conn.execute(
-            "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
-            (payload.chapter_id, story_id),
-        ).fetchone()
-        if not chapter:
-            raise HTTPException(status_code=404, detail="Chapter not found.")
+        story = requireStory(conn, story_id)
+        chapter = requireChapter(conn, story_id, payload.chapter_id)
 
     sourceText = chapter["content"] or ""
     if not sourceText.strip():

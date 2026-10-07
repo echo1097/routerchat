@@ -19,6 +19,7 @@ from backend.lorebook.lorebookRows import (
 from backend.lorebook.timeline import normalize_timeline_description
 from backend.providers.registry import getActiveProvider, providerIdForImport
 from backend.writing.storyModels import StoryImportRequest
+from backend.stories.storyQueries import requireStory
 from backend.stories.storyRows import (
     row_to_chapter,
     row_to_chapter_history_entry,
@@ -32,9 +33,7 @@ router = APIRouter()
 @router.get("/api/stories/{story_id}/export")
 def export_story(story_id: str) -> dict[str, Any]:
     with get_db() as conn:
-        story = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
-        if not story:
-            raise HTTPException(status_code=404, detail="Story not found.")
+        story = requireStory(conn, story_id)
 
         chapters = conn.execute(
             """

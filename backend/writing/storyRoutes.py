@@ -13,6 +13,7 @@ from backend.writing.storyModels import (
     StoryPatchRequest,
     StoryWithInitialChapterRequest,
 )
+from backend.stories.storyQueries import getStory, requireStory
 from backend.stories.storyRows import (
     request_updates,
     row_to_chapter,
@@ -68,7 +69,7 @@ def create_story(payload: StoryCreateRequest) -> dict[str, Any]:
                 now,
             ),
         )
-        row = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
+        row = getStory(conn, story_id)
     return {"story": row_to_story(row)}
 
 
@@ -132,7 +133,7 @@ def create_story_with_initial_chapter(
                 now,
             ),
         )
-        story = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
+        story = getStory(conn, story_id)
         chapter = conn.execute(
             "SELECT * FROM chapters WHERE id = ?", (chapter_id,)
         ).fetchone()
@@ -174,9 +175,7 @@ def update_story(story_id: str, payload: StoryPatchRequest) -> dict[str, Any]:
     #and the story keeps its place in the sidebar until someone actually writes in it
     values.append(story_id)
     with get_db() as conn:
-        story = conn.execute("SELECT id FROM stories WHERE id = ?", (story_id,)).fetchone()
-        if not story:
-            raise HTTPException(status_code=404, detail="Story not found.")
+        story = requireStory(conn, story_id)
         conn.execute(f"UPDATE stories SET {', '.join(assignments)} WHERE id = ?", values)
     return get_story_bundle(story_id)
 

@@ -19,6 +19,7 @@ from backend.lorebook.lorebookRows import (
     sanitize_lorebook_metadata,
 )
 from backend.lorebook.timeline import normalize_timeline_description
+from backend.stories.storyQueries import getChapter, requireStory
 
 
 def request_updates(payload: BaseModel, reject_null: bool = False) -> dict[str, Any]:
@@ -42,9 +43,7 @@ router = APIRouter()
 @router.get("/api/stories/{story_id}/lorebook")
 def list_lorebook_entries(story_id: str) -> dict[str, Any]:
     with get_db() as conn:
-        story = conn.execute("SELECT id FROM stories WHERE id = ?", (story_id,)).fetchone()
-        if not story:
-            raise HTTPException(status_code=404, detail="Story not found.")
+        story = requireStory(conn, story_id)
         rows = conn.execute(
             """
             SELECT * FROM lorebook_entries
@@ -64,15 +63,10 @@ def create_lorebook_entry(story_id: str, payload: LorebookEntryRequest) -> dict[
     metadata = sanitize_lorebook_metadata(category, payload.metadata)
     entryName = payload.name.strip()
     with get_db() as conn:
-        story = conn.execute("SELECT id FROM stories WHERE id = ?", (story_id,)).fetchone()
-        if not story:
-            raise HTTPException(status_code=404, detail="Story not found.")
+        story = requireStory(conn, story_id)
         existingSummary = None
         if category == "synopsis" and metadata.get("chapter_id"):
-            chapter = conn.execute(
-                "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
-                (metadata["chapter_id"], story_id),
-            ).fetchone()
+            chapter = getChapter(conn, story_id, metadata["chapter_id"])
             if not chapter:
                 raise HTTPException(status_code=422, detail="The summary chapter was not found.")
             entryName = str(chapter["title"])
@@ -159,10 +153,7 @@ def update_lorebook_entry(
                 chapterId = lorebook_summary_chapter_id(entry)
                 metadata = {"chapter_id": chapterId} if chapterId else {}
             if chapterId:
-                chapter = conn.execute(
-                    "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
-                    (chapterId, story_id),
-                ).fetchone()
+                chapter = getChapter(conn, story_id, chapterId)
                 if not chapter:
                     raise HTTPException(status_code=422, detail="The summary chapter was not found.")
                 entryName = str(chapter["title"])

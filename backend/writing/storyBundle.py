@@ -1,9 +1,8 @@
 from typing import Any
 
-from fastapi import HTTPException
-
 from backend.core.database import get_db
 from backend.lorebook.lorebookRows import row_to_lorebook_entry
+from backend.stories.storyQueries import requireStory
 from backend.stories.storyRows import (
     row_to_chapter,
     row_to_chapter_history_entry,
@@ -14,9 +13,7 @@ from backend.stories.storyRows import (
 
 def get_story_bundle(story_id: str) -> dict[str, Any]:
     with get_db() as conn:
-        story = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
-        if not story:
-            raise HTTPException(status_code=404, detail="Story not found.")
+        story = requireStory(conn, story_id)
         chapters = conn.execute(
             """
             SELECT * FROM chapters

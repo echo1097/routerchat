@@ -31,6 +31,7 @@ from backend.providers.modelStream import ModelStream
 from backend.providers.registry import providerForRow
 from backend.stories.storyProvider import storyProvider
 from backend.usage.recordUsage import recordUsage
+from backend.stories.storyQueries import requireStory
 
 router = APIRouter()
 
@@ -277,9 +278,7 @@ async def generate_brainstorm(
     prompt_node_id = str(uuid.uuid4())
     prompt_edges: list[sqlite3.Row] = []
     with get_db() as conn:
-        story = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
-        if not story:
-            raise HTTPException(status_code=404, detail="Story not found.")
+        story = requireStory(conn, story_id)
         chapters = conn.execute(
             "SELECT * FROM chapters WHERE story_id = ? ORDER BY order_index ASC, created_at ASC",
             (story_id,),

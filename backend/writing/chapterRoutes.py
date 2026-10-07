@@ -15,6 +15,7 @@ from backend.lorebook.chapterSummaries import (
     delete_linked_chapter_summaries,
     rename_linked_chapter_summaries,
 )
+from backend.lorebook.lorebookQueries import listEntriesByCreated
 from backend.stories.storyProvider import storyProvider
 from backend.usage.recordUsage import recordUsage
 from backend.writing.storyGeneration import (
@@ -26,7 +27,22 @@ from backend.writing.storyModels import (
     ChapterCreateRequest,
     ChapterPatchRequest,
 )
-from backend.stories.storyQueries import getChapter, requireChapter, requireStory
+from backend.stories.storyQueries import (
+    cancelPendingGeneration,
+    deleteChapter,
+    getChapter,
+    getChapterById,
+    insertChapter,
+    insertPendingGeneration,
+    listChapterHistory,
+    listChapters,
+    requireChapter,
+    requireStory,
+    touchStory,
+    updateChapterColumns,
+    updateChapterColumnsAtRevision,
+    updateStoryWriteSettings,
+)
 from backend.stories.storyRows import (
     next_chapter_order,
     request_updates,
@@ -42,22 +58,8 @@ router = APIRouter()
 def list_chapters(story_id: str) -> dict[str, Any]:
     with get_db() as conn:
         story = requireStory(conn, story_id)
-        rows = conn.execute(
-            """
-            SELECT * FROM chapters
-            WHERE story_id = ?
-            ORDER BY order_index ASC, created_at ASC
-            """,
-            (story_id,),
-        ).fetchall()
-        history_rows = conn.execute(
-            """
-            SELECT * FROM chapter_history_entries
-            WHERE story_id = ?
-            ORDER BY entry_order ASC, created_at ASC
-            """,
-            (story_id,),
-        ).fetchall()
+        rows = listChapters(conn, story_id)
+        history_rows = listChapterHistory(conn, story_id)
     history_by_chapter: dict[str, list[dict[str, Any]]] = {}
     for row in history_rows:
         history_by_chapter.setdefault(row["chapter_id"], []).append(
@@ -78,13 +80,8 @@ def create_chapter(story_id: str, payload: ChapterCreateRequest) -> dict[str, An
     content = payload.content
     with get_db() as conn:
         story = requireStory(conn, story_id)
-        conn.execute(
-            """
-            INSERT INTO chapters (
-              id, story_id, title, content, word_count, order_index, created_at, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+        insertChapter(
+            conn,
             (
                 chapter_id,
                 story_id,
@@ -96,7 +93,7 @@ def create_chapter(story_id: str, payload: ChapterCreateRequest) -> dict[str, An
                 now,
             ),
         )
-        row = conn.execute("SELECT * FROM chapters WHERE id = ?", (chapter_id,)).fetchone()
+        row = getChapterById(conn, chapter_id)
     return {"chapter": row_to_chapter(row)}
 
 
@@ -127,24 +124,10 @@ def update_chapter(
         chapter = requireChapter(conn, story_id, chapter_id)
         if base_revision is None:
             values.extend([chapter_id, story_id])
-            conn.execute(
-                f"""
-                UPDATE chapters
-                SET {', '.join(assignments)}, revision = revision + 1
-                WHERE id = ? AND story_id = ?
-                """,
-                values,
-            )
+            updateChapterColumns(conn, assignments, values)
         else:
             values.extend([chapter_id, story_id, base_revision])
-            result = conn.execute(
-                f"""
-                UPDATE chapters
-                SET {', '.join(assignments)}, revision = revision + 1
-                WHERE id = ? AND story_id = ? AND revision = ?
-                """,
-                values,
-            )
+            result = updateChapterColumnsAtRevision(conn, assignments, values)
             if result.rowcount == 0:
                 current = getChapter(conn, story_id, chapter_id)
                 raise HTTPException(
@@ -156,10 +139,7 @@ def update_chapter(
                     },
                 )
         if content_changed:
-            conn.execute(
-                "UPDATE stories SET updated_at = ? WHERE id = ?",
-                (now, story_id),
-            )
+            touchStory(conn, story_id, now)
         if "title" in updates:
             rename_linked_chapter_summaries(
                 conn, story_id, chapter_id, updates["title"], now
@@ -182,10 +162,7 @@ def save_chapter_content(
 @router.delete("/api/stories/{story_id}/chapters/{chapter_id}")
 def delete_chapter(story_id: str, chapter_id: str) -> dict[str, Any]:
     with get_db() as conn:
-        result = conn.execute(
-            "DELETE FROM chapters WHERE id = ? AND story_id = ?",
-            (chapter_id, story_id),
-        )
+        result = deleteChapter(conn, story_id, chapter_id)
         if result.rowcount:
             delete_linked_chapter_summaries(conn, story_id, chapter_id)
     if result.rowcount == 0:
@@ -221,27 +198,16 @@ async def stream_story_chapter_generation(
                     "chapter": row_to_chapter(chapter),
                 },
             )
-        lorebook_rows = conn.execute(
-            "SELECT * FROM lorebook_entries WHERE story_id = ? ORDER BY created_at ASC",
-            (story_id,),
-        ).fetchall()
-        orderedChapters = conn.execute(
-            "SELECT * FROM chapters WHERE story_id = ? ORDER BY order_index ASC, created_at ASC",
-            (story_id,),
-        ).fetchall()
+        lorebook_rows = listEntriesByCreated(conn, story_id)
+        orderedChapters = listChapters(conn, story_id)
         previousChapters: list[sqlite3.Row] = []
         for row in orderedChapters:
             if row["id"] == chapter_id:
                 break
             previousChapters.append(row)
 
-        conn.execute(
-            """
-            UPDATE stories
-            SET model = ?, system_prompt = ?, temperature = ?, max_tokens = ?,
-                thinking_enabled = ?, reasoning_effort = ?, updated_at = ?
-            WHERE id = ?
-            """,
+        updateStoryWriteSettings(
+            conn,
             (
                 payload.model,
                 writeSystemPrompt(payload),
@@ -258,13 +224,8 @@ async def stream_story_chapter_generation(
         generationId = payload.generation_status_id or str(uuid.uuid4())
         createdAt = utc_now()
         try:
-            conn.execute(
-                """
-                INSERT INTO story_generations (
-                    id, story_id, chapter_id, prompt, generated_text, model, error, created_at
-                ) VALUES (?, ?, ?, ?, '', ?, 'generation_pending', ?)
-                """,
-                (generationId, story_id, chapter_id, payload.message, payload.model, createdAt),
+            insertPendingGeneration(
+                conn, generationId, story_id, chapter_id, payload.message, payload.model, createdAt
             )
         except sqlite3.IntegrityError as exc:
             raise HTTPException(status_code=409, detail="Generation status ID is already in use.") from exc
@@ -272,13 +233,7 @@ async def stream_story_chapter_generation(
 
     def settleUnstartedGeneration():
         with get_db() as conn:
-            conn.execute(
-                """
-                UPDATE story_generations SET settled = 1, error = 'generation_cancelled'
-                WHERE id = ? AND error = 'generation_pending' AND settled = 0
-                """,
-                (generationId,),
-            )
+            cancelPendingGeneration(conn, generationId)
 
     return ChapterStreamingResponse(
         stream_story_generation(

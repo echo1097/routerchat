@@ -4,12 +4,21 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
+from backend.brainstorm.brainstormQueries import (
+    getViewport,
+    insertEdge,
+    insertImportedNode,
+    insertViewport,
+    listEdges,
+    listNodes,
+)
 from backend.brainstorm.brainstormRows import (
     row_to_brainstorm_edge,
     row_to_brainstorm_node,
 )
 from backend.core.database import get_db
 from backend.core.utils import utc_now
+from backend.lorebook.lorebookQueries import insertImportedEntry, listEntriesByCreated
 from backend.lorebook.lorebookRows import (
     normalize_lorebook_category,
     row_to_lorebook_entry,
@@ -19,7 +28,14 @@ from backend.lorebook.lorebookRows import (
 from backend.lorebook.timeline import normalize_timeline_description
 from backend.providers.registry import getActiveProvider, providerIdForImport
 from backend.writing.storyModels import StoryImportRequest
-from backend.stories.storyQueries import requireStory
+from backend.stories.storyQueries import (
+    insertChapterHistory,
+    insertImportedChapter,
+    insertStory,
+    listChapterHistoryForExport,
+    listChapters,
+    requireStory,
+)
 from backend.stories.storyRows import (
     row_to_chapter,
     row_to_chapter_history_entry,
@@ -35,50 +51,12 @@ def export_story(story_id: str) -> dict[str, Any]:
     with get_db() as conn:
         story = requireStory(conn, story_id)
 
-        chapters = conn.execute(
-            """
-            SELECT * FROM chapters
-            WHERE story_id = ?
-            ORDER BY order_index ASC, created_at ASC
-            """,
-            (story_id,),
-        ).fetchall()
-        historyRows = conn.execute(
-            """
-            SELECT * FROM chapter_history_entries
-            WHERE story_id = ?
-            ORDER BY chapter_id ASC, entry_order ASC, created_at ASC
-            """,
-            (story_id,),
-        ).fetchall()
-        lorebookRows = conn.execute(
-            """
-            SELECT * FROM lorebook_entries
-            WHERE story_id = ?
-            ORDER BY created_at ASC
-            """,
-            (story_id,),
-        ).fetchall()
-        brainstormNodes = conn.execute(
-            """
-            SELECT * FROM brainstorm_nodes
-            WHERE story_id = ?
-            ORDER BY created_at ASC
-            """,
-            (story_id,),
-        ).fetchall()
-        brainstormEdges = conn.execute(
-            """
-            SELECT * FROM brainstorm_edges
-            WHERE story_id = ?
-            ORDER BY created_at ASC
-            """,
-            (story_id,),
-        ).fetchall()
-        viewport = conn.execute(
-            "SELECT * FROM brainstorm_viewports WHERE story_id = ?",
-            (story_id,),
-        ).fetchone()
+        chapters = listChapters(conn, story_id)
+        historyRows = listChapterHistoryForExport(conn, story_id)
+        lorebookRows = listEntriesByCreated(conn, story_id)
+        brainstormNodes = listNodes(conn, story_id)
+        brainstormEdges = listEdges(conn, story_id)
+        viewport = getViewport(conn, story_id)
 
     storyPayload = row_to_story(story)
     storyPayload.pop("temporary", None)
@@ -179,15 +157,8 @@ def import_story(payload: StoryImportRequest) -> dict[str, Any]:
             storyModel = getActiveProvider().defaultModelId()
             storyProvider = getActiveProvider().id
 
-        conn.execute(
-            """
-            INSERT INTO stories (
-              id, title, author, language, synopsis, model, provider, system_prompt,
-              temperature, max_tokens, thinking_enabled, reasoning_effort, temporary,
-              lorebook_auto, lorebook_model, created_at, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+        insertStory(
+            conn,
             (
                 storyId,
                 story.title.strip() or "New story",
@@ -211,14 +182,8 @@ def import_story(payload: StoryImportRequest) -> dict[str, Any]:
 
         for chapter in orderedChapters:
             chapterId = chapterIdMap[chapter.id]
-            conn.execute(
-                """
-                INSERT INTO chapters (
-                  id, story_id, title, content, word_count, revision, order_index,
-                  disabled, created_at, updated_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
+            insertImportedChapter(
+                conn,
                 (
                     chapterId,
                     storyId,
@@ -234,14 +199,8 @@ def import_story(payload: StoryImportRequest) -> dict[str, Any]:
             )
 
         for entry in payload.chapter_history:
-            conn.execute(
-                """
-                INSERT INTO chapter_history_entries (
-                  id, story_id, chapter_id, run_id, label, detail, entry_order,
-                  kind, words_added, words_removed, cost, created_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
+            insertChapterHistory(
+                conn,
                 (
                     str(uuid.uuid4()),
                     storyId,
@@ -266,14 +225,8 @@ def import_story(payload: StoryImportRequest) -> dict[str, Any]:
                 if category == "timeline"
                 else entry.description
             )
-            conn.execute(
-                """
-                INSERT INTO lorebook_entries (
-                  id, story_id, name, category, description, aliases_json,
-                  tags_json, metadata_json, revision, disabled, created_at, updated_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
+            insertImportedEntry(
+                conn,
                 (
                     str(uuid.uuid4()),
                     storyId,
@@ -291,14 +244,8 @@ def import_story(payload: StoryImportRequest) -> dict[str, Any]:
             )
 
         for node in payload.brainstorm.nodes:
-            conn.execute(
-                """
-                INSERT INTO brainstorm_nodes (
-                  id, story_id, node_type, title, content, position_x,
-                  position_y, status, created_at, updated_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
+            insertImportedNode(
+                conn,
                 (
                     nodeIdMap[node.id],
                     storyId,
@@ -314,32 +261,17 @@ def import_story(payload: StoryImportRequest) -> dict[str, Any]:
             )
 
         for edge in payload.brainstorm.edges:
-            conn.execute(
-                """
-                INSERT INTO brainstorm_edges (
-                  id, story_id, source_node_id, target_node_id, created_at
-                )
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (
-                    str(uuid.uuid4()),
-                    storyId,
-                    nodeIdMap[edge.source_node_id],
-                    nodeIdMap[edge.target_node_id],
-                    edge.created_at or now,
-                ),
+            insertEdge(
+                conn,
+                str(uuid.uuid4()),
+                storyId,
+                nodeIdMap[edge.source_node_id],
+                nodeIdMap[edge.target_node_id],
+                edge.created_at or now,
             )
 
         viewport = payload.brainstorm.viewport
-        conn.execute(
-            """
-            INSERT INTO brainstorm_viewports (
-              story_id, position_x, position_y, zoom, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (storyId, viewport.x, viewport.y, viewport.zoom, now),
-        )
+        insertViewport(conn, (storyId, viewport.x, viewport.y, viewport.zoom, now))
 
     return {
         "story_id": storyId,

@@ -20,8 +20,8 @@ from backend.core.utils import display_model_name, format_duration, utc_now
 from backend.lorebook.lorebookHistory import lorebook_run_history_actions
 from backend.lorebook.runUpdate import run_lorebook_update
 from backend.providers.base import ChatOptions
+from backend.providers.modelStream import ModelStream
 from backend.providers.registry import providerForRow
-from backend.providers.streaming import streamChat
 from backend.usage.recordUsage import recordUsage
 from backend.writing.chapterEdits.anchors import chapter_blocks
 from backend.writing.chapterEdits.applyEdits import (
@@ -146,12 +146,8 @@ async def stream_story_generation(
         payload.model, payload.thinking_enabled
     )
 
-    generated_text: list[str] = []
-    reasoning_text: list[str] = []
-    finish_reason: str | None = None
+    modelStream = ModelStream(provider, request, effectiveThinkingEnabled)
     error_text: str | None = None
-    generation_id: str | None = None
-    usage: dict[str, Any] | None = None
     story_generation_id = event_metadata["generationId"]
     history_run_id = str(uuid.uuid4())
     model_label = display_model_name(payload.model)
@@ -160,7 +156,6 @@ async def stream_story_generation(
     reasoning_saved_chunks = 0
     content_started_at: float | None = None
     stream_completed = False
-    received_done = False
     cancelled = False
     pendingEvents: list[bytes] = []
 
@@ -203,36 +198,18 @@ async def stream_story_generation(
             "history",
             save_history("User prompt", " ".join(payload.message.split()), kind="prompt"),
         )
-        async with aclosing(streamChat(provider, request)) as events:
+        async with aclosing(modelStream.events()) as events:
             async for event in events:
-                if event["type"] == "error":
-                    error_text = event["message"]
-                    yield emit("error", error_text)
-                    return
-                if event["type"] == "open":
-                    generation_id = event["generationId"] or generation_id
-                    continue
-                if event["type"] == "done":
-                    received_done = True
-                    continue
-
-                generation_id = generation_id or event["id"]
-                if event["usage"]:
-                    usage = event["usage"]
-                    continue
-                if not event["hasChoice"]:
-                    continue
-                finish_reason = event["finishReason"] or finish_reason
-                if event["reasoning"] and effectiveThinkingEnabled:
+                if event["type"] == "reasoning":
                     if reasoning_started_at is None:
                         reasoning_started_at = time.perf_counter()
-                    reasoning_text.append(event["reasoning"])
-                    yield emit("reasoning", event["reasoning"])
-                if event["content"]:
+                    yield emit("reasoning", event["value"])
+                elif event["type"] == "content":
                     if reasoning_started_at is not None:
                         duration_ms = (time.perf_counter() - reasoning_started_at) * 1000
-                        thoughts = "".join(reasoning_text[reasoning_saved_chunks:]).strip()
-                        reasoning_saved_chunks = len(reasoning_text)
+                        reasoningParts = modelStream.reasoningParts
+                        thoughts = "".join(reasoningParts[reasoning_saved_chunks:]).strip()
+                        reasoning_saved_chunks = len(reasoningParts)
                         yield emit(
                             "history",
                             save_history(
@@ -244,22 +221,27 @@ async def stream_story_generation(
                         reasoning_started_at = None
                     if content_started_at is None:
                         content_started_at = time.perf_counter()
-                    generated_text.append(event["content"])
-                    yield emit("content", event["content"])
+                    yield emit("content", event["value"])
 
-        if generation_id:
-            generation_usage = await provider.fetchFinalUsage(api_key, generation_id)
-            if generation_usage:
-                usage = {**(usage or {}), **generation_usage}
-        if usage:
+        if modelStream.errorMessage:
+            error_text = modelStream.errorMessage
+            yield emit("error", error_text)
+            return
+
+        await modelStream.fetchFinalUsage(api_key)
+        if modelStream.usage:
             yield emit(
                 "usage",
-                {"generation_id": generation_id, "model": payload.model, **usage},
+                {
+                    "generation_id": modelStream.generationId,
+                    "model": payload.model,
+                    **modelStream.usage,
+                },
             )
-        stream_completed = received_done or bool(finish_reason)
+        stream_completed = modelStream.receivedDone or bool(modelStream.finishReason)
     except (asyncio.CancelledError, GeneratorExit):
         cancelled = True
-        stream_completed = received_done or bool(finish_reason)
+        stream_completed = modelStream.receivedDone or bool(modelStream.finishReason)
         if not stream_completed:
             error_text = "generation_cancelled"
         raise
@@ -267,7 +249,10 @@ async def stream_story_generation(
         error_text = str(exc)
         yield emit("error", f"RouterChat error: {error_text}")
     finally:
-        content = "".join(generated_text)
+        content = modelStream.text
+        finish_reason = modelStream.finishReason
+        generation_id = modelStream.generationId
+        usage = modelStream.usage or None
         now = utc_now()
         chapter_update_event: dict[str, Any] | None = None
         error_event: dict[str, Any] | None = None

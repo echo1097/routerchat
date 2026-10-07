@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-import logging
-import sqlite3
-from contextlib import closing
-
 from backend.core.database import get_db
 from backend.core.migrations import (
     clean_lorebook_categories,
@@ -24,15 +20,9 @@ from backend.core.migrations import (
     ensureAttachmentPageCountColumn,
     ensureGenerationSettledColumn,
 )
-from backend.lorebook.lorebookUsage import ensureLorebookUsageTable
-from backend.transcription.transcriptionUsage import ensureTranscriptionUsageTable
-from backend.usage.migrateLegacyUsage import migrateLegacyUsage
-from backend.usage.usageDatabase import getUsageDb, initUsageDb
-
-logger = logging.getLogger("uvicorn.error")
 
 
-def init_db() -> None:
+def initCoreTables() -> None:
     with get_db() as conn:
         conn.executescript(
             """
@@ -310,15 +300,6 @@ def init_db() -> None:
         ensure_brainstorm_generation_columns(conn)
         ensure_chapter_history_columns(conn)
         ensure_lorebook_run_usage_columns(conn)
-        ensureLorebookUsageTable(conn)
-        ensureTranscriptionUsageTable(conn)
         ensureCachedTokenColumns(conn)
         ensureAttachmentPageCountColumn(conn)
         clean_lorebook_categories(conn)
-
-    with closing(get_db()) as mainConn, closing(getUsageDb()) as usageConn:
-        initUsageDb(usageConn)
-        try:
-            migrateLegacyUsage(mainConn, usageConn)
-        except sqlite3.Error:
-            logger.exception("Could not move usage history into usage.sqlite3. It will be retried on the next start.")

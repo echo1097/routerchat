@@ -160,7 +160,7 @@ def updateStory(story_id: str, payload: StoryPatchRequest) -> dict[str, Any]:
     #and the story keeps its place in the sidebar until someone actually writes in it
     values.append(story_id)
     with getDb() as conn:
-        story = requireStory(conn, story_id)
+        requireStory(conn, story_id)
         updateStoryColumns(conn, assignments, values)
     return getStoryBundle(story_id)
 

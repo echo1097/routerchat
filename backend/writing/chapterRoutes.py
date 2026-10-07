@@ -57,7 +57,7 @@ router = APIRouter()
 @router.get("/api/stories/{story_id}/chapters")
 def listChaptersRoute(story_id: str) -> dict[str, Any]:
     with getDb() as conn:
-        story = requireStory(conn, story_id)
+        requireStory(conn, story_id)
         rows = listChapters(conn, story_id)
         history_rows = listChapterHistory(conn, story_id)
     history_by_chapter: dict[str, list[dict[str, Any]]] = {}
@@ -79,7 +79,7 @@ def createChapter(story_id: str, payload: ChapterCreateRequest) -> dict[str, Any
     chapter_id = str(uuid.uuid4())
     content = payload.content
     with getDb() as conn:
-        story = requireStory(conn, story_id)
+        requireStory(conn, story_id)
         insertChapter(
             conn,
             (

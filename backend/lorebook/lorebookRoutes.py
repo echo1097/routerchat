@@ -52,7 +52,7 @@ router = APIRouter()
 @router.get("/api/stories/{story_id}/lorebook")
 def listLorebookEntries(story_id: str) -> dict[str, Any]:
     with getDb() as conn:
-        story = requireStory(conn, story_id)
+        requireStory(conn, story_id)
         rows = listEntries(conn, story_id)
     return {"entries": [rowToLorebookEntry(row) for row in rows]}
 
@@ -65,7 +65,7 @@ def createLorebookEntry(story_id: str, payload: LorebookEntryRequest) -> dict[st
     metadata = sanitizeLorebookMetadata(category, payload.metadata)
     entryName = payload.name.strip()
     with getDb() as conn:
-        story = requireStory(conn, story_id)
+        requireStory(conn, story_id)
         existingSummary = None
         if category == "synopsis" and metadata.get("chapter_id"):
             chapter = getChapter(conn, story_id, metadata["chapter_id"])

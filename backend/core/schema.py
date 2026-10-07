@@ -1,39 +1,29 @@
 from __future__ import annotations
 
-import logging
-import sqlite3
-from contextlib import closing
-
-from backend.core.database import get_db
+from backend.core.database import getDb
 from backend.core.migrations import (
-    clean_lorebook_categories,
-    ensure_brainstorm_generation_columns,
-    ensure_chapter_context_column,
-    ensure_chapter_history_columns,
-    ensure_chapter_revision_column,
-    ensure_chat_folder_column,
-    ensure_chat_settings_columns,
-    ensure_lorebook_revision_column,
-    ensure_lorebook_run_usage_columns,
-    ensure_message_order_column,
-    ensure_message_source_column,
-    ensure_message_usage_columns,
-    ensure_story_settings_columns,
+    cleanLorebookCategories,
+    ensureBrainstormGenerationColumns,
+    ensureChapterContextColumn,
+    ensureChapterHistoryColumns,
+    ensureChapterRevisionColumn,
+    ensureChatFolderColumn,
+    ensureChatSettingsColumns,
+    ensureLorebookRevisionColumn,
+    ensureLorebookRunUsageColumns,
+    ensureMessageOrderColumn,
+    ensureMessageSourceColumn,
+    ensureMessageUsageColumns,
+    ensureStorySettingsColumns,
     ensureProviderColumns,
     ensureCachedTokenColumns,
     ensureAttachmentPageCountColumn,
     ensureGenerationSettledColumn,
 )
-from backend.lorebook.lorebookUsage import ensureLorebookUsageTable
-from backend.transcription.transcriptionUsage import ensureTranscriptionUsageTable
-from backend.usage.migrateLegacyUsage import migrateLegacyUsage
-from backend.usage.usageDatabase import getUsageDb, initUsageDb
-
-logger = logging.getLogger("uvicorn.error")
 
 
-def init_db() -> None:
-    with get_db() as conn:
+def initCoreTables() -> None:
+    with getDb() as conn:
         conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS chats (
@@ -296,29 +286,20 @@ def init_db() -> None:
             ON tos_acceptances(tos_hash);
             """
         )
-        ensure_chat_folder_column(conn)
-        ensure_message_order_column(conn)
-        ensure_message_usage_columns(conn)
-        ensure_chat_settings_columns(conn)
-        ensure_story_settings_columns(conn)
+        ensureChatFolderColumn(conn)
+        ensureMessageOrderColumn(conn)
+        ensureMessageUsageColumns(conn)
+        ensureChatSettingsColumns(conn)
+        ensureStorySettingsColumns(conn)
         ensureProviderColumns(conn)
         ensureGenerationSettledColumn(conn)
-        ensure_chapter_context_column(conn)
-        ensure_chapter_revision_column(conn)
-        ensure_lorebook_revision_column(conn)
-        ensure_message_source_column(conn)
-        ensure_brainstorm_generation_columns(conn)
-        ensure_chapter_history_columns(conn)
-        ensure_lorebook_run_usage_columns(conn)
-        ensureLorebookUsageTable(conn)
-        ensureTranscriptionUsageTable(conn)
+        ensureChapterContextColumn(conn)
+        ensureChapterRevisionColumn(conn)
+        ensureLorebookRevisionColumn(conn)
+        ensureMessageSourceColumn(conn)
+        ensureBrainstormGenerationColumns(conn)
+        ensureChapterHistoryColumns(conn)
+        ensureLorebookRunUsageColumns(conn)
         ensureCachedTokenColumns(conn)
         ensureAttachmentPageCountColumn(conn)
-        clean_lorebook_categories(conn)
-
-    with closing(get_db()) as mainConn, closing(getUsageDb()) as usageConn:
-        initUsageDb(usageConn)
-        try:
-            migrateLegacyUsage(mainConn, usageConn)
-        except sqlite3.Error:
-            logger.exception("Could not move usage history into usage.sqlite3. It will be retried on the next start.")
+        cleanLorebookCategories(conn)

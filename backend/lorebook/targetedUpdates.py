@@ -4,22 +4,22 @@ import uuid
 from typing import Any
 
 from backend.lorebook.editOperations import (
-    apply_lorebook_edit_operations,
-    skipped_lorebook_update,
+    applyLorebookEditOperations,
+    skippedLorebookUpdate,
 )
-from backend.lorebook.legacyUpdates import apply_legacy_lorebook_updates
+from backend.lorebook.legacyUpdates import applyLegacyLorebookUpdates
 from backend.lorebook.lorebookRows import (
-    lorebook_entry_snapshot,
-    lorebook_row_snapshot,
-    normalize_lorebook_category,
-    sanitize_lorebook_aliases,
-    sanitize_lorebook_metadata,
+    lorebookEntrySnapshot,
+    lorebookRowSnapshot,
+    normalizeLorebookCategory,
+    sanitizeLorebookAliases,
+    sanitizeLorebookMetadata,
 )
-from backend.lorebook.timeline import normalize_timeline_description
-from backend.writing.storyRows import word_diff_counts
+from backend.lorebook.timeline import normalizeTimelineDescription
+from backend.stories.storyRows import wordDiffCounts
 
 
-def apply_targeted_lorebook_update(
+def applyTargetedLorebookUpdate(
     conn: sqlite3.Connection,
     story_id: str,
     update: dict[str, Any],
@@ -30,10 +30,10 @@ def apply_targeted_lorebook_update(
     action = str(update.get("action") or "").lower()
     if action == "create":
         name = str(update.get("name") or "").strip()
-        category = normalize_lorebook_category(update.get("category"))
+        category = normalizeLorebookCategory(update.get("category"))
         description = str(update.get("description") or "").strip()
         if not name or not description:
-            return [], [skipped_lorebook_update(
+            return [], [skippedLorebookUpdate(
                 update_index, "lorebook_create_invalid", "new entries need a name and description", update
             )]
         existing = conn.execute(
@@ -46,7 +46,7 @@ def apply_targeted_lorebook_update(
             (story_id, name, category),
         ).fetchone()
         if existing:
-            return [], [skipped_lorebook_update(
+            return [], [skippedLorebookUpdate(
                 update_index,
                 "lorebook_create_exists",
                 "an enabled entry with that identity already exists; edit it by entryId",
@@ -54,10 +54,10 @@ def apply_targeted_lorebook_update(
             )]
         if category == "timeline":
             name = "Timeline"
-            description = normalize_timeline_description(description)
-        aliases = sanitize_lorebook_aliases(category, update.get("aliases"), name)
+            description = normalizeTimelineDescription(description)
+        aliases = sanitizeLorebookAliases(category, update.get("aliases"), name)
         tags = update.get("tags") if isinstance(update.get("tags"), list) else []
-        metadata = sanitize_lorebook_metadata(category, update.get("metadata"))
+        metadata = sanitizeLorebookMetadata(category, update.get("metadata"))
         entryId = str(uuid.uuid4())
         conn.execute(
             """
@@ -72,8 +72,8 @@ def apply_targeted_lorebook_update(
                 json.dumps(aliases), json.dumps(tags), json.dumps(metadata), now, now,
             ),
         )
-        wordsAdded, wordsRemoved = word_diff_counts(
-            "", lorebook_entry_snapshot(category, description, aliases, tags, metadata)
+        wordsAdded, wordsRemoved = wordDiffCounts(
+            "", lorebookEntrySnapshot(category, description, aliases, tags, metadata)
         )
         return [{
             "action": "create",
@@ -86,14 +86,14 @@ def apply_targeted_lorebook_update(
     entryId = str(update.get("entryId") or "").strip()
     entryRevision = update.get("entryRevision")
     if not entryId or not isinstance(entryRevision, int):
-        return [], [skipped_lorebook_update(
+        return [], [skippedLorebookUpdate(
             update_index,
             "lorebook_target_invalid",
             "existing entries require entryId and entryRevision",
             update,
         )]
     if entryId in claimed_entry_ids:
-        return [], [skipped_lorebook_update(
+        return [], [skippedLorebookUpdate(
             update_index,
             "lorebook_target_repeated",
             "the same entry cannot be targeted by more than one update",
@@ -105,14 +105,14 @@ def apply_targeted_lorebook_update(
         (entryId, story_id),
     ).fetchone()
     if not entry:
-        return [], [skipped_lorebook_update(
+        return [], [skippedLorebookUpdate(
             update_index,
             "lorebook_target_missing",
             "the entry was missing, hidden, or belonged to another story",
             update,
         )]
     if entry["revision"] != entryRevision:
-        return [], [skipped_lorebook_update(
+        return [], [skippedLorebookUpdate(
             update_index,
             "lorebook_revision_conflict",
             "the entry changed after the model read it",
@@ -121,8 +121,8 @@ def apply_targeted_lorebook_update(
     if action == "keep":
         return [], []
     if action == "exclude":
-        if normalize_lorebook_category(entry["category"]) == "timeline":
-            return [], [skipped_lorebook_update(
+        if normalizeLorebookCategory(entry["category"]) == "timeline":
+            return [], [skippedLorebookUpdate(
                 update_index,
                 "lorebook_timeline_required",
                 "Timeline cannot be excluded",
@@ -137,13 +137,13 @@ def apply_targeted_lorebook_update(
             (now, entryId, story_id, entryRevision),
         )
         if result.rowcount != 1:
-            return [], [skipped_lorebook_update(
+            return [], [skippedLorebookUpdate(
                 update_index,
                 "lorebook_revision_conflict",
                 "the entry changed before it could be excluded",
                 update,
             )]
-        wordsAdded, wordsRemoved = word_diff_counts(lorebook_row_snapshot(entry), "")
+        wordsAdded, wordsRemoved = wordDiffCounts(lorebookRowSnapshot(entry), "")
         return [{
             "action": "delete",
             "id": entryId,
@@ -152,14 +152,14 @@ def apply_targeted_lorebook_update(
             "wordsRemoved": wordsRemoved,
         }], []
     if action != "edit":
-        return [], [skipped_lorebook_update(
+        return [], [skippedLorebookUpdate(
             update_index,
             "lorebook_action_invalid",
             f"unsupported lorebook action: {action or 'missing'}",
             update,
         )]
 
-    nextEntry, skipped, appliedOperations = apply_lorebook_edit_operations(
+    nextEntry, skipped, appliedOperations = applyLorebookEditOperations(
         entry, update.get("operations"), update_index
     )
     if not appliedOperations:
@@ -171,13 +171,13 @@ def apply_targeted_lorebook_update(
         nextEntry["aliases"] = []
         nextEntry["tags"] = []
         nextEntry["metadata"] = {"chapter_id": summaryChapterId}
-    if nextEntry["category"] == "timeline" and normalize_lorebook_category(entry["category"]) != "timeline":
+    if nextEntry["category"] == "timeline" and normalizeLorebookCategory(entry["category"]) != "timeline":
         existingTimeline = conn.execute(
             "SELECT id FROM lorebook_entries WHERE story_id = ? AND category = 'timeline' AND disabled = 0",
             (story_id,),
         ).fetchone()
         if existingTimeline:
-            skipped.append(skipped_lorebook_update(
+            skipped.append(skippedLorebookUpdate(
                 update_index,
                 "lorebook_timeline_exists",
                 "the story already has an enabled Timeline entry",
@@ -195,7 +195,7 @@ def apply_targeted_lorebook_update(
         (story_id, entryId, nextEntry["name"], nextEntry["category"]),
     ).fetchone()
     if identityConflict:
-        skipped.append(skipped_lorebook_update(
+        skipped.append(skippedLorebookUpdate(
             update_index,
             "lorebook_identity_conflict",
             "another enabled entry already uses that identity",
@@ -203,8 +203,8 @@ def apply_targeted_lorebook_update(
         ))
         return [], skipped
 
-    beforeSnapshot = lorebook_row_snapshot(entry)
-    afterSnapshot = lorebook_entry_snapshot(
+    beforeSnapshot = lorebookRowSnapshot(entry)
+    afterSnapshot = lorebookEntrySnapshot(
         nextEntry["category"], nextEntry["description"], nextEntry["aliases"],
         nextEntry["tags"], nextEntry["metadata"],
     )
@@ -224,14 +224,14 @@ def apply_targeted_lorebook_update(
         ),
     )
     if result.rowcount != 1:
-        skipped.append(skipped_lorebook_update(
+        skipped.append(skippedLorebookUpdate(
             update_index,
             "lorebook_revision_conflict",
             "the entry changed before the edit could be saved",
             update,
         ))
         return [], skipped
-    wordsAdded, wordsRemoved = word_diff_counts(beforeSnapshot, afterSnapshot)
+    wordsAdded, wordsRemoved = wordDiffCounts(beforeSnapshot, afterSnapshot)
     return [{
         "action": "update",
         "id": entryId,
@@ -242,7 +242,7 @@ def apply_targeted_lorebook_update(
     }], skipped
 
 
-def apply_lorebook_updates(
+def applyLorebookUpdates(
     conn: sqlite3.Connection,
     story_id: str,
     updates: list[dict[str, Any]],
@@ -255,7 +255,7 @@ def apply_lorebook_updates(
     )
     if not targeted:
         return {
-            "applied": apply_legacy_lorebook_updates(conn, story_id, updates, now),
+            "applied": applyLegacyLorebookUpdates(conn, story_id, updates, now),
             "skipped": [],
         }
 
@@ -264,11 +264,11 @@ def apply_lorebook_updates(
     claimedEntryIds: set[str] = set()
     for updateIndex, update in enumerate(updates):
         if not isinstance(update, dict):
-            skipped.append(skipped_lorebook_update(
+            skipped.append(skippedLorebookUpdate(
                 updateIndex, "lorebook_update_invalid", "update must be an object", update
             ))
             continue
-        nextApplied, nextSkipped = apply_targeted_lorebook_update(
+        nextApplied, nextSkipped = applyTargetedLorebookUpdate(
             conn, story_id, update, updateIndex, now, claimedEntryIds
         )
         applied.extend(nextApplied)

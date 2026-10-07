@@ -12,7 +12,7 @@ VERSION_PATH = ROOT_DIR / "version.json"
 USER_DATA_ENV_VAR = "ROUTERCHAT_USER_DATA_DIR"
 
 
-def resolve_user_data_paths(
+def resolveUserDataPaths(
     environment: Mapping[str, str] | None = None,
 ) -> tuple[Path, Path, Path]:
     environment = os.environ if environment is None else environment
@@ -29,7 +29,7 @@ def resolve_user_data_paths(
     return userDataDir, userDataDir / "routerchat.sqlite3", userDataDir / ".env"
 
 
-def load_version_metadata() -> dict[str, str]:
+def loadVersionMetadata() -> dict[str, str]:
     try:
         metadata = json.loads(VERSION_PATH.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -46,8 +46,8 @@ def load_version_metadata() -> dict[str, str]:
     return {field: metadata[field].strip() for field in requiredFields}
 
 
-DATA_DIR, DB_PATH, ENV_PATH = resolve_user_data_paths()
-VERSION_METADATA = load_version_metadata()
+DATA_DIR, DB_PATH, ENV_PATH = resolveUserDataPaths()
+VERSION_METADATA = loadVersionMetadata()
 APP_VERSION = VERSION_METADATA["version"]
 
 

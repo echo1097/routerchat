@@ -1,11 +1,11 @@
 import sqlite3
 from typing import Any
 
-from backend.lorebook.lorebookRows import lorebook_context_line
-from backend.lorebook.parseLorebook import parse_lorebook_json
+from backend.lorebook.lorebookRows import lorebookContextLine
+from backend.lorebook.parseLorebook import parseLorebookJson
 
 
-def brainstorm_response_format(ideaCount: int) -> dict[str, Any]:
+def brainstormResponseFormat(ideaCount: int) -> dict[str, Any]:
     return {
         "type": "json_schema",
         "json_schema": {
@@ -36,9 +36,9 @@ def brainstorm_response_format(ideaCount: int) -> dict[str, Any]:
     }
 
 
-def parse_brainstorm_ideas(raw_output: str) -> list[dict[str, str]]:
+def parseBrainstormIdeas(raw_output: str) -> list[dict[str, str]]:
     try:
-        parsed = parse_lorebook_json(raw_output)
+        parsed = parseLorebookJson(raw_output)
     except ValueError as exc:
         raise ValueError("Could not parse the brainstorm ideas response.") from exc
     raw_ideas = parsed.get("ideas")
@@ -60,7 +60,7 @@ def parse_brainstorm_ideas(raw_output: str) -> list[dict[str, str]]:
     return ideas
 
 
-def build_brainstorm_messages(
+def buildBrainstormMessages(
     story: sqlite3.Row,
     chapters: list[sqlite3.Row],
     lorebook_rows: list[sqlite3.Row],
@@ -74,7 +74,7 @@ def build_brainstorm_messages(
         for index, chapter in enumerate(visibleChapters)
     ) or "no visible chapters yet"
     lorebook_text = "\n".join(
-        lorebook_context_line(row)
+        lorebookContextLine(row)
         for row in lorebook_rows
         if not bool(row["disabled"]) and row["description"].strip()
     ) or "no enabled lorebook entries"

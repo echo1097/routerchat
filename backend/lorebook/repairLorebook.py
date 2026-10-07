@@ -9,26 +9,28 @@ from typing import Any, AsyncIterator
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
-from backend.core.database import get_db
-from backend.core.streamEvents import stream_event
-from backend.core.utils import utc_now
+from backend.core.database import getDb
+from backend.core.streamEvents import streamEvent
+from backend.core.utils import utcNow
 from backend.lorebook.chapterSummaries import (
     SUMMARY_INSTRUCTION,
-    lorebook_summary_chapter_id,
+    lorebookSummaryChapterId,
 )
+from backend.lorebook.lorebookQueries import listEnabledEntries
 from backend.lorebook.lorebookRows import (
-    lorebook_model_for,
-    normalize_lorebook_category,
-    row_to_lorebook_entry,
-    sanitize_lorebook_aliases,
+    lorebookModelFor,
+    normalizeLorebookCategory,
+    rowToLorebookEntry,
+    sanitizeLorebookAliases,
 )
+from backend.lorebook.lorebookStream import LorebookStream
 from backend.lorebook.lorebookUsage import LorebookUsage
-from backend.lorebook.parseLorebook import parse_lorebook_json
-from backend.lorebook.timeline import normalize_timeline_description
+from backend.lorebook.parseLorebook import parseLorebookJson
+from backend.lorebook.timeline import normalizeTimelineDescription
 from backend.providers.base import ChatOptions
 from backend.providers.registry import providerForRow
-from backend.writing.storyProvider import storyProvider
-from backend.providers.streaming import streamChat
+from backend.stories.storyProvider import storyProvider
+from backend.stories.storyQueries import listEnabledChapters, listHiddenChapterIds, requireStory
 
 REPAIR_CATEGORIES = ["character", "location", "item", "event", "note", "timeline"]
 
@@ -68,7 +70,7 @@ REPAIR_SYSTEM_PROMPT = (
 )
 
 
-def lorebook_repair_response_format(summary_chapters: list[sqlite3.Row]) -> dict[str, Any]:
+def lorebookRepairResponseFormat(summary_chapters: list[sqlite3.Row]) -> dict[str, Any]:
     summaryProperties = {
         str(chapter["id"]): {
             "type": "object",
@@ -119,11 +121,11 @@ def lorebook_repair_response_format(summary_chapters: list[sqlite3.Row]) -> dict
     }
 
 
-def parse_lorebook_repair(
+def parseLorebookRepair(
     raw_output: str,
     summary_chapters: list[sqlite3.Row],
 ) -> list[dict[str, Any]]:
-    parsed = parse_lorebook_json(raw_output)
+    parsed = parseLorebookJson(raw_output)
     rawEntries = parsed.get("entries")
     if not isinstance(rawEntries, list):
         raise ValueError("The rebuilt lorebook was missing its entries array.")
@@ -137,14 +139,14 @@ def parse_lorebook_repair(
             continue
 
         name = str(rawEntry.get("name") or "").strip()
-        category = normalize_lorebook_category(rawEntry.get("category"))
+        category = normalizeLorebookCategory(rawEntry.get("category"))
         description = str(rawEntry.get("description") or "").strip()
 
         if category == "synopsis":
             continue
         if category == "timeline":
             name = "Timeline"
-            description = normalize_timeline_description(description)
+            description = normalizeTimelineDescription(description)
             #one timeline or none, a second one would just fight the first for the same slot
             if seenTimeline:
                 continue
@@ -163,7 +165,7 @@ def parse_lorebook_repair(
                 "name": name,
                 "category": category,
                 "description": description,
-                "aliases": sanitize_lorebook_aliases(category, rawEntry.get("aliases"), name),
+                "aliases": sanitizeLorebookAliases(category, rawEntry.get("aliases"), name),
             }
         )
 
@@ -199,7 +201,7 @@ def parse_lorebook_repair(
     return entries
 
 
-def visible_lorebook_signature(rows: list[sqlite3.Row]) -> list[tuple[str, str]]:
+def visibleLorebookSignature(rows: list[sqlite3.Row]) -> list[tuple[str, str]]:
     #id plus updated_at is enough to notice an auto lorebook run landing while this one was thinking
     return sorted((str(row["id"]), str(row["updated_at"])) for row in rows)
 
@@ -207,7 +209,7 @@ def visible_lorebook_signature(rows: list[sqlite3.Row]) -> list[tuple[str, str]]
 router = APIRouter()
 
 
-async def stream_lorebook_repair(
+async def streamLorebookRepair(
     story_id: str,
     story: sqlite3.Row,
     visible_chapters: list[sqlite3.Row],
@@ -218,7 +220,7 @@ async def stream_lorebook_repair(
     provider = providerForRow(story)
     apiKey = provider.requireKey()
 
-    lorebookSignature = visible_lorebook_signature(visible_lorebook)
+    lorebookSignature = visibleLorebookSignature(visible_lorebook)
     summaryChapters = [
         chapter for chapter in visible_chapters if str(chapter["content"] or "").strip()
     ]
@@ -233,7 +235,7 @@ async def stream_lorebook_repair(
         "current_lorebook": [
             {
                 "name": row["name"],
-                "category": normalize_lorebook_category(row["category"]),
+                "category": normalizeLorebookCategory(row["category"]),
                 "description": row["description"] or "",
             }
             for row in visible_lorebook
@@ -259,12 +261,12 @@ async def stream_lorebook_repair(
         {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
     ]
     responseFormat = None
-    if provider.supportsStructuredOutput(lorebook_model_for(story)):
-        responseFormat = lorebook_repair_response_format(summaryChapters)
+    if provider.supportsStructuredOutput(lorebookModelFor(story)):
+        responseFormat = lorebookRepairResponseFormat(summaryChapters)
 
     request = provider.buildRequest(
         messages,
-        lorebook_model_for(story),
+        lorebookModelFor(story),
         ChatOptions(
             apiKey=apiKey,
             temperature=0.1,
@@ -274,57 +276,34 @@ async def stream_lorebook_repair(
             responseFormat=responseFormat,
         ),
     )
-    effectiveThinkingEnabled = provider.effectiveThinkingEnabled(lorebook_model_for(story), True)
+    effectiveThinkingEnabled = provider.effectiveThinkingEnabled(lorebookModelFor(story), True)
 
-    generatedText: list[str] = []
-    finishReason: str | None = None
-    usageRun = LorebookUsage(apiKey, story_id, lorebook_model_for(story), "repair")
-    receivedDone = False
-    announcedWriting = False
+    usageRun = LorebookUsage(apiKey, story_id, lorebookModelFor(story), "repair")
+    lorebookStream = LorebookStream(provider, request, usageRun, effectiveThinkingEnabled)
 
-    yield stream_event("status", "rebuilding")
+    yield streamEvent("status", "rebuilding")
 
     try:
-        async with usageRun:
-            async with aclosing(streamChat(provider, request)) as events:
-                async for event in events:
-                    if event["type"] in ("error", "open"):
-                        usageRun.generationId = event["generationId"]
-                    if event["type"] == "error":
-                        yield stream_event(
-                            "error",
-                            {"code": "lorebook_repair_provider_error", "message": event["message"]},
-                        )
-                        return
-                    if event["type"] == "open":
-                        continue
-                    if event["type"] == "done":
-                        receivedDone = True
-                        continue
+        async with aclosing(lorebookStream.events()) as events:
+            async for event in events:
+                if event["type"] == "reasoning":
+                    yield streamEvent("reasoning", event["value"])
+                elif event["type"] == "contentStart":
+                    yield streamEvent("status", "writing")
 
-                    usageRun.generationId = usageRun.generationId or event["id"]
-                    usageRun.addUsage(event["usage"])
-
-                    if not event["hasChoice"]:
-                        continue
-                    finishReason = event["finishReason"] or finishReason
-                    if event["reasoning"] and effectiveThinkingEnabled:
-                        yield stream_event("reasoning", event["reasoning"])
-                    if event["content"]:
-                        #first real content means the thinking is done and the lorebook is being written
-                        if not announcedWriting:
-                            announcedWriting = True
-                            yield stream_event("status", "writing")
-                        generatedText.append(event["content"])
-
-        if usageRun.usage:
-            yield stream_event(
-                "usage",
-                {"generation_id": usageRun.generationId, "model": usageRun.model, **usageRun.usage},
+        if lorebookStream.errorMessage:
+            yield streamEvent(
+                "error",
+                {"code": "lorebook_repair_provider_error", "message": lorebookStream.errorMessage},
             )
+            return
 
-        if not receivedDone:
-            yield stream_event(
+        usageValue = lorebookStream.usageEventValue()
+        if usageValue:
+            yield streamEvent("usage", usageValue)
+
+        if not lorebookStream.receivedDone:
+            yield streamEvent(
                 "error",
                 {
                     "code": "lorebook_repair_incomplete",
@@ -332,8 +311,8 @@ async def stream_lorebook_repair(
                 },
             )
             return
-        if finishReason == "length":
-            yield stream_event(
+        if lorebookStream.finishReason == "length":
+            yield streamEvent(
                 "error",
                 {
                     "code": "lorebook_repair_truncated",
@@ -343,16 +322,16 @@ async def stream_lorebook_repair(
             return
 
         try:
-            nextEntries = parse_lorebook_repair("".join(generatedText), summaryChapters)
+            nextEntries = parseLorebookRepair(lorebookStream.text, summaryChapters)
         except ValueError as exc:
-            yield stream_event(
+            yield streamEvent(
                 "error",
                 {"code": "lorebook_repair_invalid", "message": str(exc)},
             )
             return
 
-        now = utc_now()
-        with get_db() as conn:
+        now = utcNow()
+        with getDb() as conn:
             conn.execute("BEGIN IMMEDIATE")
             currentRows = conn.execute(
                 """
@@ -362,9 +341,9 @@ async def stream_lorebook_repair(
                 (story_id,),
             ).fetchall()
 
-            if visible_lorebook_signature(currentRows) != lorebookSignature:
+            if visibleLorebookSignature(currentRows) != lorebookSignature:
                 conn.rollback()
-                yield stream_event(
+                yield streamEvent(
                     "error",
                     {
                         "code": "lorebook_repair_conflict",
@@ -413,10 +392,10 @@ async def stream_lorebook_repair(
             ).fetchall()
 
         durationMs = (time.perf_counter() - startedAt) * 1000
-        yield stream_event(
+        yield streamEvent(
             "complete",
             {
-                "entries": [row_to_lorebook_entry(row) for row in savedRows],
+                "entries": [rowToLorebookEntry(row) for row in savedRows],
                 "entry_count": len(nextEntries) + len(preserved_summaries),
                 "removed_count": len(visible_lorebook) - len(preserved_summaries),
                 "duration_ms": durationMs,
@@ -425,7 +404,7 @@ async def stream_lorebook_repair(
     except asyncio.CancelledError:
         raise
     except Exception as exc:  # noqa: BLE001
-        yield stream_event(
+        yield streamEvent(
             "error",
             {
                 "code": "lorebook_repair_failed",
@@ -436,41 +415,22 @@ async def stream_lorebook_repair(
 
 #no request body, the server already has everything a rebuild needs
 @router.post("/api/stories/{story_id}/lorebook/repair/stream")
-async def repair_story_lorebook(story_id: str) -> StreamingResponse:
+async def repairStoryLorebook(story_id: str) -> StreamingResponse:
     provider = storyProvider(story_id)
     provider.requireKey()
 
-    with get_db() as conn:
-        story = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
-        if not story:
-            raise HTTPException(status_code=404, detail="Story not found.")
-        visibleChapters = conn.execute(
-            """
-            SELECT * FROM chapters
-            WHERE story_id = ? AND disabled = 0
-            ORDER BY order_index ASC, created_at ASC
-            """,
-            (story_id,),
-        ).fetchall()
+    with getDb() as conn:
+        story = requireStory(conn, story_id)
+        visibleChapters = listEnabledChapters(conn, story_id)
         hiddenChapterIds = {
             str(row["id"])
-            for row in conn.execute(
-                "SELECT id FROM chapters WHERE story_id = ? AND disabled = 1",
-                (story_id,),
-            ).fetchall()
+            for row in listHiddenChapterIds(conn, story_id)
         }
-        visibleLorebook = conn.execute(
-            """
-            SELECT * FROM lorebook_entries
-            WHERE story_id = ? AND disabled = 0
-            ORDER BY updated_at DESC, created_at DESC
-            """,
-            (story_id,),
-        ).fetchall()
+        visibleLorebook = listEnabledEntries(conn, story_id)
         preservedSummaries = [
             row
             for row in visibleLorebook
-            if lorebook_summary_chapter_id(row) in hiddenChapterIds
+            if lorebookSummaryChapterId(row) in hiddenChapterIds
         ]
 
     if not any(str(chapter["content"] or "").strip() for chapter in visibleChapters):
@@ -480,7 +440,7 @@ async def repair_story_lorebook(story_id: str) -> StreamingResponse:
         )
 
     return StreamingResponse(
-        stream_lorebook_repair(
+        streamLorebookRepair(
             story_id,
             story,
             visibleChapters,

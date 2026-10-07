@@ -3,7 +3,7 @@ import re
 from typing import Any
 
 
-def is_scene_break(value: str) -> bool:
+def isSceneBreak(value: str) -> bool:
     text = value.strip()
     if text in {"***", "---", "# # #"}:
         return True
@@ -34,12 +34,12 @@ ANCHOR_PROMPT_LENGTH = 40
 ANCHOR_SIMILARITY_THRESHOLD = 0.6
 
 
-def normalize_anchor(value: str) -> str:
+def normalizeAnchor(value: str) -> str:
     folded = "".join(ANCHOR_CHARACTER_FOLDS.get(character, character) for character in str(value or ""))
     return re.sub(r"\s+", " ", folded).strip()
 
 
-def anchor_for_block(text: str) -> str:
+def anchorForBlock(text: str) -> str:
     #cut on a word boundary so the anchor we advertise is never half a word the model has to guess how to finish
     if len(text) <= ANCHOR_PROMPT_LENGTH:
         return text
@@ -51,18 +51,18 @@ def anchor_for_block(text: str) -> str:
     return head.strip()
 
 
-def anchor_resembles_block(normalizedAnchor: str, blockText: str) -> bool:
+def anchorResemblesBlock(normalizedAnchor: str, blockText: str) -> bool:
     #models retype the quote from memory instead of copying it, so a few reworded words are sloppiness rather than the wrong paragraph
     if not normalizedAnchor:
         return False
 
-    normalizedBlock = normalize_anchor(blockText)
+    normalizedBlock = normalizeAnchor(blockText)
     window = normalizedBlock[:max(len(normalizedAnchor) + ANCHOR_MINIMUM_LENGTH, ANCHOR_MINIMUM_LENGTH)]
     similarity = difflib.SequenceMatcher(None, normalizedAnchor, window).ratio()
     return similarity >= ANCHOR_SIMILARITY_THRESHOLD
 
 
-def resolve_block_by_anchor(
+def resolveBlockByAnchor(
     blocks: list[dict[str, Any]],
     normalizedAnchor: str,
 ) -> dict[str, Any] | None:
@@ -70,19 +70,19 @@ def resolve_block_by_anchor(
     matches = [
         block
         for block in blocks
-        if normalizedAnchor and normalizedAnchor in normalize_anchor(block["text"])
+        if normalizedAnchor and normalizedAnchor in normalizeAnchor(block["text"])
     ]
     if len(matches) != 1:
         return None
 
     #still has to be a real quote rather than a couple of words that happened to land once
     block = matches[0]
-    if len(normalizedAnchor) < min(ANCHOR_MINIMUM_LENGTH, len(normalize_anchor(block["text"]))):
+    if len(normalizedAnchor) < min(ANCHOR_MINIMUM_LENGTH, len(normalizeAnchor(block["text"]))):
         return None
     return block
 
 
-def chapter_blocks(content: str) -> list[dict[str, Any]]:
+def chapterBlocks(content: str) -> list[dict[str, Any]]:
     blocks: list[dict[str, Any]] = []
     paragraph_index = 0
     scene_index = 0
@@ -93,7 +93,7 @@ def chapter_blocks(content: str) -> list[dict[str, Any]]:
         if not text:
             continue
 
-        if is_scene_break(text):
+        if isSceneBreak(text):
             scene_index += 1
             block_type = "sceneBreak"
             block_id = f"s_{scene_index:03d}"
@@ -110,7 +110,7 @@ def chapter_blocks(content: str) -> list[dict[str, Any]]:
                 "type": block_type,
                 "index": block_index,
                 "text": text,
-                "anchorText": anchor_for_block(text),
+                "anchorText": anchorForBlock(text),
                 "startChar": match.start(),
                 "endChar": match.start() + len(match.group(0).rstrip()),
             }
@@ -119,7 +119,7 @@ def chapter_blocks(content: str) -> list[dict[str, Any]]:
     return blocks
 
 
-def block_map_for_prompt(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def blockMapForPrompt(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     #same key the operation has to send back, so copying the value straight across is always a valid answer
     return [
         {

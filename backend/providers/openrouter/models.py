@@ -6,17 +6,17 @@ from typing import Any
 import httpx
 from fastapi import HTTPException
 
-from backend.core.appSettings import read_app_setting
-from backend.core.database import get_db
-from backend.core.utils import utc_now
+from backend.core.appSettings import readAppSetting
+from backend.core.database import getDb
+from backend.core.utils import utcNow
 from backend.providers.openrouter.client import (
     DEFAULT_MODEL_ID,
     OPENROUTER_BASE_URL,
-    headers_for_key,
+    headersForKey,
 )
 
 
-def normalize_model(model: dict[str, Any]) -> dict[str, Any]:
+def normalizeModel(model: dict[str, Any]) -> dict[str, Any]:
     normalizedModel = {
         "id": model.get("id"),
         "name": model.get("name") or model.get("id"),
@@ -33,7 +33,7 @@ def normalize_model(model: dict[str, Any]) -> dict[str, Any]:
     return normalizedModel
 
 
-def outputs_text_model(model: dict[str, Any]) -> bool:
+def outputsTextModel(model: dict[str, Any]) -> bool:
     architecture = model.get("architecture") or {}
     output_modalities = set(architecture.get("output_modalities") or [])
 
@@ -52,18 +52,18 @@ def outputs_text_model(model: dict[str, Any]) -> bool:
     return not any(kind in searchable for kind in ("image", "audio", "video", "vision"))
 
 
-def cached_models() -> list[dict[str, Any]]:
-    with get_db() as conn:
+def cachedModels() -> list[dict[str, Any]]:
+    with getDb() as conn:
         row = conn.execute(
             "SELECT payload_json FROM models_cache WHERE id = ?", ("openrouter_text",)
         ).fetchone()
     if not row:
         return []
-    return [model for model in json.loads(row["payload_json"]) if outputs_text_model(model)]
+    return [model for model in json.loads(row["payload_json"]) if outputsTextModel(model)]
 
 
-def cache_models(models: list[dict[str, Any]]) -> None:
-    with get_db() as conn:
+def cacheModels(models: list[dict[str, Any]]) -> None:
+    with getDb() as conn:
         conn.execute(
             """
             INSERT INTO models_cache (id, payload_json, fetched_at)
@@ -72,16 +72,16 @@ def cache_models(models: list[dict[str, Any]]) -> None:
               payload_json = excluded.payload_json,
               fetched_at = excluded.fetched_at
             """,
-            ("openrouter_text", json.dumps(models), utc_now()),
+            ("openrouter_text", json.dumps(models), utcNow()),
         )
 
 
-async def fetch_models_from_openrouter(api_key: str) -> list[dict[str, Any]]:
+async def fetchModelsFromOpenrouter(api_key: str) -> list[dict[str, Any]]:
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(
                 f"{OPENROUTER_BASE_URL}/models",
-                headers=headers_for_key(api_key),
+                headers=headersForKey(api_key),
                 params={"output_modalities": "text"},
             )
     except httpx.HTTPError as exc:
@@ -95,17 +95,17 @@ async def fetch_models_from_openrouter(api_key: str) -> list[dict[str, Any]]:
             detail=f"OpenRouter model fetch failed: {response.text}",
         )
     models = [
-        normalize_model(item)
+        normalizeModel(item)
         for item in response.json().get("data", [])
-        if outputs_text_model(item)
+        if outputsTextModel(item)
     ]
     return [model for model in models if model.get("id")]
 
 
-def default_model_id() -> str:
-    models = cached_models()
+def defaultModelId() -> str:
+    models = cachedModels()
     ids = {model["id"] for model in models if model.get("id")}
-    saved_default = read_app_setting("default_model")
+    saved_default = readAppSetting("default_model")
     if isinstance(saved_default, str) and saved_default in ids:
         return saved_default
     if DEFAULT_MODEL_ID in ids:
@@ -113,16 +113,16 @@ def default_model_id() -> str:
     return models[0]["id"] if models else DEFAULT_MODEL_ID
 
 
-def model_metadata(model_id: str) -> dict[str, Any] | None:
+def modelMetadata(model_id: str) -> dict[str, Any] | None:
     normalizedModelId = str(model_id or "").removesuffix(":nitro")
-    for model in cached_models():
+    for model in cachedModels():
         if model.get("id") in {model_id, normalizedModelId}:
             return model
     return None
 
 
-def model_supports_reasoning(model_id: str) -> bool:
-    model = model_metadata(model_id)
+def modelSupportsReasoning(model_id: str) -> bool:
+    model = modelMetadata(model_id)
     if not model:
         return False
     return (
@@ -131,15 +131,15 @@ def model_supports_reasoning(model_id: str) -> bool:
     )
 
 
-def model_requires_reasoning(model_id: str) -> bool:
-    model = model_metadata(model_id)
+def modelRequiresReasoning(model_id: str) -> bool:
+    model = modelMetadata(model_id)
     if not model:
         return False
     return (model.get("reasoning") or {}).get("mandatory") is True
 
 
-def model_supports_structured_output(model_id: str) -> bool:
-    model = model_metadata(model_id)
+def modelSupportsStructuredOutput(model_id: str) -> bool:
+    model = modelMetadata(model_id)
     if not model:
         return False
     return "structured_outputs" in (model.get("supported_parameters") or [])

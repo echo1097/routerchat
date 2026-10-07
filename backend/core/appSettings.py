@@ -3,12 +3,12 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from backend.core.database import get_db
-from backend.core.utils import utc_now
+from backend.core.database import getDb
+from backend.core.utils import utcNow
 
 
-def read_app_setting(key: str) -> Any:
-    with get_db() as conn:
+def readAppSetting(key: str) -> Any:
+    with getDb() as conn:
         row = conn.execute(
             "SELECT value_json FROM app_settings WHERE key = ?", (key,)
         ).fetchone()
@@ -17,8 +17,8 @@ def read_app_setting(key: str) -> Any:
     return json.loads(row["value_json"])
 
 
-def write_app_setting(key: str, value: Any) -> None:
-    with get_db() as conn:
+def writeAppSetting(key: str, value: Any) -> None:
+    with getDb() as conn:
         conn.execute(
             """
             INSERT INTO app_settings (key, value_json, updated_at)
@@ -27,17 +27,17 @@ def write_app_setting(key: str, value: Any) -> None:
               value_json = excluded.value_json,
               updated_at = excluded.updated_at
             """,
-            (key, json.dumps(value), utc_now()),
+            (key, json.dumps(value), utcNow()),
         )
 
 
 def hourPromptCacheEnabled() -> bool:
-    return read_app_setting("hour_prompt_cache") is not False
+    return readAppSetting("hour_prompt_cache") is not False
 
 
 def updateChecksEnabled() -> bool:
-    return read_app_setting("update_checks") is not False
+    return readAppSetting("update_checks") is not False
 
 
 def globalChatSystemPrompt() -> str:
-    return str(read_app_setting("chat_system_prompt") or "")
+    return str(readAppSetting("chat_system_prompt") or "")

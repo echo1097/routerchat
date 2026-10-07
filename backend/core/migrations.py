@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from backend.core.database import next_message_order
+from backend.core.database import nextMessageOrder
 
 
 def ensureCachedTokenColumns(conn: sqlite3.Connection) -> None:
@@ -28,7 +28,7 @@ def ensureGenerationSettledColumn(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE story_generations ADD COLUMN settled INTEGER NOT NULL DEFAULT 0")
 
 
-def ensure_chat_settings_columns(conn: sqlite3.Connection) -> None:
+def ensureChatSettingsColumns(conn: sqlite3.Connection) -> None:
     existing_columns = {
         row["name"] for row in conn.execute("PRAGMA table_info(chats)").fetchall()
     }
@@ -46,7 +46,7 @@ def ensure_chat_settings_columns(conn: sqlite3.Connection) -> None:
         )
 
 
-def ensure_message_source_column(conn: sqlite3.Connection) -> None:
+def ensureMessageSourceColumn(conn: sqlite3.Connection) -> None:
     existing_columns = {
         row["name"] for row in conn.execute("PRAGMA table_info(messages)").fetchall()
     }
@@ -54,7 +54,7 @@ def ensure_message_source_column(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE messages ADD COLUMN sources TEXT")
 
 
-def ensure_chat_folder_column(conn: sqlite3.Connection) -> None:
+def ensureChatFolderColumn(conn: sqlite3.Connection) -> None:
     existing_columns = {
         row["name"] for row in conn.execute("PRAGMA table_info(chats)").fetchall()
     }
@@ -66,7 +66,7 @@ def ensure_chat_folder_column(conn: sqlite3.Connection) -> None:
     )
 
 
-def ensure_story_settings_columns(conn: sqlite3.Connection) -> None:
+def ensureStorySettingsColumns(conn: sqlite3.Connection) -> None:
     existingColumns = {
         row["name"] for row in conn.execute("PRAGMA table_info(stories)").fetchall()
     }
@@ -91,7 +91,7 @@ def ensureProviderColumns(conn: sqlite3.Connection) -> None:
         )
 
 
-def ensure_chapter_context_column(conn: sqlite3.Connection) -> None:
+def ensureChapterContextColumn(conn: sqlite3.Connection) -> None:
     existingColumns = {
         row["name"] for row in conn.execute("PRAGMA table_info(chapters)").fetchall()
     }
@@ -99,7 +99,7 @@ def ensure_chapter_context_column(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE chapters ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0")
 
 
-def ensure_chapter_revision_column(conn: sqlite3.Connection) -> None:
+def ensureChapterRevisionColumn(conn: sqlite3.Connection) -> None:
     existingColumns = {
         row["name"] for row in conn.execute("PRAGMA table_info(chapters)").fetchall()
     }
@@ -109,7 +109,7 @@ def ensure_chapter_revision_column(conn: sqlite3.Connection) -> None:
         )
 
 
-def ensure_lorebook_revision_column(conn: sqlite3.Connection) -> None:
+def ensureLorebookRevisionColumn(conn: sqlite3.Connection) -> None:
     existingColumns = {
         row["name"] for row in conn.execute("PRAGMA table_info(lorebook_entries)").fetchall()
     }
@@ -119,7 +119,7 @@ def ensure_lorebook_revision_column(conn: sqlite3.Connection) -> None:
         )
 
 
-def ensure_brainstorm_generation_columns(conn: sqlite3.Connection) -> None:
+def ensureBrainstormGenerationColumns(conn: sqlite3.Connection) -> None:
     existingColumns = {
         row["name"]
         for row in conn.execute("PRAGMA table_info(brainstorm_generations)").fetchall()
@@ -130,7 +130,7 @@ def ensure_brainstorm_generation_columns(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE brainstorm_generations ADD COLUMN duration_ms REAL")
 
 
-def ensure_chapter_history_columns(conn: sqlite3.Connection) -> None:
+def ensureChapterHistoryColumns(conn: sqlite3.Connection) -> None:
     existingColumns = {
         row["name"]
         for row in conn.execute("PRAGMA table_info(chapter_history_entries)").fetchall()
@@ -156,10 +156,10 @@ def ensure_chapter_history_columns(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE chapter_history_entries ADD COLUMN cost REAL")
     if "kind" not in existingColumns:
         conn.execute("ALTER TABLE chapter_history_entries ADD COLUMN kind TEXT")
-        backfill_chapter_history_kinds(conn)
+        backfillChapterHistoryKinds(conn)
 
 
-def backfill_chapter_history_kinds(conn: sqlite3.Connection) -> None:
+def backfillChapterHistoryKinds(conn: sqlite3.Connection) -> None:
     #one time pass so old rows stop leaning on the label text forever, ordered so the lorebook ones dont steal each others patterns
     rules = [
         ("prompt", "label = 'User prompt'"),
@@ -182,7 +182,7 @@ def backfill_chapter_history_kinds(conn: sqlite3.Connection) -> None:
         )
 
 
-def ensure_lorebook_run_usage_columns(conn: sqlite3.Connection) -> None:
+def ensureLorebookRunUsageColumns(conn: sqlite3.Connection) -> None:
     existingColumns = {
         row["name"]
         for row in conn.execute("PRAGMA table_info(lorebook_update_runs)").fetchall()
@@ -200,7 +200,7 @@ def ensure_lorebook_run_usage_columns(conn: sqlite3.Connection) -> None:
         )
 
 
-def clean_lorebook_categories(conn: sqlite3.Connection) -> None:
+def cleanLorebookCategories(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
         UPDATE lorebook_entries
@@ -210,7 +210,7 @@ def clean_lorebook_categories(conn: sqlite3.Connection) -> None:
     )
 
 
-def ensure_message_order_column(conn: sqlite3.Connection) -> None:
+def ensureMessageOrderColumn(conn: sqlite3.Connection) -> None:
     existing_columns = {
         row["name"] for row in conn.execute("PRAGMA table_info(messages)").fetchall()
     }
@@ -233,7 +233,7 @@ def ensure_message_order_column(conn: sqlite3.Connection) -> None:
             """,
             (chatRow["chat_id"],),
         ).fetchall()
-        nextOrder = next_message_order(conn, chatRow["chat_id"])
+        nextOrder = nextMessageOrder(conn, chatRow["chat_id"])
         for offset, messageRow in enumerate(messageRows):
             conn.execute(
                 "UPDATE messages SET message_order = ? WHERE rowid = ?",
@@ -241,7 +241,7 @@ def ensure_message_order_column(conn: sqlite3.Connection) -> None:
             )
 
 
-def ensure_message_usage_columns(conn: sqlite3.Connection) -> None:
+def ensureMessageUsageColumns(conn: sqlite3.Connection) -> None:
     existing_columns = {
         row["name"] for row in conn.execute("PRAGMA table_info(messages)").fetchall()
     }

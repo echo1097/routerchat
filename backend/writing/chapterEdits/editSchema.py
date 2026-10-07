@@ -1,7 +1,7 @@
 from typing import Any
 
 
-def chapter_edit_operation_schema() -> dict[str, Any]:
+def chapterEditOperationSchema() -> dict[str, Any]:
     operationFields = {
         "operation": {"type": "string"},
         "blockId": {"type": "string", "minLength": 1},
@@ -74,7 +74,7 @@ def chapter_edit_operation_schema() -> dict[str, Any]:
     }
 
 
-def chapter_edit_batch_schema() -> dict[str, Any]:
+def chapterEditBatchSchema() -> dict[str, Any]:
     #chapterRevision lives on the envelope now, one statement of it instead of one per edit that can disagree with its neighbours
     return {
         "type": "object",
@@ -84,19 +84,19 @@ def chapter_edit_batch_schema() -> dict[str, Any]:
             "edits": {
                 "type": "array",
                 "minItems": 1,
-                "items": chapter_edit_operation_schema(),
+                "items": chapterEditOperationSchema(),
             },
         },
         "required": ["chapterRevision", "edits"],
     }
 
 
-def chapter_edit_response_format() -> dict[str, Any]:
+def chapterEditResponseFormat() -> dict[str, Any]:
     return {
         "type": "json_schema",
         "json_schema": {
             "name": "chapter_edit_batch",
             "strict": True,
-            "schema": chapter_edit_batch_schema(),
+            "schema": chapterEditBatchSchema(),
         },
     }

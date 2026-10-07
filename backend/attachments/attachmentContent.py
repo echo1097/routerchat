@@ -7,12 +7,12 @@ from typing import Any
 from backend.attachments.attachmentFiles import (
     CODE_FENCE_LANGUAGES,
     MAX_TEXT_CHARACTERS,
-    file_extension,
-    read_attachment_bytes,
+    fileExtension,
+    readAttachmentBytes,
 )
 
 
-def row_to_attachment(row: sqlite3.Row) -> dict[str, Any]:
+def rowToAttachment(row: sqlite3.Row) -> dict[str, Any]:
     return {
         "id": row["id"],
         "filename": row["filename"],
@@ -23,7 +23,7 @@ def row_to_attachment(row: sqlite3.Row) -> dict[str, Any]:
     }
 
 
-def attachments_by_message(
+def groupAttachmentsByMessage(
     conn: sqlite3.Connection, chat_id: str
 ) -> dict[str, list[dict[str, Any]]]:
     rows = conn.execute(
@@ -37,11 +37,11 @@ def attachments_by_message(
 
     grouped: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
-        grouped.setdefault(row["message_id"], []).append(row_to_attachment(row))
+        grouped.setdefault(row["message_id"], []).append(rowToAttachment(row))
     return grouped
 
 
-def selected_attachment_rows(
+def selectedAttachmentRows(
     conn: sqlite3.Connection, attachmentIds: list[str]
 ) -> list[sqlite3.Row]:
     if not attachmentIds:
@@ -57,8 +57,8 @@ def selected_attachment_rows(
     return [byId[attachmentId] for attachmentId in attachmentIds if attachmentId in byId]
 
 
-def text_content_part(row: sqlite3.Row) -> dict[str, Any] | None:
-    raw = read_attachment_bytes(row)
+def textContentPart(row: sqlite3.Row) -> dict[str, Any] | None:
+    raw = readAttachmentBytes(row)
     if not raw:
         return None
 
@@ -67,7 +67,7 @@ def text_content_part(row: sqlite3.Row) -> dict[str, Any] | None:
     if truncated:
         decoded = decoded[:MAX_TEXT_CHARACTERS]
 
-    language = CODE_FENCE_LANGUAGES.get(file_extension(row["filename"]), "")
+    language = CODE_FENCE_LANGUAGES.get(fileExtension(row["filename"]), "")
     body = f"Attached file: {row['filename']}\n\n```{language}\n{decoded}\n```"
     if truncated:
         body += "\n\n(This file was truncated because it is very long.)"
@@ -75,30 +75,30 @@ def text_content_part(row: sqlite3.Row) -> dict[str, Any] | None:
     return {"type": "text", "text": body}
 
 
-def data_url(mime: str, raw: bytes) -> str:
+def dataUrl(mime: str, raw: bytes) -> str:
     return f"data:{mime};base64,{base64.b64encode(raw).decode('ascii')}"
 
 
-def attachment_content_parts(
+def attachmentContentParts(
     conn: sqlite3.Connection, attachmentIds: list[str]
 ) -> list[dict[str, Any]]:
     parts: list[dict[str, Any]] = []
 
-    for row in selected_attachment_rows(conn, attachmentIds):
+    for row in selectedAttachmentRows(conn, attachmentIds):
         if row["kind"] == "image":
-            raw = read_attachment_bytes(row)
+            raw = readAttachmentBytes(row)
             if not raw:
                 continue
             parts.append(
                 {
                     "type": "image_url",
-                    "image_url": {"url": data_url(row["mime"], raw)},
+                    "image_url": {"url": dataUrl(row["mime"], raw)},
                 }
             )
             continue
 
         if row["kind"] == "pdf":
-            raw = read_attachment_bytes(row)
+            raw = readAttachmentBytes(row)
             if not raw:
                 continue
             parts.append(
@@ -106,23 +106,23 @@ def attachment_content_parts(
                     "type": "file",
                     "file": {
                         "filename": row["filename"],
-                        "file_data": data_url("application/pdf", raw),
+                        "file_data": dataUrl("application/pdf", raw),
                     },
                 }
             )
             continue
 
-        textPart = text_content_part(row)
+        textPart = textContentPart(row)
         if textPart:
             parts.append(textPart)
 
     return parts
 
 
-def user_content_with_attachments(
+def userContentWithAttachments(
     conn: sqlite3.Connection, attachmentIds: list[str], text: str
 ) -> Any:
-    parts = attachment_content_parts(conn, attachmentIds)
+    parts = attachmentContentParts(conn, attachmentIds)
     if not parts:
         return text
 
@@ -132,11 +132,11 @@ def user_content_with_attachments(
     return parts
 
 
-def has_pdf_attachment(conn: sqlite3.Connection, attachmentIds: list[str]) -> bool:
-    return any(row["kind"] == "pdf" for row in selected_attachment_rows(conn, attachmentIds))
+def hasPdfAttachment(conn: sqlite3.Connection, attachmentIds: list[str]) -> bool:
+    return any(row["kind"] == "pdf" for row in selectedAttachmentRows(conn, attachmentIds))
 
 
-def chat_has_pdf_attachment(conn: sqlite3.Connection, chat_id: str) -> bool:
+def chatHasPdfAttachment(conn: sqlite3.Connection, chat_id: str) -> bool:
     row = conn.execute(
         """
         SELECT 1 FROM attachments
@@ -148,5 +148,5 @@ def chat_has_pdf_attachment(conn: sqlite3.Connection, chat_id: str) -> bool:
     return row is not None
 
 
-def pdf_parser_plugins() -> list[dict[str, Any]]:
+def pdfParserPlugins() -> list[dict[str, Any]]:
     return [{"id": "file-parser", "pdf": {"engine": "pdf-text"}}]

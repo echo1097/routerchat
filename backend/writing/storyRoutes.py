@@ -3,51 +3,54 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from backend.attachments.attachmentCleanup import delete_attachments_for_story
-from backend.core.database import get_db
-from backend.core.utils import utc_now
+from backend.attachments.attachmentCleanup import deleteAttachmentsForStory
+from backend.core.database import getDb
+from backend.core.utils import utcNow
 from backend.providers.registry import getActiveProvider
-from backend.writing.storyBundle import get_story_bundle
+from backend.writing.storyBundle import getStoryBundle
 from backend.writing.storyModels import (
     StoryCreateRequest,
     StoryPatchRequest,
     StoryWithInitialChapterRequest,
 )
-from backend.writing.storyRows import (
-    request_updates,
-    row_to_chapter,
-    row_to_story,
-    word_count,
+from backend.stories.storyQueries import (
+    deleteStory,
+    getChapterById,
+    getGenerationSettled,
+    getStory,
+    getStoryTemporary,
+    insertChapter,
+    insertStory,
+    listStories,
+    requireStory,
+    updateStoryColumns,
+)
+from backend.stories.storyRows import (
+    requestUpdates,
+    rowToChapter,
+    rowToStory,
+    wordCount,
 )
 
 router = APIRouter()
 
 
 @router.get("/api/stories")
-def list_stories() -> dict[str, Any]:
-    with get_db() as conn:
-        rows = conn.execute(
-            "SELECT * FROM stories WHERE temporary = 0 ORDER BY updated_at DESC, created_at DESC"
-        ).fetchall()
-    return {"stories": [row_to_story(row) for row in rows]}
+def listStoriesRoute() -> dict[str, Any]:
+    with getDb() as conn:
+        rows = listStories(conn)
+    return {"stories": [rowToStory(row) for row in rows]}
 
 
 @router.post("/api/stories")
-def create_story(payload: StoryCreateRequest) -> dict[str, Any]:
-    now = utc_now()
+def createStory(payload: StoryCreateRequest) -> dict[str, Any]:
+    now = utcNow()
     story_id = str(uuid.uuid4())
     provider = getActiveProvider()
     model = payload.model or provider.defaultModelId()
-    with get_db() as conn:
-        conn.execute(
-            """
-            INSERT INTO stories (
-              id, title, author, language, synopsis, model, provider, system_prompt,
-              temperature, max_tokens, thinking_enabled, reasoning_effort, temporary,
-              lorebook_auto, lorebook_model, created_at, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+    with getDb() as conn:
+        insertStory(
+            conn,
             (
                 story_id,
                 payload.title.strip() or "New story",
@@ -68,15 +71,15 @@ def create_story(payload: StoryCreateRequest) -> dict[str, Any]:
                 now,
             ),
         )
-        row = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
-    return {"story": row_to_story(row)}
+        row = getStory(conn, story_id)
+    return {"story": rowToStory(row)}
 
 
 @router.post("/api/stories/with-initial-chapter")
-def create_story_with_initial_chapter(
+def createStoryWithInitialChapter(
     payload: StoryWithInitialChapterRequest,
 ) -> dict[str, Any]:
-    now = utc_now()
+    now = utcNow()
     story_id = str(uuid.uuid4())
     chapter_id = str(uuid.uuid4())
     provider = getActiveProvider()
@@ -84,16 +87,9 @@ def create_story_with_initial_chapter(
     initial_chapter = payload.initial_chapter
     content = initial_chapter.content
 
-    with get_db() as conn:
-        conn.execute(
-            """
-            INSERT INTO stories (
-              id, title, author, language, synopsis, model, provider, system_prompt,
-              temperature, max_tokens, thinking_enabled, reasoning_effort, temporary,
-              lorebook_auto, lorebook_model, created_at, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+    with getDb() as conn:
+        insertStory(
+            conn,
             (
                 story_id,
                 payload.title.strip() or "New story",
@@ -114,52 +110,42 @@ def create_story_with_initial_chapter(
                 now,
             ),
         )
-        conn.execute(
-            """
-            INSERT INTO chapters (
-              id, story_id, title, content, word_count, order_index, created_at, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+        insertChapter(
+            conn,
             (
                 chapter_id,
                 story_id,
                 initial_chapter.title.strip() or "New chapter",
                 content,
-                word_count(content),
+                wordCount(content),
                 0,
                 now,
                 now,
             ),
         )
-        story = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
-        chapter = conn.execute(
-            "SELECT * FROM chapters WHERE id = ?", (chapter_id,)
-        ).fetchone()
+        story = getStory(conn, story_id)
+        chapter = getChapterById(conn, chapter_id)
 
-    return {"story": row_to_story(story), "chapter": row_to_chapter(chapter)}
+    return {"story": rowToStory(story), "chapter": rowToChapter(chapter)}
 
 
 @router.get("/api/stories/{story_id}/chapters/{chapter_id}/generations/{generationId}")
 def getGenerationStatus(story_id: str, chapter_id: str, generationId: str) -> dict[str, bool]:
-    with get_db() as conn:
-        generationRow = conn.execute(
-            "SELECT settled FROM story_generations WHERE id = ? AND story_id = ? AND chapter_id = ?",
-            (generationId, story_id, chapter_id),
-        ).fetchone()
+    with getDb() as conn:
+        generationRow = getGenerationSettled(conn, story_id, chapter_id, generationId)
     return {"settled": bool(generationRow and generationRow["settled"])}
 
 
 @router.get("/api/stories/{story_id}")
-def get_story(story_id: str) -> dict[str, Any]:
-    return get_story_bundle(story_id)
+def getStoryRoute(story_id: str) -> dict[str, Any]:
+    return getStoryBundle(story_id)
 
 
 @router.patch("/api/stories/{story_id}")
-def update_story(story_id: str, payload: StoryPatchRequest) -> dict[str, Any]:
-    updates = request_updates(payload, reject_null=True)
+def updateStory(story_id: str, payload: StoryPatchRequest) -> dict[str, Any]:
+    updates = requestUpdates(payload, reject_null=True)
     if not updates:
-        return get_story_bundle(story_id)
+        return getStoryBundle(story_id)
     assignments: list[str] = []
     values: list[Any] = []
     for key, value in updates.items():
@@ -173,38 +159,26 @@ def update_story(story_id: str, payload: StoryPatchRequest) -> dict[str, Any]:
     #settings, renames and title edits are housekeeping, so they leave updated_at alone
     #and the story keeps its place in the sidebar until someone actually writes in it
     values.append(story_id)
-    with get_db() as conn:
-        story = conn.execute("SELECT id FROM stories WHERE id = ?", (story_id,)).fetchone()
-        if not story:
-            raise HTTPException(status_code=404, detail="Story not found.")
-        conn.execute(f"UPDATE stories SET {', '.join(assignments)} WHERE id = ?", values)
-    return get_story_bundle(story_id)
+    with getDb() as conn:
+        story = requireStory(conn, story_id)
+        updateStoryColumns(conn, assignments, values)
+    return getStoryBundle(story_id)
 
 
 @router.delete("/api/stories/{story_id}")
-def delete_story(story_id: str) -> dict[str, Any]:
-    with get_db() as conn:
-        delete_attachments_for_story(conn, story_id)
-        conn.execute("DELETE FROM brainstorm_generations WHERE story_id = ?", (story_id,))
-        conn.execute("DELETE FROM brainstorm_edges WHERE story_id = ?", (story_id,))
-        conn.execute("DELETE FROM brainstorm_nodes WHERE story_id = ?", (story_id,))
-        conn.execute("DELETE FROM brainstorm_viewports WHERE story_id = ?", (story_id,))
-        conn.execute("DELETE FROM lorebook_update_runs WHERE story_id = ?", (story_id,))
-        conn.execute("DELETE FROM story_generations WHERE story_id = ?", (story_id,))
-        conn.execute("DELETE FROM lorebook_entries WHERE story_id = ?", (story_id,))
-        conn.execute("DELETE FROM chapters WHERE story_id = ?", (story_id,))
-        result = conn.execute("DELETE FROM stories WHERE id = ?", (story_id,))
+def deleteStoryRoute(story_id: str) -> dict[str, Any]:
+    with getDb() as conn:
+        deleteAttachmentsForStory(conn, story_id)
+        result = deleteStory(conn, story_id)
     if result.rowcount == 0:
         raise HTTPException(status_code=404, detail="Story not found.")
     return {"ok": True}
 
 
 @router.post("/api/stories/{story_id}/close")
-def close_story(story_id: str) -> dict[str, Any]:
-    with get_db() as conn:
-        story = conn.execute(
-            "SELECT temporary FROM stories WHERE id = ?", (story_id,)
-        ).fetchone()
+def closeStory(story_id: str) -> dict[str, Any]:
+    with getDb() as conn:
+        story = getStoryTemporary(conn, story_id)
     if not story or not bool(story["temporary"]):
         return {"ok": True}
-    return delete_story(story_id)
+    return deleteStoryRoute(story_id)

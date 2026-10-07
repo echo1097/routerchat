@@ -9,33 +9,50 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from backend.brainstorm.brainstormLayout import (
-    brainstorm_idea_positions,
-    next_brainstorm_branch_position,
-    next_brainstorm_root_position,
+    brainstormIdeaPositions,
+    nextBrainstormBranchPosition,
+    nextBrainstormRootPosition,
 )
 from backend.brainstorm.brainstormMessages import (
-    brainstorm_response_format,
-    build_brainstorm_messages,
-    parse_brainstorm_ideas,
+    brainstormResponseFormat,
+    buildBrainstormMessages,
+    parseBrainstormIdeas,
+)
+from backend.brainstorm.brainstormQueries import (
+    getEdge,
+    getNode,
+    insertEdge,
+    insertGeneration,
+    insertIdeaNode,
+    insertPromptNode,
+    listEdges,
+    listNodes,
+    setNodeStatus,
 )
 from backend.brainstorm.brainstormRows import (
-    row_to_brainstorm_edge,
-    row_to_brainstorm_node,
+    rowToBrainstormEdge,
+    rowToBrainstormNode,
 )
 from backend.chats.chatModels import StreamMessageRequest
-from backend.core.database import get_db
-from backend.core.streamEvents import stream_event
-from backend.core.utils import utc_now
+from backend.core.database import getDb
+from backend.core.streamEvents import streamEvent
+from backend.core.utils import utcNow
+from backend.lorebook.lorebookQueries import listEntriesByUpdated
 from backend.providers.base import ChatOptions
+from backend.providers.modelStream import ModelStream
 from backend.providers.registry import providerForRow
-from backend.writing.storyProvider import storyProvider
-from backend.providers.streaming import streamChat
+from backend.stories.storyProvider import storyProvider
 from backend.usage.recordUsage import recordUsage
+from backend.stories.storyQueries import (
+    listChapters,
+    requireStory,
+    updateStoryBrainstormSettings,
+)
 
 router = APIRouter()
 
 
-async def stream_brainstorm_generation(
+async def streamBrainstormGeneration(
     story_id: str,
     payload: StreamMessageRequest,
     story: sqlite3.Row,
@@ -50,13 +67,13 @@ async def stream_brainstorm_generation(
 
     prompt_node_id = prompt_node["id"]
     generation_row_id = str(uuid.uuid4())
-    messages = build_brainstorm_messages(
+    messages = buildBrainstormMessages(
         story, chapters, lorebook_rows, branch_nodes, payload.message, payload.brainstorm_idea_count
     )
 
     responseFormat = None
     if provider.supportsStructuredOutput(payload.model):
-        responseFormat = brainstorm_response_format(payload.brainstorm_idea_count)
+        responseFormat = brainstormResponseFormat(payload.brainstorm_idea_count)
 
     request = provider.buildRequest(
         messages,
@@ -75,17 +92,12 @@ async def stream_brainstorm_generation(
         payload.model, payload.thinking_enabled
     )
 
-    generated_text: list[str] = []
-    reasoning_text: list[str] = []
+    modelStream = ModelStream(provider, request, effectiveThinkingEnabled)
     generation_started_at = time.perf_counter()
     duration_ms: float | None = None
-    generation_id: str | None = None
-    finish_reason: str | None = None
-    usage: dict[str, Any] = {}
-    receivedDone = False
     saved_generation = False
 
-    def save_generation(
+    def saveGeneration(
         status: str,
         error: str | None = None,
         conn: sqlite3.Connection | None = None,
@@ -95,113 +107,88 @@ async def stream_brainstorm_generation(
             return
         duration_ms = (time.perf_counter() - generation_started_at) * 1000
         if conn is not None:
-            write_generation(conn, status, error)
+            writeGeneration(conn, status, error)
         else:
-            with get_db() as ownConn:
-                write_generation(ownConn, status, error)
+            with getDb() as ownConn:
+                writeGeneration(ownConn, status, error)
         saved_generation = True
 
-    def write_generation(
+    def writeGeneration(
         conn: sqlite3.Connection,
         status: str,
         error: str | None,
     ) -> None:
-        conn.execute(
-            "UPDATE brainstorm_nodes SET status = ?, updated_at = ? WHERE id = ?",
-            (status, utc_now(), prompt_node_id),
-        )
-        createdAt = utc_now()
-        conn.execute(
-            """
-            INSERT INTO brainstorm_generations (
-              id, story_id, prompt_node_id, prompt, reasoning, duration_ms,
-              model, finish_reason, error,
-              generation_id, prompt_tokens, completion_tokens, reasoning_tokens,
-              cached_tokens, total_tokens, cost, provider_name, generation_time,
-              latency, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+        setNodeStatus(conn, prompt_node_id, status, utcNow())
+        createdAt = utcNow()
+        insertGeneration(
+            conn,
             (
                 generation_row_id,
                 story_id,
                 prompt_node_id,
                 payload.message,
-                "".join(reasoning_text) or None,
+                "".join(modelStream.reasoningParts) or None,
                 duration_ms,
                 payload.model,
-                finish_reason,
+                modelStream.finishReason,
                 error,
-                generation_id,
-                usage.get("prompt_tokens"),
-                usage.get("completion_tokens"),
-                usage.get("reasoning_tokens"),
-                usage.get("cached_tokens"),
-                usage.get("total_tokens"),
-                usage.get("cost"),
-                usage.get("provider_name"),
-                usage.get("generation_time"),
-                usage.get("latency"),
+                modelStream.generationId,
+                modelStream.usage.get("prompt_tokens"),
+                modelStream.usage.get("completion_tokens"),
+                modelStream.usage.get("reasoning_tokens"),
+                modelStream.usage.get("cached_tokens"),
+                modelStream.usage.get("total_tokens"),
+                modelStream.usage.get("cost"),
+                modelStream.usage.get("provider_name"),
+                modelStream.usage.get("generation_time"),
+                modelStream.usage.get("latency"),
                 createdAt,
             ),
         )
         recordUsage(
-            "brainstorm", generation_row_id, payload.model, usage, createdAt, generation_id, provider.id
+            "brainstorm",
+            generation_row_id,
+            payload.model,
+            modelStream.usage,
+            createdAt,
+            modelStream.generationId,
+            provider.id,
         )
 
     try:
-        promptNodeValue = row_to_brainstorm_node(prompt_node)
+        promptNodeValue = rowToBrainstormNode(prompt_node)
         promptNodeValue["generation_phase"] = "waiting"
-        yield stream_event(
+        yield streamEvent(
             "prompt",
             {
                 "node": promptNodeValue,
-                "edges": [row_to_brainstorm_edge(edge) for edge in prompt_edges],
+                "edges": [rowToBrainstormEdge(edge) for edge in prompt_edges],
             },
         )
-        working_started = False
-        async with aclosing(streamChat(provider, request)) as events:
+        async with aclosing(modelStream.events()) as events:
             async for event in events:
-                if event["type"] == "error":
-                    save_generation("failed", event["message"])
-                    yield stream_event("error", event["message"])
-                    return
-                if event["type"] == "open":
-                    generation_id = event["generationId"]
-                    continue
-                if event["type"] == "done":
-                    receivedDone = True
-                    continue
+                if event["type"] == "reasoning":
+                    yield streamEvent("reasoning", event["value"])
+                elif event["type"] == "contentStart":
+                    yield streamEvent("working", None)
 
-                generation_id = generation_id or event["id"]
-                if event["usage"]:
-                    usage.update(event["usage"])
-                if not event["hasChoice"]:
-                    continue
-                finish_reason = event["finishReason"] or finish_reason
-                if event["reasoning"] and effectiveThinkingEnabled:
-                    reasoning_text.append(event["reasoning"])
-                    yield stream_event("reasoning", event["reasoning"])
-                if event["content"]:
-                    if not working_started:
-                        working_started = True
-                        yield stream_event("working", None)
-                    generated_text.append(event["content"])
+        if modelStream.errorMessage:
+            saveGeneration("failed", modelStream.errorMessage)
+            yield streamEvent("error", modelStream.errorMessage)
+            return
 
-        if generation_id:
-            generation_usage = await provider.fetchFinalUsage(api_key, generation_id)
-            if generation_usage:
-                usage.update(generation_usage)
+        await modelStream.fetchFinalUsage(api_key)
 
-        if finish_reason == "length":
+        if modelStream.finishReason == "length":
             raise ValueError(
                 "Brainstorm generation hit the model token limit before it finished."
             )
-        if not receivedDone:
+        if not modelStream.receivedDone:
             raise ValueError(
                 "Brainstorm generation ended before the provider completed the stream."
             )
 
-        ideas = parse_brainstorm_ideas("".join(generated_text))
+        ideas = parseBrainstormIdeas(modelStream.text)
         if len(ideas) != payload.brainstorm_idea_count:
             raise ValueError(
                 f"Brainstorm output returned {len(ideas)} ideas instead of "
@@ -209,21 +196,16 @@ async def stream_brainstorm_generation(
             )
         prompt_x = float(prompt_node["position_x"])
         prompt_y = float(prompt_node["position_y"])
-        idea_positions = brainstorm_idea_positions(prompt_x, prompt_y, len(ideas))
-        now = utc_now()
+        idea_positions = brainstormIdeaPositions(prompt_x, prompt_y, len(ideas))
+        now = utcNow()
         created_nodes: list[dict[str, Any]] = []
         created_edges: list[dict[str, Any]] = []
-        with get_db() as conn:
+        with getDb() as conn:
             for index, idea in enumerate(ideas):
                 idea_id = str(uuid.uuid4())
                 edge_id = str(uuid.uuid4())
-                conn.execute(
-                    """
-                    INSERT INTO brainstorm_nodes (
-                      id, story_id, node_type, title, content, position_x,
-                      position_y, status, created_at, updated_at
-                    ) VALUES (?, ?, 'idea', ?, ?, ?, ?, 'complete', ?, ?)
-                    """,
+                insertIdeaNode(
+                    conn,
                     (
                         idea_id,
                         story_id,
@@ -235,24 +217,13 @@ async def stream_brainstorm_generation(
                         now,
                     ),
                 )
-                conn.execute(
-                    """
-                    INSERT INTO brainstorm_edges (
-                      id, story_id, source_node_id, target_node_id, created_at
-                    ) VALUES (?, ?, ?, ?, ?)
-                    """,
-                    (edge_id, story_id, prompt_node_id, idea_id, now),
-                )
-                node_row = conn.execute(
-                    "SELECT * FROM brainstorm_nodes WHERE id = ?", (idea_id,)
-                ).fetchone()
-                edge_row = conn.execute(
-                    "SELECT * FROM brainstorm_edges WHERE id = ?", (edge_id,)
-                ).fetchone()
-                created_nodes.append(row_to_brainstorm_node(node_row))
-                created_edges.append(row_to_brainstorm_edge(edge_row))
-            save_generation("complete", conn=conn)
-        yield stream_event(
+                insertEdge(conn, edge_id, story_id, prompt_node_id, idea_id, now)
+                node_row = getNode(conn, idea_id)
+                edge_row = getEdge(conn, edge_id)
+                created_nodes.append(rowToBrainstormNode(node_row))
+                created_edges.append(rowToBrainstormEdge(edge_row))
+            saveGeneration("complete", conn=conn)
+        yield streamEvent(
             "ideas",
             {
                 "nodes": created_nodes,
@@ -260,24 +231,29 @@ async def stream_brainstorm_generation(
                 "duration_ms": duration_ms,
             },
         )
-        if usage:
-            yield stream_event(
-                "usage", {"generation_id": generation_id, "model": payload.model, **usage}
+        if modelStream.usage:
+            yield streamEvent(
+                "usage",
+                {
+                    "generation_id": modelStream.generationId,
+                    "model": payload.model,
+                    **modelStream.usage,
+                },
             )
     except asyncio.CancelledError:
-        save_generation("cancelled", "Generation cancelled.")
+        saveGeneration("cancelled", "Generation cancelled.")
         raise
     except Exception as exc:  # noqa: BLE001
         error = str(exc)
-        save_generation("failed", error)
-        yield stream_event("error", error)
+        saveGeneration("failed", error)
+        yield streamEvent("error", error)
     finally:
         if not saved_generation:
-            save_generation("cancelled", "Generation cancelled.")
+            saveGeneration("cancelled", "Generation cancelled.")
 
 
 @router.post("/api/stories/{story_id}/brainstorm/generate/stream")
-async def generate_brainstorm(
+async def generateBrainstorm(
     story_id: str,
     payload: StreamMessageRequest,
 ) -> StreamingResponse:
@@ -287,29 +263,15 @@ async def generate_brainstorm(
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
 
     selected_ids = list(dict.fromkeys(payload.selected_idea_ids))
-    now = utc_now()
+    now = utcNow()
     prompt_node_id = str(uuid.uuid4())
     prompt_edges: list[sqlite3.Row] = []
-    with get_db() as conn:
-        story = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
-        if not story:
-            raise HTTPException(status_code=404, detail="Story not found.")
-        chapters = conn.execute(
-            "SELECT * FROM chapters WHERE story_id = ? ORDER BY order_index ASC, created_at ASC",
-            (story_id,),
-        ).fetchall()
-        lorebook_rows = conn.execute(
-            "SELECT * FROM lorebook_entries WHERE story_id = ? ORDER BY updated_at DESC",
-            (story_id,),
-        ).fetchall()
-        all_nodes = conn.execute(
-            "SELECT * FROM brainstorm_nodes WHERE story_id = ? ORDER BY created_at ASC",
-            (story_id,),
-        ).fetchall()
-        all_edges = conn.execute(
-            "SELECT * FROM brainstorm_edges WHERE story_id = ? ORDER BY created_at ASC",
-            (story_id,),
-        ).fetchall()
+    with getDb() as conn:
+        story = requireStory(conn, story_id)
+        chapters = listChapters(conn, story_id)
+        lorebook_rows = listEntriesByUpdated(conn, story_id)
+        all_nodes = listNodes(conn, story_id)
+        all_edges = listEdges(conn, story_id)
         nodes_by_id = {row["id"]: row for row in all_nodes}
         if any(
             selected_id not in nodes_by_id
@@ -337,47 +299,27 @@ async def generate_brainstorm(
         branch_nodes = [row for row in all_nodes if row["id"] in branch_ids]
 
         if selected_ids:
-            prompt_x, prompt_y = next_brainstorm_branch_position(
+            prompt_x, prompt_y = nextBrainstormBranchPosition(
                 all_nodes,
                 [nodes_by_id[node_id] for node_id in selected_ids],
                 payload.brainstorm_idea_count,
             )
         else:
-            prompt_x, prompt_y = next_brainstorm_root_position(
+            prompt_x, prompt_y = nextBrainstormRootPosition(
                 all_nodes,
                 payload.brainstorm_idea_count,
             )
 
-        conn.execute(
-            """
-            INSERT INTO brainstorm_nodes (
-              id, story_id, node_type, title, content, position_x,
-              position_y, status, created_at, updated_at
-            ) VALUES (?, ?, 'prompt', 'Prompt', ?, ?, ?, 'generating', ?, ?)
-            """,
+        insertPromptNode(
+            conn,
             (prompt_node_id, story_id, payload.message.strip(), prompt_x, prompt_y, now, now),
         )
         for selected_id in selected_ids:
             edge_id = str(uuid.uuid4())
-            conn.execute(
-                """
-                INSERT INTO brainstorm_edges (
-                  id, story_id, source_node_id, target_node_id, created_at
-                ) VALUES (?, ?, ?, ?, ?)
-                """,
-                (edge_id, story_id, selected_id, prompt_node_id, now),
-            )
-            prompt_edges.append(
-                conn.execute(
-                    "SELECT * FROM brainstorm_edges WHERE id = ?", (edge_id,)
-                ).fetchone()
-            )
-        conn.execute(
-            """
-            UPDATE stories SET model = ?, temperature = ?, max_tokens = ?,
-              thinking_enabled = ?, reasoning_effort = ?, updated_at = ?
-            WHERE id = ?
-            """,
+            insertEdge(conn, edge_id, story_id, selected_id, prompt_node_id, now)
+            prompt_edges.append(getEdge(conn, edge_id))
+        updateStoryBrainstormSettings(
+            conn,
             (
                 payload.model,
                 payload.temperature,
@@ -388,12 +330,10 @@ async def generate_brainstorm(
                 story_id,
             ),
         )
-        prompt_node = conn.execute(
-            "SELECT * FROM brainstorm_nodes WHERE id = ?", (prompt_node_id,)
-        ).fetchone()
+        prompt_node = getNode(conn, prompt_node_id)
 
     return StreamingResponse(
-        stream_brainstorm_generation(
+        streamBrainstormGeneration(
             story_id,
             payload,
             story,

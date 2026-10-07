@@ -12,14 +12,14 @@ import backend.tos.loadTos as loadTos
 import backend.tos.tosAcceptance as tosAcceptance
 import backend.core.migrations as migrations
 import backend.core.paths as paths
-from backend.local_access import create_secret_file
+from backend.local_access import createSecretFile
 
 
 def acceptCurrentTos():
-    tos = loadTos.load_tos()
+    tos = loadTos.loadTos()
     if not tos:
         raise RuntimeError("TOS.md is missing, restore it before running the tests")
-    tosAcceptance.record_tos_acceptance(tos["hash"], tos["date"])
+    tosAcceptance.recordTosAcceptance(tos["hash"], tos["date"])
 
 
 class FolderApiTest(unittest.TestCase):
@@ -31,7 +31,7 @@ class FolderApiTest(unittest.TestCase):
         paths.DB_PATH = paths.DATA_DIR / "routerchat-test.sqlite3"
         self.baseUrl = "http://127.0.0.1:8000"
         self.apiSecretPath = paths.DATA_DIR / "run" / "api-secret"
-        self.apiSecret = create_secret_file(self.apiSecretPath)
+        self.apiSecret = createSecretFile(self.apiSecretPath)
         self.localAccessEnvironment = patch.dict(
             os.environ,
             {
@@ -41,8 +41,8 @@ class FolderApiTest(unittest.TestCase):
             },
         )
         self.localAccessEnvironment.start()
-        main.reset_local_access_config()
-        main.init_db()
+        main.resetLocalAccessConfig()
+        main.initDb()
         acceptCurrentTos()
         self.client = TestClient(
             main.app,
@@ -60,7 +60,7 @@ class FolderApiTest(unittest.TestCase):
 
     def tearDown(self):
         self.client.close()
-        main.reset_local_access_config()
+        main.resetLocalAccessConfig()
         self.localAccessEnvironment.stop()
         paths.DATA_DIR = self.originalDataDir
         paths.DB_PATH = self.originalDbPath
@@ -152,8 +152,8 @@ class FolderApiTest(unittest.TestCase):
             "INSERT INTO chats (id, title, model, updated_at) VALUES ('a', 'Old', 'm', 'now')"
         )
 
-        migrations.ensure_chat_folder_column(conn)
-        migrations.ensure_chat_folder_column(conn)
+        migrations.ensureChatFolderColumn(conn)
+        migrations.ensureChatFolderColumn(conn)
 
         row = conn.execute("SELECT * FROM chats WHERE id = 'a'").fetchone()
         self.assertIsNone(row["folder_id"])

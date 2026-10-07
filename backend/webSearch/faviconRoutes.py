@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query, Response
 
-from backend.core.database import get_db
-from backend.core.utils import utc_now
+from backend.core.database import getDb
+from backend.core.utils import utcNow
 from backend.webSearch.faviconFetch import (
-    cached_favicon,
-    fetch_favicon,
-    stale_favicon,
-    store_favicon,
+    cachedFavicon,
+    fetchFavicon,
+    staleFavicon,
+    storeFavicon,
 )
-from backend.webSearch.faviconSafety import safe_favicon_domain
+from backend.webSearch.faviconSafety import safeFaviconDomain
 
 FAVICON_CACHE_SECONDS = 7 * 24 * 60 * 60
 
@@ -19,16 +19,16 @@ router = APIRouter()
 
 
 @router.get("/api/favicon")
-async def get_favicon(domain: str = Query(default="")) -> Response:
-    safeDomain = safe_favicon_domain(domain)
+async def getFavicon(domain: str = Query(default="")) -> Response:
+    safeDomain = safeFaviconDomain(domain)
     if not safeDomain:
         raise HTTPException(status_code=400, detail="That is not a fetchable domain.")
 
-    now = utc_now()
-    with get_db() as conn:
-        cached = cached_favicon(conn, safeDomain)
+    now = utcNow()
+    with getDb() as conn:
+        cached = cachedFavicon(conn, safeDomain)
 
-    if cached and not stale_favicon(cached["fetched_at"], now):
+    if cached and not staleFavicon(cached["fetched_at"], now):
         if not cached["image"]:
             return Response(status_code=204)
         return Response(
@@ -37,9 +37,9 @@ async def get_favicon(domain: str = Query(default="")) -> Response:
             headers={"Cache-Control": f"private, max-age={FAVICON_CACHE_SECONDS}"},
         )
 
-    fetched = await fetch_favicon(safeDomain)
-    with get_db() as conn:
-        store_favicon(
+    fetched = await fetchFavicon(safeDomain)
+    with getDb() as conn:
+        storeFavicon(
             conn,
             safeDomain,
             fetched[0] if fetched else None,

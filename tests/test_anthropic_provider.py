@@ -475,20 +475,20 @@ class SchemaCleanerTest(unittest.TestCase):
             self.assertIs(choice["additionalProperties"], False)
 
     def test_every_app_schema_is_clean(self):
-        from backend.brainstorm.generateBrainstorm import brainstorm_response_format
-        from backend.lorebook.generateEntry import lorebook_generate_response_format
-        from backend.lorebook.repairLorebook import lorebook_repair_response_format
-        from backend.lorebook.runUpdate import lorebook_update_response_format
-        from backend.lorebook.timelineRepair import timeline_repair_response_format
-        from backend.writing.storyGeneration import chapter_edit_response_format
+        from backend.brainstorm.generateBrainstorm import brainstormResponseFormat
+        from backend.lorebook.generateEntry import lorebookGenerateResponseFormat
+        from backend.lorebook.repairLorebook import lorebookRepairResponseFormat
+        from backend.lorebook.runUpdate import lorebookUpdateResponseFormat
+        from backend.lorebook.timelineRepair import timelineRepairResponseFormat
+        from backend.writing.storyGeneration import chapterEditResponseFormat
 
         formats = {
-            "brainstorm": brainstorm_response_format(5),
-            "lorebookGenerate": lorebook_generate_response_format(),
-            "lorebookUpdate": lorebook_update_response_format(),
-            "lorebookRepair": lorebook_repair_response_format([{"id": 1}, {"id": 2}]),
-            "timelineRepair": timeline_repair_response_format(),
-            "chapterEdits": chapter_edit_response_format(),
+            "brainstorm": brainstormResponseFormat(5),
+            "lorebookGenerate": lorebookGenerateResponseFormat(),
+            "lorebookUpdate": lorebookUpdateResponseFormat(),
+            "lorebookRepair": lorebookRepairResponseFormat([{"id": 1}, {"id": 2}]),
+            "timelineRepair": timelineRepairResponseFormat(),
+            "chapterEdits": chapterEditResponseFormat(),
         }
         banned = {"minLength", "maxLength", "minimum", "maximum", "multipleOf", "maxItems", "oneOf"}
 
@@ -586,7 +586,7 @@ class ProviderSwitchTest(unittest.TestCase):
         os.environ.pop("ANTHROPIC_API_KEY", None)
         os.environ.pop("OPENROUTER_API_KEY", None)
 
-        main.init_db()
+        main.initDb()
 
     def tearDown(self):
         self.environPatch.stop()

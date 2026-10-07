@@ -5,23 +5,33 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from backend.core.database import get_db
-from backend.core.utils import utc_now
+from backend.core.database import getDb
+from backend.core.utils import utcNow
 from backend.lorebook.chapterSummaries import (
-    find_enabled_chapter_summary,
-    lorebook_summary_chapter_id,
+    findEnabledChapterSummary,
+    lorebookSummaryChapterId,
 )
 from backend.lorebook.lorebookModels import LorebookEntryRequest
-from backend.lorebook.lorebookRows import (
-    normalize_lorebook_category,
-    row_to_lorebook_entry,
-    sanitize_lorebook_aliases,
-    sanitize_lorebook_metadata,
+from backend.lorebook.lorebookQueries import (
+    deleteStoryEntry,
+    getEntry,
+    getStoryEntry,
+    insertEntry,
+    listEntries,
+    refreshSummaryEntry,
+    updateEntryAtRevision,
 )
-from backend.lorebook.timeline import normalize_timeline_description
+from backend.lorebook.lorebookRows import (
+    normalizeLorebookCategory,
+    rowToLorebookEntry,
+    sanitizeLorebookAliases,
+    sanitizeLorebookMetadata,
+)
+from backend.lorebook.timeline import normalizeTimelineDescription
+from backend.stories.storyQueries import getChapter, requireStory
 
 
-def request_updates(payload: BaseModel, reject_null: bool = False) -> dict[str, Any]:
+def requestUpdates(payload: BaseModel, reject_null: bool = False) -> dict[str, Any]:
     if hasattr(payload, "model_dump"):
         updates = payload.model_dump(exclude_unset=True)
     else:
@@ -40,43 +50,29 @@ router = APIRouter()
 
 
 @router.get("/api/stories/{story_id}/lorebook")
-def list_lorebook_entries(story_id: str) -> dict[str, Any]:
-    with get_db() as conn:
-        story = conn.execute("SELECT id FROM stories WHERE id = ?", (story_id,)).fetchone()
-        if not story:
-            raise HTTPException(status_code=404, detail="Story not found.")
-        rows = conn.execute(
-            """
-            SELECT * FROM lorebook_entries
-            WHERE story_id = ?
-            ORDER BY updated_at DESC, created_at DESC
-            """,
-            (story_id,),
-        ).fetchall()
-    return {"entries": [row_to_lorebook_entry(row) for row in rows]}
+def listLorebookEntries(story_id: str) -> dict[str, Any]:
+    with getDb() as conn:
+        story = requireStory(conn, story_id)
+        rows = listEntries(conn, story_id)
+    return {"entries": [rowToLorebookEntry(row) for row in rows]}
 
 
 @router.post("/api/stories/{story_id}/lorebook")
-def create_lorebook_entry(story_id: str, payload: LorebookEntryRequest) -> dict[str, Any]:
-    now = utc_now()
+def createLorebookEntry(story_id: str, payload: LorebookEntryRequest) -> dict[str, Any]:
+    now = utcNow()
     entry_id = str(uuid.uuid4())
-    category = normalize_lorebook_category(payload.category)
-    metadata = sanitize_lorebook_metadata(category, payload.metadata)
+    category = normalizeLorebookCategory(payload.category)
+    metadata = sanitizeLorebookMetadata(category, payload.metadata)
     entryName = payload.name.strip()
-    with get_db() as conn:
-        story = conn.execute("SELECT id FROM stories WHERE id = ?", (story_id,)).fetchone()
-        if not story:
-            raise HTTPException(status_code=404, detail="Story not found.")
+    with getDb() as conn:
+        story = requireStory(conn, story_id)
         existingSummary = None
         if category == "synopsis" and metadata.get("chapter_id"):
-            chapter = conn.execute(
-                "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
-                (metadata["chapter_id"], story_id),
-            ).fetchone()
+            chapter = getChapter(conn, story_id, metadata["chapter_id"])
             if not chapter:
                 raise HTTPException(status_code=422, detail="The summary chapter was not found.")
             entryName = str(chapter["title"])
-            existingSummary = find_enabled_chapter_summary(
+            existingSummary = findEnabledChapterSummary(
                 conn,
                 story_id,
                 str(chapter["id"]),
@@ -85,13 +81,8 @@ def create_lorebook_entry(story_id: str, payload: LorebookEntryRequest) -> dict[
 
         if existingSummary:
             entry_id = str(existingSummary["id"])
-            conn.execute(
-                """
-                UPDATE lorebook_entries
-                SET name = ?, description = ?, aliases_json = '[]', tags_json = '[]',
-                    metadata_json = ?, disabled = ?, revision = revision + 1, updated_at = ?
-                WHERE id = ?
-                """,
+            refreshSummaryEntry(
+                conn,
                 (
                     entryName,
                     payload.description,
@@ -101,31 +92,22 @@ def create_lorebook_entry(story_id: str, payload: LorebookEntryRequest) -> dict[
                     entry_id,
                 ),
             )
-            row = conn.execute(
-                "SELECT * FROM lorebook_entries WHERE id = ?",
-                (entry_id,),
-            ).fetchone()
-            return {"entry": row_to_lorebook_entry(row)}
+            row = getEntry(conn, entry_id)
+            return {"entry": rowToLorebookEntry(row)}
 
-        conn.execute(
-            """
-            INSERT INTO lorebook_entries (
-              id, story_id, name, category, description, aliases_json,
-              tags_json, metadata_json, disabled, created_at, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+        insertEntry(
+            conn,
             (
                 entry_id,
                 story_id,
                 entryName,
                 category,
                 (
-                    normalize_timeline_description(payload.description)
+                    normalizeTimelineDescription(payload.description)
                     if category == "timeline"
                     else payload.description
                 ),
-                json.dumps(sanitize_lorebook_aliases(category, payload.aliases, entryName)),
+                json.dumps(sanitizeLorebookAliases(category, payload.aliases, entryName)),
                 json.dumps(payload.tags),
                 json.dumps(metadata),
                 int(payload.disabled),
@@ -133,56 +115,44 @@ def create_lorebook_entry(story_id: str, payload: LorebookEntryRequest) -> dict[
                 now,
             ),
         )
-        row = conn.execute("SELECT * FROM lorebook_entries WHERE id = ?", (entry_id,)).fetchone()
-    return {"entry": row_to_lorebook_entry(row)}
+        row = getEntry(conn, entry_id)
+    return {"entry": rowToLorebookEntry(row)}
 
 
 @router.patch("/api/stories/{story_id}/lorebook/{entry_id}")
-def update_lorebook_entry(
+def updateLorebookEntry(
     story_id: str, entry_id: str, payload: LorebookEntryRequest
 ) -> dict[str, Any]:
-    now = utc_now()
-    category = normalize_lorebook_category(payload.category)
+    now = utcNow()
+    category = normalizeLorebookCategory(payload.category)
     baseRevision = payload.revision
-    with get_db() as conn:
-        entry = conn.execute(
-            "SELECT * FROM lorebook_entries WHERE id = ? AND story_id = ?",
-            (entry_id, story_id),
-        ).fetchone()
+    with getDb() as conn:
+        entry = getStoryEntry(conn, story_id, entry_id)
         if not entry:
             raise HTTPException(status_code=404, detail="Lorebook entry not found.")
-        metadata = sanitize_lorebook_metadata(category, payload.metadata)
+        metadata = sanitizeLorebookMetadata(category, payload.metadata)
         entryName = payload.name.strip()
         if category == "synopsis":
             chapterId = str(metadata.get("chapter_id") or "").strip()
-            if not chapterId and normalize_lorebook_category(entry["category"]) == "synopsis":
-                chapterId = lorebook_summary_chapter_id(entry)
+            if not chapterId and normalizeLorebookCategory(entry["category"]) == "synopsis":
+                chapterId = lorebookSummaryChapterId(entry)
                 metadata = {"chapter_id": chapterId} if chapterId else {}
             if chapterId:
-                chapter = conn.execute(
-                    "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
-                    (chapterId, story_id),
-                ).fetchone()
+                chapter = getChapter(conn, story_id, chapterId)
                 if not chapter:
                     raise HTTPException(status_code=422, detail="The summary chapter was not found.")
                 entryName = str(chapter["title"])
-        result = conn.execute(
-            """
-            UPDATE lorebook_entries
-            SET name = ?, category = ?, description = ?, aliases_json = ?,
-                tags_json = ?, metadata_json = ?, disabled = ?,
-                revision = revision + 1, updated_at = ?
-            WHERE id = ? AND story_id = ? AND (? IS NULL OR revision = ?)
-            """,
+        result = updateEntryAtRevision(
+            conn,
             (
                 entryName,
                 category,
                 (
-                    normalize_timeline_description(payload.description)
+                    normalizeTimelineDescription(payload.description)
                     if category == "timeline"
                     else payload.description
                 ),
-                json.dumps(sanitize_lorebook_aliases(category, payload.aliases, entryName)),
+                json.dumps(sanitizeLorebookAliases(category, payload.aliases, entryName)),
                 json.dumps(payload.tags),
                 json.dumps(metadata),
                 int(payload.disabled),
@@ -194,29 +164,23 @@ def update_lorebook_entry(
             ),
         )
         if result.rowcount != 1:
-            current = conn.execute(
-                "SELECT * FROM lorebook_entries WHERE id = ? AND story_id = ?",
-                (entry_id, story_id),
-            ).fetchone()
+            current = getStoryEntry(conn, story_id, entry_id)
             raise HTTPException(
                 status_code=409,
                 detail={
                     "code": "lorebook_revision_conflict",
                     "message": "Lorebook entry changed on the server.",
-                    "entry": row_to_lorebook_entry(current),
+                    "entry": rowToLorebookEntry(current),
                 },
             )
-        row = conn.execute("SELECT * FROM lorebook_entries WHERE id = ?", (entry_id,)).fetchone()
-    return {"entry": row_to_lorebook_entry(row)}
+        row = getEntry(conn, entry_id)
+    return {"entry": rowToLorebookEntry(row)}
 
 
 @router.delete("/api/stories/{story_id}/lorebook/{entry_id}")
-def delete_lorebook_entry(story_id: str, entry_id: str) -> dict[str, Any]:
-    with get_db() as conn:
-        result = conn.execute(
-            "DELETE FROM lorebook_entries WHERE id = ? AND story_id = ?",
-            (entry_id, story_id),
-        )
+def deleteLorebookEntry(story_id: str, entry_id: str) -> dict[str, Any]:
+    with getDb() as conn:
+        result = deleteStoryEntry(conn, story_id, entry_id)
     if result.rowcount == 0:
         raise HTTPException(status_code=404, detail="Lorebook entry not found.")
     return {"ok": True}

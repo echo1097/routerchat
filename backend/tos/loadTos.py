@@ -13,7 +13,7 @@ TOS_DATE_PATTERN = re.compile(r"^\*\*Last updated:\s*(.+?)\s*\*\*$", re.MULTILIN
 _tos_cache: dict[str, Any] = {"stamp": None, "value": None}
 
 
-def load_tos() -> dict[str, Any] | None:
+def loadTos() -> dict[str, Any] | None:
     try:
         stat = TOS_PATH.stat()
     except OSError:

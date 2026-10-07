@@ -6,22 +6,22 @@ import httpx
 from fastapi import HTTPException
 
 from backend.providers.envKeys import readEnvKey, writeEnvKey
-from backend.providers.openrouter.client import OPENROUTER_BASE_URL, headers_for_key
+from backend.providers.openrouter.client import OPENROUTER_BASE_URL, headersForKey
 
 
-def read_openrouter_key() -> str | None:
+def readOpenrouterKey() -> str | None:
     return readEnvKey("OPENROUTER_API_KEY")
 
 
-def write_openrouter_key(api_key: str) -> None:
+def writeOpenrouterKey(api_key: str) -> None:
     writeEnvKey("OPENROUTER_API_KEY", api_key)
 
 
-async def validate_key(api_key: str) -> dict[str, Any]:
+async def validateKey(api_key: str) -> dict[str, Any]:
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
             response = await client.get(
-                f"{OPENROUTER_BASE_URL}/key", headers=headers_for_key(api_key)
+                f"{OPENROUTER_BASE_URL}/key", headers=headersForKey(api_key)
             )
     except httpx.HTTPError as exc:
         raise HTTPException(

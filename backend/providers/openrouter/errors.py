@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 
 
-def openrouter_error_message(status_code: int, response_text: str) -> str:
+def openrouterErrorMessage(status_code: int, response_text: str) -> str:
     try:
         payload = json.loads(response_text)
         message = payload.get("error", {}).get("message") or payload.get("message")

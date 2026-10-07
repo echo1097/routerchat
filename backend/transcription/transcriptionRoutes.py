@@ -8,11 +8,11 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from backend.core.appSettings import read_app_setting, write_app_setting
-from backend.core.database import get_db
-from backend.core.utils import utc_now
-from backend.providers.openrouter.apiKey import read_openrouter_key
-from backend.providers.openrouter.client import OPENROUTER_BASE_URL, headers_for_key
+from backend.core.appSettings import readAppSetting, writeAppSetting
+from backend.core.database import getDb
+from backend.core.utils import utcNow
+from backend.providers.openrouter.apiKey import readOpenrouterKey
+from backend.providers.openrouter.client import OPENROUTER_BASE_URL, headersForKey
 from backend.usage.recordUsage import recordUsage
 from backend.usage.usageTotals import cleanNumber
 
@@ -26,13 +26,13 @@ router = APIRouter()
 
 
 async def providerRequest(method, path, **options):
-    apiKey = read_openrouter_key()
+    apiKey = readOpenrouterKey()
     if not apiKey:
         raise HTTPException(401, "Add an OpenRouter API key first.")
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.request(
-                method, f"{OPENROUTER_BASE_URL}/{path}", headers=headers_for_key(apiKey), **options
+                method, f"{OPENROUTER_BASE_URL}/{path}", headers=headersForKey(apiKey), **options
             )
         if response.status_code >= 400:
             raise HTTPException(response.status_code, "OpenRouter could not complete the transcription request. Check your model, credits, and audio format.")
@@ -45,7 +45,7 @@ async def providerRequest(method, path, **options):
 async def getModels():
     payload = await providerRequest("GET", "models", params={"output_modalities": "transcription"})
     models = [model for model in payload.get("data", []) if model.get("id")]
-    write_app_setting("transcription_models", models)
+    writeAppSetting("transcription_models", models)
     return {"models": models}
 
 
@@ -57,14 +57,14 @@ async def transcribeAudio(payload: TranscriptionRequest):
         raise HTTPException(400, "Invalid recording data.") from error
     if not audioBytes:
         raise HTTPException(400, "The recording is empty.")
-    if read_app_setting("privacy_mode") or read_app_setting("zdr_mode"):
+    if readAppSetting("privacy_mode") or readAppSetting("zdr_mode"):
         raise HTTPException(400, "Transcription is unavailable with Privacy or ZDR enabled because this endpoint does not guarantee those routing settings.")
-    modelId = read_app_setting("transcription_model") or "openai/whisper-1"
-    if not read_openrouter_key():
+    modelId = readAppSetting("transcription_model") or "openai/whisper-1"
+    if not readOpenrouterKey():
         raise HTTPException(401, "Add an OpenRouter API key first.")
     requestId = str(uuid.uuid4())
-    createdAt = utc_now()
-    with closing(get_db()) as conn, conn:
+    createdAt = utcNow()
+    with closing(getDb()) as conn, conn:
         conn.execute(
             "INSERT INTO transcription_usage (id, model, created_at) VALUES (?, ?, ?)",
             (requestId, modelId, createdAt),
@@ -82,7 +82,7 @@ async def transcribeAudio(payload: TranscriptionRequest):
     totalTokens = cleanNumber(usage.get("total_tokens"))
     if totalTokens is None and promptTokens is not None and completionTokens is not None:
         totalTokens = promptTokens + completionTokens
-    with closing(get_db()) as conn, conn:
+    with closing(getDb()) as conn, conn:
         conn.execute(
             """UPDATE transcription_usage
                SET prompt_tokens = ?, completion_tokens = ?, total_tokens = ?,

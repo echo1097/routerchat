@@ -2,7 +2,7 @@ import sqlite3
 from typing import Any
 
 
-def row_to_brainstorm_node(
+def rowToBrainstormNode(
     row: sqlite3.Row,
     reasoning: str | None = None,
     duration_ms: float | None = None,
@@ -23,7 +23,7 @@ def row_to_brainstorm_node(
     }
 
 
-def row_to_brainstorm_edge(row: sqlite3.Row) -> dict[str, Any]:
+def rowToBrainstormEdge(row: sqlite3.Row) -> dict[str, Any]:
     return {
         "id": row["id"],
         "story_id": row["story_id"],

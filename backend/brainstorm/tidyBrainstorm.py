@@ -1,13 +1,13 @@
 from typing import Any
 
 from backend.brainstorm.brainstormLayout import (
-    brainstorm_idea_positions,
-    next_brainstorm_branch_position,
-    next_brainstorm_root_position,
+    brainstormIdeaPositions,
+    nextBrainstormBranchPosition,
+    nextBrainstormRootPosition,
 )
 
 
-def tidy_brainstorm_positions(
+def tidyBrainstormPositions(
     nodes: list[Any],
     edges: list[Any],
 ) -> dict[str, tuple[float, float]]:
@@ -50,12 +50,12 @@ def tidy_brainstorm_positions(
         ]
 
         if parentIdeas:
-            promptX, promptY = next_brainstorm_branch_position(placedNodes, parentIdeas, len(ideaIds))
+            promptX, promptY = nextBrainstormBranchPosition(placedNodes, parentIdeas, len(ideaIds))
         else:
-            promptX, promptY = next_brainstorm_root_position(placedNodes, len(ideaIds))
+            promptX, promptY = nextBrainstormRootPosition(placedNodes, len(ideaIds))
 
         place(promptId, "prompt", promptX, promptY)
-        for ideaId, (ideaX, ideaY) in zip(ideaIds, brainstorm_idea_positions(promptX, promptY, len(ideaIds))):
+        for ideaId, (ideaX, ideaY) in zip(ideaIds, brainstormIdeaPositions(promptX, promptY, len(ideaIds))):
             place(ideaId, "idea", ideaX, ideaY)
 
     def parentsArePlaced(promptId: str) -> bool:
@@ -72,7 +72,7 @@ def tidy_brainstorm_positions(
         nodeId = str(node["id"])
         if nodeId in positions:
             continue
-        x, y = next_brainstorm_root_position(placedNodes, 1)
+        x, y = nextBrainstormRootPosition(placedNodes, 1)
         place(nodeId, str(node["node_type"]), x, y)
 
     return positions

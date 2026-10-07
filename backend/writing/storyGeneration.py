@@ -8,46 +8,47 @@ from typing import Any, AsyncIterator
 from fastapi.responses import StreamingResponse
 
 from backend.attachments.attachmentContent import (
-    attachment_content_parts,
-    has_pdf_attachment,
-    pdf_parser_plugins,
+    attachmentContentParts,
+    hasPdfAttachment,
+    pdfParserPlugins,
 )
 from backend.chats.chatModels import StreamMessageRequest
 from backend.chats.systemPrompts import writeSystemPrompt
-from backend.core.database import get_db
-from backend.core.streamEvents import stream_event
-from backend.core.utils import display_model_name, format_duration, utc_now
-from backend.lorebook.lorebookHistory import lorebook_run_history_actions
-from backend.lorebook.runUpdate import run_lorebook_update
+from backend.core.database import getDb
+from backend.core.streamEvents import streamEvent
+from backend.core.utils import displayModelName, formatDuration, utcNow
+from backend.lorebook.lorebookHistory import lorebookRunHistoryActions
+from backend.lorebook.runUpdate import runLorebookUpdate
 from backend.providers.base import ChatOptions
+from backend.providers.modelStream import ModelStream
 from backend.providers.registry import providerForRow
-from backend.providers.streaming import streamChat
 from backend.usage.recordUsage import recordUsage
-from backend.writing.chapterEdits.anchors import chapter_blocks
+from backend.writing.chapterEdits.anchors import chapterBlocks
 from backend.writing.chapterEdits.applyEdits import (
-    append_chapter_text,
-    apply_chapter_edits,
-    format_edit_count,
+    appendChapterText,
+    applyChapterEdits,
+    formatEditCount,
 )
 from backend.writing.chapterEdits.editErrors import (
     CHAPTER_EDIT_INVALID_JSON,
     CHAPTER_EDIT_TRUNCATED,
     CHAPTER_REVISION_CONFLICT,
     ChapterEditError,
-    repairable_error_event,
+    repairableErrorEvent,
 )
-from backend.writing.chapterEdits.editSchema import chapter_edit_response_format
-from backend.writing.chapterEdits.parseEdits import parse_chapter_edit_batch
+from backend.writing.chapterEdits.editSchema import chapterEditResponseFormat
+from backend.writing.chapterEdits.parseEdits import parseChapterEditBatch
 from backend.writing.storyMessages import (
-    build_story_messages,
-    effective_generation_mode,
-    mark_story_cache_points,
+    buildStoryMessages,
+    effectiveGenerationMode,
+    markStoryCachePoints,
 )
-from backend.writing.storyRows import (
-    insert_chapter_history_entry,
-    row_to_chapter,
-    word_count,
-    word_diff_counts,
+from backend.stories.storyQueries import getChapter, getStoryLorebookAuto, settleGeneration
+from backend.stories.storyRows import (
+    insertChapterHistoryEntry,
+    rowToChapter,
+    wordCount,
+    wordDiffCounts,
 )
 
 
@@ -66,7 +67,7 @@ class ChapterStreamingResponse(StreamingResponse):
             self.onClose()
 
 
-async def stream_story_generation(
+async def streamStoryGeneration(
     story_id: str,
     chapter_id: str,
     payload: StreamMessageRequest,
@@ -86,16 +87,16 @@ async def stream_story_generation(
 
     def emit(event_type: str, value: Any, revision: int | None = None) -> bytes:
         metadata = {**event_metadata, "revision": revision}
-        return stream_event(event_type, value, metadata)
+        return streamEvent(event_type, value, metadata)
 
     provider = providerForRow(story)
     api_key = provider.requireKey()
 
-    generation_mode = effective_generation_mode(
+    generation_mode = effectiveGenerationMode(
         getattr(payload, "write_generation_mode", None),
         chapter["content"] or "",
     )
-    starting_blocks = chapter_blocks(chapter["content"] or "") if generation_mode == "edit" else []
+    starting_blocks = chapterBlocks(chapter["content"] or "") if generation_mode == "edit" else []
 
     repair_context = getattr(payload, "repair_context", None)
     if repair_context is not None and not isinstance(repair_context, dict):
@@ -103,11 +104,11 @@ async def stream_story_generation(
     is_repair = bool(repair_context)
 
     attachmentIds = list(getattr(payload, "attachment_ids", []) or [])
-    with get_db() as conn:
-        attachmentParts = attachment_content_parts(conn, attachmentIds)
-        needsPdfParser = has_pdf_attachment(conn, attachmentIds)
+    with getDb() as conn:
+        attachmentParts = attachmentContentParts(conn, attachmentIds)
+        needsPdfParser = hasPdfAttachment(conn, attachmentIds)
 
-    messages = build_story_messages(
+    messages = buildStoryMessages(
         story,
         chapter,
         lorebook_rows,
@@ -121,11 +122,11 @@ async def stream_story_generation(
     )
     cacheControl = provider.promptCacheControl()
     if cacheControl:
-        messages = mark_story_cache_points(messages, cacheControl)
+        messages = markStoryCachePoints(messages, cacheControl)
 
     responseFormat = None
     if generation_mode == "edit" and provider.supportsStructuredOutput(payload.model):
-        responseFormat = chapter_edit_response_format()
+        responseFormat = chapterEditResponseFormat()
 
     request = provider.buildRequest(
         messages,
@@ -138,7 +139,7 @@ async def stream_story_generation(
             thinkingEnabled=payload.thinking_enabled,
             reasoningEffort=payload.reasoning_effort,
             responseFormat=responseFormat,
-            plugins=pdf_parser_plugins() if needsPdfParser and provider.capabilities.pdfParsing else [],
+            plugins=pdfParserPlugins() if needsPdfParser and provider.capabilities.pdfParsing else [],
             sessionId=story_id if cacheControl else None,
         ),
     )
@@ -146,25 +147,20 @@ async def stream_story_generation(
         payload.model, payload.thinking_enabled
     )
 
-    generated_text: list[str] = []
-    reasoning_text: list[str] = []
-    finish_reason: str | None = None
+    modelStream = ModelStream(provider, request, effectiveThinkingEnabled)
     error_text: str | None = None
-    generation_id: str | None = None
-    usage: dict[str, Any] | None = None
     story_generation_id = event_metadata["generationId"]
     history_run_id = str(uuid.uuid4())
-    model_label = display_model_name(payload.model)
+    model_label = displayModelName(payload.model)
     reasoning_started_at: float | None = None
     #a run can think more than once, this marks how much of the reasoning already has a history row
     reasoning_saved_chunks = 0
     content_started_at: float | None = None
     stream_completed = False
-    received_done = False
     cancelled = False
     pendingEvents: list[bytes] = []
 
-    def save_history(
+    def saveHistory(
         label: str,
         detail: str = "",
         kind: str | None = None,
@@ -172,71 +168,50 @@ async def stream_story_generation(
         words_removed: int | None = None,
         cost: float | None = None,
     ) -> dict[str, Any]:
-        with get_db() as conn:
-            return insert_chapter_history_entry(
+        with getDb() as conn:
+            return insertChapterHistoryEntry(
                 conn,
                 story_id=story_id,
                 chapter_id=chapter_id,
                 run_id=history_run_id,
                 label=label,
                 detail=detail,
-                now=utc_now(),
+                now=utcNow(),
                 kind=kind,
                 words_added=words_added,
                 words_removed=words_removed,
                 cost=cost,
             )
 
-    def revision_conflict_event(conn: sqlite3.Connection) -> dict[str, Any]:
-        currentChapter = conn.execute(
-            "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
-            (chapter_id, story_id),
-        ).fetchone()
+    def revisionConflictEvent(conn: sqlite3.Connection) -> dict[str, Any]:
+        currentChapter = getChapter(conn, story_id, chapter_id)
         return {
             "code": CHAPTER_REVISION_CONFLICT,
             "message": "Chapter changed while generation was running.",
-            "chapter": row_to_chapter(currentChapter) if currentChapter else None,
+            "chapter": rowToChapter(currentChapter) if currentChapter else None,
         }
 
     try:
         yield emit(
             "history",
-            save_history("User prompt", " ".join(payload.message.split()), kind="prompt"),
+            saveHistory("User prompt", " ".join(payload.message.split()), kind="prompt"),
         )
-        async with aclosing(streamChat(provider, request)) as events:
+        async with aclosing(modelStream.events()) as events:
             async for event in events:
-                if event["type"] == "error":
-                    error_text = event["message"]
-                    yield emit("error", error_text)
-                    return
-                if event["type"] == "open":
-                    generation_id = event["generationId"] or generation_id
-                    continue
-                if event["type"] == "done":
-                    received_done = True
-                    continue
-
-                generation_id = generation_id or event["id"]
-                if event["usage"]:
-                    usage = event["usage"]
-                    continue
-                if not event["hasChoice"]:
-                    continue
-                finish_reason = event["finishReason"] or finish_reason
-                if event["reasoning"] and effectiveThinkingEnabled:
+                if event["type"] == "reasoning":
                     if reasoning_started_at is None:
                         reasoning_started_at = time.perf_counter()
-                    reasoning_text.append(event["reasoning"])
-                    yield emit("reasoning", event["reasoning"])
-                if event["content"]:
+                    yield emit("reasoning", event["value"])
+                elif event["type"] == "content":
                     if reasoning_started_at is not None:
                         duration_ms = (time.perf_counter() - reasoning_started_at) * 1000
-                        thoughts = "".join(reasoning_text[reasoning_saved_chunks:]).strip()
-                        reasoning_saved_chunks = len(reasoning_text)
+                        reasoningParts = modelStream.reasoningParts
+                        thoughts = "".join(reasoningParts[reasoning_saved_chunks:]).strip()
+                        reasoning_saved_chunks = len(reasoningParts)
                         yield emit(
                             "history",
-                            save_history(
-                                f"{model_label} thought for {format_duration(duration_ms)}",
+                            saveHistory(
+                                f"{model_label} thought for {formatDuration(duration_ms)}",
                                 detail=thoughts,
                                 kind="thinking",
                             ),
@@ -244,22 +219,27 @@ async def stream_story_generation(
                         reasoning_started_at = None
                     if content_started_at is None:
                         content_started_at = time.perf_counter()
-                    generated_text.append(event["content"])
-                    yield emit("content", event["content"])
+                    yield emit("content", event["value"])
 
-        if generation_id:
-            generation_usage = await provider.fetchFinalUsage(api_key, generation_id)
-            if generation_usage:
-                usage = {**(usage or {}), **generation_usage}
-        if usage:
+        if modelStream.errorMessage:
+            error_text = modelStream.errorMessage
+            yield emit("error", error_text)
+            return
+
+        await modelStream.fetchFinalUsage(api_key)
+        if modelStream.usage:
             yield emit(
                 "usage",
-                {"generation_id": generation_id, "model": payload.model, **usage},
+                {
+                    "generation_id": modelStream.generationId,
+                    "model": payload.model,
+                    **modelStream.usage,
+                },
             )
-        stream_completed = received_done or bool(finish_reason)
+        stream_completed = modelStream.receivedDone or bool(modelStream.finishReason)
     except (asyncio.CancelledError, GeneratorExit):
         cancelled = True
-        stream_completed = received_done or bool(finish_reason)
+        stream_completed = modelStream.receivedDone or bool(modelStream.finishReason)
         if not stream_completed:
             error_text = "generation_cancelled"
         raise
@@ -267,8 +247,11 @@ async def stream_story_generation(
         error_text = str(exc)
         yield emit("error", f"RouterChat error: {error_text}")
     finally:
-        content = "".join(generated_text)
-        now = utc_now()
+        content = modelStream.text
+        finish_reason = modelStream.finishReason
+        generation_id = modelStream.generationId
+        usage = modelStream.usage or None
+        now = utcNow()
         chapter_update_event: dict[str, Any] | None = None
         error_event: dict[str, Any] | None = None
         edit_batch: dict[str, Any] | None = None
@@ -293,7 +276,7 @@ async def stream_story_generation(
 
         if (stream_completed or edit_stopped_early) and generation_mode == "edit" and content:
             try:
-                edit_batch = parse_chapter_edit_batch(content)
+                edit_batch = parseChapterEditBatch(content)
                 edit_truncated = (
                     bool(edit_batch.get("truncated"))
                     or finish_reason == "length"
@@ -306,26 +289,23 @@ async def stream_story_generation(
                     #the json was fine, it just never got to finish, and saying so beats blaming the model for bad output
                     code = CHAPTER_EDIT_TRUNCATED
                     message = "the response hit the token limit before a single complete edit came through"
-                error_event = repairable_error_event(code, message, is_repair)
+                error_event = repairableErrorEvent(code, message, is_repair)
                 error_text = f"{code}: {message}"
                 edit_batch = None
 
-        with get_db() as conn:
+        with getDb() as conn:
             if (stream_completed or append_truncated or edit_stopped_early) and content:
                 conn.execute("BEGIN IMMEDIATE")
-            current = conn.execute(
-                "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
-                (chapter_id, story_id),
-            ).fetchone()
+            current = getChapter(conn, story_id, chapter_id)
             current_content = current["content"] if current else ""
 
             if (stream_completed or edit_stopped_early) and content and generation_mode == "edit" and edit_batch is not None:
                 try:
                     if not current or current["revision"] != base_revision:
-                        error_event = revision_conflict_event(conn)
+                        error_event = revisionConflictEvent(conn)
                         error_text = CHAPTER_REVISION_CONFLICT
                     else:
-                        operation_result = apply_chapter_edits(
+                        operation_result = applyChapterEdits(
                             current_content,
                             edit_batch,
                             baseRevision=base_revision,
@@ -340,7 +320,7 @@ async def stream_story_generation(
                             """,
                             (
                                 nextContent,
-                                word_count(nextContent),
+                                wordCount(nextContent),
                                 now,
                                 chapter_id,
                                 story_id,
@@ -348,19 +328,16 @@ async def stream_story_generation(
                             ),
                         )
                         if result.rowcount != 1:
-                            error_event = revision_conflict_event(conn)
+                            error_event = revisionConflictEvent(conn)
                             error_text = CHAPTER_REVISION_CONFLICT
                         else:
-                            savedChapter = conn.execute(
-                                "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
-                                (chapter_id, story_id),
-                            ).fetchone()
+                            savedChapter = getChapter(conn, story_id, chapter_id)
                             rejected_edits = operation_result.get("rejected") or []
                             applied_count = len(operation_result["edits"])
                             #a run cut off at the token limit lost whatever it had not written yet, and that work is invisible here: it never became an edit we could reject, so truncation has to count as incomplete on its own
                             incomplete = bool(rejected_edits) or edit_truncated
                             chapter_update_event = {
-                                "chapter": row_to_chapter(savedChapter),
+                                "chapter": rowToChapter(savedChapter),
                                 "edits": operation_result["edits"],
                                 "rejected": rejected_edits,
                                 "truncated": edit_truncated,
@@ -377,14 +354,14 @@ async def stream_story_generation(
                                 )
                             elif edit_truncated:
                                 error_text = (
-                                    f"partial: applied {format_edit_count(applied_count)} "
+                                    f"partial: applied {formatEditCount(applied_count)} "
                                     "before the token limit"
                                 )
                 except ChapterEditError as exc:
-                    error_event = repairable_error_event(exc.code, exc.message, is_repair)
+                    error_event = repairableErrorEvent(exc.code, exc.message, is_repair)
                     error_text = f"{exc.code}: {exc.message}"
             elif content and generation_mode != "edit" and (stream_completed or append_truncated):
-                operation_result = append_chapter_text(current_content, content)
+                operation_result = appendChapterText(current_content, content)
                 nextContent = operation_result["content"]
                 result = conn.execute(
                     """
@@ -394,7 +371,7 @@ async def stream_story_generation(
                     """,
                     (
                         nextContent,
-                        word_count(nextContent),
+                        wordCount(nextContent),
                         now,
                         chapter_id,
                         story_id,
@@ -402,12 +379,9 @@ async def stream_story_generation(
                     ),
                 )
                 if result.rowcount == 1:
-                    savedChapter = conn.execute(
-                        "SELECT * FROM chapters WHERE id = ? AND story_id = ?",
-                        (chapter_id, story_id),
-                    ).fetchone()
+                    savedChapter = getChapter(conn, story_id, chapter_id)
                     chapter_update_event = {
-                        "chapter": row_to_chapter(savedChapter),
+                        "chapter": rowToChapter(savedChapter),
                         "edits": [
                             {
                                 "operation": operation_result["operation"],
@@ -423,7 +397,7 @@ async def stream_story_generation(
                     #it saved, so the earlier incomplete-stream flag is no longer a user-facing failure
                     error_event = None
                 else:
-                    error_event = revision_conflict_event(conn)
+                    error_event = revisionConflictEvent(conn)
                     error_text = CHAPTER_REVISION_CONFLICT
 
             conn.execute(
@@ -472,7 +446,7 @@ async def stream_story_generation(
             #a run that failed still burned tokens, so it gets a line and carries the cost the wrote for line never got to report
             pendingEvents.append(emit(
                 "history",
-                save_history(
+                saveHistory(
                     fail_label,
                     detail=str(error_event.get("message") or ""),
                     kind="write_failed",
@@ -487,7 +461,7 @@ async def stream_story_generation(
             ))
             if content_started_at is not None:
                 duration_ms = (time.perf_counter() - content_started_at) * 1000
-                written_added, written_removed = word_diff_counts(
+                written_added, written_removed = wordDiffCounts(
                     current_content, chapter_update_event["chapter"]["content"]
                 )
                 #whole run rides here including any thinking tokens, the thought for line stays cost free on purpose
@@ -502,21 +476,21 @@ async def stream_story_generation(
                     #the token limit and a run that stopped early both cut the response off, but only one of them is the model's doing
                     stopped_at = "the run stopped" if edit_stopped_early else "the token limit"
                     label = (
-                        f"{model_label} applied {format_edit_count(applied_count)} "
+                        f"{model_label} applied {formatEditCount(applied_count)} "
                         f"before {stopped_at}"
                     )
                     detail = "the response was cut off, so any edits it had not written yet are missing"
                 elif chapter_update_event.get("truncated"):
                     stoppedAt = "the run stopped" if cancelled else "the connection dropped"
-                    label = f"{model_label} wrote for {format_duration(duration_ms)} before {stoppedAt}"
+                    label = f"{model_label} wrote for {formatDuration(duration_ms)} before {stoppedAt}"
                     detail = "the response was cut off, so anything written after that point is missing"
                 else:
-                    label = f"{model_label} wrote for {format_duration(duration_ms)}"
+                    label = f"{model_label} wrote for {formatDuration(duration_ms)}"
                     detail = ""
 
                 pendingEvents.append(emit(
                     "history",
-                    save_history(
+                    saveHistory(
                         label,
                         detail=detail,
                         kind="write",
@@ -527,20 +501,15 @@ async def stream_story_generation(
                 ))
                 content_started_at = None
 
-        with get_db() as conn:
-            conn.execute(
-                "UPDATE story_generations SET settled = 1 WHERE id = ?",
-                (story_generation_id,),
-            )
+        with getDb() as conn:
+            settleGeneration(conn, story_generation_id)
 
     for event in pendingEvents:
         yield event
 
     if chapter_update_event is not None:
-        with get_db() as conn:
-            auto_row = conn.execute(
-                "SELECT lorebook_auto FROM stories WHERE id = ?", (story_id,)
-            ).fetchone()
+        with getDb() as conn:
+            auto_row = getStoryLorebookAuto(conn, story_id)
 
         #manual runs get their own button, this is only for the folks who opted into auto
         if auto_row and bool(auto_row["lorebook_auto"]):
@@ -549,7 +518,7 @@ async def stream_story_generation(
 
             lorebook_result: dict[str, Any] = {}
             #the reasoning rides the same stream so the write mode dropdown can show it live
-            async for lorebook_event in run_lorebook_update(
+            async for lorebook_event in runLorebookUpdate(
                 story_id,
                 chapter_id,
                 chapter_update_event["chapter"]["content"],
@@ -568,7 +537,7 @@ async def stream_story_generation(
             lorebook_duration_ms = (time.perf_counter() - lorebook_started_at) * 1000
             #a skipped run never reached the model, so there is no activity to record
             if not lorebook_result.get("skipped_run"):
-                for action in lorebook_run_history_actions(
+                for action in lorebookRunHistoryActions(
                     model_label,
                     lorebook_result.get("applied") or [],
                     lorebook_duration_ms,
@@ -577,7 +546,7 @@ async def stream_story_generation(
                 ):
                     yield emit(
                         "history",
-                        save_history(
+                        saveHistory(
                             action["label"],
                             detail=action.get("detail") or "",
                             kind=action["kind"],

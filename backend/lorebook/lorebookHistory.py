@@ -1,16 +1,16 @@
 from typing import Any
 
-from backend.core.utils import format_duration
+from backend.core.utils import formatDuration
 
 
-def lorebook_update_kind(update: dict[str, Any]) -> str:
+def lorebookUpdateKind(update: dict[str, Any]) -> str:
     action = str(update.get("action") or "").lower()
     if action == "delete":
         return "lore_hide"
     return "lore_create" if action == "create" else "lore_update"
 
 
-def lorebook_history_label(model_label: str, update: dict[str, Any]) -> str:
+def lorebookHistoryLabel(model_label: str, update: dict[str, Any]) -> str:
     name = str(update.get("name") or "entry").strip() or "entry"
     action = str(update.get("action") or "").lower()
     #nothing is deleted here, disabled just drops it from context, and the wording matches the include/exclude toggle that undoes it
@@ -24,7 +24,7 @@ def lorebook_history_label(model_label: str, update: dict[str, Any]) -> str:
     return f"{model_label} {action} {name} {destination} Lorebook"
 
 
-def lorebook_run_history_actions(
+def lorebookRunHistoryActions(
     model_label: str,
     applied: list[dict[str, Any]],
     duration_ms: float,
@@ -34,8 +34,8 @@ def lorebook_run_history_actions(
     #a quiet run is still a run, so both endings get a line instead of pretending nothing happened
     actions = [
         {
-            "label": lorebook_history_label(model_label, update),
-            "kind": lorebook_update_kind(update),
+            "label": lorebookHistoryLabel(model_label, update),
+            "kind": lorebookUpdateKind(update),
             "words_added": update.get("wordsAdded"),
             "words_removed": update.get("wordsRemoved"),
             "cost": None,
@@ -44,13 +44,13 @@ def lorebook_run_history_actions(
         for update in applied
     ]
     if applied:
-        summary = f"{model_label} finished editing Lorebook after {format_duration(duration_ms)}"
+        summary = f"{model_label} finished editing Lorebook after {formatDuration(duration_ms)}"
         #run totals, same idea as the cost subtotal on the run header. hides sit out because nothing was written, the text just left context
-        changed = [update for update in applied if lorebook_update_kind(update) != "lore_hide"]
+        changed = [update for update in applied if lorebookUpdateKind(update) != "lore_hide"]
         totalAdded = sum(int(update.get("wordsAdded") or 0) for update in changed)
         totalRemoved = sum(int(update.get("wordsRemoved") or 0) for update in changed)
     else:
-        summary = f"{model_label} found no Lorebook changes after {format_duration(duration_ms)}"
+        summary = f"{model_label} found no Lorebook changes after {formatDuration(duration_ms)}"
         totalAdded = None
         totalRemoved = None
 

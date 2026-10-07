@@ -4,7 +4,7 @@ from typing import Any
 
 import httpx
 
-from backend.core.appSettings import hourPromptCacheEnabled, read_app_setting
+from backend.core.appSettings import hourPromptCacheEnabled, readAppSetting
 from backend.providers.anthropic import apiKey as keyStore
 from backend.providers.anthropic import models as modelStore
 from backend.providers.anthropic import requestBuilder, streamParser
@@ -79,7 +79,7 @@ class AnthropicProvider(Provider):
         return modelStore.maxPdfPages(modelId)
 
     def promptCacheControl(self) -> dict[str, Any] | None:
-        if bool(read_app_setting("disable_prompt_caching")):
+        if bool(readAppSetting("disable_prompt_caching")):
             return None
         if hourPromptCacheEnabled():
             return {"type": "ephemeral", "ttl": "1h"}

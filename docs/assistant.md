@@ -270,15 +270,18 @@ Keep the backend on 8000 unless they also edit `vite.config.js`, which is what f
 - `docs/assistant.md`: this prompt.
 - `backend/main.py`: creates the FastAPI app and wires in every feature's routes. No feature logic lives here.
 - `backend/local_access.py`: the `serve` and `open-browser` commands and the one-time secret.
-- `backend/core/`: paths, the database connection and schema, migrations, app settings, and small shared helpers.
-- `backend/providers/`: the shared provider layer. `base.py` is the interface every provider follows, `registry.py` tracks the active provider, `providerRoutes.py` lists providers, switches between them, and saves keys, `streaming.py` is the shared streamer, and `envKeys.py` reads and writes keys in `.env`.
+- `backend/core/`: paths, the database connection and core table schema, migrations, app settings, and small shared helpers. It never imports from feature folders.
+- `backend/startup/`: `initDatabase.py` runs on startup. It builds the core tables, then each feature's own tables and the usage database.
+- `backend/stories/`: story data shared by Write mode, lorebook and brainstorm: row converters (`storyRows.py`), the story's provider lookup (`storyProvider.py`), and story, chapter, chapter history and story generation queries (`storyQueries.py`).
+- `backend/providers/`: the shared provider layer. `base.py` is the interface every provider follows, `registry.py` tracks the active provider, `providerRoutes.py` lists providers, switches between them, and saves keys, `streaming.py` is the shared streamer, `modelStream.py` is the one loop every feature uses to read a streamed reply (events, usage, finish reason), and `envKeys.py` reads and writes keys in `.env`.
 - `backend/providers/openrouter/`: everything that talks to OpenRouter (API key, models, request options, usage, errors).
 - `backend/providers/anthropic/`: everything that talks to Anthropic (API key, models, per-model thinking rules, pricing, request building, stream parsing, errors).
 - `backend/security/`, `backend/tos/`, `backend/settings/`: the local API guard, terms acceptance, and the settings routes.
-- `backend/chats/`: chats, folders, messages, chat titles, and chat streaming.
+- `backend/chats/`: chats, folders, messages, chat titles, and chat streaming. SQL lives in `chatQueries.py`.
 - `backend/writing/`: Write mode stories and chapters, with chapter edit parsing and applying in `writing/chapterEdits/`, and moving a story to another provider.
-- `backend/lorebook/`: lorebook entries, updates, timeline repair, generation, repair, and usage tracking.
-- `backend/brainstorm/`: the brainstorm board and idea generation.
+- `backend/lorebook/`: lorebook entries, updates, timeline repair, generation, repair, and usage tracking. SQL lives in `lorebookQueries.py`, and `lorebookStream.py` adds lorebook usage tracking on top of `modelStream.py`.
+- `backend/brainstorm/`: the brainstorm board and idea generation. SQL lives in `brainstormQueries.py`.
+- Rule for new backend code: route handlers and stream generators do not contain SQL. Put queries in the feature's `*Queries.py`, and have routes call them. Features may call `backend/stories/` and `backend/providers/`, and `writing` may call `lorebook`, but `lorebook` and `brainstorm` never import `writing`.
 - `backend/attachments/`, `backend/webSearch/`, `backend/usage/`, `backend/transcription/`, `backend/changelog/`: file uploads and provider file limits, web search sources and favicons, the usage page and its separate usage database, voice transcription, and changelog status.
 - `frontend/src/main.jsx`: the React app. It is very large and holds most of the UI.
 - `frontend/src/styles.css`: styles.

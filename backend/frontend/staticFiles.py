@@ -29,13 +29,13 @@ class FrontendStaticFiles(StaticFiles):
         return response
 
 
-def configure_static_files(target_app: FastAPI, static_dir: Path) -> None:
+def configureStaticFiles(target_app: FastAPI, static_dir: Path) -> None:
     if static_dir.is_dir():
         target_app.mount("/", FrontendStaticFiles(directory=static_dir, html=True), name="static")
         return
 
     @target_app.get("/", include_in_schema=False)
-    def missing_frontend_build() -> PlainTextResponse:
+    def missingFrontendBuild() -> PlainTextResponse:
         return PlainTextResponse(
             "frontend build missing, run npm run build",
             status_code=503,

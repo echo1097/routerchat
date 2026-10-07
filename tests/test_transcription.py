@@ -30,13 +30,13 @@ class TranscriptionTest(unittest.TestCase):
         with closing(self.getDb()) as conn, conn:
             ensureTranscriptionUsageTable(conn)
         replacements = {
-            "read_openrouter_key": lambda: "test-key",
-            "read_app_setting": self.settings.get,
-            "write_app_setting": self.settings.__setitem__,
-            "headers_for_key": lambda key: {"Authorization": f"Bearer {key}"},
+            "readOpenrouterKey": lambda: "test-key",
+            "readAppSetting": self.settings.get,
+            "writeAppSetting": self.settings.__setitem__,
+            "headersForKey": lambda key: {"Authorization": f"Bearer {key}"},
             "OPENROUTER_BASE_URL": "https://example.invalid",
-            "get_db": self.getDb,
-            "utc_now": lambda: "2026-09-09T12:00:00Z",
+            "getDb": self.getDb,
+            "utcNow": lambda: "2026-09-09T12:00:00Z",
         }
         for name, value in replacements.items():
             namePatch = patch.object(transcriptionRoutes, name, value)

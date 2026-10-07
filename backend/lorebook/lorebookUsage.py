@@ -1,9 +1,9 @@
 import asyncio
 import uuid
 
-from backend.core.database import get_db
-from backend.core.utils import utc_now
-from backend.writing.storyProvider import storyProvider
+from backend.core.database import getDb
+from backend.core.utils import utcNow
+from backend.stories.storyProvider import storyProvider
 from backend.usage.recordUsage import recordUsage
 
 
@@ -50,8 +50,8 @@ class LorebookUsage:
         self.provider = storyProvider(storyId)
 
     async def __aenter__(self):
-        self.createdAt = utc_now()
-        with get_db() as conn:
+        self.createdAt = utcNow()
+        with getDb() as conn:
             conn.execute(
                 """
                 INSERT INTO lorebook_usage (id, story_id, chapter_id, action, model, created_at)
@@ -94,7 +94,7 @@ class LorebookUsage:
         if self.usage.get("total_tokens") is None and promptTokens is not None and completionTokens is not None:
             self.usage["total_tokens"] = promptTokens + completionTokens
 
-        with get_db() as conn:
+        with getDb() as conn:
             conn.execute(
                 """
                 UPDATE lorebook_usage

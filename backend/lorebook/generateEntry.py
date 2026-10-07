@@ -8,20 +8,22 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from backend.core.database import get_db
-from backend.core.streamEvents import stream_event
+from backend.core.database import getDb
+from backend.core.streamEvents import streamEvent
 from backend.lorebook.chapterSummaries import SUMMARY_INSTRUCTION
+from backend.lorebook.lorebookQueries import listEnabledEntries
 from backend.lorebook.lorebookRows import (
-    lorebook_model_for,
-    normalize_lorebook_category,
-    sanitize_lorebook_aliases,
+    lorebookModelFor,
+    normalizeLorebookCategory,
+    sanitizeLorebookAliases,
 )
+from backend.lorebook.lorebookStream import LorebookStream
 from backend.lorebook.lorebookUsage import LorebookUsage
-from backend.lorebook.parseLorebook import parse_lorebook_json
+from backend.lorebook.parseLorebook import parseLorebookJson
 from backend.providers.base import ChatOptions
 from backend.providers.registry import providerForRow
-from backend.writing.storyProvider import storyProvider
-from backend.providers.streaming import streamChat
+from backend.stories.storyProvider import storyProvider
+from backend.stories.storyQueries import getEnabledChapter, requireStory
 
 GENERATE_CATEGORIES = ["character", "location", "item", "event", "note", "synopsis"]
 
@@ -85,7 +87,7 @@ class GenerateEntryRequest(BaseModel):
     chapter_id: str | None = None
 
 
-def lorebook_generate_response_format() -> dict[str, Any]:
+def lorebookGenerateResponseFormat() -> dict[str, Any]:
     return {
         "type": "json_schema",
         "json_schema": {
@@ -106,8 +108,8 @@ def lorebook_generate_response_format() -> dict[str, Any]:
     }
 
 
-def parse_generated_entry(raw_output: str, category: str) -> dict[str, Any]:
-    parsed = parse_lorebook_json(raw_output)
+def parseGeneratedEntry(raw_output: str, category: str) -> dict[str, Any]:
+    parsed = parseLorebookJson(raw_output)
 
     name = str(parsed.get("name") or "").strip()
     description = str(parsed.get("description") or "").strip()
@@ -116,7 +118,7 @@ def parse_generated_entry(raw_output: str, category: str) -> dict[str, Any]:
 
     aliases = [
         str(alias).strip()
-        for alias in sanitize_lorebook_aliases(category, parsed.get("aliases"))
+        for alias in sanitizeLorebookAliases(category, parsed.get("aliases"))
         if str(alias).strip()
     ]
     #the notes field only exists on the categories whose editor actually shows it
@@ -135,7 +137,7 @@ def parse_generated_entry(raw_output: str, category: str) -> dict[str, Any]:
 router = APIRouter()
 
 
-async def stream_entry_generation(
+async def streamEntryGeneration(
     story: Any,
     category: str,
     brief: str,
@@ -158,7 +160,7 @@ async def stream_entry_generation(
         "existing_entries": [
             {
                 "name": row["name"],
-                "category": normalize_lorebook_category(row["category"]),
+                "category": normalizeLorebookCategory(row["category"]),
                 "description": row["description"] or "",
             }
             for row in existing_entries
@@ -186,12 +188,12 @@ async def stream_entry_generation(
         {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
     ]
     responseFormat = None
-    if provider.supportsStructuredOutput(lorebook_model_for(story)):
-        responseFormat = lorebook_generate_response_format()
+    if provider.supportsStructuredOutput(lorebookModelFor(story)):
+        responseFormat = lorebookGenerateResponseFormat()
 
     request = provider.buildRequest(
         messages,
-        lorebook_model_for(story),
+        lorebookModelFor(story),
         ChatOptions(
             apiKey=apiKey,
             temperature=0.7,
@@ -201,63 +203,40 @@ async def stream_entry_generation(
             responseFormat=responseFormat,
         ),
     )
-    effectiveThinkingEnabled = provider.effectiveThinkingEnabled(lorebook_model_for(story), True)
+    effectiveThinkingEnabled = provider.effectiveThinkingEnabled(lorebookModelFor(story), True)
 
-    generatedText: list[str] = []
-    finishReason: str | None = None
     usageRun = LorebookUsage(
-        apiKey, story["id"], lorebook_model_for(story), "generate",
+        apiKey, story["id"], lorebookModelFor(story), "generate",
         chapter["id"] if chapter is not None else None,
     )
-    receivedDone = False
-    announcedWriting = False
+    lorebookStream = LorebookStream(provider, request, usageRun, effectiveThinkingEnabled)
 
     #a model with thinking off never sends reasoning, so the editor should say Writing from the start
-    yield stream_event("status", "thinking" if effectiveThinkingEnabled else "writing")
+    yield streamEvent("status", "thinking" if effectiveThinkingEnabled else "writing")
 
     try:
-        async with usageRun:
-            async with aclosing(streamChat(provider, request)) as events:
-                async for event in events:
-                    if event["type"] in ("error", "open"):
-                        usageRun.generationId = event["generationId"]
-                    if event["type"] == "error":
-                        yield stream_event(
-                            "error",
-                            {"code": "lorebook_generate_provider_error", "message": event["message"]},
-                        )
-                        return
-                    if event["type"] == "open":
-                        continue
-                    if event["type"] == "done":
-                        receivedDone = True
-                        continue
+        async with aclosing(lorebookStream.events()) as events:
+            async for event in events:
+                if event["type"] == "reasoning":
+                    yield streamEvent("reasoning", event["value"])
+                elif event["type"] == "contentStart":
+                    yield streamEvent("status", "writing")
+                elif event["type"] == "content":
+                    yield streamEvent("content", event["value"])
 
-                    usageRun.generationId = usageRun.generationId or event["id"]
-                    usageRun.addUsage(event["usage"])
-
-                    if not event["hasChoice"]:
-                        continue
-                    finishReason = event["finishReason"] or finishReason
-                    if event["reasoning"] and effectiveThinkingEnabled:
-                        yield stream_event("reasoning", event["reasoning"])
-                    if event["content"]:
-                        #first real content means the thinking is done and the entry is being written
-                        if not announcedWriting:
-                            announcedWriting = True
-                            yield stream_event("status", "writing")
-                        generatedText.append(event["content"])
-                        #the editor renders the entry as it lands, so the raw delta goes out too
-                        yield stream_event("content", event["content"])
-
-        if usageRun.usage:
-            yield stream_event(
-                "usage",
-                {"generation_id": usageRun.generationId, "model": usageRun.model, **usageRun.usage},
+        if lorebookStream.errorMessage:
+            yield streamEvent(
+                "error",
+                {"code": "lorebook_generate_provider_error", "message": lorebookStream.errorMessage},
             )
+            return
 
-        if not receivedDone:
-            yield stream_event(
+        usageValue = lorebookStream.usageEventValue()
+        if usageValue:
+            yield streamEvent("usage", usageValue)
+
+        if not lorebookStream.receivedDone:
+            yield streamEvent(
                 "error",
                 {
                     "code": "lorebook_generate_incomplete",
@@ -265,8 +244,8 @@ async def stream_entry_generation(
                 },
             )
             return
-        if finishReason == "length":
-            yield stream_event(
+        if lorebookStream.finishReason == "length":
+            yield streamEvent(
                 "error",
                 {
                     "code": "lorebook_generate_truncated",
@@ -276,9 +255,9 @@ async def stream_entry_generation(
             return
 
         try:
-            entry = parse_generated_entry("".join(generatedText), category)
+            entry = parseGeneratedEntry(lorebookStream.text, category)
         except ValueError as exc:
-            yield stream_event(
+            yield streamEvent(
                 "error",
                 {"code": "lorebook_generate_invalid", "message": str(exc)},
             )
@@ -290,11 +269,11 @@ async def stream_entry_generation(
 
         #nothing is saved here, the draft goes back to the editor and the author decides
         durationMs = (time.perf_counter() - startedAt) * 1000
-        yield stream_event("complete", {"entry": entry, "duration_ms": durationMs})
+        yield streamEvent("complete", {"entry": entry, "duration_ms": durationMs})
     except asyncio.CancelledError:
         raise
     except Exception as exc:  # noqa: BLE001
-        yield stream_event(
+        yield streamEvent(
             "error",
             {
                 "code": "lorebook_generate_failed",
@@ -304,51 +283,36 @@ async def stream_entry_generation(
 
 
 @router.post("/api/stories/{story_id}/lorebook/generate/stream")
-async def generate_lorebook_entry(
+async def generateLorebookEntry(
     story_id: str,
     payload: GenerateEntryRequest,
 ) -> StreamingResponse:
     provider = storyProvider(story_id)
     provider.requireKey()
 
-    category = normalize_lorebook_category(payload.category)
+    category = normalizeLorebookCategory(payload.category)
     if category not in GENERATE_CATEGORIES:
         raise HTTPException(status_code=422, detail="That entry type cannot be generated.")
     brief = str(payload.brief or "").strip()
     if category != "synopsis" and not brief:
         raise HTTPException(status_code=422, detail="Describe what the entry should be first.")
 
-    with get_db() as conn:
-        story = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
-        if not story:
-            raise HTTPException(status_code=404, detail="Story not found.")
+    with getDb() as conn:
+        story = requireStory(conn, story_id)
         chapter = None
         if category == "synopsis":
             chapterId = str(payload.chapter_id or "").strip()
             if not chapterId:
                 raise HTTPException(status_code=422, detail="Choose a chapter to summarize.")
-            chapter = conn.execute(
-                """
-                SELECT * FROM chapters
-                WHERE id = ? AND story_id = ? AND disabled = 0
-                """,
-                (chapterId, story_id),
-            ).fetchone()
+            chapter = getEnabledChapter(conn, story_id, chapterId)
             if not chapter:
                 raise HTTPException(status_code=404, detail="Chapter not found or hidden from context.")
             if not str(chapter["content"] or "").strip():
                 raise HTTPException(status_code=422, detail="Write something in this chapter first.")
-        existingEntries = conn.execute(
-            """
-            SELECT * FROM lorebook_entries
-            WHERE story_id = ? AND disabled = 0
-            ORDER BY updated_at DESC, created_at DESC
-            """,
-            (story_id,),
-        ).fetchall()
+        existingEntries = listEnabledEntries(conn, story_id)
 
     return StreamingResponse(
-        stream_entry_generation(story, category, brief, existingEntries, chapter),
+        streamEntryGeneration(story, category, brief, existingEntries, chapter),
         media_type="application/x-ndjson; charset=utf-8",
         headers={"Cache-Control": "no-store"},
     )

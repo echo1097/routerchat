@@ -2,11 +2,11 @@ import json
 import sqlite3
 from typing import Any
 
-from backend.lorebook.lorebookRows import lorebook_context_line
-from backend.writing.chapterEdits.anchors import block_map_for_prompt
+from backend.lorebook.lorebookRows import lorebookContextLine
+from backend.writing.chapterEdits.anchors import blockMapForPrompt
 
 
-def effective_generation_mode(requested_mode: str | None, chapter_content: str) -> str:
+def effectiveGenerationMode(requested_mode: str | None, chapter_content: str) -> str:
     mode = str(requested_mode or "new").lower()
     if mode not in {"edit", "new"}:
         mode = "new"
@@ -15,7 +15,7 @@ def effective_generation_mode(requested_mode: str | None, chapter_content: str) 
     return mode
 
 
-def build_story_messages(
+def buildStoryMessages(
     story: sqlite3.Row,
     chapter: sqlite3.Row,
     lorebook_rows: list[sqlite3.Row],
@@ -28,7 +28,7 @@ def build_story_messages(
     previous_chapters: list[sqlite3.Row] | None = None,
 ) -> list[dict[str, Any]]:
     lorebook_text = "\n".join(
-        lorebook_context_line(row)
+        lorebookContextLine(row)
         for row in lorebook_rows
         if not bool(row["disabled"]) and row["description"].strip()
     )
@@ -53,7 +53,7 @@ def build_story_messages(
     if generation_mode == "edit":
         chapterParts.append(
             "chapter block map:\n"
-            + json.dumps(block_map_for_prompt(blocks or []), ensure_ascii=False, indent=2)
+            + json.dumps(blockMapForPrompt(blocks or []), ensure_ascii=False, indent=2)
         )
 
     messages: list[dict[str, Any]] = []
@@ -130,12 +130,12 @@ def build_story_messages(
         previous = str(repair_context.get("previous_output") or "").strip()
         if previous:
             messages.append({"role": "assistant", "content": previous})
-        messages.append({"role": "user", "content": repair_instructions(repair_context)})
+        messages.append({"role": "user", "content": repairInstructions(repair_context)})
 
     return messages
 
 
-def mark_story_cache_points(
+def markStoryCachePoints(
     messages: list[dict[str, Any]],
     cache_control: dict[str, Any],
 ) -> list[dict[str, Any]]:
@@ -164,7 +164,7 @@ def lastUserMessageIndex(messages: list[dict[str, Any]], prefixes: tuple[str, ..
     return found
 
 
-def repair_instructions(repair_context: dict[str, Any]) -> str:
+def repairInstructions(repair_context: dict[str, Any]) -> str:
     errors = [str(error) for error in (repair_context.get("errors") or []) if str(error).strip()]
     failed = [edit for edit in (repair_context.get("failed_edits") or []) if isinstance(edit, dict)]
     applied_count = int(repair_context.get("applied_count") or 0)

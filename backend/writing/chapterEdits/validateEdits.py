@@ -1,9 +1,9 @@
 from typing import Any
 
 from backend.writing.chapterEdits.anchors import (
-    anchor_resembles_block,
-    normalize_anchor,
-    resolve_block_by_anchor,
+    anchorResemblesBlock,
+    normalizeAnchor,
+    resolveBlockByAnchor,
 )
 from backend.writing.chapterEdits.editErrors import (
     CHAPTER_EDIT_INVALID_OPERATION,
@@ -12,7 +12,7 @@ from backend.writing.chapterEdits.editErrors import (
     CHAPTER_EDIT_TARGET_MISMATCH,
     ChapterEditError,
 )
-from backend.writing.chapterEdits.proseCleanup import validate_chapter_edit_text
+from backend.writing.chapterEdits.proseCleanup import validateChapterEditText
 
 #models shorten these constantly and losing a whole generation over a field nickname is a stupid way to die
 CHAPTER_EDIT_FIELD_ALIASES = {
@@ -33,7 +33,7 @@ CHAPTER_EDIT_IGNORED_FIELDS = {
 }
 
 
-def normalize_chapter_operation_fields(operation: dict[str, Any]) -> dict[str, Any]:
+def normalizeChapterOperationFields(operation: dict[str, Any]) -> dict[str, Any]:
     normalized = dict(operation)
     for ignored in CHAPTER_EDIT_IGNORED_FIELDS:
         normalized.pop(ignored, None)
@@ -46,7 +46,7 @@ def normalize_chapter_operation_fields(operation: dict[str, Any]) -> dict[str, A
     return normalized
 
 
-def validate_chapter_operation(
+def validateChapterOperation(
     operation: dict[str, Any],
     baseRevision: int | None = None,
     blocks: list[dict[str, Any]] | None = None,
@@ -58,7 +58,7 @@ def validate_chapter_operation(
             "chapter edit output must be a JSON object",
         )
 
-    operation = normalize_chapter_operation_fields(operation)
+    operation = normalizeChapterOperationFields(operation)
 
     #inside a batch the revision is stated once on the envelope, a leftover copy on the edit is noise not an error
     if not requireRevision:
@@ -114,7 +114,7 @@ def validate_chapter_operation(
             CHAPTER_EDIT_INVALID_OPERATION,
             "newText must be an array of paragraphs",
         )
-    operation["newText"] = validate_chapter_edit_text(newText)
+    operation["newText"] = validateChapterEditText(newText)
 
     if operationType == "appendToChapter":
         return operation
@@ -145,19 +145,19 @@ def validate_chapter_operation(
         if blocks is not None:
             blocksById = {block["blockId"]: block for block in blocks}
             block = blocksById.get(blockId.strip())
-            normalizedAnchor = normalize_anchor(anchorText)
+            normalizedAnchor = normalizeAnchor(anchorText)
 
             namedBlock = block
-            if namedBlock is not None and normalizedAnchor in normalize_anchor(namedBlock["text"]):
+            if namedBlock is not None and normalizedAnchor in normalizeAnchor(namedBlock["text"]):
                 targetBlocks.append(namedBlock)
                 operation[blockIdField] = namedBlock["blockId"]
                 continue
 
             #the quoted prose is a better witness than the models block id bookkeeping, so an exact quote elsewhere still wins the block
-            block = resolve_block_by_anchor(blocks, normalizedAnchor)
+            block = resolveBlockByAnchor(blocks, normalizedAnchor)
 
             #nothing quoted it exactly, so a block id that names a real paragraph the quote clearly came from is the model rewording rather than losing its place
-            if block is None and namedBlock is not None and anchor_resembles_block(normalizedAnchor, namedBlock["text"]):
+            if block is None and namedBlock is not None and anchorResemblesBlock(normalizedAnchor, namedBlock["text"]):
                 block = namedBlock
 
             if block is None:

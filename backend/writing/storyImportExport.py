@@ -4,109 +4,86 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
+from backend.brainstorm.brainstormQueries import (
+    getViewport,
+    insertEdge,
+    insertImportedNode,
+    insertViewport,
+    listEdges,
+    listNodes,
+)
 from backend.brainstorm.brainstormRows import (
-    row_to_brainstorm_edge,
-    row_to_brainstorm_node,
+    rowToBrainstormEdge,
+    rowToBrainstormNode,
 )
-from backend.core.database import get_db
-from backend.core.utils import utc_now
+from backend.core.database import getDb
+from backend.core.utils import utcNow
+from backend.lorebook.lorebookQueries import insertImportedEntry, listEntriesByCreated
 from backend.lorebook.lorebookRows import (
-    normalize_lorebook_category,
-    row_to_lorebook_entry,
-    sanitize_lorebook_aliases,
-    sanitize_lorebook_metadata,
+    normalizeLorebookCategory,
+    rowToLorebookEntry,
+    sanitizeLorebookAliases,
+    sanitizeLorebookMetadata,
 )
-from backend.lorebook.timeline import normalize_timeline_description
+from backend.lorebook.timeline import normalizeTimelineDescription
 from backend.providers.registry import getActiveProvider, providerIdForImport
 from backend.writing.storyModels import StoryImportRequest
-from backend.writing.storyRows import (
-    row_to_chapter,
-    row_to_chapter_history_entry,
-    row_to_story,
-    word_count,
+from backend.stories.storyQueries import (
+    insertChapterHistory,
+    insertImportedChapter,
+    insertStory,
+    listChapterHistoryForExport,
+    listChapters,
+    requireStory,
+)
+from backend.stories.storyRows import (
+    rowToChapter,
+    rowToChapterHistoryEntry,
+    rowToStory,
+    wordCount,
 )
 
 router = APIRouter()
 
 
 @router.get("/api/stories/{story_id}/export")
-def export_story(story_id: str) -> dict[str, Any]:
-    with get_db() as conn:
-        story = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
-        if not story:
-            raise HTTPException(status_code=404, detail="Story not found.")
+def exportStory(story_id: str) -> dict[str, Any]:
+    with getDb() as conn:
+        story = requireStory(conn, story_id)
 
-        chapters = conn.execute(
-            """
-            SELECT * FROM chapters
-            WHERE story_id = ?
-            ORDER BY order_index ASC, created_at ASC
-            """,
-            (story_id,),
-        ).fetchall()
-        historyRows = conn.execute(
-            """
-            SELECT * FROM chapter_history_entries
-            WHERE story_id = ?
-            ORDER BY chapter_id ASC, entry_order ASC, created_at ASC
-            """,
-            (story_id,),
-        ).fetchall()
-        lorebookRows = conn.execute(
-            """
-            SELECT * FROM lorebook_entries
-            WHERE story_id = ?
-            ORDER BY created_at ASC
-            """,
-            (story_id,),
-        ).fetchall()
-        brainstormNodes = conn.execute(
-            """
-            SELECT * FROM brainstorm_nodes
-            WHERE story_id = ?
-            ORDER BY created_at ASC
-            """,
-            (story_id,),
-        ).fetchall()
-        brainstormEdges = conn.execute(
-            """
-            SELECT * FROM brainstorm_edges
-            WHERE story_id = ?
-            ORDER BY created_at ASC
-            """,
-            (story_id,),
-        ).fetchall()
-        viewport = conn.execute(
-            "SELECT * FROM brainstorm_viewports WHERE story_id = ?",
-            (story_id,),
-        ).fetchone()
+        chapters = listChapters(conn, story_id)
+        historyRows = listChapterHistoryForExport(conn, story_id)
+        lorebookRows = listEntriesByCreated(conn, story_id)
+        brainstormNodes = listNodes(conn, story_id)
+        brainstormEdges = listEdges(conn, story_id)
+        viewport = getViewport(conn, story_id)
 
-    storyPayload = row_to_story(story)
+    storyPayload = rowToStory(story)
     storyPayload.pop("temporary", None)
 
     historyPayload = []
     for row in historyRows:
-        historyEntry = row_to_chapter_history_entry(row)
+        historyEntry = rowToChapterHistoryEntry(row)
         historyEntry.pop("cost", None)
         historyPayload.append(historyEntry)
 
     nodePayload = []
     for row in brainstormNodes:
-        node = row_to_brainstorm_node(row)
+        node = rowToBrainstormNode(row)
         node.pop("reasoning", None)
         node.pop("duration_ms", None)
         nodePayload.append(node)
 
     return {
         "schema": "routerchat.story.v1",
-        "exported_at": utc_now(),
+        "exported_at": utcNow(),
         "story": storyPayload,
-        "chapters": [row_to_chapter(row) for row in chapters],
+        "chapters": [rowToChapter(row) for row in chapters],
         "chapter_history": historyPayload,
-        "lorebook": [row_to_lorebook_entry(row) for row in lorebookRows],
+        "lorebook": [rowToLorebookEntry(row) for row in lorebookRows],
         "brainstorm": {
             "nodes": nodePayload,
-            "edges": [row_to_brainstorm_edge(row) for row in brainstormEdges],
+            "edges": [rowToBrainstormEdge(row) for row in brainstormEdges],
             "viewport": (
                 {
                     "x": viewport["position_x"],
@@ -121,7 +98,7 @@ def export_story(story_id: str) -> dict[str, Any]:
 
 
 @router.post("/api/stories/import")
-def import_story(payload: StoryImportRequest) -> dict[str, Any]:
+def importStory(payload: StoryImportRequest) -> dict[str, Any]:
     if payload.format_schema != "routerchat.story.v1":
         raise HTTPException(status_code=422, detail="Unsupported RouterChat story format.")
 
@@ -159,7 +136,7 @@ def import_story(payload: StoryImportRequest) -> dict[str, Any]:
     ):
         raise HTTPException(status_code=422, detail="Story archive contains an orphaned brainstorm edge.")
 
-    now = utc_now()
+    now = utcNow()
     storyId = str(uuid.uuid4())
     chapterIdMap = {chapter.id: str(uuid.uuid4()) for chapter in payload.chapters}
     nodeIdMap = {node.id: str(uuid.uuid4()) for node in payload.brainstorm.nodes}
@@ -172,7 +149,7 @@ def import_story(payload: StoryImportRequest) -> dict[str, Any]:
         key=lambda chapter: (chapter.order_index, chapter.created_at, chapter.id),
     )
 
-    with get_db() as conn:
+    with getDb() as conn:
         story = payload.story
         storyModel = story.model or ""
         storyProvider = providerIdForImport(story.provider, storyModel)
@@ -180,15 +157,8 @@ def import_story(payload: StoryImportRequest) -> dict[str, Any]:
             storyModel = getActiveProvider().defaultModelId()
             storyProvider = getActiveProvider().id
 
-        conn.execute(
-            """
-            INSERT INTO stories (
-              id, title, author, language, synopsis, model, provider, system_prompt,
-              temperature, max_tokens, thinking_enabled, reasoning_effort, temporary,
-              lorebook_auto, lorebook_model, created_at, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+        insertStory(
+            conn,
             (
                 storyId,
                 story.title.strip() or "New story",
@@ -212,20 +182,14 @@ def import_story(payload: StoryImportRequest) -> dict[str, Any]:
 
         for chapter in orderedChapters:
             chapterId = chapterIdMap[chapter.id]
-            conn.execute(
-                """
-                INSERT INTO chapters (
-                  id, story_id, title, content, word_count, revision, order_index,
-                  disabled, created_at, updated_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
+            insertImportedChapter(
+                conn,
                 (
                     chapterId,
                     storyId,
                     chapter.title.strip() or "New chapter",
                     chapter.content,
-                    word_count(chapter.content),
+                    wordCount(chapter.content),
                     chapter.revision,
                     chapter.order_index,
                     int(chapter.disabled),
@@ -235,14 +199,8 @@ def import_story(payload: StoryImportRequest) -> dict[str, Any]:
             )
 
         for entry in payload.chapter_history:
-            conn.execute(
-                """
-                INSERT INTO chapter_history_entries (
-                  id, story_id, chapter_id, run_id, label, detail, entry_order,
-                  kind, words_added, words_removed, cost, created_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
+            insertChapterHistory(
+                conn,
                 (
                     str(uuid.uuid4()),
                     storyId,
@@ -260,30 +218,24 @@ def import_story(payload: StoryImportRequest) -> dict[str, Any]:
             )
 
         for entry in payload.lorebook:
-            category = normalize_lorebook_category(entry.category)
+            category = normalizeLorebookCategory(entry.category)
             name = entry.name.strip()
             description = (
-                normalize_timeline_description(entry.description)
+                normalizeTimelineDescription(entry.description)
                 if category == "timeline"
                 else entry.description
             )
-            conn.execute(
-                """
-                INSERT INTO lorebook_entries (
-                  id, story_id, name, category, description, aliases_json,
-                  tags_json, metadata_json, revision, disabled, created_at, updated_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
+            insertImportedEntry(
+                conn,
                 (
                     str(uuid.uuid4()),
                     storyId,
                     name,
                     category,
                     description,
-                    json.dumps(sanitize_lorebook_aliases(category, entry.aliases, name)),
+                    json.dumps(sanitizeLorebookAliases(category, entry.aliases, name)),
                     json.dumps(entry.tags),
-                    json.dumps(sanitize_lorebook_metadata(category, entry.metadata)),
+                    json.dumps(sanitizeLorebookMetadata(category, entry.metadata)),
                     entry.revision,
                     int(entry.disabled),
                     entry.created_at or now,
@@ -292,14 +244,8 @@ def import_story(payload: StoryImportRequest) -> dict[str, Any]:
             )
 
         for node in payload.brainstorm.nodes:
-            conn.execute(
-                """
-                INSERT INTO brainstorm_nodes (
-                  id, story_id, node_type, title, content, position_x,
-                  position_y, status, created_at, updated_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
+            insertImportedNode(
+                conn,
                 (
                     nodeIdMap[node.id],
                     storyId,
@@ -315,32 +261,17 @@ def import_story(payload: StoryImportRequest) -> dict[str, Any]:
             )
 
         for edge in payload.brainstorm.edges:
-            conn.execute(
-                """
-                INSERT INTO brainstorm_edges (
-                  id, story_id, source_node_id, target_node_id, created_at
-                )
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (
-                    str(uuid.uuid4()),
-                    storyId,
-                    nodeIdMap[edge.source_node_id],
-                    nodeIdMap[edge.target_node_id],
-                    edge.created_at or now,
-                ),
+            insertEdge(
+                conn,
+                str(uuid.uuid4()),
+                storyId,
+                nodeIdMap[edge.source_node_id],
+                nodeIdMap[edge.target_node_id],
+                edge.created_at or now,
             )
 
         viewport = payload.brainstorm.viewport
-        conn.execute(
-            """
-            INSERT INTO brainstorm_viewports (
-              story_id, position_x, position_y, zoom, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (storyId, viewport.x, viewport.y, viewport.zoom, now),
-        )
+        insertViewport(conn, (storyId, viewport.x, viewport.y, viewport.zoom, now))
 
     return {
         "story_id": storyId,

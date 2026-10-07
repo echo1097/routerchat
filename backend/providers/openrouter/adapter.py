@@ -12,10 +12,10 @@ from backend.providers.openrouter import requestOptions, usage
 from backend.providers.openrouter.client import (
     OPENROUTER_BASE_URL,
     OPENROUTER_TIMEOUT,
-    headers_for_key,
+    headersForKey,
 )
-from backend.providers.openrouter.errors import openrouter_error_message
-from backend.webSearch.sources import normalize_sources
+from backend.providers.openrouter.errors import openrouterErrorMessage
+from backend.webSearch.sources import normalizeSources
 
 
 class OpenRouterProvider(Provider):
@@ -33,13 +33,13 @@ class OpenRouterProvider(Provider):
     )
 
     def readKey(self) -> str | None:
-        return keyStore.read_openrouter_key()
+        return keyStore.readOpenrouterKey()
 
     def writeKey(self, apiKey: str) -> None:
-        keyStore.write_openrouter_key(apiKey)
+        keyStore.writeOpenrouterKey(apiKey)
 
     async def validateKey(self, apiKey: str) -> dict[str, Any]:
-        return await keyStore.validate_key(apiKey)
+        return await keyStore.validateKey(apiKey)
 
     async def keyStatus(self) -> dict[str, Any]:
         savedKey = self.readKey()
@@ -51,41 +51,41 @@ class OpenRouterProvider(Provider):
             return self.normalizeKeyStatus(None, True)
 
     async def listModels(self, apiKey: str) -> list[dict[str, Any]]:
-        return await modelStore.fetch_models_from_openrouter(apiKey)
+        return await modelStore.fetchModelsFromOpenrouter(apiKey)
 
     def cachedModels(self) -> list[dict[str, Any]]:
-        return modelStore.cached_models()
+        return modelStore.cachedModels()
 
     def cacheModels(self, models: list[dict[str, Any]]) -> None:
-        modelStore.cache_models(models)
+        modelStore.cacheModels(models)
 
     def defaultModelId(self) -> str:
-        return modelStore.default_model_id()
+        return modelStore.defaultModelId()
 
     def supportsReasoning(self, modelId: str) -> bool:
-        return modelStore.model_supports_reasoning(modelId)
+        return modelStore.modelSupportsReasoning(modelId)
 
     def effectiveThinkingEnabled(self, modelId: str, thinkingEnabled: bool) -> bool:
-        return requestOptions.effective_thinking_enabled(modelId, thinkingEnabled)
+        return requestOptions.effectiveThinkingEnabled(modelId, thinkingEnabled)
 
     def supportsStructuredOutput(self, modelId: str) -> bool:
-        return modelStore.model_supports_structured_output(modelId)
+        return modelStore.modelSupportsStructuredOutput(modelId)
 
     def promptCacheControl(self) -> dict[str, Any] | None:
-        return requestOptions.prompt_cache_control()
+        return requestOptions.promptCacheControl()
 
     def buildRequest(
         self, messages: list[dict[str, Any]], model: str, options: ChatOptions
     ) -> ChatRequest:
         body: dict[str, Any] = {
-            "model": requestOptions.openrouter_request_model(model, options.nitro),
+            "model": requestOptions.openrouterRequestModel(model, options.nitro),
             "messages": messages,
             "temperature": options.temperature,
             "max_tokens": options.maxTokens,
             "stream": options.stream,
         }
 
-        providerOptions = requestOptions.openrouter_provider_options()
+        providerOptions = requestOptions.openrouterProviderOptions()
         if providerOptions:
             body["provider"] = providerOptions
 
@@ -97,7 +97,7 @@ class OpenRouterProvider(Provider):
         if options.plugins:
             body["plugins"] = options.plugins
 
-        reasoningConfig = requestOptions.enabled_reasoning_config(
+        reasoningConfig = requestOptions.enabledReasoningConfig(
             model, options.thinkingEnabled, options.reasoningEffort
         )
         if reasoningConfig:
@@ -114,7 +114,7 @@ class OpenRouterProvider(Provider):
 
         return ChatRequest(
             url=f"{OPENROUTER_BASE_URL}/chat/completions",
-            headers={**headers_for_key(options.apiKey), "Content-Type": "application/json"},
+            headers={**headersForKey(options.apiKey), "Content-Type": "application/json"},
             body=body,
         )
 
@@ -124,7 +124,7 @@ class OpenRouterProvider(Provider):
     def parseStreamChunk(self, chunk: dict[str, Any]) -> dict[str, Any]:
         parsed: dict[str, Any] = {
             "id": chunk.get("id"),
-            "usage": usage.normalize_usage(chunk.get("usage")),
+            "usage": usage.normalizeUsage(chunk.get("usage")),
             "hasChoice": False,
             "finishReason": None,
             "reasoning": None,
@@ -146,7 +146,7 @@ class OpenRouterProvider(Provider):
         parsed["finishReason"] = choice.get("finish_reason")
         parsed["reasoning"] = str(reasoning) if reasoning else None
         parsed["content"] = str(content) if content else None
-        parsed["sources"] = normalize_sources(
+        parsed["sources"] = normalizeSources(
             delta.get("annotations") or message.get("annotations")
         )
         return parsed
@@ -158,10 +158,10 @@ class OpenRouterProvider(Provider):
         return (choices[0].get("message") or {}).get("content")
 
     def errorMessage(self, statusCode: int, responseText: str) -> str:
-        return openrouter_error_message(statusCode, responseText)
+        return openrouterErrorMessage(statusCode, responseText)
 
     async def fetchFinalUsage(self, apiKey: str, generationId: str) -> dict[str, Any] | None:
-        return await usage.fetch_generation_usage(apiKey, generationId)
+        return await usage.fetchGenerationUsage(apiKey, generationId)
 
 
 openRouterProvider = OpenRouterProvider()

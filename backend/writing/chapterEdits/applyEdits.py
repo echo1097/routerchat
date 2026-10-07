@@ -1,6 +1,6 @@
 from typing import Any
 
-from backend.writing.chapterEdits.anchors import chapter_blocks
+from backend.writing.chapterEdits.anchors import chapterBlocks
 from backend.writing.chapterEdits.editErrors import (
     CHAPTER_EDIT_CONFLICTING_EDITS,
     CHAPTER_EDIT_INVALID_OPERATION,
@@ -8,12 +8,12 @@ from backend.writing.chapterEdits.editErrors import (
     CHAPTER_EDIT_TARGET_MISMATCH,
     ChapterEditError,
 )
-from backend.writing.chapterEdits.proseCleanup import clean_insert_text
-from backend.writing.chapterEdits.validateEdits import validate_chapter_operation
+from backend.writing.chapterEdits.proseCleanup import cleanInsertText
+from backend.writing.chapterEdits.validateEdits import validateChapterOperation
 
 
-def insert_with_spacing(content: str, position: int, text: str, placement: str) -> str:
-    insert_text = clean_insert_text(text)
+def insertWithSpacing(content: str, position: int, text: str, placement: str) -> str:
+    insert_text = cleanInsertText(text)
     if not insert_text:
         raise ValueError("new text cannot be empty")
     if not content.strip():
@@ -27,18 +27,18 @@ def insert_with_spacing(content: str, position: int, text: str, placement: str) 
     return f"{content[:position].rstrip()}\n\n{insert_text}\n\n{content[position:].lstrip()}"
 
 
-def apply_chapter_operation(
+def applyChapterOperation(
     content: str,
     operation: dict[str, Any],
     baseRevision: int | None = None,
 ) -> dict[str, Any]:
     batch = {"chapterRevision": operation.get("chapterRevision"), "edits": [operation]}
-    result = apply_chapter_edits(content, batch, baseRevision)
+    result = applyChapterEdits(content, batch, baseRevision)
     #single edit shape kept intact so the old callers and tests still read the same keys
     return {"content": result["content"], **result["edits"][0]}
 
 
-def chapter_edit_footprint(
+def chapterEditFootprint(
     operation: dict[str, Any],
     blocks: list[dict[str, Any]],
     blocksById: dict[str, dict[str, Any]],
@@ -72,22 +72,22 @@ def chapter_edit_footprint(
     return {"start": block["startChar"], "end": block["endChar"], "blockIds": [block["blockId"]]}
 
 
-def apply_single_edit(content: str, operation: dict[str, Any], footprint: dict[str, Any]) -> str:
+def applySingleEdit(content: str, operation: dict[str, Any], footprint: dict[str, Any]) -> str:
     #splices on positions taken from the original snapshot, which stay valid because the batch applies back to front
     operationType = operation["operation"]
-    newText = clean_insert_text(operation["newText"])
+    newText = cleanInsertText(operation["newText"])
 
     if operationType == "appendToChapter":
-        return insert_with_spacing(content, len(content), newText, "after")
+        return insertWithSpacing(content, len(content), newText, "after")
     if operationType == "insertBeforeBlock":
-        return insert_with_spacing(content, footprint["start"], newText, "before")
+        return insertWithSpacing(content, footprint["start"], newText, "before")
     if operationType == "insertAfterBlock":
-        return insert_with_spacing(content, footprint["start"], newText, "after")
+        return insertWithSpacing(content, footprint["start"], newText, "after")
 
     return f"{content[:footprint['start']]}{newText}{content[footprint['end']:]}"
 
 
-def validate_chapter_edit_batch(
+def validateChapterEditBatch(
     batch: dict[str, Any],
     baseRevision: int | None = None,
     blocks: list[dict[str, Any]] | None = None,
@@ -112,12 +112,12 @@ def validate_chapter_edit_batch(
         )
 
     validated = [
-        validate_chapter_operation(edit, None, blocks, requireRevision=False) for edit in edits
+        validateChapterOperation(edit, None, blocks, requireRevision=False) for edit in edits
     ]
     return {"chapterRevision": chapterRevision, "edits": validated}
 
 
-def validate_chapter_edit_batch_partial(
+def validateChapterEditBatchPartial(
     batch: dict[str, Any],
     baseRevision: int | None = None,
     blocks: list[dict[str, Any]] | None = None,
@@ -146,18 +146,18 @@ def validate_chapter_edit_batch_partial(
     rejected: list[dict[str, Any]] = []
     for index, edit in enumerate(edits):
         try:
-            validated.append(validate_chapter_operation(edit, None, blocks, requireRevision=False))
+            validated.append(validateChapterOperation(edit, None, blocks, requireRevision=False))
         except ChapterEditError as exc:
-            rejected.append(rejected_edit(index, exc.code, exc.message, edit))
+            rejected.append(rejectedEdit(index, exc.code, exc.message, edit))
 
     return {"chapterRevision": chapterRevision, "edits": validated, "rejected": rejected}
 
 
-def format_edit_count(count: int) -> str:
+def formatEditCount(count: int) -> str:
     return f"{count} {'edit' if count == 1 else 'edits'}"
 
 
-def rejected_edit(index: int, code: str, message: str, operation: Any) -> dict[str, Any]:
+def rejectedEdit(index: int, code: str, message: str, operation: Any) -> dict[str, Any]:
     #carries enough for the repair turn to describe what failed without the model having to guess which edit we mean
     return {
         "index": index,
@@ -167,31 +167,31 @@ def rejected_edit(index: int, code: str, message: str, operation: Any) -> dict[s
     }
 
 
-def apply_chapter_edits(
+def applyChapterEdits(
     content: str,
     batch: dict[str, Any],
     baseRevision: int | None = None,
     partial: bool = False,
 ) -> dict[str, Any]:
-    blocks = chapter_blocks(content)
+    blocks = chapterBlocks(content)
     blocksById = {block["blockId"]: block for block in blocks}
 
     if partial:
-        batch = validate_chapter_edit_batch_partial(batch, baseRevision, blocks)
+        batch = validateChapterEditBatchPartial(batch, baseRevision, blocks)
     else:
-        batch = validate_chapter_edit_batch(batch, baseRevision, blocks)
+        batch = validateChapterEditBatch(batch, baseRevision, blocks)
     rejected: list[dict[str, Any]] = list(batch.get("rejected") or [])
 
     keptEdits: list[dict[str, Any]] = []
     footprints: list[dict[str, Any]] = []
     for edit in batch["edits"]:
         try:
-            footprints.append(chapter_edit_footprint(edit, blocks, blocksById, len(content)))
+            footprints.append(chapterEditFootprint(edit, blocks, blocksById, len(content)))
         except (KeyError, ChapterEditError) as exc:
             if not partial:
                 raise
             rejected.append(
-                rejected_edit(len(keptEdits), CHAPTER_EDIT_TARGET_MISMATCH, str(exc), edit)
+                rejectedEdit(len(keptEdits), CHAPTER_EDIT_TARGET_MISMATCH, str(exc), edit)
             )
             continue
         keptEdits.append(edit)
@@ -213,7 +213,7 @@ def apply_chapter_edits(
                     )
                 droppedIndexes.add(index)
                 rejected.append(
-                    rejected_edit(
+                    rejectedEdit(
                         index,
                         CHAPTER_EDIT_CONFLICTING_EDITS,
                         "only one appendToChapter is allowed per generation",
@@ -225,7 +225,7 @@ def apply_chapter_edits(
         if conflict is not None and partial:
             droppedIndexes.add(index)
             rejected.append(
-                rejected_edit(
+                rejectedEdit(
                     index,
                     CHAPTER_EDIT_CONFLICTING_EDITS,
                     f"edits {claimedBy[conflict] + 1} and {index + 1} both change {conflict}",
@@ -254,7 +254,7 @@ def apply_chapter_edits(
     order = sorted(surviving, key=lambda index: footprints[index]["start"], reverse=True)
     nextContent = content
     for index in order:
-        nextContent = apply_single_edit(nextContent, batch["edits"][index], footprints[index])
+        nextContent = applySingleEdit(nextContent, batch["edits"][index], footprints[index])
 
     applied = [
         {
@@ -269,7 +269,7 @@ def apply_chapter_edits(
                 if batch["edits"][index]["operation"] in {"replaceBlock", "replaceBlockRange"}
                 else []
             ),
-            "appliedText": clean_insert_text(batch["edits"][index]["newText"]),
+            "appliedText": cleanInsertText(batch["edits"][index]["newText"]),
         }
         for index in surviving
     ]
@@ -277,9 +277,9 @@ def apply_chapter_edits(
     return {"content": nextContent, "edits": applied, "rejected": rejected}
 
 
-def append_chapter_text(content: str, text: str) -> dict[str, Any]:
-    new_text = clean_insert_text(text)
-    next_content = insert_with_spacing(content, len(content), new_text, "after")
+def appendChapterText(content: str, text: str) -> dict[str, Any]:
+    new_text = cleanInsertText(text)
+    next_content = insertWithSpacing(content, len(content), new_text, "after")
     return {
         "content": next_content,
         "operation": "appendToChapter",

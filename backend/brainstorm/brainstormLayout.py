@@ -14,18 +14,18 @@ COLUMN_OFFSET_X = IDEA_WIDTH + COLUMN_GAP
 PROMPT_ROW_OFFSET = IDEA_HEIGHT / 2
 
 
-def ideas_block_height(ideaCount: int) -> float:
+def ideasBlockHeight(ideaCount: int) -> float:
     count = max(1, ideaCount)
     return count * IDEA_HEIGHT + (count - 1) * IDEA_GAP
 
 
-def brainstorm_idea_positions(
+def brainstormIdeaPositions(
     promptX: float,
     promptY: float,
     ideaCount: int,
 ) -> list[tuple[float, float]]:
     centerY = promptY + PROMPT_ROW_OFFSET
-    firstY = centerY - ideas_block_height(ideaCount) / 2
+    firstY = centerY - ideasBlockHeight(ideaCount) / 2
     ideaX = promptX + IDEAS_OFFSET_X
     return [
         (ideaX, firstY + index * (IDEA_HEIGHT + IDEA_GAP))
@@ -33,7 +33,7 @@ def brainstorm_idea_positions(
     ]
 
 
-def node_bounds(node: Any) -> tuple[float, float, float, float]:
+def nodeBounds(node: Any) -> tuple[float, float, float, float]:
     left = float(node["position_x"])
     top = float(node["position_y"])
     if node["node_type"] == "prompt":
@@ -41,13 +41,13 @@ def node_bounds(node: Any) -> tuple[float, float, float, float]:
     return left, top, left + IDEA_WIDTH, top + IDEA_HEIGHT
 
 
-def open_prompt_position(
+def openPromptPosition(
     nodes: list[Any],
     promptX: float,
     desiredPromptY: float,
     ideaCount: int,
 ) -> tuple[float, float]:
-    blockHalf = ideas_block_height(ideaCount) / 2
+    blockHalf = ideasBlockHeight(ideaCount) / 2
     topReach = max(PROMPT_ROW_OFFSET, blockHalf)
     bottomReach = max(PROMPT_HEIGHT - PROMPT_ROW_OFFSET, blockHalf)
     blockLeft = promptX - BRANCH_CLEARANCE
@@ -55,7 +55,7 @@ def open_prompt_position(
 
     obstacles = [
         (top, bottom)
-        for left, top, right, bottom in map(node_bounds, nodes)
+        for left, top, right, bottom in map(nodeBounds, nodes)
         if left < blockRight and right > blockLeft
     ]
 
@@ -86,18 +86,18 @@ def open_prompt_position(
     return promptX, bestCenter - PROMPT_ROW_OFFSET
 
 
-def next_brainstorm_root_position(
+def nextBrainstormRootPosition(
     nodes: list[Any],
     ideaCount: int,
 ) -> tuple[float, float]:
-    return open_prompt_position(nodes, 0.0, ROOT_ANCHOR_Y, ideaCount)
+    return openPromptPosition(nodes, 0.0, ROOT_ANCHOR_Y, ideaCount)
 
 
-def next_brainstorm_branch_position(
+def nextBrainstormBranchPosition(
     nodes: list[Any],
     selectedIdeas: list[Any],
     ideaCount: int,
 ) -> tuple[float, float]:
     promptX = max(float(idea["position_x"]) for idea in selectedIdeas) + COLUMN_OFFSET_X
     desiredPromptY = sum(float(idea["position_y"]) for idea in selectedIdeas) / len(selectedIdeas)
-    return open_prompt_position(nodes, promptX, desiredPromptY, ideaCount)
+    return openPromptPosition(nodes, promptX, desiredPromptY, ideaCount)

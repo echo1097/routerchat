@@ -3,13 +3,14 @@ from __future__ import annotations
 from typing import Any
 
 from backend.attachments.attachmentContent import (
-    attachments_by_message,
-    user_content_with_attachments,
+    groupAttachmentsByMessage,
+    userContentWithAttachments,
 )
-from backend.core.database import get_db
+from backend.chats.chatQueries import listContextMessages
+from backend.core.database import getDb
 
 
-def build_messages(
+def buildMessages(
     chat_id: str,
     system_prompt: str,
     regenerate_message_id: str | None = None,
@@ -18,16 +19,9 @@ def build_messages(
     messages: list[dict[str, Any]] = []
     if system_prompt.strip():
         messages.append({"role": "system", "content": system_prompt.strip()})
-    with get_db() as conn:
-        rows = conn.execute(
-            """
-            SELECT id, role, content FROM messages
-            WHERE chat_id = ? AND error IS NULL
-            ORDER BY message_order ASC, created_at ASC, rowid ASC
-            """,
-            (chat_id,),
-        ).fetchall()
-        attachmentsByMessage = attachments_by_message(conn, chat_id)
+    with getDb() as conn:
+        rows = listContextMessages(conn, chat_id)
+        attachmentsByMessage = groupAttachmentsByMessage(conn, chat_id)
 
         for row in rows:
             isRegenerated = bool(regenerate_message_id) and row["id"] == regenerate_message_id
@@ -41,7 +35,7 @@ def build_messages(
             ]
 
             if role == "user" and attachmentIds:
-                content = user_content_with_attachments(conn, attachmentIds, content)
+                content = userContentWithAttachments(conn, attachmentIds, content)
 
             messages.append({"role": role, "content": content})
 

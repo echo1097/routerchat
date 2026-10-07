@@ -9,23 +9,25 @@ from typing import Any, AsyncIterator
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
-from backend.core.database import get_db
-from backend.core.streamEvents import stream_event
-from backend.core.utils import utc_now
+from backend.core.database import getDb
+from backend.core.streamEvents import streamEvent
+from backend.core.utils import utcNow
 from backend.lorebook.lorebookModels import TimelineRepairRequest
-from backend.lorebook.lorebookRows import lorebook_model_for, row_to_lorebook_entry
+from backend.lorebook.lorebookQueries import getTimelineEntry
+from backend.lorebook.lorebookRows import lorebookModelFor, rowToLorebookEntry
+from backend.lorebook.lorebookStream import LorebookStream
 from backend.lorebook.lorebookUsage import LorebookUsage
-from backend.lorebook.parseLorebook import parse_lorebook_json
-from backend.lorebook.timeline import normalize_timeline_description
+from backend.lorebook.parseLorebook import parseLorebookJson
+from backend.lorebook.timeline import normalizeTimelineDescription
 from backend.providers.base import ChatOptions
 from backend.providers.registry import providerForRow
-from backend.writing.storyProvider import storyProvider
-from backend.providers.streaming import streamChat
+from backend.stories.storyProvider import storyProvider
+from backend.stories.storyQueries import listEnabledChapters, requireStory
 
 router = APIRouter()
 
 
-def timeline_repair_response_format() -> dict[str, Any]:
+def timelineRepairResponseFormat() -> dict[str, Any]:
     return {
         "type": "json_schema",
         "json_schema": {
@@ -43,19 +45,19 @@ def timeline_repair_response_format() -> dict[str, Any]:
     }
 
 
-def parse_timeline_repair(raw_output: str) -> str:
-    parsed = parse_lorebook_json(raw_output)
+def parseTimelineRepair(raw_output: str) -> str:
+    parsed = parseLorebookJson(raw_output)
     timeline = parsed.get("timeline")
     if not isinstance(timeline, str) or not timeline.strip():
         raise ValueError("The model returned an empty timeline.")
 
-    normalized = normalize_timeline_description(timeline)
+    normalized = normalizeTimelineDescription(timeline)
     if not normalized:
         raise ValueError("The model returned an empty timeline.")
     return normalized
 
 
-async def stream_timeline_repair(
+async def streamTimelineRepair(
     story_id: str,
     story: sqlite3.Row,
     visible_chapters: list[sqlite3.Row],
@@ -119,12 +121,12 @@ async def stream_timeline_repair(
         {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
     ]
     responseFormat = None
-    if provider.supportsStructuredOutput(lorebook_model_for(story)):
-        responseFormat = timeline_repair_response_format()
+    if provider.supportsStructuredOutput(lorebookModelFor(story)):
+        responseFormat = timelineRepairResponseFormat()
 
     request = provider.buildRequest(
         messages,
-        lorebook_model_for(story),
+        lorebookModelFor(story),
         ChatOptions(
             apiKey=apiKey,
             temperature=0.1,
@@ -134,57 +136,34 @@ async def stream_timeline_repair(
             responseFormat=responseFormat,
         ),
     )
-    effectiveThinkingEnabled = provider.effectiveThinkingEnabled(lorebook_model_for(story), True)
+    effectiveThinkingEnabled = provider.effectiveThinkingEnabled(lorebookModelFor(story), True)
 
-    generatedText: list[str] = []
-    finishReason: str | None = None
-    usageRun = LorebookUsage(apiKey, story_id, lorebook_model_for(story), "timeline_repair")
-    receivedDone = False
-    announcedWriting = False
+    usageRun = LorebookUsage(apiKey, story_id, lorebookModelFor(story), "timeline_repair")
+    lorebookStream = LorebookStream(provider, request, usageRun, effectiveThinkingEnabled)
 
-    yield stream_event("status", "rebuilding")
+    yield streamEvent("status", "rebuilding")
 
     try:
-        async with usageRun:
-            async with aclosing(streamChat(provider, request)) as events:
-                async for event in events:
-                    if event["type"] in ("error", "open"):
-                        usageRun.generationId = event["generationId"]
-                    if event["type"] == "error":
-                        yield stream_event(
-                            "error",
-                            {"code": "timeline_repair_provider_error", "message": event["message"]},
-                        )
-                        return
-                    if event["type"] == "open":
-                        continue
-                    if event["type"] == "done":
-                        receivedDone = True
-                        continue
+        async with aclosing(lorebookStream.events()) as events:
+            async for event in events:
+                if event["type"] == "reasoning":
+                    yield streamEvent("reasoning", event["value"])
+                elif event["type"] == "contentStart":
+                    yield streamEvent("status", "writing")
 
-                    usageRun.generationId = usageRun.generationId or event["id"]
-                    usageRun.addUsage(event["usage"])
-
-                    if not event["hasChoice"]:
-                        continue
-                    finishReason = event["finishReason"] or finishReason
-                    if event["reasoning"] and effectiveThinkingEnabled:
-                        yield stream_event("reasoning", event["reasoning"])
-                    if event["content"]:
-                        #first real content means the thinking is done and the timeline is being written
-                        if not announcedWriting:
-                            announcedWriting = True
-                            yield stream_event("status", "writing")
-                        generatedText.append(event["content"])
-
-        if usageRun.usage:
-            yield stream_event(
-                "usage",
-                {"generation_id": usageRun.generationId, "model": usageRun.model, **usageRun.usage},
+        if lorebookStream.errorMessage:
+            yield streamEvent(
+                "error",
+                {"code": "timeline_repair_provider_error", "message": lorebookStream.errorMessage},
             )
+            return
 
-        if not receivedDone:
-            yield stream_event(
+        usageValue = lorebookStream.usageEventValue()
+        if usageValue:
+            yield streamEvent("usage", usageValue)
+
+        if not lorebookStream.receivedDone:
+            yield streamEvent(
                 "error",
                 {
                     "code": "timeline_repair_incomplete",
@@ -192,8 +171,8 @@ async def stream_timeline_repair(
                 },
             )
             return
-        if finishReason == "length":
-            yield stream_event(
+        if lorebookStream.finishReason == "length":
+            yield streamEvent(
                 "error",
                 {
                     "code": "timeline_repair_truncated",
@@ -203,16 +182,16 @@ async def stream_timeline_repair(
             return
 
         try:
-            nextTimeline = parse_timeline_repair("".join(generatedText))
+            nextTimeline = parseTimelineRepair(lorebookStream.text)
         except ValueError as exc:
-            yield stream_event(
+            yield streamEvent(
                 "error",
                 {"code": "timeline_repair_invalid", "message": str(exc)},
             )
             return
 
-        now = utc_now()
-        with get_db() as conn:
+        now = utcNow()
+        with getDb() as conn:
             conn.execute("BEGIN IMMEDIATE")
             currentRow = conn.execute(
                 """
@@ -237,7 +216,7 @@ async def stream_timeline_repair(
                 )
             if timelineChanged:
                 conn.rollback()
-                yield stream_event(
+                yield streamEvent(
                     "error",
                     {
                         "code": "timeline_repair_conflict",
@@ -283,17 +262,17 @@ async def stream_timeline_repair(
             ).fetchone()
 
         durationMs = (time.perf_counter() - startedAt) * 1000
-        yield stream_event(
+        yield streamEvent(
             "complete",
             {
-                "entry": row_to_lorebook_entry(savedRow),
+                "entry": rowToLorebookEntry(savedRow),
                 "duration_ms": durationMs,
             },
         )
     except asyncio.CancelledError:
         raise
     except Exception as exc:  # noqa: BLE001
-        yield stream_event(
+        yield streamEvent(
             "error",
             {
                 "code": "timeline_repair_failed",
@@ -303,35 +282,16 @@ async def stream_timeline_repair(
 
 
 @router.post("/api/stories/{story_id}/lorebook/timeline/repair/stream")
-async def repair_story_timeline(
+async def repairStoryTimeline(
     story_id: str, payload: TimelineRepairRequest
 ) -> StreamingResponse:
     provider = storyProvider(story_id)
     provider.requireKey()
 
-    with get_db() as conn:
-        story = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
-        if not story:
-            raise HTTPException(status_code=404, detail="Story not found.")
-        visibleChapters = conn.execute(
-            """
-            SELECT * FROM chapters
-            WHERE story_id = ? AND disabled = 0
-            ORDER BY order_index ASC, created_at ASC
-            """,
-            (story_id,),
-        ).fetchall()
-        timelineRow = conn.execute(
-            """
-            SELECT * FROM lorebook_entries
-            WHERE story_id = ?
-              AND disabled = 0
-              AND (category = 'timeline' OR lower(name) = lower('Timeline'))
-            ORDER BY updated_at DESC, created_at DESC
-            LIMIT 1
-            """,
-            (story_id,),
-        ).fetchone()
+    with getDb() as conn:
+        story = requireStory(conn, story_id)
+        visibleChapters = listEnabledChapters(conn, story_id)
+        timelineRow = getTimelineEntry(conn, story_id)
 
     if not any(str(chapter["content"] or "").strip() for chapter in visibleChapters):
         raise HTTPException(
@@ -340,7 +300,7 @@ async def repair_story_timeline(
         )
 
     return StreamingResponse(
-        stream_timeline_repair(
+        streamTimelineRepair(
             story_id,
             story,
             visibleChapters,

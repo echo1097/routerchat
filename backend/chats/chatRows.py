@@ -3,13 +3,13 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
-from backend.core.database import get_db
+from backend.core.database import getDb
 from backend.providers.base import Provider
 from backend.providers.registry import getActiveProvider, providerForRow
-from backend.webSearch.sources import deserialize_sources
+from backend.webSearch.sources import deserializeSources
 
 
-def row_to_chat(row: sqlite3.Row) -> dict[str, Any]:
+def rowToChat(row: sqlite3.Row) -> dict[str, Any]:
     return {
         "id": row["id"],
         "title": row["title"],
@@ -37,14 +37,14 @@ def chatProvider(conn: sqlite3.Connection, chatId: str) -> Provider:
 
 
 def sendingProvider(chatId: str) -> Provider:
-    with get_db() as conn:
+    with getDb() as conn:
         chat = conn.execute("SELECT provider FROM chats WHERE id = ?", (chatId,)).fetchone()
-        hasMessages = chat is not None and chat_has_messages(conn, chatId)
+        hasMessages = chat is not None and chatHasMessages(conn, chatId)
 
     return providerForRow(chat) if hasMessages else getActiveProvider()
 
 
-def row_to_folder(row: sqlite3.Row) -> dict[str, Any]:
+def rowToFolder(row: sqlite3.Row) -> dict[str, Any]:
     return {
         "id": row["id"],
         "name": row["name"],
@@ -53,14 +53,14 @@ def row_to_folder(row: sqlite3.Row) -> dict[str, Any]:
     }
 
 
-def row_to_message(row: sqlite3.Row) -> dict[str, Any]:
+def rowToMessage(row: sqlite3.Row) -> dict[str, Any]:
     return {
         "id": row["id"],
         "chat_id": row["chat_id"],
         "role": row["role"],
         "content": row["content"],
         "reasoning": row["reasoning"],
-        "sources": deserialize_sources(row["sources"]),
+        "sources": deserializeSources(row["sources"]),
         "model": row["model"],
         "finish_reason": row["finish_reason"],
         "error": row["error"],
@@ -78,7 +78,7 @@ def row_to_message(row: sqlite3.Row) -> dict[str, Any]:
     }
 
 
-def chat_has_messages(conn: sqlite3.Connection, chat_id: str) -> bool:
+def chatHasMessages(conn: sqlite3.Connection, chat_id: str) -> bool:
     row = conn.execute(
         "SELECT 1 FROM messages WHERE chat_id = ? LIMIT 1", (chat_id,)
     ).fetchone()

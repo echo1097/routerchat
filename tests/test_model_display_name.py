@@ -1,6 +1,6 @@
 import unittest
 
-from backend.core.utils import display_model_name
+from backend.core.utils import displayModelName
 
 
 class ModelDisplayNameTests(unittest.TestCase):
@@ -17,7 +17,7 @@ class ModelDisplayNameTests(unittest.TestCase):
         }
         for modelId, expected in cases.items():
             with self.subTest(modelId=modelId):
-                self.assertEqual(display_model_name(modelId), expected)
+                self.assertEqual(displayModelName(modelId), expected)
 
     def testOpenRouterIdsAreUnchanged(self):
         cases = {
@@ -30,7 +30,7 @@ class ModelDisplayNameTests(unittest.TestCase):
         }
         for modelId, expected in cases.items():
             with self.subTest(modelId=modelId):
-                self.assertEqual(display_model_name(modelId), expected)
+                self.assertEqual(displayModelName(modelId), expected)
 
 
 if __name__ == "__main__":

@@ -20,7 +20,7 @@ def moveStoryToProvider(story_id: str, payload: StoryProviderRequest) -> dict[st
     provider = requireProvider(payload.id)
 
     with getDb() as conn:
-        story = requireStory(conn, story_id)
+        requireStory(conn, story_id)
 
         moveStoryProvider(conn, story_id, provider.id, provider.defaultModelId())
 

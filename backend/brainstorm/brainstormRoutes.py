@@ -54,7 +54,7 @@ router = APIRouter()
 @router.get("/api/stories/{story_id}/brainstorm")
 def getBrainstorm(story_id: str) -> dict[str, Any]:
     with getDb() as conn:
-        story = requireStory(conn, story_id)
+        requireStory(conn, story_id)
         nodes = listNodes(conn, story_id)
         edges = listEdges(conn, story_id)
         viewport = getViewport(conn, story_id)
@@ -145,7 +145,7 @@ def updateBrainstormNode(
 @router.post("/api/stories/{story_id}/brainstorm/tidy")
 def tidyBrainstorm(story_id: str) -> dict[str, Any]:
     with getDb() as conn:
-        story = requireStory(conn, story_id)
+        requireStory(conn, story_id)
         generating = findGeneratingNode(conn, story_id)
         if generating:
             raise HTTPException(
@@ -179,7 +179,7 @@ def updateBrainstormViewport(
 ) -> dict[str, Any]:
     now = utcNow()
     with getDb() as conn:
-        story = requireStory(conn, story_id)
+        requireStory(conn, story_id)
         saveViewport(conn, (story_id, payload.position_x, payload.position_y, payload.zoom, now))
     return {"viewport": {"x": payload.position_x, "y": payload.position_y, "zoom": payload.zoom}}
 

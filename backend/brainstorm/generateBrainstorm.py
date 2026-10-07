@@ -27,9 +27,9 @@ from backend.core.database import get_db
 from backend.core.streamEvents import stream_event
 from backend.core.utils import utc_now
 from backend.providers.base import ChatOptions
+from backend.providers.modelStream import ModelStream
 from backend.providers.registry import providerForRow
 from backend.writing.storyProvider import storyProvider
-from backend.providers.streaming import streamChat
 from backend.usage.recordUsage import recordUsage
 
 router = APIRouter()
@@ -75,14 +75,9 @@ async def stream_brainstorm_generation(
         payload.model, payload.thinking_enabled
     )
 
-    generated_text: list[str] = []
-    reasoning_text: list[str] = []
+    modelStream = ModelStream(provider, request, effectiveThinkingEnabled)
     generation_started_at = time.perf_counter()
     duration_ms: float | None = None
-    generation_id: str | None = None
-    finish_reason: str | None = None
-    usage: dict[str, Any] = {}
-    receivedDone = False
     saved_generation = False
 
     def save_generation(
@@ -126,26 +121,32 @@ async def stream_brainstorm_generation(
                 story_id,
                 prompt_node_id,
                 payload.message,
-                "".join(reasoning_text) or None,
+                "".join(modelStream.reasoningParts) or None,
                 duration_ms,
                 payload.model,
-                finish_reason,
+                modelStream.finishReason,
                 error,
-                generation_id,
-                usage.get("prompt_tokens"),
-                usage.get("completion_tokens"),
-                usage.get("reasoning_tokens"),
-                usage.get("cached_tokens"),
-                usage.get("total_tokens"),
-                usage.get("cost"),
-                usage.get("provider_name"),
-                usage.get("generation_time"),
-                usage.get("latency"),
+                modelStream.generationId,
+                modelStream.usage.get("prompt_tokens"),
+                modelStream.usage.get("completion_tokens"),
+                modelStream.usage.get("reasoning_tokens"),
+                modelStream.usage.get("cached_tokens"),
+                modelStream.usage.get("total_tokens"),
+                modelStream.usage.get("cost"),
+                modelStream.usage.get("provider_name"),
+                modelStream.usage.get("generation_time"),
+                modelStream.usage.get("latency"),
                 createdAt,
             ),
         )
         recordUsage(
-            "brainstorm", generation_row_id, payload.model, usage, createdAt, generation_id, provider.id
+            "brainstorm",
+            generation_row_id,
+            payload.model,
+            modelStream.usage,
+            createdAt,
+            modelStream.generationId,
+            provider.id,
         )
 
     try:
@@ -158,50 +159,30 @@ async def stream_brainstorm_generation(
                 "edges": [row_to_brainstorm_edge(edge) for edge in prompt_edges],
             },
         )
-        working_started = False
-        async with aclosing(streamChat(provider, request)) as events:
+        async with aclosing(modelStream.events()) as events:
             async for event in events:
-                if event["type"] == "error":
-                    save_generation("failed", event["message"])
-                    yield stream_event("error", event["message"])
-                    return
-                if event["type"] == "open":
-                    generation_id = event["generationId"]
-                    continue
-                if event["type"] == "done":
-                    receivedDone = True
-                    continue
+                if event["type"] == "reasoning":
+                    yield stream_event("reasoning", event["value"])
+                elif event["type"] == "contentStart":
+                    yield stream_event("working", None)
 
-                generation_id = generation_id or event["id"]
-                if event["usage"]:
-                    usage.update(event["usage"])
-                if not event["hasChoice"]:
-                    continue
-                finish_reason = event["finishReason"] or finish_reason
-                if event["reasoning"] and effectiveThinkingEnabled:
-                    reasoning_text.append(event["reasoning"])
-                    yield stream_event("reasoning", event["reasoning"])
-                if event["content"]:
-                    if not working_started:
-                        working_started = True
-                        yield stream_event("working", None)
-                    generated_text.append(event["content"])
+        if modelStream.errorMessage:
+            save_generation("failed", modelStream.errorMessage)
+            yield stream_event("error", modelStream.errorMessage)
+            return
 
-        if generation_id:
-            generation_usage = await provider.fetchFinalUsage(api_key, generation_id)
-            if generation_usage:
-                usage.update(generation_usage)
+        await modelStream.fetchFinalUsage(api_key)
 
-        if finish_reason == "length":
+        if modelStream.finishReason == "length":
             raise ValueError(
                 "Brainstorm generation hit the model token limit before it finished."
             )
-        if not receivedDone:
+        if not modelStream.receivedDone:
             raise ValueError(
                 "Brainstorm generation ended before the provider completed the stream."
             )
 
-        ideas = parse_brainstorm_ideas("".join(generated_text))
+        ideas = parse_brainstorm_ideas(modelStream.text)
         if len(ideas) != payload.brainstorm_idea_count:
             raise ValueError(
                 f"Brainstorm output returned {len(ideas)} ideas instead of "
@@ -260,9 +241,14 @@ async def stream_brainstorm_generation(
                 "duration_ms": duration_ms,
             },
         )
-        if usage:
+        if modelStream.usage:
             yield stream_event(
-                "usage", {"generation_id": generation_id, "model": payload.model, **usage}
+                "usage",
+                {
+                    "generation_id": modelStream.generationId,
+                    "model": payload.model,
+                    **modelStream.usage,
+                },
             )
     except asyncio.CancelledError:
         save_generation("cancelled", "Generation cancelled.")

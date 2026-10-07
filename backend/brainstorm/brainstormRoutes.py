@@ -7,6 +7,22 @@ from backend.brainstorm.brainstormModels import (
     BrainstormNodePatchRequest,
     BrainstormViewportRequest,
 )
+from backend.brainstorm.brainstormQueries import (
+    deleteNodes,
+    findGeneratingNode,
+    getLatestGeneration,
+    getNode,
+    getStoryNode,
+    getViewport,
+    listEdgeLinks,
+    listEdges,
+    listGenerationNotes,
+    listNodeIds,
+    listNodes,
+    saveViewport,
+    updateNodeColumns,
+    updateNodePositions,
+)
 from backend.brainstorm.brainstormRows import (
     row_to_brainstorm_edge,
     row_to_brainstorm_node,
@@ -39,36 +55,11 @@ router = APIRouter()
 def get_brainstorm(story_id: str) -> dict[str, Any]:
     with get_db() as conn:
         story = requireStory(conn, story_id)
-        nodes = conn.execute(
-            "SELECT * FROM brainstorm_nodes WHERE story_id = ? ORDER BY created_at ASC",
-            (story_id,),
-        ).fetchall()
-        edges = conn.execute(
-            "SELECT * FROM brainstorm_edges WHERE story_id = ? ORDER BY created_at ASC",
-            (story_id,),
-        ).fetchall()
-        viewport = conn.execute(
-            "SELECT * FROM brainstorm_viewports WHERE story_id = ?",
-            (story_id,),
-        ).fetchone()
-        generation_rows = conn.execute(
-            """
-            SELECT prompt_node_id, reasoning, duration_ms
-            FROM brainstorm_generations
-            WHERE story_id = ?
-            ORDER BY created_at ASC
-            """,
-            (story_id,),
-        ).fetchall()
-        latest_generation = conn.execute(
-            """
-            SELECT * FROM brainstorm_generations
-            WHERE story_id = ?
-            ORDER BY created_at DESC
-            LIMIT 1
-            """,
-            (story_id,),
-        ).fetchone()
+        nodes = listNodes(conn, story_id)
+        edges = listEdges(conn, story_id)
+        viewport = getViewport(conn, story_id)
+        generation_rows = listGenerationNotes(conn, story_id)
+        latest_generation = getLatestGeneration(conn, story_id)
 
     reasoningByPromptId = {
         row["prompt_node_id"]: row["reasoning"]
@@ -128,10 +119,7 @@ def update_brainstorm_node(
         raise HTTPException(status_code=400, detail="No node changes provided.")
 
     with get_db() as conn:
-        node = conn.execute(
-            "SELECT * FROM brainstorm_nodes WHERE id = ? AND story_id = ?",
-            (node_id, story_id),
-        ).fetchone()
+        node = getStoryNode(conn, story_id, node_id)
         if not node:
             raise HTTPException(status_code=404, detail="Brainstorm node not found.")
         if node["node_type"] != "idea" and ({"title", "content"} & updates.keys()):
@@ -149,13 +137,8 @@ def update_brainstorm_node(
         assignments.append("updated_at = ?")
         values.append(utc_now())
         values.extend([node_id, story_id])
-        conn.execute(
-            f"UPDATE brainstorm_nodes SET {', '.join(assignments)} WHERE id = ? AND story_id = ?",
-            values,
-        )
-        updated = conn.execute(
-            "SELECT * FROM brainstorm_nodes WHERE id = ?", (node_id,)
-        ).fetchone()
+        updateNodeColumns(conn, assignments, values)
+        updated = getNode(conn, node_id)
     return {"node": row_to_brainstorm_node(updated)}
 
 
@@ -163,31 +146,18 @@ def update_brainstorm_node(
 def tidy_brainstorm(story_id: str) -> dict[str, Any]:
     with get_db() as conn:
         story = requireStory(conn, story_id)
-        generating = conn.execute(
-            "SELECT 1 FROM brainstorm_nodes WHERE story_id = ? AND status = 'generating' LIMIT 1",
-            (story_id,),
-        ).fetchone()
+        generating = findGeneratingNode(conn, story_id)
         if generating:
             raise HTTPException(
                 status_code=409,
                 detail="Wait for the current brainstorm to finish before tidying.",
             )
-        nodes = conn.execute(
-            "SELECT * FROM brainstorm_nodes WHERE story_id = ? ORDER BY created_at ASC",
-            (story_id,),
-        ).fetchall()
-        edges = conn.execute(
-            "SELECT * FROM brainstorm_edges WHERE story_id = ? ORDER BY created_at ASC",
-            (story_id,),
-        ).fetchall()
+        nodes = listNodes(conn, story_id)
+        edges = listEdges(conn, story_id)
 
         positions = tidy_brainstorm_positions(nodes, edges)
-        conn.executemany(
-            """
-            UPDATE brainstorm_nodes
-            SET position_x = ?, position_y = ?
-            WHERE id = ? AND story_id = ?
-            """,
+        updateNodePositions(
+            conn,
             [
                 (x, y, nodeId, story_id)
                 for nodeId, (x, y) in positions.items()
@@ -210,19 +180,7 @@ def update_brainstorm_viewport(
     now = utc_now()
     with get_db() as conn:
         story = requireStory(conn, story_id)
-        conn.execute(
-            """
-            INSERT INTO brainstorm_viewports (
-              story_id, position_x, position_y, zoom, updated_at
-            ) VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(story_id) DO UPDATE SET
-              position_x = excluded.position_x,
-              position_y = excluded.position_y,
-              zoom = excluded.zoom,
-              updated_at = excluded.updated_at
-            """,
-            (story_id, payload.position_x, payload.position_y, payload.zoom, now),
-        )
+        saveViewport(conn, (story_id, payload.position_x, payload.position_y, payload.zoom, now))
     return {"viewport": {"x": payload.position_x, "y": payload.position_y, "zoom": payload.zoom}}
 
 
@@ -233,16 +191,11 @@ def delete_brainstorm_node(
     cascade: bool = False,
 ) -> dict[str, Any]:
     with get_db() as conn:
-        nodes = conn.execute(
-            "SELECT id FROM brainstorm_nodes WHERE story_id = ?", (story_id,)
-        ).fetchall()
+        nodes = listNodeIds(conn, story_id)
         node_ids = {row["id"] for row in nodes}
         if node_id not in node_ids:
             raise HTTPException(status_code=404, detail="Brainstorm node not found.")
-        edges = conn.execute(
-            "SELECT source_node_id, target_node_id FROM brainstorm_edges WHERE story_id = ?",
-            (story_id,),
-        ).fetchall()
+        edges = listEdgeLinks(conn, story_id)
         children_by_source: dict[str, list[str]] = {}
         for edge in edges:
             children_by_source.setdefault(edge["source_node_id"], []).append(
@@ -263,18 +216,6 @@ def delete_brainstorm_node(
                 status_code=409,
                 detail="This node has descendants. Confirm branch deletion first.",
             )
-        placeholders = ",".join("?" for _ in delete_ids)
         values = list(delete_ids)
-        conn.execute(
-            f"DELETE FROM brainstorm_generations WHERE prompt_node_id IN ({placeholders})",
-            values,
-        )
-        conn.execute(
-            f"DELETE FROM brainstorm_edges WHERE story_id = ? AND (source_node_id IN ({placeholders}) OR target_node_id IN ({placeholders}))",
-            [story_id, *values, *values],
-        )
-        conn.execute(
-            f"DELETE FROM brainstorm_nodes WHERE story_id = ? AND id IN ({placeholders})",
-            [story_id, *values],
-        )
+        deleteNodes(conn, story_id, values)
     return {"deleted_node_ids": values}

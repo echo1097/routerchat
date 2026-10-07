@@ -18,6 +18,17 @@ from backend.brainstorm.brainstormMessages import (
     build_brainstorm_messages,
     parse_brainstorm_ideas,
 )
+from backend.brainstorm.brainstormQueries import (
+    getEdge,
+    getNode,
+    insertEdge,
+    insertGeneration,
+    insertIdeaNode,
+    insertPromptNode,
+    listEdges,
+    listNodes,
+    setNodeStatus,
+)
 from backend.brainstorm.brainstormRows import (
     row_to_brainstorm_edge,
     row_to_brainstorm_node,
@@ -26,12 +37,17 @@ from backend.chats.chatModels import StreamMessageRequest
 from backend.core.database import get_db
 from backend.core.streamEvents import stream_event
 from backend.core.utils import utc_now
+from backend.lorebook.lorebookQueries import listEntriesByUpdated
 from backend.providers.base import ChatOptions
 from backend.providers.modelStream import ModelStream
 from backend.providers.registry import providerForRow
 from backend.stories.storyProvider import storyProvider
 from backend.usage.recordUsage import recordUsage
-from backend.stories.storyQueries import requireStory
+from backend.stories.storyQueries import (
+    listChapters,
+    requireStory,
+    updateStoryBrainstormSettings,
+)
 
 router = APIRouter()
 
@@ -102,21 +118,10 @@ async def stream_brainstorm_generation(
         status: str,
         error: str | None,
     ) -> None:
-        conn.execute(
-            "UPDATE brainstorm_nodes SET status = ?, updated_at = ? WHERE id = ?",
-            (status, utc_now(), prompt_node_id),
-        )
+        setNodeStatus(conn, prompt_node_id, status, utc_now())
         createdAt = utc_now()
-        conn.execute(
-            """
-            INSERT INTO brainstorm_generations (
-              id, story_id, prompt_node_id, prompt, reasoning, duration_ms,
-              model, finish_reason, error,
-              generation_id, prompt_tokens, completion_tokens, reasoning_tokens,
-              cached_tokens, total_tokens, cost, provider_name, generation_time,
-              latency, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+        insertGeneration(
+            conn,
             (
                 generation_row_id,
                 story_id,
@@ -199,13 +204,8 @@ async def stream_brainstorm_generation(
             for index, idea in enumerate(ideas):
                 idea_id = str(uuid.uuid4())
                 edge_id = str(uuid.uuid4())
-                conn.execute(
-                    """
-                    INSERT INTO brainstorm_nodes (
-                      id, story_id, node_type, title, content, position_x,
-                      position_y, status, created_at, updated_at
-                    ) VALUES (?, ?, 'idea', ?, ?, ?, ?, 'complete', ?, ?)
-                    """,
+                insertIdeaNode(
+                    conn,
                     (
                         idea_id,
                         story_id,
@@ -217,20 +217,9 @@ async def stream_brainstorm_generation(
                         now,
                     ),
                 )
-                conn.execute(
-                    """
-                    INSERT INTO brainstorm_edges (
-                      id, story_id, source_node_id, target_node_id, created_at
-                    ) VALUES (?, ?, ?, ?, ?)
-                    """,
-                    (edge_id, story_id, prompt_node_id, idea_id, now),
-                )
-                node_row = conn.execute(
-                    "SELECT * FROM brainstorm_nodes WHERE id = ?", (idea_id,)
-                ).fetchone()
-                edge_row = conn.execute(
-                    "SELECT * FROM brainstorm_edges WHERE id = ?", (edge_id,)
-                ).fetchone()
+                insertEdge(conn, edge_id, story_id, prompt_node_id, idea_id, now)
+                node_row = getNode(conn, idea_id)
+                edge_row = getEdge(conn, edge_id)
                 created_nodes.append(row_to_brainstorm_node(node_row))
                 created_edges.append(row_to_brainstorm_edge(edge_row))
             save_generation("complete", conn=conn)
@@ -279,22 +268,10 @@ async def generate_brainstorm(
     prompt_edges: list[sqlite3.Row] = []
     with get_db() as conn:
         story = requireStory(conn, story_id)
-        chapters = conn.execute(
-            "SELECT * FROM chapters WHERE story_id = ? ORDER BY order_index ASC, created_at ASC",
-            (story_id,),
-        ).fetchall()
-        lorebook_rows = conn.execute(
-            "SELECT * FROM lorebook_entries WHERE story_id = ? ORDER BY updated_at DESC",
-            (story_id,),
-        ).fetchall()
-        all_nodes = conn.execute(
-            "SELECT * FROM brainstorm_nodes WHERE story_id = ? ORDER BY created_at ASC",
-            (story_id,),
-        ).fetchall()
-        all_edges = conn.execute(
-            "SELECT * FROM brainstorm_edges WHERE story_id = ? ORDER BY created_at ASC",
-            (story_id,),
-        ).fetchall()
+        chapters = listChapters(conn, story_id)
+        lorebook_rows = listEntriesByUpdated(conn, story_id)
+        all_nodes = listNodes(conn, story_id)
+        all_edges = listEdges(conn, story_id)
         nodes_by_id = {row["id"]: row for row in all_nodes}
         if any(
             selected_id not in nodes_by_id
@@ -333,36 +310,16 @@ async def generate_brainstorm(
                 payload.brainstorm_idea_count,
             )
 
-        conn.execute(
-            """
-            INSERT INTO brainstorm_nodes (
-              id, story_id, node_type, title, content, position_x,
-              position_y, status, created_at, updated_at
-            ) VALUES (?, ?, 'prompt', 'Prompt', ?, ?, ?, 'generating', ?, ?)
-            """,
+        insertPromptNode(
+            conn,
             (prompt_node_id, story_id, payload.message.strip(), prompt_x, prompt_y, now, now),
         )
         for selected_id in selected_ids:
             edge_id = str(uuid.uuid4())
-            conn.execute(
-                """
-                INSERT INTO brainstorm_edges (
-                  id, story_id, source_node_id, target_node_id, created_at
-                ) VALUES (?, ?, ?, ?, ?)
-                """,
-                (edge_id, story_id, selected_id, prompt_node_id, now),
-            )
-            prompt_edges.append(
-                conn.execute(
-                    "SELECT * FROM brainstorm_edges WHERE id = ?", (edge_id,)
-                ).fetchone()
-            )
-        conn.execute(
-            """
-            UPDATE stories SET model = ?, temperature = ?, max_tokens = ?,
-              thinking_enabled = ?, reasoning_effort = ?, updated_at = ?
-            WHERE id = ?
-            """,
+            insertEdge(conn, edge_id, story_id, selected_id, prompt_node_id, now)
+            prompt_edges.append(getEdge(conn, edge_id))
+        updateStoryBrainstormSettings(
+            conn,
             (
                 payload.model,
                 payload.temperature,
@@ -373,9 +330,7 @@ async def generate_brainstorm(
                 story_id,
             ),
         )
-        prompt_node = conn.execute(
-            "SELECT * FROM brainstorm_nodes WHERE id = ?", (prompt_node_id,)
-        ).fetchone()
+        prompt_node = getNode(conn, prompt_node_id)
 
     return StreamingResponse(
         stream_brainstorm_generation(

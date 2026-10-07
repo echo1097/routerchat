@@ -13,7 +13,18 @@ from backend.writing.storyModels import (
     StoryPatchRequest,
     StoryWithInitialChapterRequest,
 )
-from backend.stories.storyQueries import getStory, requireStory
+from backend.stories.storyQueries import (
+    deleteStory,
+    getChapterById,
+    getGenerationSettled,
+    getStory,
+    getStoryTemporary,
+    insertChapter,
+    insertStory,
+    listStories,
+    requireStory,
+    updateStoryColumns,
+)
 from backend.stories.storyRows import (
     request_updates,
     row_to_chapter,
@@ -27,9 +38,7 @@ router = APIRouter()
 @router.get("/api/stories")
 def list_stories() -> dict[str, Any]:
     with get_db() as conn:
-        rows = conn.execute(
-            "SELECT * FROM stories WHERE temporary = 0 ORDER BY updated_at DESC, created_at DESC"
-        ).fetchall()
+        rows = listStories(conn)
     return {"stories": [row_to_story(row) for row in rows]}
 
 
@@ -40,15 +49,8 @@ def create_story(payload: StoryCreateRequest) -> dict[str, Any]:
     provider = getActiveProvider()
     model = payload.model or provider.defaultModelId()
     with get_db() as conn:
-        conn.execute(
-            """
-            INSERT INTO stories (
-              id, title, author, language, synopsis, model, provider, system_prompt,
-              temperature, max_tokens, thinking_enabled, reasoning_effort, temporary,
-              lorebook_auto, lorebook_model, created_at, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+        insertStory(
+            conn,
             (
                 story_id,
                 payload.title.strip() or "New story",
@@ -86,15 +88,8 @@ def create_story_with_initial_chapter(
     content = initial_chapter.content
 
     with get_db() as conn:
-        conn.execute(
-            """
-            INSERT INTO stories (
-              id, title, author, language, synopsis, model, provider, system_prompt,
-              temperature, max_tokens, thinking_enabled, reasoning_effort, temporary,
-              lorebook_auto, lorebook_model, created_at, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+        insertStory(
+            conn,
             (
                 story_id,
                 payload.title.strip() or "New story",
@@ -115,13 +110,8 @@ def create_story_with_initial_chapter(
                 now,
             ),
         )
-        conn.execute(
-            """
-            INSERT INTO chapters (
-              id, story_id, title, content, word_count, order_index, created_at, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+        insertChapter(
+            conn,
             (
                 chapter_id,
                 story_id,
@@ -134,9 +124,7 @@ def create_story_with_initial_chapter(
             ),
         )
         story = getStory(conn, story_id)
-        chapter = conn.execute(
-            "SELECT * FROM chapters WHERE id = ?", (chapter_id,)
-        ).fetchone()
+        chapter = getChapterById(conn, chapter_id)
 
     return {"story": row_to_story(story), "chapter": row_to_chapter(chapter)}
 
@@ -144,10 +132,7 @@ def create_story_with_initial_chapter(
 @router.get("/api/stories/{story_id}/chapters/{chapter_id}/generations/{generationId}")
 def getGenerationStatus(story_id: str, chapter_id: str, generationId: str) -> dict[str, bool]:
     with get_db() as conn:
-        generationRow = conn.execute(
-            "SELECT settled FROM story_generations WHERE id = ? AND story_id = ? AND chapter_id = ?",
-            (generationId, story_id, chapter_id),
-        ).fetchone()
+        generationRow = getGenerationSettled(conn, story_id, chapter_id, generationId)
     return {"settled": bool(generationRow and generationRow["settled"])}
 
 
@@ -176,7 +161,7 @@ def update_story(story_id: str, payload: StoryPatchRequest) -> dict[str, Any]:
     values.append(story_id)
     with get_db() as conn:
         story = requireStory(conn, story_id)
-        conn.execute(f"UPDATE stories SET {', '.join(assignments)} WHERE id = ?", values)
+        updateStoryColumns(conn, assignments, values)
     return get_story_bundle(story_id)
 
 
@@ -184,15 +169,7 @@ def update_story(story_id: str, payload: StoryPatchRequest) -> dict[str, Any]:
 def delete_story(story_id: str) -> dict[str, Any]:
     with get_db() as conn:
         delete_attachments_for_story(conn, story_id)
-        conn.execute("DELETE FROM brainstorm_generations WHERE story_id = ?", (story_id,))
-        conn.execute("DELETE FROM brainstorm_edges WHERE story_id = ?", (story_id,))
-        conn.execute("DELETE FROM brainstorm_nodes WHERE story_id = ?", (story_id,))
-        conn.execute("DELETE FROM brainstorm_viewports WHERE story_id = ?", (story_id,))
-        conn.execute("DELETE FROM lorebook_update_runs WHERE story_id = ?", (story_id,))
-        conn.execute("DELETE FROM story_generations WHERE story_id = ?", (story_id,))
-        conn.execute("DELETE FROM lorebook_entries WHERE story_id = ?", (story_id,))
-        conn.execute("DELETE FROM chapters WHERE story_id = ?", (story_id,))
-        result = conn.execute("DELETE FROM stories WHERE id = ?", (story_id,))
+        result = deleteStory(conn, story_id)
     if result.rowcount == 0:
         raise HTTPException(status_code=404, detail="Story not found.")
     return {"ok": True}
@@ -201,9 +178,7 @@ def delete_story(story_id: str) -> dict[str, Any]:
 @router.post("/api/stories/{story_id}/close")
 def close_story(story_id: str) -> dict[str, Any]:
     with get_db() as conn:
-        story = conn.execute(
-            "SELECT temporary FROM stories WHERE id = ?", (story_id,)
-        ).fetchone()
+        story = getStoryTemporary(conn, story_id)
     if not story or not bool(story["temporary"]):
         return {"ok": True}
     return delete_story(story_id)

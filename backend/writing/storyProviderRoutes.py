@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from backend.core.database import get_db
 from backend.providers.providerRoutes import requireProvider
 from backend.writing.storyBundle import get_story_bundle
-from backend.stories.storyQueries import requireStory
+from backend.stories.storyQueries import moveStoryProvider, requireStory
 
 router = APIRouter()
 
@@ -22,9 +22,6 @@ def moveStoryToProvider(story_id: str, payload: StoryProviderRequest) -> dict[st
     with get_db() as conn:
         story = requireStory(conn, story_id)
 
-        conn.execute(
-            "UPDATE stories SET provider = ?, model = ?, lorebook_model = '' WHERE id = ?",
-            (provider.id, provider.defaultModelId(), story_id),
-        )
+        moveStoryProvider(conn, story_id, provider.id, provider.defaultModelId())
 
     return get_story_bundle(story_id)

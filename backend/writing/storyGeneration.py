@@ -43,7 +43,7 @@ from backend.writing.storyMessages import (
     effective_generation_mode,
     mark_story_cache_points,
 )
-from backend.stories.storyQueries import getChapter
+from backend.stories.storyQueries import getChapter, getStoryLorebookAuto, settleGeneration
 from backend.stories.storyRows import (
     insert_chapter_history_entry,
     row_to_chapter,
@@ -502,19 +502,14 @@ async def stream_story_generation(
                 content_started_at = None
 
         with get_db() as conn:
-            conn.execute(
-                "UPDATE story_generations SET settled = 1 WHERE id = ?",
-                (story_generation_id,),
-            )
+            settleGeneration(conn, story_generation_id)
 
     for event in pendingEvents:
         yield event
 
     if chapter_update_event is not None:
         with get_db() as conn:
-            auto_row = conn.execute(
-                "SELECT lorebook_auto FROM stories WHERE id = ?", (story_id,)
-            ).fetchone()
+            auto_row = getStoryLorebookAuto(conn, story_id)
 
         #manual runs get their own button, this is only for the folks who opted into auto
         if auto_row and bool(auto_row["lorebook_auto"]):

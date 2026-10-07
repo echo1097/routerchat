@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 
 from backend.providers.registry import providerForRow
+from backend.stories.storyQueries import insertChapterHistory
 
 
 def word_count(value: str) -> int:
@@ -173,14 +174,8 @@ def insert_chapter_history_entry(
 ) -> dict[str, Any]:
     entry_id = str(uuid.uuid4())
     entry_order = next_chapter_history_order(conn, chapter_id)
-    conn.execute(
-        """
-        INSERT INTO chapter_history_entries (
-          id, story_id, chapter_id, run_id, label, detail, entry_order,
-          kind, words_added, words_removed, cost, created_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
+    insertChapterHistory(
+        conn,
         (
             entry_id,
             story_id,

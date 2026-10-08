@@ -11,11 +11,12 @@ Bring your own key. Available for macOS and Windows.
 <p>
   <a href="#install-routerchat">Install</a> ·
   <a href="#features">Features</a> ·
-  <a href="#media">Screenshots</a> ·
-  <a href="docs/setup.md">Setup guide</a> ·
+  <a href="#media">Media</a> ·
+  <a href="docs/setup.md">Setup</a> ·
   <a href="docs/privacy.md">Privacy</a> ·
   <a href="https://github.com/echo1097/routerchat/releases">Releases</a> ·
-  <a href="SUPPORT.md">Support</a>
+  <a href="SUPPORT.md">Support</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a>
 </p>
 
 <img width="1000" alt="RouterChat landing page" src="media/landing%20page.png" />
@@ -79,9 +80,7 @@ AI helped with development and documentation for this project. I reviewed all co
 
 ## Bug reporting, feedback, and contributing
 
-- **Bugs:** Open an issue with as much detail as you can so I can reproduce and fix it. If you don't have a GitHub account, use [this form](https://forms.gle/gTth2TcXLYAArvGm6) instead.
-- **Feedback:** Fill out [this form](https://forms.gle/gTth2TcXLYAArvGm6).
-- **Pull requests:** AI slop pull requests will not be merged. If you use AI, review and clean up the code yourself and say how you used it.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to report bugs, send feedback, and open pull requests.
 
 ## Local data
 

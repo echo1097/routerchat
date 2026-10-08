@@ -4,7 +4,7 @@ Thank you for your interest in contributing to RouterChat!
 
 ## Bugs
 
-Open a [GitHub issue](https://github.com/echo1097/routerchat/issues) with as much detail as you can so I can reproduce and fix it. [SUPPORT.md](SUPPORT.md#what-to-include-in-an-issue) lists what to include. If you don't have a GitHub account, use [this form](https://forms.gle/gTth2TcXLYAArvGm6) instead.
+Open a [GitHub issue](https://github.com/echo1097/routerchat/issues) with as much detail as you can so I can reproduce and fix it. [SUPPORT.md](SUPPORT.md#what-to-include-in-an-issue) lists what to include. 
 
 Never report a security issue publicly. Follow [SECURITY.md](SECURITY.md).
 

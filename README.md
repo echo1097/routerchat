@@ -13,6 +13,7 @@ Bring your own key. Available for macOS and Windows.
   <a href="#features">Features</a> ·
   <a href="#media">Screenshots</a> ·
   <a href="docs/setup.md">Setup guide</a> ·
+  <a href="docs/privacy.md">Privacy</a> ·
   <a href="https://github.com/echo1097/routerchat/releases">Releases</a> ·
   <a href="SUPPORT.md">Support</a>
 </p>

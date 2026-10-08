@@ -79,9 +79,7 @@ AI helped with development and documentation for this project. I reviewed all co
 
 ## Bug reporting, feedback, and contributing
 
-- **Bugs:** Open an issue with as much detail as you can so I can reproduce and fix it. If you don't have a GitHub account, use [this form](https://forms.gle/gTth2TcXLYAArvGm6) instead.
-- **Feedback:** Fill out [this form](https://forms.gle/gTth2TcXLYAArvGm6).
-- **Pull requests:** AI slop pull requests will not be merged. If you use AI, review and clean up the code yourself and say how you used it.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to report bugs, send feedback, and open pull requests.
 
 ## Local data
 

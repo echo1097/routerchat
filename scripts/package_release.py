@@ -137,7 +137,7 @@ def parseArgs() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build the portable RouterChat app package")
     parser.add_argument("--output-dir", type=Path, default=projectRoot / "release")
     parser.add_argument("--expected-tag")
-    return parser.parseArgs()
+    return parser.parse_args()
 
 
 def main() -> None:

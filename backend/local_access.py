@@ -215,7 +215,7 @@ def parseArgs(arguments: Sequence[str] | None = None) -> argparse.Namespace:
     serveCommand.add_argument("--secret-file", type=Path, required=True)
     serveCommand.add_argument("--base-url", required=True)
     serveCommand.add_argument("--trusted-origin", action="append", required=True)
-    return parser.parseArgs(arguments)
+    return parser.parse_args(arguments)
 
 
 def main(arguments: Sequence[str] | None = None) -> None:

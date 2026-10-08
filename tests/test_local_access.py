@@ -13,7 +13,9 @@ from unittest.mock import patch
 
 from backend.local_access import (
     createSecretFile,
+    main,
     openBootstrapPage,
+    parseArgs,
     readSecretFile,
     serveLocalApp,
 )
@@ -128,6 +130,27 @@ class LocalAccessTest(unittest.TestCase):
             self.assertEqual(observed["origins"], "http://127.0.0.1:8000")
             self.assertGreaterEqual(len(observed["secret"]), 43)
             self.assertFalse(secretPath.exists())
+
+    def test_serve_command_line_is_parsed(self):
+        args = parseArgs([
+            "serve",
+            "--secret-file", "api-secret",
+            "--base-url", "http://127.0.0.1:8000",
+            "--trusted-origin", "http://127.0.0.1:5173",
+        ])
+
+        self.assertEqual(args.command, "serve")
+        self.assertEqual(args.secret_file, Path("api-secret"))
+        self.assertEqual(args.base_url, "http://127.0.0.1:8000")
+        self.assertEqual(args.trusted_origin, ["http://127.0.0.1:5173"])
+
+    def test_create_secret_command_runs_from_the_command_line(self):
+        with tempfile.TemporaryDirectory() as tempDir:
+            secretPath = Path(tempDir) / "api-secret"
+
+            main(["create-secret", "--secret-file", str(secretPath)])
+
+            self.assertGreaterEqual(len(readSecretFile(secretPath)), 43)
 
 
 if __name__ == "__main__":

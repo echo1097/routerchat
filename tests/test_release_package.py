@@ -1,10 +1,12 @@
 import hashlib
+import sys
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
-from scripts.package_release import buildReleasePackage, readVersionMetadata
+from scripts.package_release import buildReleasePackage, parseArgs, readVersionMetadata
 
 
 class ReleasePackageTest(unittest.TestCase):
@@ -71,6 +73,13 @@ class ReleasePackageTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tempDir:
             with self.assertRaisesRegex(RuntimeError, "does not match"):
                 buildReleasePackage(Path(tempDir), "v9.9.9")
+
+    def test_command_line_is_parsed(self):
+        with patch.object(sys, "argv", ["package_release.py", "--output-dir", "out", "--expected-tag", "v1.0.0"]):
+            args = parseArgs()
+
+        self.assertEqual(args.output_dir, Path("out"))
+        self.assertEqual(args.expected_tag, "v1.0.0")
 
 
 if __name__ == "__main__":

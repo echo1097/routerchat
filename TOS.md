@@ -26,13 +26,13 @@ This does not limit liability for fraud, willful injury, violation of law, or gr
 
 RouterChat runs on your computer with no analytics or tracking. Your prompts, chats, settings, and API keys go only to the provider you select. RouterChat connects to:
 
-* **OpenRouter or Anthropic**, whichever you select, and with OpenRouter the upstream providers serving the model, search, and transcription.
-* **GitHub**, for update checks, the changelog, and install and update downloads.
-* **Flaticon**, for icon fonts.
-* **The Python package index**, during install and update.
-* **Websites you see linked as sources**, for their icons.
+* **OpenRouter or Anthropic**, whichever you select, and with OpenRouter its upstream providers.
+* **GitHub**
+* **Flaticon**
+* **The Python package index**
+* **Websites you see linked as sources**
 
-Some features make provider requests on their own, and these can cost money. Connections to anyone other than your provider carry no prompts, chats, settings, or API keys. Updates are never installed automatically.
+Some features make provider requests on their own, and these can cost money.
 
 ## 4. Your Responsibilities
 
@@ -40,7 +40,7 @@ You are solely responsible for:
 
 * **Eligibility.** Being old enough to agree to these terms and to use the providers you choose.
 * **Credentials.** Your API keys and account security. Keys are stored locally and the author never has access to them.
-* **Local access.** RouterChat listens only on `127.0.0.1` and requires a credential. If you change the bind address, forward the port, put it behind a proxy, or run it on a machine others can reach, you are exposing your chats and API key, and you are solely responsible for securing that deployment.
+* **Local access.** If you change RouterChat's bind address, forward its port, put it behind a proxy, or run it on a machine others can reach, you are exposing your chats and API key, and you are solely responsible for securing that deployment.
 * **Costs.** All charges, limits, and account actions from any provider.
 * **Provider compliance.** Following the terms and policies of every provider you use.
 * **Content.** Everything you submit and everything you do with the output.

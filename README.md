@@ -11,11 +11,12 @@ Bring your own key. Available for macOS and Windows.
 <p>
   <a href="#install-routerchat">Install</a> ·
   <a href="#features">Features</a> ·
-  <a href="#media">Screenshots</a> ·
-  <a href="docs/setup.md">Setup guide</a> ·
+  <a href="#media">Media</a> ·
+  <a href="docs/setup.md">Setup</a> ·
   <a href="docs/privacy.md">Privacy</a> ·
   <a href="https://github.com/echo1097/routerchat/releases">Releases</a> ·
-  <a href="SUPPORT.md">Support</a>
+  <a href="SUPPORT.md">Support</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a>
 </p>
 
 <img width="1000" alt="RouterChat landing page" src="media/landing%20page.png" />

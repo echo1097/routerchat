@@ -8,7 +8,7 @@ The author operates no hosted service, receives no user data, and controls no th
 
 RouterChat asks you to accept these terms before you use it. By accepting them, or by installing, running, modifying, or distributing the Software, you agree to them. If you do not agree, do not install RouterChat, or stop using it and uninstall it.
 
-What RouterChat stores and sends over the network is described in the [privacy page](docs/privacy.md). That page is for your information and is not part of these terms.
+What RouterChat stores and sends over the network is described in the [privacy page](https://github.com/echo1097/routerchat/blob/main/docs/privacy.md). That page is for your information and is not part of these terms.
 
 ## 1. No Warranty
 

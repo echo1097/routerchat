@@ -86,7 +86,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for how to report bugs, send feedback, an
 
 Your chats, settings, and API keys stay on your computer, and the project author never receives them. Packaged installs keep your keys and database outside the app folder, so updates don't replace them. Git clone installs keep using `.env` and `data/routerchat.sqlite3` inside the repository.
 
-When you send a prompt or attachment, that data goes to the provider you picked, OpenRouter or Anthropic, so it can handle the request. Voice recordings always go to OpenRouter. See [TOS.md](TOS.md) for the full list of connections.
+When you send a prompt or attachment, that data goes to the provider you picked, OpenRouter or Anthropic, so it can handle the request. Voice recordings always go to OpenRouter. See the [privacy page](docs/privacy.md) for the full list of connections.
 
 ## Media
 

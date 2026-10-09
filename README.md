@@ -11,10 +11,9 @@ Bring your own key. Available for macOS and Windows.
 <p>
   <a href="#install-routerchat">Install</a> ·
   <a href="#features">Features</a> ·
-  <a href="#media">Media</a> ·
   <a href="docs/setup.md">Setup</a> ·
   <a href="docs/privacy.md">Privacy</a> ·
-  <a href="https://github.com/echo1097/routerchat/releases">Releases</a> ·
+  <a href="TOS.md">Terms</a> ·
   <a href="SUPPORT.md">Support</a> ·
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>
@@ -60,8 +59,13 @@ irm https://echo1097.github.io/get-routerchat/install.ps1 | iex
 
 ## Features
 
-- **Chat Mode:** Chat with any OpenRouter or Anthropic model, with file attachments, temporary chats, and chat history. Web search is available with OpenRouter.
-- **Writing Mode:** A longform writing workspace. Write stories in chapters, brainstorm ideas, and keep a lorebook of characters and world details.
+- **Chat Mode:** Chat with any OpenRouter or Anthropic model. Attach files, search the web, and organize chats with folders, pins, and search.
+- **Writing Mode:** Write stories chapter by chapter, brainstorm ideas on a canvas, and keep a lorebook that remembers your characters and world.
+- **Voice input:** Talk instead of typing in Chat, Write, and Brainstorm.
+- **Usage tracking:** See what you spend, per model and over time.
+- **Local and private:** No account, no analytics, no tracking. Your chats and keys never leave your computer except to reach your provider.
+
+See the [Media](#media) section for screenshots of everything above.
 
 ## Roadmap
 

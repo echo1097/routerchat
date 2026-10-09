@@ -93,4 +93,4 @@ California law governs these terms, without regard to its conflict of law rules.
 
 ## 12. Changes
 
-These terms may change. A new version reaches you only when you install or update, and RouterChat asks you to accept again before it applies to you.
+The terms that apply to you are the ones included with the copy of RouterChat you are running. These terms may change. A new version reaches you only when you install or update, and RouterChat asks you to accept again before it applies to you.

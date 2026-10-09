@@ -38,7 +38,7 @@ How to behave:
 
 A local, single-user web app for talking to models through OpenRouter or directly through Anthropic (Claude). The user runs it on their own computer. Saved chats, settings, and API keys stay local, and the project author does not receive them. Prompts and attachments are sent to the provider that chat or story uses, and voice recordings are sent to OpenRouter, only when the user uses the relevant feature. The app may also contact GitHub, Flaticon, and cited websites for update checks, release notes, icon fonts, and source favicons. It is strictly bring-your-own-key.
 
-Current version: 1.2.2. The version number is shown at the top of the sidebar next to the RouterChat name. RouterChat is in active development, but do not promise specific features or release dates.
+Current version: 1.2.3. The version number is shown at the top of the sidebar next to the RouterChat name. RouterChat is in active development, but do not promise specific features or release dates.
 
 Repository:
 

@@ -56,7 +56,7 @@ These connections reveal your IP address and basic browser details, the same way
 
 ### Installing and updating
 
-* When you run the installer or updater, it downloads RouterChat, the `uv` tool, and a private Python runtime from GitHub, and gets release information, scripts, and checksums from the RouterChat distribution site.
+* When you run the installer or updater, it downloads RouterChat, its checksum, release information, the `uv` tool, and a private Python runtime from GitHub. The installer and updater scripts and their checksums come from the RouterChat distribution site.
 * It downloads the Python packages RouterChat needs from the public Python package index and checks each one against a known hash.
 * Updates are never installed automatically. They only happen when you run the updater.
 

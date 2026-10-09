@@ -38,7 +38,7 @@ LOREBOOK_STYLE_FORMAT = {
 }
 
 
-def buildBody(model, **overrides):
+def buildBody(model, reasoningConfig=None, **overrides):
     options = ChatOptions(
         apiKey="sk-or-test",
         temperature=0.1,
@@ -46,7 +46,13 @@ def buildBody(model, **overrides):
         responseFormat=LOREBOOK_STYLE_FORMAT,
         **overrides,
     )
-    with patch("backend.providers.openrouter.adapter.requestOptions.openrouterProviderOptions", return_value=None):
+    with patch(
+        "backend.providers.openrouter.adapter.requestOptions.openrouterProviderOptions",
+        return_value=None,
+    ), patch(
+        "backend.providers.openrouter.adapter.requestOptions.enabledReasoningConfig",
+        return_value=reasoningConfig,
+    ):
         return openRouterProvider.buildRequest([], model, options).body
 
 
@@ -69,30 +75,26 @@ class OpenrouterAnthropicRequestTest(unittest.TestCase):
         self.assertIs(body["response_format"], LOREBOOK_STYLE_FORMAT)
 
     def test_anthropic_models_drop_temperature_when_reasoning_is_on(self):
-        with patch(
-            "backend.providers.openrouter.adapter.requestOptions.enabledReasoningConfig",
-            return_value={"enabled": True, "exclude": False, "effort": "medium"},
-        ):
-            body = buildBody("anthropic/claude-haiku-5.5", thinkingEnabled=True)
+        body = buildBody(
+            "anthropic/claude-haiku-5.5",
+            reasoningConfig={"enabled": True, "exclude": False, "effort": "medium"},
+            thinkingEnabled=True,
+        )
 
         self.assertNotIn("temperature", body)
         self.assertEqual(body["reasoning"]["effort"], "medium")
 
     def test_anthropic_models_keep_temperature_without_reasoning(self):
-        with patch(
-            "backend.providers.openrouter.adapter.requestOptions.enabledReasoningConfig",
-            return_value=None,
-        ):
-            body = buildBody("anthropic/claude-haiku-5.5")
+        body = buildBody("anthropic/claude-haiku-5.5")
 
         self.assertEqual(body["temperature"], 0.1)
 
     def test_other_models_keep_temperature_with_reasoning(self):
-        with patch(
-            "backend.providers.openrouter.adapter.requestOptions.enabledReasoningConfig",
-            return_value={"enabled": True, "exclude": False, "effort": "high"},
-        ):
-            body = buildBody("openai/gpt-5", thinkingEnabled=True)
+        body = buildBody(
+            "openai/gpt-5",
+            reasoningConfig={"enabled": True, "exclude": False, "effort": "high"},
+            thinkingEnabled=True,
+        )
 
         self.assertEqual(body["temperature"], 0.1)
 

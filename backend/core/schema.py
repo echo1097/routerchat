@@ -3,22 +3,22 @@ from __future__ import annotations
 from backend.core.database import getDb
 from backend.core.migrations import (
     cleanLorebookCategories,
+    ensureAttachmentPageCountColumn,
     ensureBrainstormGenerationColumns,
+    ensureCachedTokenColumns,
     ensureChapterContextColumn,
     ensureChapterHistoryColumns,
     ensureChapterRevisionColumn,
     ensureChatFolderColumn,
     ensureChatSettingsColumns,
+    ensureGenerationSettledColumn,
     ensureLorebookRevisionColumn,
     ensureLorebookRunUsageColumns,
     ensureMessageOrderColumn,
     ensureMessageSourceColumn,
     ensureMessageUsageColumns,
-    ensureStorySettingsColumns,
     ensureProviderColumns,
-    ensureCachedTokenColumns,
-    ensureAttachmentPageCountColumn,
-    ensureGenerationSettledColumn,
+    ensureStorySettingsColumns,
 )
 
 

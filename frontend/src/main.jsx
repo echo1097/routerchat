@@ -502,6 +502,7 @@ function App() {
       nitro_mode: nitroMode,
       lorebook_auto: Boolean(story.lorebook_auto),
       lorebook_model: story.lorebook_model || "",
+      lorebook_retry: story.lorebook_retry !== false,
     });
   }
 
@@ -1010,6 +1011,7 @@ function App() {
       nitro_mode: nitroMode,
       lorebook_auto: false, //chats have no lorebook, this just keeps the object shape steady across modes
       lorebook_model: "",
+      lorebook_retry: true,
     });
   }
 
@@ -2174,6 +2176,7 @@ function App() {
         reasoning_effort: settings.reasoning_effort,
         lorebook_auto: settings.lorebook_auto,
         lorebook_model: settings.lorebook_model,
+        lorebook_retry: settings.lorebook_retry,
         temporary: true,
       });
       storyId = story.id;
@@ -2232,6 +2235,7 @@ function App() {
           reasoning_effort: settings.reasoning_effort,
           lorebook_auto: settings.lorebook_auto,
           lorebook_model: settings.lorebook_model,
+          lorebook_retry: settings.lorebook_retry,
         },
         { title: "Chapter 1", content: "" },
       );
@@ -2656,6 +2660,7 @@ function App() {
         onEvent: (event) => {
           if (event.type === "reasoning") appendLorebookReasoning(event.value);
           if (event.type === "content") markLorebookUpdating();
+          if (event.type === "retry") showToast("Retrying skipped edits");
         },
       });
 
@@ -2666,6 +2671,8 @@ function App() {
       const skippedUpdates = Array.isArray(result.skipped) ? result.skipped : [];
       if (result.error) {
         setStatus("Lorebook update failed");
+      } else if (result.unchanged) {
+        showToast("Nothing new since the last update");
       } else if (skippedUpdates.length) {
         showToast("Lorebook updated; some edits were skipped");
       } else {
@@ -3237,6 +3244,10 @@ function App() {
           if (event.type === "lorebook_content") {
             setStoryGenerationStatus("Updating Lorebook");
             markLorebookUpdating();
+            return;
+          }
+          if (event.type === "lorebook_retry") {
+            setStoryGenerationStatus("Retrying skipped edits");
             return;
           }
           if (event.type === "lorebook") {

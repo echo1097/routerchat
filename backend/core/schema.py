@@ -127,6 +127,7 @@ def initCoreTables() -> None:
               temporary INTEGER NOT NULL DEFAULT 0,
               lorebook_auto INTEGER NOT NULL DEFAULT 0,
               lorebook_model TEXT NOT NULL DEFAULT '',
+              lorebook_retry INTEGER NOT NULL DEFAULT 1,
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
             );
@@ -199,6 +200,16 @@ def initCoreTables() -> None:
               FOREIGN KEY(story_id) REFERENCES stories(id) ON DELETE CASCADE,
               FOREIGN KEY(chapter_id) REFERENCES chapters(id) ON DELETE CASCADE,
               FOREIGN KEY(generation_id) REFERENCES story_generations(id) ON DELETE SET NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS lorebook_chapter_snapshots (
+              chapter_id TEXT PRIMARY KEY,
+              story_id TEXT NOT NULL,
+              content TEXT NOT NULL,
+              chapter_revision INTEGER NOT NULL,
+              updated_at TEXT NOT NULL,
+              FOREIGN KEY(chapter_id) REFERENCES chapters(id) ON DELETE CASCADE,
+              FOREIGN KEY(story_id) REFERENCES stories(id) ON DELETE CASCADE
             );
 
             CREATE TABLE IF NOT EXISTS chapter_history_entries (

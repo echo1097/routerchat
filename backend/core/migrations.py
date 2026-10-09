@@ -77,6 +77,8 @@ def ensureStorySettingsColumns(conn: sqlite3.Connection) -> None:
     if "lorebook_model" not in existingColumns:
         #blank means the author never picked one, so the story's own model keeps doing the lorebook work
         conn.execute("ALTER TABLE stories ADD COLUMN lorebook_model TEXT NOT NULL DEFAULT ''")
+    if "lorebook_retry" not in existingColumns:
+        conn.execute("ALTER TABLE stories ADD COLUMN lorebook_retry INTEGER NOT NULL DEFAULT 1")
 
 
 def ensureProviderColumns(conn: sqlite3.Connection) -> None:

@@ -31,16 +31,18 @@ const HISTORY_MODEL_PATTERNS = [
   /^(.+?) updated .+ in Lorebook$/,
   /^(.+?) updated Timeline$/,
   /^(.+?) excluded .+ from context$/,
+  /^(.+?) included .+ in context$/,
   /^(.+?) finished editing Lorebook after /,
   /^(.+?) found no Lorebook changes after /,
 ];
 
-const HISTORY_LORE_CHANGE_KINDS = new Set(["lore_create", "lore_update", "lore_hide"]);
+const HISTORY_LORE_CHANGE_KINDS = new Set(["lore_create", "lore_update", "lore_hide", "lore_include"]);
 
 const HISTORY_LORE_KIND_NAMES = {
   lore_create: "Added",
   lore_update: "Updated",
   lore_hide: "Excluded",
+  lore_include: "Included",
 };
 
 function historyModelName(entries) {

@@ -67,6 +67,7 @@ def createStory(payload: StoryCreateRequest) -> dict[str, Any]:
                 int(payload.temporary),
                 int(payload.lorebook_auto),
                 payload.lorebook_model,
+                int(payload.lorebook_retry),
                 now,
                 now,
             ),
@@ -106,6 +107,7 @@ def createStoryWithInitialChapter(
                 int(payload.temporary),
                 int(payload.lorebook_auto),
                 payload.lorebook_model,
+                int(payload.lorebook_retry),
                 now,
                 now,
             ),
@@ -149,7 +151,7 @@ def updateStory(story_id: str, payload: StoryPatchRequest) -> dict[str, Any]:
     assignments: list[str] = []
     values: list[Any] = []
     for key, value in updates.items():
-        if key in {"thinking_enabled", "lorebook_auto"}:
+        if key in {"thinking_enabled", "lorebook_auto", "lorebook_retry"}:
             value = int(bool(value))
         if key == "title":
             value = str(value).strip() or "New story"

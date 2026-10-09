@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from backend.providers.base import Capabilities, ChatOptions, ChatRequest, Provider
 from backend.providers.openrouter import apiKey as keyStore
 from backend.providers.openrouter import models as modelStore
-from backend.providers.openrouter import requestOptions, usage
+from backend.providers.openrouter import anthropicRules, requestOptions, usage
 from backend.providers.openrouter.client import (
     OPENROUTER_BASE_URL,
     OPENROUTER_TIMEOUT,
@@ -104,13 +104,17 @@ class OpenRouterProvider(Provider):
             body["reasoning"] = reasoningConfig
             if options.explicitReasoning:
                 body["reasoning_effort"] = reasoningConfig["effort"]
+            if anthropicRules.isAnthropicModel(model):
+                body.pop("temperature", None)
         elif options.explicitReasoning and self.supportsReasoning(model):
             body["reasoning"] = {"enabled": False, "exclude": True}
             body["reasoning_effort"] = "none"
             body["include_reasoning"] = False
 
         if options.responseFormat:
-            body["response_format"] = options.responseFormat
+            body["response_format"] = anthropicRules.responseFormatForModel(
+                model, options.responseFormat
+            )
 
         return ChatRequest(
             url=f"{OPENROUTER_BASE_URL}/chat/completions",

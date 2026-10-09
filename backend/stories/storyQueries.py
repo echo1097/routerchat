@@ -41,9 +41,9 @@ def insertStory(conn: sqlite3.Connection, values: tuple[Any, ...]) -> None:
         INSERT INTO stories (
           id, title, author, language, synopsis, model, provider, system_prompt,
           temperature, max_tokens, thinking_enabled, reasoning_effort, temporary,
-          lorebook_auto, lorebook_model, created_at, updated_at
+          lorebook_auto, lorebook_model, lorebook_retry, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         values,
     )

@@ -532,6 +532,9 @@ async def streamStoryGeneration(
                 if lorebook_event["type"] == "content":
                     yield emit("lorebook_content", None)
                     continue
+                if lorebook_event["type"] == "retry":
+                    yield emit("lorebook_retry", lorebook_event["value"])
+                    continue
                 lorebook_result = lorebook_event["value"]
 
             lorebook_duration_ms = (time.perf_counter() - lorebook_started_at) * 1000
@@ -543,6 +546,7 @@ async def streamStoryGeneration(
                     lorebook_duration_ms,
                     lorebook_result.get("cost"),
                     lorebook_result.get("skipped") or [],
+                    lorebook_result.get("retry_error"),
                 ):
                     yield emit(
                         "history",

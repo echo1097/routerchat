@@ -31,6 +31,11 @@ const LOREBOOK_UPDATE_MODES = {
   manual: "Manual Lorebook",
 };
 
+const PROVIDER_ICONS = {
+  openrouter: "/icons/open-router.svg",
+  anthropic: "/icons/claude.png",
+};
+
 function ComposerMenuButton({ label, detail, active = false, dataTour, disabled = false, onClick }) {
   return (
     <button
@@ -358,10 +363,13 @@ export function Composer({
                     <ComposerMenuButton
                       label="Settings"
                       detail={(
-                        <>
-                          {promptModelName(models, settings.model)}
-                          {modelLocked && <span className="ml-1 text-neutral-400">locked</span>}
-                        </>
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className="truncate">{promptModelName(models, settings.model)}</span>
+                          {PROVIDER_ICONS[provider.id] && (
+                            <MaskIcon src={PROVIDER_ICONS[provider.id]} size={12} className="text-white" />
+                          )}
+                          {modelLocked && <span className="text-neutral-400">locked</span>}
+                        </span>
                       )}
                       onClick={() => { onOpenSettings(); setModelMenuOpen(false); }}
                     />

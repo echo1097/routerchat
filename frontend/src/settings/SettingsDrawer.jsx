@@ -970,6 +970,19 @@ export function SettingsDrawer({
         </div>
       </div>
 
+      <div className="mb-3 border-b border-white/[0.08] pb-3">
+        <SettingRow
+          title="Retry skipped edits"
+          description="Make one follow-up call to fix lorebook edits that did not apply"
+        >
+          <SettingSwitch
+            checked={settings.lorebook_retry !== false}
+            onChange={(value) => commit({ lorebook_retry: value })}
+            label="Retry skipped edits"
+          />
+        </SettingRow>
+      </div>
+
       <ModelPicker
         models={filteredLorebookModels}
         query={lorebookQuery}

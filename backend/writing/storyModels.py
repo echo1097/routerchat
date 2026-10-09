@@ -20,6 +20,7 @@ class StoryCreateRequest(BaseModel):
     temporary: bool = False
     lorebook_auto: bool = False
     lorebook_model: str = ""
+    lorebook_retry: bool = True
 
 
 class StoryPatchRequest(BaseModel):
@@ -35,6 +36,7 @@ class StoryPatchRequest(BaseModel):
     reasoning_effort: ReasoningEffort | None = None
     lorebook_auto: bool | None = None
     lorebook_model: str | None = None
+    lorebook_retry: bool | None = None
 
 
 class ChapterCreateRequest(BaseModel):
@@ -74,6 +76,7 @@ class StoryArchiveStory(BaseModel):
     reasoning_effort: LenientReasoningEffort = "medium"
     lorebook_auto: bool = False
     lorebook_model: str = ""
+    lorebook_retry: bool = True
     created_at: str = ""
     updated_at: str = ""
 

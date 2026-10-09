@@ -3,11 +3,11 @@ import sqlite3
 import uuid
 from typing import Any
 
+from backend.lorebook.chapterSummaries import findEnabledChapterSummary
 from backend.lorebook.editOperations import (
     applyLorebookEditOperations,
     skippedLorebookUpdate,
 )
-from backend.lorebook.legacyUpdates import applyLegacyLorebookUpdates
 from backend.lorebook.lorebookRows import (
     lorebookEntrySnapshot,
     lorebookRowSnapshot,
@@ -17,6 +17,178 @@ from backend.lorebook.lorebookRows import (
 )
 from backend.lorebook.timeline import normalizeTimelineDescription
 from backend.stories.storyRows import wordDiffCounts
+
+
+def enabledIdentityConflict(
+    conn: sqlite3.Connection,
+    story_id: str,
+    name: str,
+    category: str,
+    exclude_id: str = "",
+) -> sqlite3.Row | None:
+    return conn.execute(
+        """
+        SELECT id FROM lorebook_entries
+        WHERE story_id = ? AND id != ? AND disabled = 0
+          AND (lower(name) = lower(?) OR (? = 'timeline' AND category = 'timeline'))
+        LIMIT 1
+        """,
+        (story_id, exclude_id, name, category),
+    ).fetchone()
+
+
+def replaceChapterSummary(
+    conn: sqlite3.Connection,
+    story_id: str,
+    summary: sqlite3.Row,
+    name: str,
+    description: str,
+    chapter_id: str,
+    now: str,
+) -> list[dict[str, Any]]:
+    metadata = {"chapter_id": chapter_id}
+    beforeSnapshot = lorebookRowSnapshot(summary)
+    afterSnapshot = lorebookEntrySnapshot("synopsis", description, [], [], metadata)
+    if beforeSnapshot == afterSnapshot and str(summary["name"]) == name:
+        return []
+
+    conn.execute(
+        """
+        UPDATE lorebook_entries
+        SET name = ?, category = 'synopsis', description = ?, aliases_json = '[]', tags_json = '[]',
+            metadata_json = ?, revision = revision + 1, updated_at = ?
+        WHERE id = ? AND story_id = ?
+        """,
+        (name, description, json.dumps(metadata), now, summary["id"], story_id),
+    )
+    wordsAdded, wordsRemoved = wordDiffCounts(beforeSnapshot, afterSnapshot)
+    return [{
+        "action": "update",
+        "id": summary["id"],
+        "name": name,
+        "wordsAdded": wordsAdded,
+        "wordsRemoved": wordsRemoved,
+    }]
+
+
+def createLorebookEntryFromUpdate(
+    conn: sqlite3.Connection,
+    story_id: str,
+    update: dict[str, Any],
+    update_index: int,
+    now: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    name = str(update.get("name") or "").strip()
+    category = normalizeLorebookCategory(update.get("category"))
+    description = str(update.get("description") or "").strip()
+    if not name or not description:
+        return [], [skippedLorebookUpdate(
+            update_index, "lorebook_create_invalid", "new entries need a name and description", update
+        )]
+
+    metadata = sanitizeLorebookMetadata(category, update.get("metadata"))
+    summaryChapterId = str(metadata.get("chapter_id") or "") if category == "synopsis" else ""
+    if summaryChapterId:
+        existingSummary = findEnabledChapterSummary(conn, story_id, summaryChapterId, name)
+        if existingSummary:
+            return replaceChapterSummary(
+                conn, story_id, existingSummary, name, description, summaryChapterId, now
+            ), []
+    elif enabledIdentityConflict(conn, story_id, name, category):
+        return [], [skippedLorebookUpdate(
+            update_index,
+            "lorebook_create_exists",
+            "an enabled entry with that identity already exists; edit it by entryId",
+            update,
+        )]
+
+    if category not in {"timeline", "synopsis"}:
+        hidden = conn.execute(
+            """
+            SELECT id FROM lorebook_entries
+            WHERE story_id = ? AND disabled = 1 AND lower(name) = lower(?)
+            LIMIT 1
+            """,
+            (story_id, name),
+        ).fetchone()
+        if hidden:
+            return [], [skippedLorebookUpdate(
+                update_index,
+                "lorebook_create_hidden",
+                "a hidden entry with that name already exists; use include to bring it back",
+                update,
+            )]
+
+    if category == "timeline":
+        name = "Timeline"
+        description = normalizeTimelineDescription(description)
+    aliases = sanitizeLorebookAliases(category, update.get("aliases"), name)
+    tags = update.get("tags") if isinstance(update.get("tags"), list) else []
+    entryId = str(uuid.uuid4())
+    conn.execute(
+        """
+        INSERT INTO lorebook_entries (
+          id, story_id, name, category, description, aliases_json,
+          tags_json, metadata_json, revision, disabled, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)
+        """,
+        (
+            entryId, story_id, name, category, description,
+            json.dumps(aliases), json.dumps(tags), json.dumps(metadata), now, now,
+        ),
+    )
+    wordsAdded, wordsRemoved = wordDiffCounts(
+        "", lorebookEntrySnapshot(category, description, aliases, tags, metadata)
+    )
+    return [{
+        "action": "create",
+        "id": entryId,
+        "name": name,
+        "wordsAdded": wordsAdded,
+        "wordsRemoved": wordsRemoved,
+    }], []
+
+
+def includeLorebookEntry(
+    conn: sqlite3.Connection,
+    story_id: str,
+    entry: sqlite3.Row,
+    update: dict[str, Any],
+    update_index: int,
+    now: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    category = normalizeLorebookCategory(entry["category"])
+    if enabledIdentityConflict(conn, story_id, str(entry["name"]), category, str(entry["id"])):
+        return [], [skippedLorebookUpdate(
+            update_index,
+            "lorebook_identity_conflict",
+            "another enabled entry already uses that identity",
+            update,
+        )]
+    result = conn.execute(
+        """
+        UPDATE lorebook_entries
+        SET disabled = 0, revision = revision + 1, updated_at = ?
+        WHERE id = ? AND story_id = ? AND revision = ?
+        """,
+        (now, entry["id"], story_id, entry["revision"]),
+    )
+    if result.rowcount != 1:
+        return [], [skippedLorebookUpdate(
+            update_index,
+            "lorebook_revision_conflict",
+            "the entry changed before it could be included",
+            update,
+        )]
+    wordsAdded, wordsRemoved = wordDiffCounts("", lorebookRowSnapshot(entry))
+    return [{
+        "action": "include",
+        "id": entry["id"],
+        "name": entry["name"],
+        "wordsAdded": wordsAdded,
+        "wordsRemoved": wordsRemoved,
+    }], []
 
 
 def applyTargetedLorebookUpdate(
@@ -29,59 +201,7 @@ def applyTargetedLorebookUpdate(
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     action = str(update.get("action") or "").lower()
     if action == "create":
-        name = str(update.get("name") or "").strip()
-        category = normalizeLorebookCategory(update.get("category"))
-        description = str(update.get("description") or "").strip()
-        if not name or not description:
-            return [], [skippedLorebookUpdate(
-                update_index, "lorebook_create_invalid", "new entries need a name and description", update
-            )]
-        existing = conn.execute(
-            """
-            SELECT id FROM lorebook_entries
-            WHERE story_id = ? AND disabled = 0
-              AND (lower(name) = lower(?) OR (? = 'timeline' AND category = 'timeline'))
-            LIMIT 1
-            """,
-            (story_id, name, category),
-        ).fetchone()
-        if existing:
-            return [], [skippedLorebookUpdate(
-                update_index,
-                "lorebook_create_exists",
-                "an enabled entry with that identity already exists; edit it by entryId",
-                update,
-            )]
-        if category == "timeline":
-            name = "Timeline"
-            description = normalizeTimelineDescription(description)
-        aliases = sanitizeLorebookAliases(category, update.get("aliases"), name)
-        tags = update.get("tags") if isinstance(update.get("tags"), list) else []
-        metadata = sanitizeLorebookMetadata(category, update.get("metadata"))
-        entryId = str(uuid.uuid4())
-        conn.execute(
-            """
-            INSERT INTO lorebook_entries (
-              id, story_id, name, category, description, aliases_json,
-              tags_json, metadata_json, revision, disabled, created_at, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)
-            """,
-            (
-                entryId, story_id, name, category, description,
-                json.dumps(aliases), json.dumps(tags), json.dumps(metadata), now, now,
-            ),
-        )
-        wordsAdded, wordsRemoved = wordDiffCounts(
-            "", lorebookEntrySnapshot(category, description, aliases, tags, metadata)
-        )
-        return [{
-            "action": "create",
-            "id": entryId,
-            "name": name,
-            "wordsAdded": wordsAdded,
-            "wordsRemoved": wordsRemoved,
-        }], []
+        return createLorebookEntryFromUpdate(conn, story_id, update, update_index, now)
 
     entryId = str(update.get("entryId") or "").strip()
     entryRevision = update.get("entryRevision")
@@ -101,14 +221,14 @@ def applyTargetedLorebookUpdate(
         )]
     claimed_entry_ids.add(entryId)
     entry = conn.execute(
-        "SELECT * FROM lorebook_entries WHERE id = ? AND story_id = ? AND disabled = 0",
+        "SELECT * FROM lorebook_entries WHERE id = ? AND story_id = ?",
         (entryId, story_id),
     ).fetchone()
     if not entry:
         return [], [skippedLorebookUpdate(
             update_index,
             "lorebook_target_missing",
-            "the entry was missing, hidden, or belonged to another story",
+            "the entry was missing or belonged to another story",
             update,
         )]
     if entry["revision"] != entryRevision:
@@ -116,6 +236,22 @@ def applyTargetedLorebookUpdate(
             update_index,
             "lorebook_revision_conflict",
             "the entry changed after the model read it",
+            update,
+        )]
+    if action == "include":
+        if not bool(entry["disabled"]):
+            return [], [skippedLorebookUpdate(
+                update_index,
+                "lorebook_target_not_hidden",
+                "the entry is already included in context",
+                update,
+            )]
+        return includeLorebookEntry(conn, story_id, entry, update, update_index, now)
+    if bool(entry["disabled"]):
+        return [], [skippedLorebookUpdate(
+            update_index,
+            "lorebook_target_hidden",
+            "the entry is hidden; only include can change it",
             update,
         )]
     if action == "keep":
@@ -185,16 +321,7 @@ def applyTargetedLorebookUpdate(
             ))
             return [], skipped
 
-    identityConflict = conn.execute(
-        """
-        SELECT id FROM lorebook_entries
-        WHERE story_id = ? AND id != ? AND disabled = 0
-          AND (lower(name) = lower(?) OR (? = 'timeline' AND category = 'timeline'))
-        LIMIT 1
-        """,
-        (story_id, entryId, nextEntry["name"], nextEntry["category"]),
-    ).fetchone()
-    if identityConflict:
+    if enabledIdentityConflict(conn, story_id, nextEntry["name"], nextEntry["category"], entryId):
         skipped.append(skippedLorebookUpdate(
             update_index,
             "lorebook_identity_conflict",
@@ -248,17 +375,6 @@ def applyLorebookUpdates(
     updates: list[dict[str, Any]],
     now: str,
 ) -> dict[str, list[dict[str, Any]]]:
-    targeted = any(
-        str(update.get("action") or "").lower() in {"edit", "exclude", "keep"}
-        for update in updates
-        if isinstance(update, dict)
-    )
-    if not targeted:
-        return {
-            "applied": applyLegacyLorebookUpdates(conn, story_id, updates, now),
-            "skipped": [],
-        }
-
     applied: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
     claimedEntryIds: set[str] = set()

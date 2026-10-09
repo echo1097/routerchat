@@ -35,6 +35,7 @@ async def updateLorebookFromChapter(
         source_text,
         lorebookModelFor(story),
         story["max_tokens"],
+        force=payload.force,
     ):
         if event["type"] == "result":
             result = event["value"]
@@ -50,6 +51,7 @@ async def streamLorebookUpdate(
     chapter_id: str,
     story: Any,
     source_text: str,
+    force: bool = False,
 ) -> AsyncIterator[bytes]:
     startedAt = time.perf_counter()
     result: dict[str, Any] = {}
@@ -62,12 +64,16 @@ async def streamLorebookUpdate(
         source_text,
         lorebookModelFor(story),
         story["max_tokens"],
+        force=force,
     ):
         if event["type"] == "reasoning":
             yield streamEvent("reasoning", event["value"])
             continue
         if event["type"] == "content":
             yield streamEvent("content", None)
+            continue
+        if event["type"] == "retry":
+            yield streamEvent("retry", event["value"])
             continue
         result = event["value"]
 
@@ -91,7 +97,7 @@ async def updateLorebookFromChapterStream(
         raise HTTPException(status_code=422, detail="Write something in this chapter first.")
 
     return StreamingResponse(
-        streamLorebookUpdate(story_id, payload.chapter_id, story, sourceText),
+        streamLorebookUpdate(story_id, payload.chapter_id, story, sourceText, payload.force),
         media_type="application/x-ndjson; charset=utf-8",
         headers={"Cache-Control": "no-store"},
     )

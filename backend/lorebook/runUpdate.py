@@ -7,12 +7,19 @@ from typing import Any, AsyncIterator
 
 from backend.core.database import getDb
 from backend.core.utils import displayModelName, utcNow
+from backend.lorebook.chapterDelta import chapterDelta, lorebookProseForPrompt
 from backend.lorebook.chapterSummaries import (
     lorebookSummaryChapterId,
     normalizeRequiredSummaryUpdate,
 )
 from backend.lorebook.lorebookHistory import lorebookRunHistoryActions
-from backend.lorebook.lorebookQueries import insertUpdateRun, listEntries, listEntriesByUpdated
+from backend.lorebook.lorebookQueries import (
+    getChapterSnapshot,
+    insertUpdateRun,
+    listEntries,
+    listEntriesByUpdated,
+    saveChapterSnapshot,
+)
 from backend.lorebook.lorebookRows import (
     jsonList,
     lorebookModelFor,
@@ -28,40 +35,22 @@ from backend.lorebook.updateSchema import (
     LOREBOOK_UPDATE_SYSTEM_PROMPT,
     lorebookUpdateResponseFormat,
 )
-from backend.providers.base import ChatOptions
+from backend.providers.base import ChatOptions, Provider
 from backend.stories.storyProvider import storyProvider
 from backend.stories.storyRows import insertChapterHistoryEntry, rowToStory
 from backend.stories.storyQueries import getChapter, getStory
 
 logger = logging.getLogger("uvicorn.error")
 
+RETRY_NOTE = (
+    "Your previous update was applied except for the items listed under skipped. Return decisions "
+    "only for those items, using the fresh entryId and entryRevision values in existing_lorebook. "
+    "Do not repeat edits that were already applied."
+)
 
-#used to be one blocking post, now it streams so write mode can show the thinking while it works.
-#yields {"type": "reasoning"} chunks as they land, one {"type": "content"} the moment json generation
-#starts, and exactly one {"type": "result"} at the end
-async def runLorebookUpdate(
-    story_id: str,
-    chapter_id: str,
-    source_text: str,
-    model: str,
-    max_tokens: int,
-    generation_row_id: str | None = None,
-) -> AsyncIterator[dict[str, Any]]:
-    provider = storyProvider(story_id)
-    api_key = provider.readKey()
-    if not api_key or not source_text.strip():
-        yield {
-            "type": "result",
-            "value": {"applied": [], "skipped": [], "skipped_run": True},
-        }
-        return
 
-    with getDb() as conn:
-        story = getStory(conn, story_id)
-        chapter = getChapter(conn, story_id, chapter_id)
-        lorebook = listEntriesByUpdated(conn, story_id)
-
-    current_lore = [
+def lorebookPromptEntries(rows: list[sqlite3.Row]) -> list[dict[str, Any]]:
+    return [
         {
             "entryId": row["id"],
             "entryRevision": row["revision"],
@@ -75,16 +64,25 @@ async def runLorebookUpdate(
             ),
             "tags": jsonList(row["tags_json"]),
             "chapterId": lorebookSummaryChapterId(row) or None,
+            "hidden": bool(row["disabled"]),
         }
-        for row in lorebook
-        if not bool(row["disabled"])
+        for row in rows
     ]
-    prompt = {
-        "story": rowToStory(story),
-        "chapter": {"id": chapter["id"], "title": chapter["title"]},
-        "existing_lorebook": current_lore,
-        "new_prose": source_text,
-    }
+
+
+async def runLorebookPass(
+    provider: Provider,
+    story: sqlite3.Row,
+    chapter: sqlite3.Row,
+    lorebook: list[sqlite3.Row],
+    prompt: dict[str, Any],
+    model: str,
+    max_tokens: int,
+    api_key: str,
+    chapter_id: str,
+    require_decisions: bool,
+) -> AsyncIterator[dict[str, Any]]:
+    story_id = str(story["id"])
     messages = [
         {"role": "system", "content": LOREBOOK_UPDATE_SYSTEM_PROMPT},
         {"role": "user", "content": json.dumps(prompt)},
@@ -130,44 +128,173 @@ async def runLorebookUpdate(
             error_text = "The lorebook update ended before the provider completed the stream."
         elif not error_text:
             parsed = parseLorebookJson(raw_output)
-            updates = parsed.get("updates") if isinstance(parsed, dict) else []
+            updates = parsed.get("updates") if isinstance(parsed, dict) else None
             if not isinstance(updates, list):
-                updates = []
-            updates = normalizeRequiredSummaryUpdate(updates, chapter, lorebook)
+                raise ValueError("Lorebook output had no updates list.")
+            updates, skipped = normalizeRequiredSummaryUpdate(
+                updates, chapter, lorebook, require_decisions
+            )
             with getDb() as conn:
                 applyResult = applyLorebookUpdates(
                     conn, story_id, updates, utcNow()
                 )
                 applied = applyResult["applied"]
-                skipped = applyResult["skipped"]
+                skipped = [*skipped, *applyResult["skipped"]]
     except Exception as exc:  # noqa: BLE001
         error_text = str(exc)
 
-    with getDb() as conn:
-        insertUpdateRun(
-            conn,
-            (
-                usageRun.requestId,
-                story_id,
-                chapter_id,
-                generation_row_id,
-                usageRun.generationId,
-                raw_output or "",
-                json.dumps(applied),
-                json.dumps(skipped),
-                usageRun.usage.get("cost"),
-                error_text,
-                utcNow(),
-            ),
-        )
+    yield {
+        "type": "pass",
+        "requestId": usageRun.requestId,
+        "generationId": usageRun.generationId,
+        "rawOutput": raw_output or "",
+        "applied": applied,
+        "skipped": skipped,
+        "cost": usageRun.usage.get("cost"),
+        "error": error_text,
+    }
 
-    if error_text:
+
+def recordLorebookPass(
+    conn: sqlite3.Connection,
+    story_id: str,
+    chapter_id: str,
+    generation_row_id: str | None,
+    lorebookPass: dict[str, Any],
+) -> None:
+    insertUpdateRun(
+        conn,
+        (
+            lorebookPass["requestId"],
+            story_id,
+            chapter_id,
+            generation_row_id,
+            lorebookPass["generationId"],
+            lorebookPass["rawOutput"],
+            json.dumps(lorebookPass["applied"]),
+            json.dumps(lorebookPass["skipped"]),
+            lorebookPass["cost"],
+            lorebookPass["error"],
+            utcNow(),
+        ),
+    )
+
+
+def sumCosts(*costs: Any) -> float | None:
+    known = [float(cost) for cost in costs if cost is not None]
+    return sum(known) if known else None
+
+
+async def runLorebookUpdate(
+    story_id: str,
+    chapter_id: str,
+    source_text: str,
+    model: str,
+    max_tokens: int,
+    generation_row_id: str | None = None,
+    force: bool = False,
+) -> AsyncIterator[dict[str, Any]]:
+    provider = storyProvider(story_id)
+    api_key = provider.readKey()
+    if not api_key or not source_text.strip():
+        yield {
+            "type": "result",
+            "value": {"applied": [], "skipped": [], "skipped_run": True},
+        }
+        return
+
+    with getDb() as conn:
+        story = getStory(conn, story_id)
+        chapter = getChapter(conn, story_id, chapter_id)
+        lorebook = listEntriesByUpdated(conn, story_id)
+        snapshot = getChapterSnapshot(conn, chapter_id)
+
+    snapshotText = str(snapshot["content"]) if snapshot else None
+    if snapshotText is not None and not force and not chapterDelta(snapshotText, source_text)["changed"]:
+        yield {
+            "type": "result",
+            "value": {"applied": [], "skipped": [], "skipped_run": True, "unchanged": True},
+        }
+        return
+
+    basePrompt = {
+        "story": rowToStory(story),
+        "chapter": {"id": chapter["id"], "title": chapter["title"]},
+        **lorebookProseForPrompt(snapshotText, source_text),
+    }
+
+    firstPass: dict[str, Any] = {}
+    async with aclosing(runLorebookPass(
+        provider, story, chapter, lorebook,
+        {**basePrompt, "existing_lorebook": lorebookPromptEntries(lorebook)},
+        model, max_tokens, api_key, chapter_id, True,
+    )) as events:
+        async for event in events:
+            if event["type"] == "pass":
+                firstPass = event
+            else:
+                yield event
+
+    with getDb() as conn:
+        recordLorebookPass(conn, story_id, chapter_id, generation_row_id, firstPass)
+
+    applied = list(firstPass["applied"])
+    skipped = list(firstPass["skipped"])
+    error_text = firstPass["error"]
+    cost = firstPass["cost"]
+    retry_error: str | None = None
+
+    try:
+        retryEnabled = bool(story["lorebook_retry"])
+    except (KeyError, IndexError):
+        retryEnabled = True
+    if not error_text and skipped and retryEnabled:
+        yield {"type": "retry", "value": {"skipped": len(skipped)}}
+        with getDb() as conn:
+            freshLorebook = listEntriesByUpdated(conn, story_id)
+        retryPrompt = {
+            **basePrompt,
+            "existing_lorebook": lorebookPromptEntries(freshLorebook),
+            "retry": {
+                "note": RETRY_NOTE,
+                "applied": [
+                    {"action": item.get("action"), "name": item.get("name")} for item in applied
+                ],
+                "skipped": skipped,
+            },
+        }
+        secondPass: dict[str, Any] = {}
+        async with aclosing(runLorebookPass(
+            provider, story, chapter, freshLorebook, retryPrompt,
+            model, max_tokens, api_key, chapter_id, False,
+        )) as events:
+            async for event in events:
+                if event["type"] == "pass":
+                    secondPass = event
+                else:
+                    yield event
+        with getDb() as conn:
+            recordLorebookPass(conn, story_id, chapter_id, generation_row_id, secondPass)
+        cost = sumCosts(cost, secondPass["cost"])
+        if secondPass["error"]:
+            retry_error = secondPass["error"]
+        else:
+            applied.extend(secondPass["applied"])
+            skipped = list(secondPass["skipped"])
+
+    if not error_text:
+        with getDb() as conn:
+            saveChapterSnapshot(
+                conn, story_id, chapter_id, source_text, int(chapter["revision"]), utcNow()
+            )
+
+    if error_text or retry_error:
         logger.error(
             "Lorebook update failed (%s, story %s, chapter %s): %s",
             model,
             story_id,
             chapter_id,
-            error_text,
+            error_text or retry_error,
         )
 
     yield {
@@ -177,7 +304,8 @@ async def runLorebookUpdate(
             "skipped": skipped,
             "skipped_run": False,
             "error": error_text,
-            "cost": usageRun.usage.get("cost"),
+            "retry_error": retry_error,
+            "cost": cost,
         },
     }
 
@@ -192,9 +320,16 @@ def finalizeLorebookUpdate(
 ) -> dict[str, Any]:
     applied = result.get("applied") or []
     skipped = result.get("skipped") or []
-    actions = lorebookRunHistoryActions(
-        displayModelName(lorebookModelFor(story)), applied, duration_ms, result.get("cost"), skipped
-    )
+    actions = []
+    if not result.get("skipped_run"):
+        actions = lorebookRunHistoryActions(
+            displayModelName(lorebookModelFor(story)),
+            applied,
+            duration_ms,
+            result.get("cost"),
+            skipped,
+            result.get("retry_error"),
+        )
     history_run_id = str(uuid.uuid4())
     history_entries: list[dict[str, Any]] = []
 
@@ -221,8 +356,10 @@ def finalizeLorebookUpdate(
     return {
         "applied": applied,
         "error": result.get("error"),
+        "retry_error": result.get("retry_error"),
         "skipped": skipped,
         "skipped_run": bool(result.get("skipped_run")),
+        "unchanged": bool(result.get("unchanged")),
         "entries": [rowToLorebookEntry(row) for row in rows],
         "history": history_entries,
     }

@@ -16,7 +16,7 @@ from backend.lorebook.chapterSummaries import (
     SUMMARY_INSTRUCTION,
     lorebookSummaryChapterId,
 )
-from backend.lorebook.lorebookQueries import listEnabledEntries
+from backend.lorebook.lorebookQueries import deleteStorySnapshots, listEnabledEntries
 from backend.lorebook.lorebookRows import (
     lorebookModelFor,
     normalizeLorebookCategory,
@@ -360,6 +360,7 @@ async def streamLorebookRepair(
                     "DELETE FROM lorebook_entries WHERE id = ?",
                     (currentRow["id"],),
                 )
+            deleteStorySnapshots(conn, story_id)
             for entry in nextEntries:
                 conn.execute(
                     """

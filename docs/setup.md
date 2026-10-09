@@ -42,7 +42,7 @@ RouterChat then opens at `http://127.0.0.1:8000`. Open settings, go to **API**, 
 | **Stop** | Close the launcher window | Close the launcher window |
 | **Update** | `Update RouterChat.command` | **Update RouterChat** in the Start Menu, or `Update RouterChat.cmd` |
 | **Repair** | Rerun the install command | Rerun the install command |
-| **Uninstall** | `Uninstall RouterChat.command` | **Uninstall RouterChat** in the Start Menu |
+| **Uninstall** | `Uninstall RouterChat.command` | **Uninstall RouterChat** in the Start Menu, or `Uninstall RouterChat.cmd` |
 
 On macOS, the RouterChat folder is on your Desktop and in `~/Applications/RouterChat` (the Applications folder inside your home folder, not the main one). Both are shortcuts to the real files in `~/Library/Application Support/RouterChat`. The Desktop shortcut is only created on a fresh install.
 
@@ -71,11 +71,11 @@ These folders are hidden, so paste the path instead of clicking through:
 | --- | --- |
 | `app` | Application files. Replaced on every update. |
 | `runtime` | Private Python and virtual environment. |
-| `run` | Current process ID and a short-lived browser credential. Deleted when RouterChat stops. **Never share.** |
+| `run` | A short-lived browser credential. Deleted when RouterChat stops. **Never share.** |
 | `user-data/.env` | Your OpenRouter and Anthropic API keys. **Never share.** |
 | `user-data/routerchat.sqlite3` | Your chats, stories, settings, and history. |
 | `user-data/usage.sqlite3` | Your usage history: models, token counts, and costs. |
-| `logs` | Sanitized launcher, installer, and updater logs. |
+| `logs` | Launcher, installer, and updater logs, plus the current process ID. They are designed not to contain your API key, but read them before sharing. |
 | `backups` | Recent update backups, used to roll back a bad update. |
 
 Updates and repairs only replace `app`, so `user-data` is always kept. Read [SUPPORT.md](../SUPPORT.md) before sharing logs or version info.
@@ -113,7 +113,11 @@ RouterChat can talk to **OpenRouter** or **Anthropic** (Claude). Pick one under 
 
 - **Enter** sends, **Shift + Enter** adds a new line.
 - The round button sends. Click it while the AI is replying to stop it.
-- The plus icon attaches up to five files per message: images and PDFs up to 10 MB each, text or code files up to 256 KB. Images only work with models that support image input. Anthropic has tighter limits: images up to 7.5 MB, about 21 MB of files per request, and 100 or 600 PDF pages depending on the model. Earlier files in a chat are sent again with every message, so they count too.
+- The plus icon attaches up to five files per message.
+    - Images and PDFs can be up to 10 MB each, text or code files up to 256 KB.
+    - Images only work with models that support image input.
+    - Anthropic has tighter limits: images up to 7.5 MB, about 21 MB of files per request, and 100 or 600 PDF pages depending on the model.
+    - Earlier files in a chat are sent again with every message, so they count toward the limits too.
 - **Web search** searches before answering and shows sources and citations. OpenRouter bills each search. It is only available with OpenRouter.
 - **New chat** and your old chats are in the left sidebar.
 - Hover to reveal buttons: rename or delete chats, edit your messages, copy or regenerate AI replies.
@@ -121,10 +125,10 @@ RouterChat can talk to **OpenRouter** or **Anthropic** (Claude). Pick one under 
 
 ### Settings
 
-Click the model name to open settings. Each mode shows eight pages:
+Click the model name next to the prompt box, then **Settings**. Each mode shows nine pages:
 
-- **Chat:** API, Models, Transcription, System, UI, Chats, Advanced, Usage
-- **Write:** API, Models, Transcription, UI, Chats, Advanced, Lorebook, Usage
+- **Chat:** API, Models, Transcription, System, Updates, UI, Chats, Advanced, Usage
+- **Write:** API, Models, Transcription, Updates, UI, Chats, Advanced, Lorebook, Usage
 
 | Page | What it does |
 | --- | --- |
@@ -132,7 +136,8 @@ Click the model name to open settings. Each mode shows eight pages:
 | **Models** | Search, pick, and set a default model |
 | **Transcription** | OpenRouter model used for voice input |
 | **System** | Instruction sent before every Chat message (Write uses a per-story system prompt instead) |
-| **UI** | Navigation bar and smooth text streaming |
+| **Updates** | Turn the check for new releases on or off. When a newer version is out, a dot appears next to the version number in the sidebar. Nothing is installed automatically |
+| **UI** | Navigation bar and smooth text |
 | **Chats** | Export or import chats as files |
 | **Advanced** | Reasoning effort, temperature, max response length. Some Claude models pick their own temperature, shown as **Auto** |
 | **Lorebook** | Model used for a story's lorebook work (Write only) |
@@ -144,7 +149,7 @@ Click the model name to open settings. Each mode shows eight pages:
 
 | Problem | Fix |
 | --- | --- |
-| **"Port 8000 is already in use"** | Another program, often another RouterChat, is using it. Close it and start again. |
+| **"Port 8000 is used by another program"** | Another program, often another RouterChat, is using it. Close it and start again. |
 | **Models won't load** | The key for the selected provider is missing or invalid. Check which provider is selected on the API page and re-save its key. |
 | **Web search or the microphone is missing** | Web search only works with OpenRouter. Voice input needs a saved OpenRouter key, even if you chat with Anthropic. |
 | **Your chats vanished** | Packaged installs store them in `user-data/routerchat.sqlite3`, developer installs in `data/routerchat.sqlite3`. Don't delete or share that file. |

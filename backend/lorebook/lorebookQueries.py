@@ -135,3 +135,33 @@ def insertUpdateRun(conn: sqlite3.Connection, values: tuple[Any, ...]) -> None:
         """,
         values,
     )
+
+
+def getChapterSnapshot(conn: sqlite3.Connection, chapterId: str) -> sqlite3.Row | None:
+    return conn.execute(
+        "SELECT * FROM lorebook_chapter_snapshots WHERE chapter_id = ?",
+        (chapterId,),
+    ).fetchone()
+
+
+def saveChapterSnapshot(
+    conn: sqlite3.Connection,
+    storyId: str,
+    chapterId: str,
+    content: str,
+    chapterRevision: int,
+    now: str,
+) -> None:
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO lorebook_chapter_snapshots (
+          chapter_id, story_id, content, chapter_revision, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (chapterId, storyId, content, chapterRevision, now),
+    )
+
+
+def deleteStorySnapshots(conn: sqlite3.Connection, storyId: str) -> None:
+    conn.execute("DELETE FROM lorebook_chapter_snapshots WHERE story_id = ?", (storyId,))

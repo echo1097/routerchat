@@ -16,6 +16,7 @@ class LorebookEntryRequest(BaseModel):
 
 class LorebookUpdateRequest(BaseModel):
     chapter_id: str = Field(min_length=1)
+    force: bool = False
 
 
 class TimelineRepairRequest(BaseModel):

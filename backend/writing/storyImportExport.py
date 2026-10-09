@@ -175,6 +175,7 @@ def importStory(payload: StoryImportRequest) -> dict[str, Any]:
                 0,
                 int(story.lorebook_auto),
                 story.lorebook_model,
+                int(story.lorebook_retry),
                 story.created_at or now,
                 now,
             ),

@@ -10,6 +10,7 @@ export const newSettings = {
   web_search_enabled: false,
   nitro_mode: false,
   lorebook_auto: false,
+  lorebook_retry: true,
   lorebook_model: "",
 };
 

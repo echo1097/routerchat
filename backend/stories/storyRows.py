@@ -78,6 +78,7 @@ def rowToStory(row: sqlite3.Row) -> dict[str, Any]:
         "temporary": bool(row["temporary"]),
         "lorebook_auto": bool(row["lorebook_auto"]),
         "lorebook_model": row["lorebook_model"] or "",
+        "lorebook_retry": bool(row["lorebook_retry"]),
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }

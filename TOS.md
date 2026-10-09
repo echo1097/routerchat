@@ -73,7 +73,7 @@ The Apache License 2.0 grants no trademark rights. If you modify RouterChat or d
 * Give it its own name and branding, and do not suggest it is official or endorsed by the author.
 * Do not identify it to providers as RouterChat. Change the application name and referrer headers it sends.
 
-Keeping the attribution notices the Apache License 2.0 requires is fine.
+You must still keep the attribution notices the Apache License 2.0 requires.
 
 ## 8. Affiliation
 

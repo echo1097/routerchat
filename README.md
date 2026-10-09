@@ -11,10 +11,9 @@ Bring your own key. Available for macOS and Windows.
 <p>
   <a href="#install-routerchat">Install</a> ·
   <a href="#features">Features</a> ·
-  <a href="#media">Media</a> ·
   <a href="docs/setup.md">Setup</a> ·
   <a href="docs/privacy.md">Privacy</a> ·
-  <a href="https://github.com/echo1097/routerchat/releases">Releases</a> ·
+  <a href="TOS.md">Terms</a> ·
   <a href="SUPPORT.md">Support</a> ·
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>

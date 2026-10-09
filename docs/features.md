@@ -14,6 +14,7 @@
     - Context meter warns at 50, 75, and 90% full
     - Guided tours for Chat and Write modes
     - In-app changelog
+    - Update check that shows a dot next to the version number when a new release is out, and can be turned off
     - Feedback button
 - Writing Mode improvements
     - Brainstorming canvas with branching ideas, copy buttons, and prompt regeneration

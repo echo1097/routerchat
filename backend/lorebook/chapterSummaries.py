@@ -1,6 +1,7 @@
 import sqlite3
 from typing import Any
 
+from backend.lorebook.editOperations import skippedLorebookUpdate
 from backend.lorebook.lorebookRows import jsonDict, normalizeLorebookCategory
 from backend.lorebook.timeline import normalizeTimelineDescription
 
@@ -83,127 +84,177 @@ def findEnabledChapterSummary(
     return legacy[0] if len(legacy) == 1 else None
 
 
+def decisionCategory(update: dict[str, Any], rows_by_id: dict[str, sqlite3.Row]) -> str:
+    if str(update.get("action") or "").lower() == "create":
+        return normalizeLorebookCategory(update.get("category"))
+    row = rows_by_id.get(str(update.get("entryId") or ""))
+    return normalizeLorebookCategory(row["category"]) if row else ""
+
+
+def dropIdentityOperations(
+    update: dict[str, Any],
+    update_index: int,
+    skipped: list[dict[str, Any]],
+    reason: str,
+) -> dict[str, Any] | None:
+    operations = update.get("operations")
+    if not isinstance(operations, list):
+        return update
+    kept = []
+    for operationIndex, operation in enumerate(operations):
+        if isinstance(operation, dict) and operation.get("operation") == "setField":
+            skipped.append(skippedLorebookUpdate(
+                update_index, "lorebook_edit_invalid_operation", reason, update, operationIndex
+            ))
+            continue
+        kept.append(operation)
+    if not kept:
+        skipped.append(skippedLorebookUpdate(
+            update_index,
+            "lorebook_edit_invalid_operations",
+            "every operation on this entry was dropped",
+            update,
+        ))
+        return None
+    return {**update, "operations": kept}
+
+
 def normalizeRequiredSummaryUpdate(
     updates: list[Any],
     chapter: sqlite3.Row,
     lorebook_rows: list[sqlite3.Row] | None = None,
-) -> list[dict[str, Any]]:
-    validUpdates = [update for update in updates if isinstance(update, dict)]
-    targeted = any(
-        str(update.get("action") or "").lower() in {"edit", "exclude", "keep"}
-        for update in validUpdates
-    )
-    if targeted:
-        rowsById = {str(row["id"]): row for row in (lorebook_rows or [])}
+    require_decisions: bool = True,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    rowsById = {str(row["id"]): row for row in (lorebook_rows or [])}
+    chapterId = str(chapter["id"])
+    chapterTitle = str(chapter["title"] or "New chapter").strip() or "New chapter"
+    skipped: list[dict[str, Any]] = []
+    normalized: list[dict[str, Any]] = []
+    summarySeen = False
+    timelineSeen = False
 
-        def updateCategory(update: dict[str, Any]) -> str:
-            if str(update.get("action") or "").lower() == "create":
-                return normalizeLorebookCategory(update.get("category"))
-            row = rowsById.get(str(update.get("entryId") or ""))
-            return normalizeLorebookCategory(row["category"]) if row else ""
+    for updateIndex, update in enumerate(updates):
+        if not isinstance(update, dict):
+            normalized.append(update)
+            continue
+        category = decisionCategory(update, rowsById)
+        action = str(update.get("action") or "").lower()
 
-        summaries = [update for update in validUpdates if updateCategory(update) == "synopsis"]
-        if len(summaries) != 1:
-            raise ValueError("The lorebook update must contain exactly one chapter summary decision.")
-        summary = summaries[0]
-        summaryAction = str(summary.get("action") or "").lower()
-        if summaryAction == "exclude":
-            raise ValueError("The active chapter summary cannot be excluded.")
-        if summaryAction == "create":
-            description = str(summary.get("description") or "").strip()
-            if not description:
-                raise ValueError("The lorebook update returned an invalid chapter summary.")
-            summary = {
-                **summary,
-                "name": str(chapter["title"] or "New chapter").strip() or "New chapter",
-                "category": "synopsis",
-                "aliases": [],
-                "tags": [],
-                "metadata": {"chapter_id": str(chapter["id"])},
-            }
-        else:
-            summaryRow = rowsById.get(str(summary.get("entryId") or ""))
-            if not summaryRow:
-                raise ValueError("The chapter summary target was not found.")
-            linkedChapterId = lorebookSummaryChapterId(summaryRow)
+        if category == "synopsis":
+            if summarySeen:
+                skipped.append(skippedLorebookUpdate(
+                    updateIndex,
+                    "lorebook_summary_duplicate",
+                    "only one chapter summary decision is allowed per run",
+                    update,
+                ))
+                continue
+            if action == "exclude":
+                summarySeen = True
+                skipped.append(skippedLorebookUpdate(
+                    updateIndex,
+                    "lorebook_summary_required",
+                    "the active chapter summary cannot be excluded",
+                    update,
+                ))
+                continue
+            if action == "create":
+                summarySeen = True
+                if not str(update.get("description") or "").strip():
+                    skipped.append(skippedLorebookUpdate(
+                        updateIndex,
+                        "lorebook_create_invalid",
+                        "the chapter summary needs a description",
+                        update,
+                    ))
+                    continue
+                normalized.append({
+                    **update,
+                    "name": chapterTitle,
+                    "category": "synopsis",
+                    "aliases": [],
+                    "tags": [],
+                    "metadata": {"chapter_id": chapterId},
+                })
+                continue
+            summaryRow = rowsById.get(str(update.get("entryId") or ""))
+            linkedChapterId = lorebookSummaryChapterId(summaryRow) if summaryRow else ""
             legacyTitleMatch = (
-                not linkedChapterId
-                and str(summaryRow["name"] or "").casefold()
-                == str(chapter["title"] or "").casefold()
+                summaryRow is not None
+                and not linkedChapterId
+                and str(summaryRow["name"] or "").casefold() == str(chapter["title"] or "").casefold()
             )
-            if linkedChapterId != str(chapter["id"]) and not legacyTitleMatch:
-                raise ValueError("The lorebook update targeted the wrong chapter summary.")
-            for operation in summary.get("operations") or []:
-                if isinstance(operation, dict) and operation.get("operation") == "setField":
-                    raise ValueError("Chapter summary identity cannot be changed by lorebook edits.")
-            summary = {
-                **summary,
-                "_summaryChapterId": str(chapter["id"]),
-                "_summaryName": str(chapter["title"] or "New chapter").strip() or "New chapter",
-            }
-
-        timelines = [update for update in validUpdates if updateCategory(update) == "timeline"]
-        if len(timelines) != 1:
-            raise ValueError("The lorebook update must contain exactly one Timeline decision.")
-        timeline = timelines[0]
-        timelineAction = str(timeline.get("action") or "").lower()
-        if timelineAction == "exclude":
-            raise ValueError("Timeline cannot be excluded.")
-        if timelineAction == "create":
-            timeline = {
-                **timeline,
-                "name": "Timeline",
-                "category": "timeline",
-                "description": normalizeTimelineDescription(
-                    str(timeline.get("description") or "")
-                ),
-                "aliases": ["Timeline"],
-                "tags": [],
-                "metadata": {},
-            }
-            if not timeline["description"]:
-                raise ValueError("The lorebook update returned an invalid Timeline.")
-        else:
-            for operation in timeline.get("operations") or []:
-                if (
-                    isinstance(operation, dict)
-                    and operation.get("operation") == "setField"
-                    and operation.get("field") in {"name", "category"}
-                ):
-                    raise ValueError("Timeline identity cannot be changed by lorebook edits.")
-
-        normalized: list[dict[str, Any]] = []
-        for update in validUpdates:
-            if update is summaries[0]:
-                normalized.append(summary)
-            elif update is timelines[0]:
-                normalized.append(timeline)
-            else:
+            if linkedChapterId != chapterId and not legacyTitleMatch:
                 normalized.append(update)
-        return normalized
+                continue
+            summarySeen = True
+            if action == "edit":
+                update = dropIdentityOperations(
+                    update, updateIndex, skipped, "chapter summary identity cannot be changed"
+                )
+                if update is None:
+                    continue
+            normalized.append({
+                **update,
+                "_summaryChapterId": chapterId,
+                "_summaryName": chapterTitle,
+            })
+            continue
 
-    summaries = [
-        update
-        for update in validUpdates
-        if normalizeLorebookCategory(update.get("category")) == "synopsis"
-    ]
-    if len(summaries) != 1:
-        raise ValueError("The lorebook update must contain exactly one chapter summary.")
+        if category == "timeline":
+            if timelineSeen:
+                skipped.append(skippedLorebookUpdate(
+                    updateIndex,
+                    "lorebook_timeline_duplicate",
+                    "only one Timeline decision is allowed per run",
+                    update,
+                ))
+                continue
+            timelineSeen = True
+            if action == "exclude":
+                skipped.append(skippedLorebookUpdate(
+                    updateIndex,
+                    "lorebook_timeline_required",
+                    "Timeline cannot be excluded",
+                    update,
+                ))
+                continue
+            if action == "create":
+                description = normalizeTimelineDescription(str(update.get("description") or ""))
+                if not description:
+                    skipped.append(skippedLorebookUpdate(
+                        updateIndex,
+                        "lorebook_create_invalid",
+                        "the Timeline needs a description",
+                        update,
+                    ))
+                    continue
+                normalized.append({
+                    **update,
+                    "name": "Timeline",
+                    "category": "timeline",
+                    "description": description,
+                    "aliases": ["Timeline"],
+                    "tags": [],
+                    "metadata": {},
+                })
+                continue
+            if action == "edit":
+                update = dropIdentityOperations(
+                    update, updateIndex, skipped, "Timeline identity cannot be changed"
+                )
+                if update is None:
+                    continue
+            normalized.append(update)
+            continue
 
-    summary = summaries[0]
-    description = str(summary.get("description") or "").strip()
-    if not description or str(summary.get("action") or "create").lower() == "delete":
-        raise ValueError("The lorebook update returned an invalid chapter summary.")
+        normalized.append(update)
 
-    normalizedSummary = {
-        **summary,
-        "action": "update",
-        "name": str(chapter["title"] or "New chapter").strip() or "New chapter",
-        "category": "synopsis",
-        "description": description,
-        "aliases": [],
-        "tags": [],
-        "metadata": {"chapter_id": str(chapter["id"])},
-    }
-    ordinaryUpdates = [update for update in validUpdates if update is not summary]
-    return [*ordinaryUpdates, normalizedSummary]
+    if require_decisions and not summarySeen:
+        skipped.append({
+            "index": -1,
+            "code": "lorebook_summary_missing",
+            "message": "the run returned no decision for the active chapter summary",
+            "entryId": "",
+        })
+    return normalized, skipped

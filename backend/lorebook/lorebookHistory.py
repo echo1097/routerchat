@@ -7,6 +7,8 @@ def lorebookUpdateKind(update: dict[str, Any]) -> str:
     action = str(update.get("action") or "").lower()
     if action == "delete":
         return "lore_hide"
+    if action == "include":
+        return "lore_include"
     return "lore_create" if action == "create" else "lore_update"
 
 
@@ -16,6 +18,8 @@ def lorebookHistoryLabel(model_label: str, update: dict[str, Any]) -> str:
     #nothing is deleted here, disabled just drops it from context, and the wording matches the include/exclude toggle that undoes it
     if action == "delete":
         return f"{model_label} excluded {name} from context"
+    if action == "include":
+        return f"{model_label} included {name} in context"
     if name.casefold() == "timeline":
         return f"{model_label} updated Timeline"
 
@@ -30,6 +34,7 @@ def lorebookRunHistoryActions(
     duration_ms: float,
     cost: float | None = None,
     skipped: list[dict[str, Any]] | None = None,
+    retry_error: str | None = None,
 ) -> list[dict[str, Any]]:
     #a quiet run is still a run, so both endings get a line instead of pretending nothing happened
     actions = [
@@ -62,11 +67,18 @@ def lorebookRunHistoryActions(
             "words_added": totalAdded,
             "words_removed": totalRemoved,
             "cost": cost,
-            "detail": (
-                f"{len(skipped)} targeted lorebook {'edit was' if len(skipped) == 1 else 'edits were'} skipped."
-                if skipped
-                else ""
-            ),
+            "detail": lorebookSummaryDetail(skipped, retry_error),
         }
     )
     return actions
+
+
+def lorebookSummaryDetail(skipped: list[dict[str, Any]] | None, retry_error: str | None) -> str:
+    parts = []
+    if skipped:
+        parts.append(
+            f"{len(skipped)} targeted lorebook {'edit was' if len(skipped) == 1 else 'edits were'} skipped."
+        )
+    if retry_error:
+        parts.append(f"Retry failed: {retry_error}")
+    return " ".join(parts)

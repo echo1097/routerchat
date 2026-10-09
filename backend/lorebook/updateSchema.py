@@ -13,6 +13,9 @@ LOREBOOK_UPDATE_SYSTEM_PROMPT = (
     "only for a genuinely new entry. Use exclude only when prose actively contradicts or retires "
     "an entry; absence from this chapter is not a reason to exclude it. Use keep when the required "
     "chapter summary or Timeline needs no change. "
+    "Entries marked hidden are excluded from the story context. Never create an entry that "
+    "duplicates a hidden one. Use action include only when the prose clearly brings a hidden entry "
+    "back into the story; otherwise return no decision for hidden entries. "
     "Aliases are only nicknames, shortened names, titles used as names, or alternate names used in "
     "the story. Never use aliases for jobs, roles, species, traits, relationships, or categories. "
     "Character age, appearance, personality, and background belong in description. Notes and "
@@ -119,7 +122,7 @@ def lorebookUpdateResponseFormat() -> dict[str, Any]:
         "type": "object",
         "additionalProperties": False,
         "properties": {
-            "action": {"type": "string", "enum": ["exclude", "keep"]},
+            "action": {"type": "string", "enum": ["exclude", "keep", "include"]},
             "entryId": {"type": "string", "minLength": 1},
             "entryRevision": {"type": "integer", "minimum": 0},
         },

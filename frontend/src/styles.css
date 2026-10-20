@@ -2947,3 +2947,63 @@ typography exactly or the swap at the end of a generation shows a seam */
     transition: none;
   }
 }
+
+.chat-code .hljs-comment,
+.chat-code .hljs-quote {
+  color: #737373;
+  font-style: italic;
+}
+
+.chat-code .hljs-keyword,
+.chat-code .hljs-selector-tag,
+.chat-code .hljs-meta .hljs-keyword,
+.chat-code .hljs-doctag {
+  color: #e9a3b4;
+}
+
+.chat-code .hljs-string,
+.chat-code .hljs-regexp,
+.chat-code .hljs-addition,
+.chat-code .hljs-template-tag {
+  color: #a8d8b0;
+}
+
+.chat-code .hljs-number,
+.chat-code .hljs-literal,
+.chat-code .hljs-symbol,
+.chat-code .hljs-bullet {
+  color: #eecf96;
+}
+
+.chat-code .hljs-title,
+.chat-code .hljs-title.function_,
+.chat-code .hljs-section {
+  color: #9fc4ec;
+}
+
+.chat-code .hljs-built_in,
+.chat-code .hljs-type,
+.chat-code .hljs-title.class_ {
+  color: #e6b88f;
+}
+
+.chat-code .hljs-attr,
+.chat-code .hljs-attribute,
+.chat-code .hljs-property,
+.chat-code .hljs-variable,
+.chat-code .hljs-template-variable,
+.chat-code .hljs-params {
+  color: #c9c3e6;
+}
+
+.chat-code .hljs-meta,
+.chat-code .hljs-name,
+.chat-code .hljs-tag,
+.chat-code .hljs-selector-class,
+.chat-code .hljs-selector-id {
+  color: #a3a3a3;
+}
+
+.chat-code .hljs-deletion {
+  color: #fca5a5;
+}

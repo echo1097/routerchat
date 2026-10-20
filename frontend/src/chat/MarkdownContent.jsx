@@ -1,4 +1,5 @@
 import remarkGfm from "remark-gfm";
+import rehypeHighlight from "rehype-highlight";
 import { remarkCitationPills, isCitationLink } from "../websearch/citations.js";
 import { memo } from "react";
 import { streamWordsPlugin } from "../streamingText.js";
@@ -19,7 +20,7 @@ function markdownLinkText(children) {
 
 export const MarkdownContent = memo(function MarkdownContent({ children, streaming, settledRef }) {
 
-  const rehypePlugins = streaming ? [streamWordsPlugin(settledRef)] : undefined;
+  const rehypePlugins = streaming ? [rehypeHighlight, streamWordsPlugin(settledRef)] : [rehypeHighlight];
 
   return (
     <ReactMarkdown

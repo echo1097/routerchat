@@ -3,20 +3,24 @@ import { Check, Copy } from "lucide-react";
 import { useCopyAction } from "../brainstorm/brainstormShared.jsx";
 import { CONTROL_MOTION, cx } from "../uiShared.js";
 
+function codeLanguage(node) {
+  const classNames = node?.children?.[0]?.properties?.className || [];
+  const languageClass = classNames.find((name) => String(name).startsWith("language-"));
+
+  return languageClass ? String(languageClass).slice("language-".length) : "";
+}
+
 export function CodeBlock({ node, ...props }) {
   const preRef = useRef(null);
   const [copied, copyCode] = useCopyAction(() => preRef.current?.textContent || "");
 
+  const language = codeLanguage(node);
   const label = copied ? "Copied" : "Copy code";
 
   return (
-    <div className="relative my-4">
-      <pre
-        ref={preRef}
-        className="overflow-x-auto rounded-2xl bg-white/[0.045] p-4 pr-12 text-sm leading-6"
-        {...props}
-      />
-      <div className="absolute right-0 top-0 rounded-bl-xl rounded-tr-2xl bg-[#131313] p-2">
+    <div className="chat-code my-4 overflow-hidden rounded-2xl bg-white/[0.045]">
+      <div className="flex items-center justify-between py-1.5 pl-4 pr-2 text-xs text-neutral-500">
+        <span>{language}</span>
         <button
           type="button"
           aria-label={label}
@@ -30,6 +34,8 @@ export function CodeBlock({ node, ...props }) {
           {copied ? <Check size={14} /> : <Copy size={14} />}
         </button>
       </div>
+
+      <pre ref={preRef} className="overflow-x-auto px-4 pb-4 text-sm leading-6" {...props} />
     </div>
   );
 }

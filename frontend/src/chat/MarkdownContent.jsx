@@ -64,7 +64,7 @@ export const MarkdownContent = memo(function MarkdownContent({ children, streami
             <code {...props} />
           ),
         pre: ({ node, ...props }) => (
-          <pre className="my-4 overflow-x-auto rounded-2xl bg-black/35 p-4 text-sm leading-6 shadow-[var(--shadow-border)]" {...props} />
+          <pre className="my-4 overflow-x-auto rounded-2xl bg-white/[0.045] p-4 text-sm leading-6" {...props} />
         ),
         ul: ({ node, ...props }) => (
           <ul className="my-4 list-disc space-y-1 pl-5 text-pretty" {...props} />

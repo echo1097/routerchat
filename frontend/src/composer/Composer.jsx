@@ -96,6 +96,8 @@ export function Composer({
   onToggleWebSearch = null,
   roleplayTools = false,
   onOpenCharacters = null,
+  onOpenScene = null,
+  sceneSet = false,
   characterCount = 0,
   provider = DEFAULT_PROVIDER,
 }) {
@@ -315,6 +317,12 @@ export function Composer({
                         detail={characterCount === 1 ? "1 character" : `${characterCount} characters`}
                         active={characterCount > 0}
                         onClick={() => { onOpenCharacters(); setContextMenuOpen(false); }}
+                      />
+                      <ComposerMenuButton
+                        label="Scene"
+                        detail={sceneSet ? "Scenario set" : "No scenario"}
+                        active={sceneSet}
+                        onClick={() => { onOpenScene(); setContextMenuOpen(false); }}
                       />
                       <ComposerMenuButton
                         label="System Prompt"

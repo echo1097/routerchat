@@ -20,6 +20,7 @@ import { createConversationApi } from "./conversations/conversationApi.js";
 import { conversationLabels } from "./conversations/conversationLabels.js";
 import * as characterApi from "./roleplay/characterApi.js";
 import CharacterBook from "./roleplay/CharacterBook.jsx";
+import { SceneModal } from "./roleplay/SceneModal.jsx";
 import { useTour } from "./tour/useTour.js";
 import { WRITE_TOUR_STEPS } from "./tour/tourSteps.js";
 import { useNotifications } from "./notifications/useNotifications.js";
@@ -135,6 +136,8 @@ function App() {
   const [roleplaySystemPrompt, setRoleplaySystemPrompt] = useState("");
   const [roleplayCharacters, setRoleplayCharacters] = useState([]);
   const [roleplayView, setRoleplayView] = useState("thread");
+  const [sceneOpen, setSceneOpen] = useState(false);
+  const [roleplayScene, setRoleplayScene] = useState({ scenario: "", author_note: "" });
   const [defaultModel, setDefaultModel] = useState(DEFAULT_MODEL);
   const [generateChatName, setGenerateChatName] = useState(
     Boolean(localAppSettings.generate_chat_name),
@@ -986,6 +989,7 @@ function App() {
 
     if (!isRoleplayMode || !activeChatId) {
       setRoleplayCharacters([]);
+      setRoleplayScene({ scenario: "", author_note: "" });
       return undefined;
     }
 
@@ -2635,11 +2639,48 @@ function App() {
     return list;
   }
 
+  async function loadRoleplayScene(roleplayId = activeChatId) {
+    if (!roleplayId) {
+      setRoleplayScene({ scenario: "", author_note: "" });
+      return;
+    }
+
+    const { conversation } = await conversations.getConversation(roleplayId);
+    setRoleplayScene({
+      scenario: conversation?.scenario || "",
+      author_note: conversation?.author_note || "",
+    });
+  }
+
+  async function openRoleplayScene() {
+    try {
+      const tempMode = temporaryChat && (!activeChatId || activeChatId === tempChatId);
+      const roleplayId = tempMode ? await ensureTemporaryChat() : await ensureChat();
+      await loadRoleplayScene(roleplayId);
+      setSceneOpen(true);
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function saveRoleplayScene(scene) {
+    await conversations.patchConversation(activeChatId, scene);
+    setRoleplayScene(scene);
+    showToast("Scene saved");
+  }
+
+  async function importCardScenario(scenario) {
+    if (!activeChatId || roleplayScene.scenario.trim()) return;
+    await conversations.patchConversation(activeChatId, { scenario });
+    setRoleplayScene((current) => ({ ...current, scenario }));
+  }
+
   async function openRoleplayCharacters() {
     try {
       const tempMode = temporaryChat && (!activeChatId || activeChatId === tempChatId);
       const roleplayId = tempMode ? await ensureTemporaryChat() : await ensureChat();
       await refreshRoleplayCharacters(roleplayId);
+      await loadRoleplayScene(roleplayId);
       setRoleplayView("characters");
     } catch (error) {
       setStatus(error.message);
@@ -3670,6 +3711,7 @@ function App() {
             onUpdate={updateRoleplayCharacter}
             onDelete={deleteRoleplayCharacter}
             onConfirmDelete={confirmDeleteRoleplayCharacter}
+            onImportScenario={importCardScenario}
           />
         ) : !isWritingMode ? (
           <>
@@ -3735,6 +3777,8 @@ function App() {
               onToggleWebSearch={isRoleplayMode ? null : toggleWebSearch}
               roleplayTools={isRoleplayMode}
               onOpenCharacters={openRoleplayCharacters}
+              onOpenScene={openRoleplayScene}
+              sceneSet={Boolean(roleplayScene.scenario.trim())}
               characterCount={roleplayCharacters.length}
               systemPrompt={isRoleplayMode ? roleplaySystemPrompt : ""}
               onSaveSystemPrompt={isRoleplayMode ? saveGlobalSystemPrompt : null}
@@ -3782,11 +3826,21 @@ function App() {
             onToggleWebSearch={isRoleplayMode ? null : toggleWebSearch}
             roleplayTools={isRoleplayMode}
             onOpenCharacters={openRoleplayCharacters}
+            onOpenScene={openRoleplayScene}
+            sceneSet={Boolean(roleplayScene.scenario.trim())}
             characterCount={roleplayCharacters.length}
             provider={currentProvider}
           />
         ))}
       </main>
+
+      <SceneModal
+        open={sceneOpen}
+        scenario={roleplayScene.scenario}
+        authorNote={roleplayScene.author_note}
+        onSave={saveRoleplayScene}
+        onClose={() => setSceneOpen(false)}
+      />
 
       <SettingsDrawer
         open={settingsOpen}

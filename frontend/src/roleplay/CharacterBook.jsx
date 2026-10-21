@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Eye, EyeOff, Plus, Search } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Plus, Search, Upload } from "lucide-react";
 import { cx, CONTROL_MOTION } from "../uiShared.js";
 import { fitTextarea, useSlidingTabs, useWideLayout } from "../lorebook/lorebookLayout.js";
 import { CHARACTER_COLORS, characterColor } from "./characterChain.js";
+import { readCharacterCard } from "./characterCard.js";
 import "../lorebook/StoryLorebook.css";
 import "./CharacterBook.css";
 
@@ -36,6 +37,18 @@ const FIELDS = [
     placeholder: "How they talk. Clipped? Formal? All lowercase? Never finishes a sentence?",
     rows: 2,
   },
+  {
+    key: "greeting",
+    label: "Opening line",
+    placeholder: "What they say when the scene starts. Leave this empty to start cold.",
+    rows: 3,
+  },
+  {
+    key: "example_dialogue",
+    label: "Example dialogue",
+    placeholder: "A short exchange that shows how they sound. {{char}} and {{user}} both work here.",
+    rows: 4,
+  },
 ];
 
 const EMPTY_DRAFT = {
@@ -45,6 +58,8 @@ const EMPTY_DRAFT = {
   appearance: "",
   personality: "",
   speech_style: "",
+  greeting: "",
+  example_dialogue: "",
   color: "",
 };
 
@@ -56,6 +71,8 @@ function draftFromCharacter(character) {
     appearance: character.appearance || "",
     personality: character.personality || "",
     speech_style: character.speech_style || "",
+    greeting: character.greeting || "",
+    example_dialogue: character.example_dialogue || "",
     color: character.color || "",
   };
 }
@@ -286,6 +303,7 @@ export default function CharacterBook({
   onUpdate,
   onDelete,
   onConfirmDelete,
+  onImportScenario,
 }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [pageMode, setPageMode] = useState("closed");
@@ -296,6 +314,7 @@ export default function CharacterBook({
   const [togglingId, setTogglingId] = useState(null);
   const [error, setError] = useState("");
   const wideLayout = useWideLayout();
+  const cardInputRef = useRef(null);
 
   const editingCharacter = characters.find((character) => character.id === editingId) || null;
   const savedDraft = editingCharacter ? draftFromCharacter(editingCharacter) : EMPTY_DRAFT;
@@ -373,6 +392,38 @@ export default function CharacterBook({
     }
   }
 
+  async function importCards(fileList) {
+    const files = Array.from(fileList || []);
+    if (files.length === 0) return;
+
+    try {
+      setError("");
+      let imported = 0;
+
+      for (const file of files) {
+        const card = await readCharacterCard(file);
+        if (!card) {
+          setError(`${file.name} is not a character card.`);
+          continue;
+        }
+
+        const created = await onCreate(card.character);
+        imported += 1;
+
+        if (card.scenario && onImportScenario) await onImportScenario(card.scenario);
+        if (files.length === 1) {
+          setEditingId(created.id);
+          setDraft(draftFromCharacter({ ...card.character, ...created }));
+          setPageMode("entry");
+        }
+      }
+
+      if (imported === 0 && files.length > 0) return;
+    } catch (importError) {
+      setError(importError.message || "Could not read that character card.");
+    }
+  }
+
   async function toggleCharacterActive(character) {
     if (togglingId) return;
 
@@ -435,6 +486,26 @@ export default function CharacterBook({
                 <span>{castCount} in the cast</span>
               </p>
             )}
+            <input
+              ref={cardInputRef}
+              type="file"
+              accept=".json,.png"
+              multiple
+              className="hidden"
+              onChange={(event) => {
+                importCards(event.target.files);
+                event.target.value = "";
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => cardInputRef.current?.click()}
+              className={cx("lorebook-secondary-button", CONTROL_MOTION)}
+              title="Import a SillyTavern or TavernAI character card"
+            >
+              <Upload size={15} />
+              Import card
+            </button>
             <button
               type="button"
               onClick={openNewCharacter}

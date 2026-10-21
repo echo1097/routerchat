@@ -94,6 +94,9 @@ export function Composer({
   dragActive = false,
   webSearchEnabled = false,
   onToggleWebSearch = null,
+  roleplayTools = false,
+  onOpenCharacters = null,
+  characterCount = 0,
   provider = DEFAULT_PROVIDER,
 }) {
   const canThink = supportsThinking(models, settings.model) || forceShowThinking;
@@ -285,6 +288,44 @@ export function Composer({
                 </button>
               )}
               </div>
+              {roleplayTools && (
+                <div className="relative">
+                  <button
+                    type="button"
+                    aria-label="Roleplay tools"
+                    onClick={() => {
+                      setContextMenuOpen((open) => !open);
+                      setModelMenuOpen(false);
+                    }}
+                    aria-expanded={contextMenuOpen}
+                    aria-haspopup="menu"
+                    className={cx(
+                      "inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-full bg-transparent px-3 text-xs font-medium text-neutral-300 hover:bg-white/[0.08] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30 active:scale-[0.96]",
+                      PROMPT_BAR_CONTROL_MOTION,
+                    )}
+                  >
+                    <SlidersHorizontal size={16} className="composer-tools-icon" />
+                    <span className="composer-tools-label">Tools</span>
+                    <ChevronDown size={14} className={cx("writing-tools-chevron transition-transform duration-200", contextMenuOpen && "rotate-180")} />
+                  </button>
+                  {contextMenuOpen && (
+                    <div role="menu" className="absolute bottom-[calc(100%+8px)] -left-4 z-30 w-72 rounded-2xl bg-[#292929] p-1.5">
+                      <ComposerMenuButton
+                        label="Characters"
+                        detail={characterCount === 1 ? "1 character" : `${characterCount} characters`}
+                        active={characterCount > 0}
+                        onClick={() => { onOpenCharacters(); setContextMenuOpen(false); }}
+                      />
+                      <ComposerMenuButton
+                        label="System Prompt"
+                        detail={systemPrompt.trim() ? "Custom instructions" : "Default instructions"}
+                        active={Boolean(systemPrompt.trim())}
+                        onClick={() => { setSystemPromptOpen(true); setContextMenuOpen(false); }}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
               {writeGenerationMode && (
                 <div className="relative">
                   <button

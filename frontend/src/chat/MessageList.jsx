@@ -1,5 +1,5 @@
 import { cx, CONTROL_MOTION, FADE_MOTION } from "../uiShared.js";
-import { useState, useRef, useEffect, memo } from "react";
+import { useState, useRef, useEffect, useMemo, memo } from "react";
 import { formatInteger, formatCost, formatThoughtDuration } from "../textFormatting.js";
 import { ChevronDown, Copy, Pencil, Trash2, RefreshCw } from "lucide-react";
 import { StatusLabel } from "../components/StatusLabel.jsx";
@@ -10,6 +10,8 @@ import AttachmentChips from "../attachments/AttachmentChips.jsx";
 import { MarkdownContent } from "./MarkdownContent.jsx";
 import SourcePills from "../websearch/SourcePills.jsx";
 import { EmptyChatState } from "./EmptyChatState.jsx";
+import { CharacterChainMessage } from "../roleplay/CharacterChainMessage.jsx";
+import { castCharacters, characterColor, userCharacter } from "../roleplay/characterChain.js";
 
 function AssistantActionButton({ label, children, ...props }) {
   return (
@@ -213,8 +215,11 @@ const MessageItem = memo(function MessageItem({
   onRegenerate,
   onEditUserMessage,
   onDeleteUserMessage,
+  cast = [],
+  persona = null,
 }) {
   const isUser = message.role === "user";
+  const asChain = !isUser && cast.length > 0;
   const messageAttachments = message.attachments || [];
   const messageSources = uncitedSources(message.content, message.sources);
   const articleRef = useRef(null);
@@ -303,6 +308,19 @@ const MessageItem = memo(function MessageItem({
               : "max-w-[78%] items-end sm:max-w-[68%]",
           )}
         >
+          {!editing && persona && (message.content || "").trim() && (
+            <span
+              className="character-speaker self-end"
+              style={{ color: characterColor(persona, 0) }}
+            >
+              {persona.name}
+              <span
+                className="character-speaker-dot"
+                style={{ background: characterColor(persona, 0) }}
+                aria-hidden="true"
+              />
+            </span>
+          )}
           {!editing && messageAttachments.length > 0 && (
             <AttachmentChips attachments={messageAttachments} compact />
           )}
@@ -401,11 +419,13 @@ const MessageItem = memo(function MessageItem({
         searching={searching}
       />
       <div ref={bodyRef} className="max-w-3xl text-[15px] leading-7 text-neutral-100">
-        {message.content ? (
+        {!message.content ? null : asChain ? (
+          <CharacterChainMessage content={visibleContent} characters={cast} />
+        ) : (
           <MarkdownContent streaming={revealing} settledRef={settledRef}>
             {visibleContent}
           </MarkdownContent>
-        ) : null}
+        )}
       </div>
       {message.content && !streaming && !revealing && (
         <SourcePills sources={messageSources} className="mt-4 max-w-3xl" />
@@ -445,7 +465,11 @@ export function MessageList({
   onRegenerate,
   onEditUserMessage,
   onDeleteUserMessage,
+  characters = [],
 }) {
+  const cast = useMemo(() => castCharacters(characters), [characters]);
+  const persona = useMemo(() => userCharacter(characters), [characters]);
+
   return (
     <section
       ref={streamRef}
@@ -472,6 +496,8 @@ export function MessageList({
               onRegenerate={onRegenerate}
               onEditUserMessage={onEditUserMessage}
               onDeleteUserMessage={onDeleteUserMessage}
+              cast={cast}
+              persona={persona}
             />
           ))
         )}

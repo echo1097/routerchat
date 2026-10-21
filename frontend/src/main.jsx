@@ -18,6 +18,8 @@ import {
 } from "./routing.js";
 import { createConversationApi } from "./conversations/conversationApi.js";
 import { conversationLabels } from "./conversations/conversationLabels.js";
+import * as characterApi from "./roleplay/characterApi.js";
+import CharacterBook from "./roleplay/CharacterBook.jsx";
 import { useTour } from "./tour/useTour.js";
 import { WRITE_TOUR_STEPS } from "./tour/tourSteps.js";
 import { useNotifications } from "./notifications/useNotifications.js";
@@ -131,6 +133,8 @@ function App() {
   const [settings, setSettings] = useState(newSettings);
   const [chatSystemPrompt, setChatSystemPrompt] = useState("");
   const [roleplaySystemPrompt, setRoleplaySystemPrompt] = useState("");
+  const [roleplayCharacters, setRoleplayCharacters] = useState([]);
+  const [roleplayView, setRoleplayView] = useState("thread");
   const [defaultModel, setDefaultModel] = useState(DEFAULT_MODEL);
   const [generateChatName, setGenerateChatName] = useState(
     Boolean(localAppSettings.generate_chat_name),
@@ -976,6 +980,29 @@ function App() {
     setChats([]);
     setFolders([]);
   }, [conversationMode]);
+
+  useEffect(() => {
+    setRoleplayView("thread");
+
+    if (!isRoleplayMode || !activeChatId) {
+      setRoleplayCharacters([]);
+      return undefined;
+    }
+
+    let cancelled = false;
+    characterApi
+      .listCharacters(activeChatId)
+      .then((list) => {
+        if (!cancelled) setRoleplayCharacters(list);
+      })
+      .catch(() => {
+        if (!cancelled) setRoleplayCharacters([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isRoleplayMode, activeChatId]);
 
   useEffect(() => {
     loadKeyStatus();
@@ -1955,7 +1982,7 @@ function App() {
 
       startFollowing();
       setStreamingMessageId(assistantId);
-      setSearchingMessageId(settings.web_search_enabled ? assistantId : null);
+      setSearchingMessageId(!isRoleplayMode && settings.web_search_enabled ? assistantId : null);
       setReasoningDurations((current) => {
         const next = { ...current };
         delete next[assistantId];
@@ -1975,6 +2002,7 @@ function App() {
         signal: abortRef.current.signal,
         body: JSON.stringify({
           ...settings,
+          web_search_enabled: isRoleplayMode ? false : settings.web_search_enabled,
           [conversations.systemPromptKey]: globalSystemPrompt,
           message: text,
           regenerate_message_id: regenerateMessageId,
@@ -2598,6 +2626,56 @@ function App() {
     await storyApi.deleteLorebookEntry(activeStoryId, entryId);
     setLorebookEntries((currentEntries) => currentEntries.filter((entry) => entry.id !== entryId));
     showToast("Lorebook entry deleted");
+  }
+
+  async function refreshRoleplayCharacters(roleplayId = activeChatId) {
+    if (!roleplayId) return [];
+    const list = await characterApi.listCharacters(roleplayId);
+    setRoleplayCharacters(list);
+    return list;
+  }
+
+  async function openRoleplayCharacters() {
+    try {
+      const tempMode = temporaryChat && (!activeChatId || activeChatId === tempChatId);
+      const roleplayId = tempMode ? await ensureTemporaryChat() : await ensureChat();
+      await refreshRoleplayCharacters(roleplayId);
+      setRoleplayView("characters");
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function createRoleplayCharacter(body) {
+    const character = await characterApi.createCharacter(activeChatId, body);
+    await refreshRoleplayCharacters();
+    return character;
+  }
+
+  async function updateRoleplayCharacter(characterId, body) {
+    const character = await characterApi.updateCharacter(activeChatId, characterId, body);
+    await refreshRoleplayCharacters();
+    return character;
+  }
+
+  async function deleteRoleplayCharacter(characterId) {
+    await characterApi.deleteCharacter(activeChatId, characterId);
+    await refreshRoleplayCharacters();
+  }
+
+  function confirmDeleteRoleplayCharacter(character) {
+    return new Promise((resolve) => {
+      setConfirmDialog({
+        title: "Delete character?",
+        chatTitle: character.name,
+        body: "This cannot be undone.",
+        confirmLabel: "Delete",
+        onConfirm: async () => {
+          resolve(true);
+        },
+        onCancel: () => resolve(false),
+      });
+    });
   }
 
   function confirmDeleteLorebookEntry(entry) {
@@ -3400,8 +3478,10 @@ function App() {
   const visibleMessages = activeMessages;
   const visibleActiveChatId = activeConversationId;
   const showLandingComposer = isWritingMode ? isEmptyWriting : isEmptyChat;
+  const showingCharacterBook = isRoleplayMode && roleplayView === "characters";
   const showComposer =
-    !(isWritingMode && ["lorebook", "characters", "brainstorm"].includes(storyWorkspaceView) && !showLandingComposer);
+    !showingCharacterBook
+    && !(isWritingMode && ["lorebook", "characters", "brainstorm"].includes(storyWorkspaceView) && !showLandingComposer);
   const composerAcceptsFiles =
     showComposer && !(isWritingMode && showLandingComposer) && currentProviderHasKey;
   const filesDraggedOverApp = useFileDrop({
@@ -3581,6 +3661,16 @@ function App() {
             onRepairLorebook={repairLorebook}
             onGenerateLorebookEntry={generateLorebookEntry}
           />
+        ) : showingCharacterBook ? (
+          <CharacterBook
+            title={chats.find((item) => item.id === activeChatId)?.title || `New ${labels.one}`}
+            characters={roleplayCharacters}
+            onBack={() => setRoleplayView("thread")}
+            onCreate={createRoleplayCharacter}
+            onUpdate={updateRoleplayCharacter}
+            onDelete={deleteRoleplayCharacter}
+            onConfirmDelete={confirmDeleteRoleplayCharacter}
+          />
         ) : !isWritingMode ? (
           <>
             <MessageList
@@ -3600,6 +3690,7 @@ function App() {
               onRegenerate={regenerate}
               onEditUserMessage={editUserMessage}
               onDeleteUserMessage={deleteUserMessage}
+              characters={isRoleplayMode ? roleplayCharacters : []}
             />
 
             <PromptNavigationRail
@@ -3641,7 +3732,12 @@ function App() {
               onRemoveAttachment={promptAttachments.removeAttachment}
               dragActive={filesDraggedOverApp}
               webSearchEnabled={settings.web_search_enabled}
-              onToggleWebSearch={toggleWebSearch}
+              onToggleWebSearch={isRoleplayMode ? null : toggleWebSearch}
+              roleplayTools={isRoleplayMode}
+              onOpenCharacters={openRoleplayCharacters}
+              characterCount={roleplayCharacters.length}
+              systemPrompt={isRoleplayMode ? roleplaySystemPrompt : ""}
+              onSaveSystemPrompt={isRoleplayMode ? saveGlobalSystemPrompt : null}
               provider={currentProvider}
             />
           )
@@ -3673,8 +3769,8 @@ function App() {
             onUpdateLorebook={updateLorebookNow}
             onSetLorebookAuto={setLorebookAutoMode}
             lorebookUpdating={lorebookUpdating}
-            systemPrompt={isWritingMode ? settings.system_prompt : ""}
-            onSaveSystemPrompt={isWritingMode ? saveStorySystemPrompt : null}
+            systemPrompt={isWritingMode ? settings.system_prompt : isRoleplayMode ? roleplaySystemPrompt : ""}
+            onSaveSystemPrompt={isWritingMode ? saveStorySystemPrompt : isRoleplayMode ? saveGlobalSystemPrompt : null}
             forceShowThinking={Boolean(writeTour.currentStep?.forceThinkingVisible)}
             tourUi={writeTour.currentStep?.composerUi || null}
             attachments={promptAttachments.attachments}
@@ -3683,7 +3779,10 @@ function App() {
             onRemoveAttachment={promptAttachments.removeAttachment}
             dragActive={filesDraggedOverApp}
             webSearchEnabled={settings.web_search_enabled}
-            onToggleWebSearch={toggleWebSearch}
+            onToggleWebSearch={isRoleplayMode ? null : toggleWebSearch}
+            roleplayTools={isRoleplayMode}
+            onOpenCharacters={openRoleplayCharacters}
+            characterCount={roleplayCharacters.length}
             provider={currentProvider}
           />
         ))}

@@ -1,0 +1,77 @@
+.character-row-main {
+  gap: 4px;
+}
+
+.character-row-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.character-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: none;
+}
+
+.character-you-badge {
+  flex: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgb(163, 163, 163);
+}
+
+.character-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.character-swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+
+.character-swatch:hover {
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.character-swatch.is-selected {
+  border-color: rgba(255, 255, 255, 0.75);
+}
+
+.character-speaker {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.character-speaker-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  flex: none;
+}
+
+.character-bubble + .character-bubble {
+  padding-top: 14px;
+}
+
+.character-bubble + .character-bubble.is-continued {
+  padding-top: 4px;
+}

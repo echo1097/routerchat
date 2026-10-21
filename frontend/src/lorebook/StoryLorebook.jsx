@@ -11,7 +11,7 @@ import { useTextSwap } from "../textSwap.js";
 import RepairModal, { repairDurationParts } from "./RepairModal.jsx";
 import RepairLorebookButton from "./RepairLorebookButton.jsx";
 import GenerateEntryModal from "./GenerateEntryModal.jsx";
-import { useScrollFade } from "../components/useScrollFade.js";
+import { fitTextarea, useSlidingTabs, useWideLayout } from "./lorebookLayout.js";
 import "./StoryLorebook.css";
 
 const CATEGORY_OPTIONS = [
@@ -34,8 +34,6 @@ const DESCRIPTION_PROMPTS = {
   note: "What should the writer keep in mind?",
   synopsis: "What happens in this chapter, from start to finish?",
 };
-
-const WIDE_LAYOUT_QUERY = "(min-width: 900px)";
 
 const DRAFT_FIELDS = ["name", "category", "description", "aliasesText", "notes"];
 
@@ -137,99 +135,6 @@ function countTimelineEvents(text) {
   return String(text || "")
     .split("\n")
     .filter((line) => line.replace(/^[-*]\s*/, "").trim()).length;
-}
-
-function fitTextarea(textarea) {
-  const scroller = textarea.closest(".lorebook-entry-scroll");
-  const scrollTop = scroller?.scrollTop ?? 0;
-
-  textarea.style.height = "auto";
-  textarea.style.height = `${textarea.scrollHeight}px`;
-
-  if (scroller) scroller.scrollTop = scrollTop;
-}
-
-function useWideLayout() {
-  const [wide, setWide] = useState(() => window.matchMedia(WIDE_LAYOUT_QUERY).matches);
-
-  useEffect(() => {
-    const query = window.matchMedia(WIDE_LAYOUT_QUERY);
-
-    function handleChange(event) {
-      setWide(event.matches);
-    }
-
-    query.addEventListener("change", handleChange);
-    return () => query.removeEventListener("change", handleChange);
-  }, []);
-
-  return wide;
-}
-
-function useSlidingTabs(activeCategory, tabCount, active = true) {
-  const tabsRef = useRef(null);
-  const pillRef = useRef(null);
-  const measuredRef = useRef(false);
-
-  useScrollFade(tabsRef, activeCategory);
-
-  useEffect(() => {
-    const tabsBar = tabsRef.current;
-    const pill = pillRef.current;
-
-    if (!active) {
-      measuredRef.current = false;
-      return undefined;
-    }
-
-    if (!tabsBar || !pill) return undefined;
-
-    function movePill(animate) {
-      const activeTab = tabsBar.querySelector('[aria-selected="true"]');
-      if (!activeTab) return;
-
-      if (!animate) {
-        const previousTransition = pill.style.transition;
-        pill.style.transition = "none";
-        pill.style.transform = `translateX(${activeTab.offsetLeft}px)`;
-        pill.style.width = `${activeTab.offsetWidth}px`;
-        void pill.offsetWidth;
-        pill.style.transition = previousTransition;
-        return;
-      }
-
-      pill.style.transform = `translateX(${activeTab.offsetLeft}px)`;
-      pill.style.width = `${activeTab.offsetWidth}px`;
-    }
-
-    requestAnimationFrame(() => {
-      movePill(measuredRef.current);
-      measuredRef.current = true;
-    });
-
-    function handleWindowResize() {
-      movePill(false);
-    }
-
-    let observedOnce = false;
-    const observer = new ResizeObserver(() => {
-      if (!observedOnce) {
-        observedOnce = true;
-        return;
-      }
-
-      movePill(true);
-    });
-
-    observer.observe(tabsBar);
-    window.addEventListener("resize", handleWindowResize);
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", handleWindowResize);
-    };
-  }, [activeCategory, tabCount, active]);
-
-  return { tabsRef, pillRef };
 }
 
 export default function StoryLorebook({

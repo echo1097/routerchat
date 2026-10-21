@@ -12,6 +12,7 @@ import backend.tos.loadTos as loadTos
 import backend.tos.tosAcceptance as tosAcceptance
 from backend.core.database import getDb
 from backend.local_access import createSecretFile
+from backend.roleplay.buildRoleplayMessages import buildRoleplayMessages
 
 
 def acceptCurrentTos():
@@ -186,6 +187,163 @@ class RoleplayApiTest(unittest.TestCase):
 
         deleted = self.client.delete(f"/api/roleplays/{roleplay['id']}/messages/m1").json()
         self.assertEqual(deleted["messages"], [])
+
+    def createCharacter(self, roleplayId, **payload):
+        response = self.client.post(
+            f"/api/roleplays/{roleplayId}/characters",
+            json={"name": "Maya", **payload},
+        )
+        self.assertEqual(response.status_code, 200)
+        return response.json()["character"]
+
+    def test_characters_create_list_update_and_delete(self):
+        roleplay = self.createRoleplay()
+        character = self.createCharacter(
+            roleplay["id"],
+            name="Maya",
+            description="runs the late shift",
+            speech_style="all lowercase",
+        )
+        self.assertEqual(character["kind"], "cast")
+        self.assertFalse(character["disabled"])
+
+        listed = self.client.get(f"/api/roleplays/{roleplay['id']}/characters").json()
+        self.assertEqual([item["name"] for item in listed["characters"]], ["Maya"])
+
+        updated = self.client.patch(
+            f"/api/roleplays/{roleplay['id']}/characters/{character['id']}",
+            json={"name": "Maya", "personality": "dry", "disabled": True},
+        ).json()["character"]
+        self.assertEqual(updated["personality"], "dry")
+        self.assertTrue(updated["disabled"])
+
+        self.assertEqual(
+            self.client.delete(
+                f"/api/roleplays/{roleplay['id']}/characters/{character['id']}"
+            ).status_code,
+            200,
+        )
+        self.assertEqual(
+            self.client.get(f"/api/roleplays/{roleplay['id']}/characters").json()["characters"],
+            [],
+        )
+
+    def test_only_one_character_is_played_by_you(self):
+        roleplay = self.createRoleplay()
+        first = self.createCharacter(roleplay["id"], name="Alex", kind="user")
+        second = self.createCharacter(roleplay["id"], name="Sam", kind="user")
+
+        characters = self.client.get(
+            f"/api/roleplays/{roleplay['id']}/characters"
+        ).json()["characters"]
+        kinds = {item["name"]: item["kind"] for item in characters}
+        self.assertEqual(kinds, {"Alex": "cast", "Sam": "user"})
+
+        self.client.patch(
+            f"/api/roleplays/{roleplay['id']}/characters/{first['id']}",
+            json={"name": "Alex", "kind": "user"},
+        )
+        characters = self.client.get(
+            f"/api/roleplays/{roleplay['id']}/characters"
+        ).json()["characters"]
+        kinds = {item["name"]: item["kind"] for item in characters}
+        self.assertEqual(kinds, {"Alex": "user", "Sam": "cast"})
+        self.assertEqual(second["kind"], "user")
+
+    def test_characters_stay_inside_their_own_roleplay(self):
+        first = self.createRoleplay(title="First")
+        second = self.createRoleplay(title="Second")
+        character = self.createCharacter(first["id"], name="Maya")
+
+        self.assertEqual(
+            self.client.get(f"/api/roleplays/{second['id']}/characters").json()["characters"],
+            [],
+        )
+        self.assertEqual(
+            self.client.patch(
+                f"/api/roleplays/{second['id']}/characters/{character['id']}",
+                json={"name": "Maya"},
+            ).status_code,
+            404,
+        )
+        self.assertEqual(
+            self.client.delete(
+                f"/api/roleplays/{second['id']}/characters/{character['id']}"
+            ).status_code,
+            404,
+        )
+
+    def test_deleting_a_roleplay_removes_its_characters(self):
+        roleplay = self.createRoleplay()
+        self.createCharacter(roleplay["id"], name="Maya")
+
+        self.client.delete(f"/api/roleplays/{roleplay['id']}")
+
+        with getDb() as conn:
+            remaining = conn.execute(
+                "SELECT COUNT(*) AS total FROM roleplay_characters"
+            ).fetchone()["total"]
+        self.assertEqual(remaining, 0)
+
+    def test_characters_travel_with_an_export(self):
+        roleplay = self.createRoleplay(title="Night shift")
+        self.createCharacter(roleplay["id"], name="Maya", description="runs the late shift")
+        self.createCharacter(roleplay["id"], name="Alex", kind="user")
+
+        exported = self.client.get(f"/api/roleplays/{roleplay['id']}/export").json()
+        self.assertEqual(
+            [item["name"] for item in exported["characters"]], ["Maya", "Alex"]
+        )
+
+        imported = self.client.post("/api/roleplays/import", json=exported).json()
+        self.assertEqual(imported["imported_characters"], 2)
+
+        titles = {item["title"]: item["id"] for item in self.client.get("/api/roleplays").json()["roleplays"]}
+        copyId = next(
+            roleplayId for title, roleplayId in titles.items() if roleplayId != roleplay["id"]
+        )
+        copied = self.client.get(f"/api/roleplays/{copyId}/characters").json()["characters"]
+        self.assertEqual([item["name"] for item in copied], ["Maya", "Alex"])
+        self.assertEqual(
+            [item["kind"] for item in copied], ["cast", "user"]
+        )
+
+    def test_context_messages_carry_the_cast_and_your_name(self):
+        roleplay = self.createRoleplay()
+        self.createCharacter(roleplay["id"], name="Maya", description="runs the late shift")
+        self.createCharacter(roleplay["id"], name="Alex", kind="user")
+
+        with getDb() as conn:
+            conn.execute(
+                """
+                INSERT INTO roleplay_messages (id, roleplay_id, role, content, message_order, created_at)
+                VALUES (?, ?, 'user', 'hey', 0, '2026-01-01T00:00:00Z')
+                """,
+                ("m1", roleplay["id"]),
+            )
+
+        messages = buildRoleplayMessages(roleplay["id"], "stay in character")
+
+        self.assertEqual(messages[0]["role"], "system")
+        self.assertIn("stay in character", messages[0]["content"])
+        self.assertIn("Never write a message as Alex.", messages[0]["content"])
+        self.assertEqual(messages[1], {"role": "user", "content": "Alex: hey"})
+
+    def test_context_messages_stay_bare_without_a_cast(self):
+        roleplay = self.createRoleplay()
+
+        with getDb() as conn:
+            conn.execute(
+                """
+                INSERT INTO roleplay_messages (id, roleplay_id, role, content, message_order, created_at)
+                VALUES (?, ?, 'user', 'hey', 0, '2026-01-01T00:00:00Z')
+                """,
+                ("m1", roleplay["id"]),
+            )
+
+        messages = buildRoleplayMessages(roleplay["id"], "")
+
+        self.assertEqual(messages, [{"role": "user", "content": "hey"}])
 
     def test_roleplay_system_prompt_is_its_own_setting(self):
         self.client.patch(

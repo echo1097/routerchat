@@ -261,3 +261,15 @@ def ensureMessageUsageColumns(conn: sqlite3.Connection) -> None:
     for column, column_type in usage_columns.items():
         if column not in existing_columns:
             conn.execute(f"ALTER TABLE messages ADD COLUMN {column} {column_type}")
+
+
+def ensureAttachmentRoleplayColumn(conn: sqlite3.Connection) -> None:
+    existingColumns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(attachments)").fetchall()
+    }
+    if "roleplay_id" not in existingColumns:
+        conn.execute("ALTER TABLE attachments ADD COLUMN roleplay_id TEXT")
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS attachments_roleplay_idx ON attachments(roleplay_id)"
+    )

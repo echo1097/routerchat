@@ -5,6 +5,7 @@ import sqlite3
 from fastapi import HTTPException
 
 from backend.attachments.attachmentFiles import readAttachmentBytes, readableSize
+from backend.attachments.attachmentScope import CHAT_SCOPE, AttachmentScope
 from backend.attachments.pdfPages import countPdfPages
 from backend.providers.base import Provider
 
@@ -59,11 +60,14 @@ def earlierChatFilter(
     chatId: str,
     attachmentIds: list[str],
     throughMessageId: str | None,
+    scope: AttachmentScope = CHAT_SCOPE,
 ) -> tuple[str, list[str]]:
-    query = """
+    messages = scope.messagesTable
+    column = scope.conversationColumn
+    query = f"""
         FROM attachments
-        JOIN messages ON messages.id = attachments.message_id
-        WHERE attachments.chat_id = ? AND messages.error IS NULL
+        JOIN {messages} ON {messages}.id = attachments.message_id
+        WHERE attachments.{column} = ? AND {messages}.error IS NULL
     """
     values: list[str] = [chatId]
 
@@ -72,9 +76,9 @@ def earlierChatFilter(
         values.extend(attachmentIds)
 
     if throughMessageId:
-        query += """
-            AND messages.message_order <= (
-              SELECT message_order FROM messages WHERE id = ? AND chat_id = ?
+        query += f"""
+            AND {messages}.message_order <= (
+              SELECT message_order FROM {messages} WHERE id = ? AND {column} = ?
             )
         """
         values.extend([throughMessageId, chatId])
@@ -87,8 +91,9 @@ def earlierChatAttachmentBytes(
     chatId: str,
     attachmentIds: list[str],
     throughMessageId: str | None,
+    scope: AttachmentScope = CHAT_SCOPE,
 ) -> int:
-    query, values = earlierChatFilter(chatId, attachmentIds, throughMessageId)
+    query, values = earlierChatFilter(chatId, attachmentIds, throughMessageId, scope)
     row = conn.execute(
         f"SELECT COALESCE(SUM(attachments.size_bytes), 0) AS total {query}",
         tuple(values),
@@ -124,8 +129,9 @@ def earlierChatPdfPages(
     chatId: str,
     attachmentIds: list[str],
     throughMessageId: str | None,
+    scope: AttachmentScope = CHAT_SCOPE,
 ) -> int:
-    query, values = earlierChatFilter(chatId, attachmentIds, throughMessageId)
+    query, values = earlierChatFilter(chatId, attachmentIds, throughMessageId, scope)
     rows = conn.execute(
         f"""
         SELECT attachments.id, attachments.stored_path, attachments.page_count
@@ -142,6 +148,7 @@ def checkRequestSize(
     provider: Provider,
     chatId: str | None,
     throughMessageId: str | None,
+    scope: AttachmentScope = CHAT_SCOPE,
 ) -> None:
     maxRequestBytes = provider.capabilities.maxRequestAttachmentBytes
     if maxRequestBytes is None:
@@ -149,7 +156,9 @@ def checkRequestSize(
 
     earlierBytes = 0
     if chatId:
-        earlierBytes = earlierChatAttachmentBytes(conn, chatId, attachmentIds, throughMessageId)
+        earlierBytes = earlierChatAttachmentBytes(
+            conn, chatId, attachmentIds, throughMessageId, scope
+        )
 
     totalBytes = earlierBytes + newAttachmentBytes(conn, attachmentIds)
     if totalBytes <= maxRequestBytes:
@@ -160,9 +169,9 @@ def checkRequestSize(
     )
     if earlierBytes:
         detail = (
-            f"The files in this chat add up to {readableSize(totalBytes)}, and {limitNote}. "
-            "Earlier files are sent again with every message, "
-            "so remove a file or start a new chat."
+            f"The files in this {scope.conversationLabel} add up to {readableSize(totalBytes)}, "
+            f"and {limitNote}. Earlier files are sent again with every message, "
+            f"so remove a file or start a new {scope.conversationLabel}."
         )
     else:
         detail = (
@@ -180,6 +189,7 @@ def checkPdfPages(
     modelId: str | None,
     chatId: str | None,
     throughMessageId: str | None,
+    scope: AttachmentScope = CHAT_SCOPE,
 ) -> None:
     maxPages = provider.maxPdfPages(modelId) if modelId else None
     if maxPages is None:
@@ -187,7 +197,9 @@ def checkPdfPages(
 
     earlierPages = 0
     if chatId:
-        earlierPages = earlierChatPdfPages(conn, chatId, attachmentIds, throughMessageId)
+        earlierPages = earlierChatPdfPages(
+            conn, chatId, attachmentIds, throughMessageId, scope
+        )
 
     totalPages = earlierPages + newPdfPages(conn, attachmentIds)
     if totalPages <= maxPages:
@@ -196,9 +208,9 @@ def checkPdfPages(
     limitNote = f"{provider.name} accepts {maxPages} PDF pages per request with this model"
     if earlierPages:
         detail = (
-            f"The PDFs in this chat add up to {totalPages} pages, and {limitNote}. "
-            "Earlier files are sent again with every message, "
-            "so remove a PDF or start a new chat."
+            f"The PDFs in this {scope.conversationLabel} add up to {totalPages} pages, "
+            f"and {limitNote}. Earlier files are sent again with every message, "
+            f"so remove a PDF or start a new {scope.conversationLabel}."
         )
     else:
         detail = (
@@ -216,7 +228,8 @@ def checkAttachmentLimits(
     chatId: str | None = None,
     throughMessageId: str | None = None,
     modelId: str | None = None,
+    scope: AttachmentScope = CHAT_SCOPE,
 ) -> None:
     checkImageSizes(conn, attachmentIds, provider)
-    checkRequestSize(conn, attachmentIds, provider, chatId, throughMessageId)
-    checkPdfPages(conn, attachmentIds, provider, modelId, chatId, throughMessageId)
+    checkRequestSize(conn, attachmentIds, provider, chatId, throughMessageId, scope)
+    checkPdfPages(conn, attachmentIds, provider, modelId, chatId, throughMessageId, scope)

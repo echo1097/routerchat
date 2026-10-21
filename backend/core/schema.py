@@ -4,6 +4,7 @@ from backend.core.database import getDb
 from backend.core.migrations import (
     cleanLorebookCategories,
     ensureAttachmentPageCountColumn,
+    ensureAttachmentRoleplayColumn,
     ensureBrainstormGenerationColumns,
     ensureCachedTokenColumns,
     ensureChapterContextColumn,
@@ -63,6 +64,59 @@ def initCoreTables() -> None:
               created_at TEXT NOT NULL,
               FOREIGN KEY(chat_id) REFERENCES chats(id) ON DELETE CASCADE
             );
+
+            CREATE TABLE IF NOT EXISTS roleplays (
+              id TEXT PRIMARY KEY,
+              title TEXT NOT NULL,
+              model TEXT NOT NULL,
+              provider TEXT NOT NULL DEFAULT 'openrouter',
+              system_prompt TEXT NOT NULL,
+              temperature REAL NOT NULL,
+              max_tokens INTEGER NOT NULL,
+              thinking_enabled INTEGER NOT NULL,
+              reasoning_effort TEXT NOT NULL DEFAULT 'medium',
+              web_search_enabled INTEGER NOT NULL DEFAULT 0,
+              temporary INTEGER NOT NULL DEFAULT 0,
+              pinned INTEGER NOT NULL DEFAULT 0,
+              folder_id TEXT,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS roleplay_folders (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS roleplay_messages (
+              id TEXT PRIMARY KEY,
+              roleplay_id TEXT NOT NULL,
+              role TEXT NOT NULL,
+              content TEXT NOT NULL,
+              reasoning TEXT,
+              sources TEXT,
+              model TEXT,
+              finish_reason TEXT,
+              error TEXT,
+              generation_id TEXT,
+              prompt_tokens INTEGER,
+              completion_tokens INTEGER,
+              reasoning_tokens INTEGER,
+              cached_tokens INTEGER,
+              total_tokens INTEGER,
+              cost REAL,
+              provider_name TEXT,
+              generation_time REAL,
+              latency REAL,
+              message_order INTEGER,
+              created_at TEXT NOT NULL,
+              FOREIGN KEY(roleplay_id) REFERENCES roleplays(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS roleplay_messages_roleplay_idx
+              ON roleplay_messages(roleplay_id);
 
             CREATE TABLE IF NOT EXISTS favicons (
               domain TEXT PRIMARY KEY,
@@ -313,4 +367,5 @@ def initCoreTables() -> None:
         ensureLorebookRunUsageColumns(conn)
         ensureCachedTokenColumns(conn)
         ensureAttachmentPageCountColumn(conn)
+        ensureAttachmentRoleplayColumn(conn)
         cleanLorebookCategories(conn)

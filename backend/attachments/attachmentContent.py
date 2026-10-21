@@ -10,6 +10,7 @@ from backend.attachments.attachmentFiles import (
     fileExtension,
     readAttachmentBytes,
 )
+from backend.attachments.attachmentScope import CHAT_SCOPE, AttachmentScope
 
 
 def rowToAttachment(row: sqlite3.Row) -> dict[str, Any]:
@@ -24,15 +25,17 @@ def rowToAttachment(row: sqlite3.Row) -> dict[str, Any]:
 
 
 def groupAttachmentsByMessage(
-    conn: sqlite3.Connection, chat_id: str
+    conn: sqlite3.Connection,
+    conversation_id: str,
+    scope: AttachmentScope = CHAT_SCOPE,
 ) -> dict[str, list[dict[str, Any]]]:
     rows = conn.execute(
-        """
+        f"""
         SELECT * FROM attachments
-        WHERE chat_id = ? AND message_id IS NOT NULL
+        WHERE {scope.conversationColumn} = ? AND message_id IS NOT NULL
         ORDER BY created_at ASC, rowid ASC
         """,
-        (chat_id,),
+        (conversation_id,),
     ).fetchall()
 
     grouped: dict[str, list[dict[str, Any]]] = {}
@@ -136,14 +139,18 @@ def hasPdfAttachment(conn: sqlite3.Connection, attachmentIds: list[str]) -> bool
     return any(row["kind"] == "pdf" for row in selectedAttachmentRows(conn, attachmentIds))
 
 
-def chatHasPdfAttachment(conn: sqlite3.Connection, chat_id: str) -> bool:
+def chatHasPdfAttachment(
+    conn: sqlite3.Connection,
+    conversation_id: str,
+    scope: AttachmentScope = CHAT_SCOPE,
+) -> bool:
     row = conn.execute(
-        """
+        f"""
         SELECT 1 FROM attachments
-        WHERE chat_id = ? AND kind = 'pdf'
+        WHERE {scope.conversationColumn} = ? AND kind = 'pdf'
         LIMIT 1
         """,
-        (chat_id,),
+        (conversation_id,),
     ).fetchone()
     return row is not None
 

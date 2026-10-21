@@ -35,6 +35,8 @@ class RoleplayPatchRequest(BaseModel):
     web_search_enabled: bool | None = None
     pinned: bool | None = None
     folder_id: str | None = None
+    scenario: str | None = None
+    author_note: str | None = None
 
 
 class RoleplayCharacterRequest(BaseModel):
@@ -44,6 +46,8 @@ class RoleplayCharacterRequest(BaseModel):
     appearance: str = ""
     personality: str = ""
     speech_style: str = ""
+    greeting: str = ""
+    example_dialogue: str = ""
     color: str = ""
     disabled: bool = False
 

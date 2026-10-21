@@ -60,8 +60,9 @@ def insertCharacter(conn: sqlite3.Connection, values: tuple[Any, ...]) -> None:
         """
         INSERT INTO roleplay_characters (
           id, roleplay_id, name, kind, description, appearance, personality,
-          speech_style, color, disabled, character_order, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          speech_style, greeting, example_dialogue, color, disabled,
+          character_order, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         values,
     )
@@ -72,7 +73,8 @@ def updateCharacter(conn: sqlite3.Connection, values: tuple[Any, ...]) -> None:
         """
         UPDATE roleplay_characters
         SET name = ?, kind = ?, description = ?, appearance = ?, personality = ?,
-            speech_style = ?, color = ?, disabled = ?, updated_at = ?
+            speech_style = ?, greeting = ?, example_dialogue = ?, color = ?,
+            disabled = ?, updated_at = ?
         WHERE roleplay_id = ? AND id = ?
         """,
         values,

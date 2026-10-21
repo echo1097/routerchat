@@ -12,7 +12,27 @@ from backend.roleplay.roleplayCharacterRows import (
     roleplayCastPrompt,
     roleplayUserCharacterName,
 )
-from backend.roleplay.roleplayQueries import listContextMessages
+from backend.roleplay.roleplayMacros import expandMacros
+from backend.roleplay.roleplayQueries import getRoleplay, listContextMessages
+
+AUTHOR_NOTE_DEPTH = 2
+
+
+def authorNoteMessage(note: str, userName: str) -> dict[str, Any]:
+    return {
+        "role": "system",
+        "content": f"Keep this in mind for what happens next: {expandMacros(note, '', userName)}",
+    }
+
+
+def withAuthorNote(
+    messages: list[dict[str, Any]], note: str, userName: str
+) -> list[dict[str, Any]]:
+    if not note.strip():
+        return messages
+
+    insertAt = max(0, len(messages) - AUTHOR_NOTE_DEPTH)
+    return messages[:insertAt] + [authorNoteMessage(note.strip(), userName)] + messages[insertAt:]
 
 
 def buildRoleplayMessages(
@@ -24,7 +44,11 @@ def buildRoleplayMessages(
     messages: list[dict[str, Any]] = []
 
     with getDb() as conn:
-        castPrompt = roleplayCastPrompt(conn, roleplay_id)
+        roleplay = getRoleplay(conn, roleplay_id)
+        scenario = str(roleplay["scenario"] or "") if roleplay else ""
+        authorNote = str(roleplay["author_note"] or "") if roleplay else ""
+
+        castPrompt = roleplayCastPrompt(conn, roleplay_id, scenario)
         userName = roleplayUserCharacterName(conn, roleplay_id)
         fullPrompt = "\n\n".join(
             part for part in (system_prompt.strip(), castPrompt) if part
@@ -36,6 +60,8 @@ def buildRoleplayMessages(
         attachmentsByMessage = groupAttachmentsByMessage(
             conn, roleplay_id, ROLEPLAY_SCOPE
         )
+
+        turns: list[dict[str, Any]] = []
 
         for row in rows:
             isRegenerated = bool(regenerate_message_id) and row["id"] == regenerate_message_id
@@ -54,9 +80,9 @@ def buildRoleplayMessages(
             if role == "user" and attachmentIds:
                 content = userContentWithAttachments(conn, attachmentIds, content)
 
-            messages.append({"role": role, "content": content})
+            turns.append({"role": role, "content": content})
 
             if isRegenerated:
                 break
 
-    return messages
+    return messages + withAuthorNote(turns, authorNote, userName)

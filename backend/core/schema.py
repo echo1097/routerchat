@@ -4,6 +4,7 @@ from backend.core.database import getDb
 from backend.core.migrations import (
     cleanLorebookCategories,
     ensureAttachmentPageCountColumn,
+    ensureRoleplayPromptColumns,
     ensureAttachmentRoleplayColumn,
     ensureBrainstormGenerationColumns,
     ensureCachedTokenColumns,
@@ -79,6 +80,8 @@ def initCoreTables() -> None:
               temporary INTEGER NOT NULL DEFAULT 0,
               pinned INTEGER NOT NULL DEFAULT 0,
               folder_id TEXT,
+              scenario TEXT NOT NULL DEFAULT '',
+              author_note TEXT NOT NULL DEFAULT '',
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
             );
@@ -127,6 +130,8 @@ def initCoreTables() -> None:
               appearance TEXT NOT NULL DEFAULT '',
               personality TEXT NOT NULL DEFAULT '',
               speech_style TEXT NOT NULL DEFAULT '',
+              greeting TEXT NOT NULL DEFAULT '',
+              example_dialogue TEXT NOT NULL DEFAULT '',
               color TEXT NOT NULL DEFAULT '',
               disabled INTEGER NOT NULL DEFAULT 0,
               character_order INTEGER NOT NULL DEFAULT 0,
@@ -388,4 +393,5 @@ def initCoreTables() -> None:
         ensureCachedTokenColumns(conn)
         ensureAttachmentPageCountColumn(conn)
         ensureAttachmentRoleplayColumn(conn)
+        ensureRoleplayPromptColumns(conn)
         cleanLorebookCategories(conn)

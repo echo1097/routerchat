@@ -26,6 +26,8 @@ def rowToRoleplay(row: sqlite3.Row) -> dict[str, Any]:
         "temporary": bool(row["temporary"]),
         "pinned": bool(row["pinned"]),
         "folder_id": row["folder_id"] if "folder_id" in row.keys() else None,
+        "scenario": row["scenario"] if "scenario" in row.keys() else "",
+        "author_note": row["author_note"] if "author_note" in row.keys() else "",
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }

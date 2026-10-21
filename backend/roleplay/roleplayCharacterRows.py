@@ -4,6 +4,7 @@ import sqlite3
 from typing import Any
 
 from backend.roleplay.roleplayCharacterQueries import listActiveCharacters
+from backend.roleplay.roleplayMacros import expandMacros
 
 CHARACTER_KINDS = {"cast", "user"}
 
@@ -30,6 +31,8 @@ def rowToCharacter(row: sqlite3.Row) -> dict[str, Any]:
         "appearance": row["appearance"],
         "personality": row["personality"],
         "speech_style": row["speech_style"],
+        "greeting": row["greeting"],
+        "example_dialogue": row["example_dialogue"],
         "color": row["color"],
         "disabled": bool(row["disabled"]),
         "character_order": row["character_order"],
@@ -38,25 +41,65 @@ def rowToCharacter(row: sqlite3.Row) -> dict[str, Any]:
     }
 
 
-def characterDetailLines(character: dict[str, Any], indent: str = "") -> list[str]:
+def characterDetailLines(
+    character: dict[str, Any], userName: str = "", indent: str = ""
+) -> list[str]:
     lines = []
     for field, label in CHARACTER_DETAIL_LABELS:
-        value = str(character.get(field) or "").strip()
+        value = expandMacros(
+            str(character.get(field) or "").strip(), character.get("name", ""), userName
+        )
         if value:
             lines.append(f"{indent}{label}: {value}")
     return lines
 
 
-def castPromptBlock(characters: list[dict[str, Any]]) -> str:
+def exampleDialogueBlock(cast: list[dict[str, Any]], userName: str) -> list[str]:
+    examples = [
+        (character["name"], expandMacros(
+            str(character.get("example_dialogue") or "").strip(),
+            character["name"],
+            userName,
+        ))
+        for character in cast
+    ]
+    examples = [(name, text) for name, text in examples if text]
+
+    if not examples:
+        return []
+
+    lines = ["", "How they sound, for reference only. Never replay these as the scene:"]
+    for name, example in examples:
+        lines.append("")
+        lines.append(f"{name}")
+        lines.append(example)
+    return lines
+
+
+def castPromptBlock(
+    characters: list[dict[str, Any]], scenario: str = ""
+) -> str:
     cast = [character for character in characters if character["kind"] == "cast"]
     userCharacter = next(
         (character for character in characters if character["kind"] == "user"), None
     )
+    userName = str(userCharacter["name"]).strip() if userCharacter else ""
+    scenarioText = expandMacros(
+        str(scenario or "").strip(),
+        cast[0]["name"] if cast else "",
+        userName,
+    )
 
-    if not cast and not userCharacter:
+    if not cast and not userCharacter and not scenarioText:
         return ""
 
     lines: list[str] = []
+
+    if scenarioText:
+        lines.append("The scene")
+        lines.append("")
+        lines.append(scenarioText)
+        lines.append("")
 
     if cast:
         lines.append("Roleplay cast")
@@ -70,7 +113,7 @@ def castPromptBlock(characters: list[dict[str, Any]]) -> str:
         for character in cast:
             lines.append("")
             lines.append(character["name"])
-            lines.extend(characterDetailLines(character))
+            lines.extend(characterDetailLines(character, userName))
 
     if userCharacter:
         lines.append("")
@@ -81,7 +124,10 @@ def castPromptBlock(characters: list[dict[str, Any]]) -> str:
             )
         else:
             lines.append(f"You are playing opposite {userCharacter['name']}.")
-        lines.extend(characterDetailLines(userCharacter))
+        lines.extend(characterDetailLines(userCharacter, userName))
+
+    if cast:
+        lines.extend(exampleDialogueBlock(cast, userName))
 
     if cast:
         names = ", ".join(character["name"] for character in cast)
@@ -123,9 +169,11 @@ def castPromptBlock(characters: list[dict[str, Any]]) -> str:
     return "\n".join(lines).strip()
 
 
-def roleplayCastPrompt(conn: sqlite3.Connection, roleplayId: str) -> str:
+def roleplayCastPrompt(
+    conn: sqlite3.Connection, roleplayId: str, scenario: str = ""
+) -> str:
     characters = [rowToCharacter(row) for row in listActiveCharacters(conn, roleplayId)]
-    return castPromptBlock(characters)
+    return castPromptBlock(characters, scenario)
 
 
 def roleplayUserCharacterName(conn: sqlite3.Connection, roleplayId: str) -> str:
@@ -133,3 +181,22 @@ def roleplayUserCharacterName(conn: sqlite3.Connection, roleplayId: str) -> str:
         if normalizeCharacterKind(row["kind"]) == "user":
             return str(row["name"] or "").strip()
     return ""
+
+
+def openingGreeting(conn: sqlite3.Connection, roleplayId: str) -> str:
+    characters = [rowToCharacter(row) for row in listActiveCharacters(conn, roleplayId)]
+    cast = [character for character in characters if character["kind"] == "cast"]
+    userName = next(
+        (character["name"] for character in characters if character["kind"] == "user"),
+        "",
+    )
+
+    lines = []
+    for character in cast:
+        greeting = expandMacros(
+            str(character.get("greeting") or "").strip(), character["name"], userName
+        )
+        if greeting:
+            lines.append(f"{character['name']}: {greeting}")
+
+    return "\n".join(lines)

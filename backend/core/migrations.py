@@ -273,3 +273,24 @@ def ensureAttachmentRoleplayColumn(conn: sqlite3.Connection) -> None:
     conn.execute(
         "CREATE INDEX IF NOT EXISTS attachments_roleplay_idx ON attachments(roleplay_id)"
     )
+
+
+def ensureRoleplayPromptColumns(conn: sqlite3.Connection) -> None:
+    newColumns = {
+        "roleplays": {
+            "scenario": "TEXT NOT NULL DEFAULT ''",
+            "author_note": "TEXT NOT NULL DEFAULT ''",
+        },
+        "roleplay_characters": {
+            "greeting": "TEXT NOT NULL DEFAULT ''",
+            "example_dialogue": "TEXT NOT NULL DEFAULT ''",
+        },
+    }
+
+    for table, columns in newColumns.items():
+        existingColumns = {
+            row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+        }
+        for column, columnType in columns.items():
+            if column not in existingColumns:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {columnType}")

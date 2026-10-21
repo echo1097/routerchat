@@ -25,9 +25,11 @@ from backend.providers.base import ChatOptions
 from backend.providers.modelStream import ModelStream
 from backend.roleplay.buildRoleplayMessages import buildRoleplayMessages
 from backend.roleplay.roleplayMessageRoutes import refreshRoleplayAfterMessageChange
+from backend.roleplay.roleplayCharacterRows import openingGreeting
 from backend.roleplay.roleplayModels import StreamRoleplayMessageRequest
 from backend.roleplay.roleplayQueries import (
     deleteMessagesAfter,
+    insertGreetingMessage,
     getFirstUserMessage,
     getRoleplayUserMessage,
     insertAssistantMessage,
@@ -278,6 +280,20 @@ async def streamRoleplayMessage(
                     detail="Only user prompts can be regenerated.",
                 )
         else:
+            if not has_messages:
+                greeting = openingGreeting(conn, roleplay_id)
+                if greeting:
+                    insertGreetingMessage(
+                        conn,
+                        (
+                            str(uuid.uuid4()),
+                            roleplay_id,
+                            greeting,
+                            nextRoleplayMessageOrder(conn, roleplay_id),
+                            now,
+                        ),
+                    )
+
             insertUserMessage(
                 conn,
                 (

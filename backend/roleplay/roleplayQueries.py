@@ -75,9 +75,9 @@ def insertImportedRoleplay(conn: sqlite3.Connection, values: tuple[Any, ...]) ->
         INSERT INTO roleplays (
           id, title, model, provider, system_prompt, temperature, max_tokens,
           thinking_enabled, reasoning_effort, web_search_enabled, pinned,
-          created_at, updated_at
+          scenario, author_note, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         values,
     )
@@ -241,6 +241,19 @@ def deleteMessagesAfter(
         WHERE roleplay_id = ? AND message_order > ?
         """,
         (roleplayId, messageOrder),
+    )
+
+
+def insertGreetingMessage(conn: sqlite3.Connection, values: tuple[Any, ...]) -> None:
+    conn.execute(
+        """
+        INSERT INTO roleplay_messages (
+          id, roleplay_id, role, content, reasoning, model, finish_reason,
+          error, message_order, created_at
+        )
+        VALUES (?, ?, 'assistant', ?, NULL, NULL, NULL, NULL, ?, ?)
+        """,
+        values,
     )
 
 

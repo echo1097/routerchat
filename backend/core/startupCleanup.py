@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from backend.attachments.attachmentCleanup import (
+    deleteAttachmentsForRoleplay,
     deleteAttachmentsForStory,
     deleteOrphanedAttachments,
 )
@@ -17,6 +18,14 @@ def deleteTemporaryItems() -> None:
             """
         )
         conn.execute("DELETE FROM chats WHERE temporary = 1")
+        temporaryRoleplayIds = [
+            row["id"]
+            for row in conn.execute("SELECT id FROM roleplays WHERE temporary = 1").fetchall()
+        ]
+        for roleplayId in temporaryRoleplayIds:
+            deleteAttachmentsForRoleplay(conn, roleplayId)
+            conn.execute("DELETE FROM roleplay_messages WHERE roleplay_id = ?", (roleplayId,))
+            conn.execute("DELETE FROM roleplays WHERE id = ?", (roleplayId,))
         deleteOrphanedAttachments(conn)
         temporaryStoryIds = [
             row["id"]

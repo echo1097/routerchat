@@ -41,3 +41,7 @@ def updateChecksEnabled() -> bool:
 
 def globalChatSystemPrompt() -> str:
     return str(readAppSetting("chat_system_prompt") or "")
+
+
+def globalRoleplaySystemPrompt() -> str:
+    return str(readAppSetting("roleplay_system_prompt") or "")

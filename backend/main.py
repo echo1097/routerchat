@@ -27,6 +27,14 @@ from backend.lorebook import (
 )
 from backend.providers import providerRoutes
 from backend.providers.envKeys import loadSavedKeys
+from backend.roleplay import (
+    roleplayFolderRoutes,
+    roleplayImportExport,
+    roleplayMessageRoutes,
+    roleplayRoutes,
+    roleplayTitles,
+    streamRoleplayMessage,
+)
 from backend.security import bootstrapRoutes
 from backend.security.apiSecurity import enforceLocalApiSecurity
 from backend.security.localAccessConfig import localAccessConfig
@@ -53,6 +61,12 @@ featureRouters = [
     chatTitles.router,
     messageRoutes.router,
     streamMessage.router,
+    roleplayFolderRoutes.router,
+    roleplayRoutes.router,
+    roleplayImportExport.router,
+    roleplayTitles.router,
+    roleplayMessageRoutes.router,
+    streamRoleplayMessage.router,
     faviconRoutes.router,
     usageRoutes.router,
     attachmentRoutes.router,

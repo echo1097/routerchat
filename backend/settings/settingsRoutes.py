@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Response
 
 from backend.core.appSettings import (
     globalChatSystemPrompt,
+    globalRoleplaySystemPrompt,
     hourPromptCacheEnabled,
     readAppSetting,
     updateChecksEnabled,
@@ -32,6 +33,7 @@ def appSettingsPayload() -> dict[str, Any]:
         "zdr_mode": bool(readAppSetting("zdr_mode")),
         "smooth_streaming": bool(readAppSetting("smooth_streaming")),
         "chat_system_prompt": globalChatSystemPrompt(),
+        "roleplay_system_prompt": globalRoleplaySystemPrompt(),
         "hour_prompt_cache": hourPromptCacheEnabled(),
         "update_checks": updateChecksEnabled(),
     }
@@ -96,6 +98,8 @@ def updateAppSettings(payload: AppSettingsPatchRequest) -> dict[str, Any]:
         writeAppSetting("smooth_streaming", payload.smooth_streaming)
     if payload.chat_system_prompt is not None:
         writeAppSetting("chat_system_prompt", payload.chat_system_prompt)
+    if payload.roleplay_system_prompt is not None:
+        writeAppSetting("roleplay_system_prompt", payload.roleplay_system_prompt)
     if payload.hour_prompt_cache is not None:
         writeAppSetting("hour_prompt_cache", payload.hour_prompt_cache)
     if payload.update_checks is not None:

@@ -32,7 +32,15 @@ class CastPromptTest(unittest.TestCase):
         self.assertIn("Texts like: all lowercase", prompt)
         self.assertIn("Personality: dry", prompt)
         self.assertIn("Maya, Jon", prompt)
-        self.assertIn("one to four messages", prompt)
+
+    def test_the_reply_rules_leave_the_length_to_the_scene(self):
+        prompt = castPromptBlock([character("Maya"), character("Jon")])
+
+        self.assertIn("as many messages as the moment calls for", prompt)
+        self.assertNotIn("one to four", prompt)
+        self.assertIn("can say nothing all turn", prompt)
+        self.assertIn("Only the characters who would really be there answer", prompt)
+        self.assertIn("Stay in character.", prompt)
 
     def test_the_user_character_is_off_limits(self):
         prompt = castPromptBlock(

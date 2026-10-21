@@ -90,8 +90,20 @@ def castPromptBlock(characters: list[dict[str, Any]]) -> str:
         lines.append("How to reply:")
         lines.append(f"- Start every line with one of these exact names and a colon: {names}")
         lines.append(
-            "- Send one to four messages a turn. A character can send two in a row, "
-            "and a character can stay quiet."
+            "- Send as many messages as the moment calls for. A quick check in might be two, "
+            "a real argument might be twenty. Stop when the thread would naturally go quiet."
+        )
+        lines.append(
+            "- A character can send several in a row, and a character can say nothing all turn."
+        )
+        lines.append(
+            "- Only the characters who would really be there answer. Someone asleep, at work, "
+            "out of signal, or who just walked off stays out of the thread until they come back, "
+            "and then they come back to whatever they missed."
+        )
+        lines.append(
+            "- Stay in character. Each one keeps their own voice and typing habits, wants what "
+            "they want, and only knows what they would actually know."
         )
         lines.append("- Keep each message about as long as a real text message.")
         lines.append("- Let the characters react to each other, not only to whoever texted last.")

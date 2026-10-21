@@ -37,6 +37,17 @@ class RoleplayPatchRequest(BaseModel):
     folder_id: str | None = None
 
 
+class RoleplayCharacterRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    kind: str = "cast"
+    description: str = ""
+    appearance: str = ""
+    personality: str = ""
+    speech_style: str = ""
+    color: str = ""
+    disabled: bool = False
+
+
 class RoleplayFolderCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
 
@@ -67,3 +78,4 @@ class RoleplayMessageUpdateRequest(BaseModel):
 class RoleplayImportRequest(BaseModel):
     roleplays: list[dict[str, Any]] = Field(default_factory=list)
     messages: list[dict[str, Any]] = Field(default_factory=list)
+    characters: list[dict[str, Any]] = Field(default_factory=list)

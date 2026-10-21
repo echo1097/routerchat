@@ -10,6 +10,15 @@ from backend.core.reasoningEffort import coerceReasoningEffort
 from backend.core.utils import coerceBoolInt, floatOrNone, intOrNone, utcNow
 from backend.providers.base import DEFAULT_MAX_TOKENS
 from backend.providers.registry import getActiveProvider, providerIdForImport
+from backend.roleplay.roleplayCharacterQueries import (
+    insertCharacter,
+    listCharacters,
+    nextCharacterOrder,
+)
+from backend.roleplay.roleplayCharacterRows import (
+    normalizeCharacterKind,
+    rowToCharacter,
+)
 from backend.roleplay.roleplayModels import RoleplayImportRequest
 from backend.roleplay.roleplayQueries import (
     insertImportedMessage,
@@ -31,11 +40,13 @@ def exportRoleplay(roleplay_id: str) -> dict[str, Any]:
     with getDb() as conn:
         roleplay = requireRoleplay(conn, roleplay_id)
         message_rows = listRoleplayMessages(conn, roleplay_id)
+        character_rows = listCharacters(conn, roleplay_id)
     return {
         "schema": "routerchat.roleplays.v1",
         "exported_at": utcNow(),
         "roleplays": [rowToRoleplay(roleplay)],
         "messages": [rowToRoleplayMessage(row) for row in message_rows],
+        "characters": [rowToCharacter(row) for row in character_rows],
     }
 
 
@@ -45,6 +56,7 @@ def importRoleplays(payload: RoleplayImportRequest) -> dict[str, Any]:
     roleplay_id_map: dict[str, str] = {}
     imported_roleplay_ids: set[str] = set()
     imported_messages = 0
+    imported_characters = 0
     nextMessageOrders: dict[str, int] = {}
 
     with getDb() as conn:
@@ -83,6 +95,35 @@ def importRoleplays(payload: RoleplayImportRequest) -> dict[str, Any]:
                     str(item.get("updated_at") or now),
                 ),
             )
+
+        for item in payload.characters:
+            source_roleplay_id = str(item.get("roleplay_id") or "")
+            roleplay_id = roleplay_id_map.get(source_roleplay_id)
+            if not roleplay_id:
+                continue
+            name = str(item.get("name") or "").strip()
+            if not name:
+                continue
+
+            insertCharacter(
+                conn,
+                (
+                    str(uuid.uuid4()),
+                    roleplay_id,
+                    name[:80],
+                    normalizeCharacterKind(item.get("kind")),
+                    str(item.get("description") or ""),
+                    str(item.get("appearance") or ""),
+                    str(item.get("personality") or ""),
+                    str(item.get("speech_style") or ""),
+                    str(item.get("color") or ""),
+                    coerceBoolInt(item.get("disabled")),
+                    nextCharacterOrder(conn, roleplay_id),
+                    str(item.get("created_at") or now),
+                    str(item.get("updated_at") or now),
+                ),
+            )
+            imported_characters += 1
 
         for item in payload.messages:
             source_roleplay_id = str(item.get("roleplay_id") or item.get("chat_id") or "")
@@ -130,4 +171,5 @@ def importRoleplays(payload: RoleplayImportRequest) -> dict[str, Any]:
         "ok": True,
         "imported_roleplays": len(imported_roleplay_ids),
         "imported_messages": imported_messages,
+        "imported_characters": imported_characters,
     }

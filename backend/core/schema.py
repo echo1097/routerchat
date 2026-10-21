@@ -118,6 +118,26 @@ def initCoreTables() -> None:
             CREATE INDEX IF NOT EXISTS roleplay_messages_roleplay_idx
               ON roleplay_messages(roleplay_id);
 
+            CREATE TABLE IF NOT EXISTS roleplay_characters (
+              id TEXT PRIMARY KEY,
+              roleplay_id TEXT NOT NULL,
+              name TEXT NOT NULL,
+              kind TEXT NOT NULL DEFAULT 'cast',
+              description TEXT NOT NULL DEFAULT '',
+              appearance TEXT NOT NULL DEFAULT '',
+              personality TEXT NOT NULL DEFAULT '',
+              speech_style TEXT NOT NULL DEFAULT '',
+              color TEXT NOT NULL DEFAULT '',
+              disabled INTEGER NOT NULL DEFAULT 0,
+              character_order INTEGER NOT NULL DEFAULT 0,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              FOREIGN KEY(roleplay_id) REFERENCES roleplays(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS roleplay_characters_roleplay_idx
+              ON roleplay_characters(roleplay_id);
+
             CREATE TABLE IF NOT EXISTS favicons (
               domain TEXT PRIMARY KEY,
               mime TEXT,

@@ -8,6 +8,10 @@ from backend.attachments.attachmentContent import (
 )
 from backend.attachments.attachmentScope import ROLEPLAY_SCOPE
 from backend.core.database import getDb
+from backend.roleplay.roleplayCharacterRows import (
+    roleplayCastPrompt,
+    roleplayUserCharacterName,
+)
 from backend.roleplay.roleplayQueries import listContextMessages
 
 
@@ -18,10 +22,16 @@ def buildRoleplayMessages(
     replacement_content: str | None = None,
 ) -> list[dict[str, Any]]:
     messages: list[dict[str, Any]] = []
-    if system_prompt.strip():
-        messages.append({"role": "system", "content": system_prompt.strip()})
 
     with getDb() as conn:
+        castPrompt = roleplayCastPrompt(conn, roleplay_id)
+        userName = roleplayUserCharacterName(conn, roleplay_id)
+        fullPrompt = "\n\n".join(
+            part for part in (system_prompt.strip(), castPrompt) if part
+        )
+        if fullPrompt:
+            messages.append({"role": "system", "content": fullPrompt})
+
         rows = listContextMessages(conn, roleplay_id)
         attachmentsByMessage = groupAttachmentsByMessage(
             conn, roleplay_id, ROLEPLAY_SCOPE
@@ -37,6 +47,9 @@ def buildRoleplayMessages(
             attachmentIds = [
                 attachment["id"] for attachment in attachmentsByMessage.get(row["id"], [])
             ]
+
+            if role == "user" and userName and str(content or "").strip():
+                content = f"{userName}: {content}"
 
             if role == "user" and attachmentIds:
                 content = userContentWithAttachments(conn, attachmentIds, content)

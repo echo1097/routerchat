@@ -28,6 +28,7 @@ from backend.lorebook import (
 from backend.providers import providerRoutes
 from backend.providers.envKeys import loadSavedKeys
 from backend.roleplay import (
+    roleplayCharacterRoutes,
     roleplayFolderRoutes,
     roleplayImportExport,
     roleplayMessageRoutes,
@@ -63,6 +64,7 @@ featureRouters = [
     streamMessage.router,
     roleplayFolderRoutes.router,
     roleplayRoutes.router,
+    roleplayCharacterRoutes.router,
     roleplayImportExport.router,
     roleplayTitles.router,
     roleplayMessageRoutes.router,

@@ -13,6 +13,7 @@ import backend.tos.tosAcceptance as tosAcceptance
 from backend.core.database import getDb
 from backend.local_access import createSecretFile
 from backend.roleplay.buildRoleplayMessages import buildRoleplayMessages
+from backend.roleplay.roleplayCharacterRows import openingGreeting
 
 
 def acceptCurrentTos():
@@ -344,6 +345,59 @@ class RoleplayApiTest(unittest.TestCase):
         messages = buildRoleplayMessages(roleplay["id"], "")
 
         self.assertEqual(messages, [{"role": "user", "content": "hey"}])
+
+    def test_scene_fields_save_on_the_roleplay(self):
+        roleplay = self.createRoleplay()
+
+        patched = self.client.patch(
+            f"/api/roleplays/{roleplay['id']}",
+            json={"scenario": "A diner at 3am.", "author_note": "Keep it tense."},
+        ).json()["roleplay"]
+
+        self.assertEqual(patched["scenario"], "A diner at 3am.")
+        self.assertEqual(patched["author_note"], "Keep it tense.")
+
+        reloaded = self.client.get(f"/api/roleplays/{roleplay['id']}").json()["roleplay"]
+        self.assertEqual(reloaded["scenario"], "A diner at 3am.")
+
+    def test_the_scenario_reaches_the_system_prompt(self):
+        roleplay = self.createRoleplay()
+        self.createCharacter(roleplay["id"], name="Maya")
+        self.client.patch(
+            f"/api/roleplays/{roleplay['id']}", json={"scenario": "The power is out."}
+        )
+
+        messages = buildRoleplayMessages(roleplay["id"], "")
+
+        self.assertIn("The power is out.", messages[0]["content"])
+
+    def test_greetings_open_the_scene(self):
+        roleplay = self.createRoleplay()
+        self.createCharacter(roleplay["id"], name="Maya", greeting="you're up late")
+        self.createCharacter(roleplay["id"], name="Jon", greeting="Hey. Long time.")
+        self.createCharacter(roleplay["id"], name="Alex", kind="user")
+
+        with getDb() as conn:
+            opening = openingGreeting(conn, roleplay["id"])
+
+        self.assertEqual(opening, "Maya: you're up late\nJon: Hey. Long time.")
+
+    def test_a_silent_cast_opens_with_nothing(self):
+        roleplay = self.createRoleplay()
+        self.createCharacter(roleplay["id"], name="Maya")
+
+        with getDb() as conn:
+            self.assertEqual(openingGreeting(conn, roleplay["id"]), "")
+
+    def test_a_greeting_expands_macros(self):
+        roleplay = self.createRoleplay()
+        self.createCharacter(roleplay["id"], name="Maya", greeting="hey {{user}}, {{char}} here")
+        self.createCharacter(roleplay["id"], name="Alex", kind="user")
+
+        with getDb() as conn:
+            self.assertEqual(
+                openingGreeting(conn, roleplay["id"]), "Maya: hey Alex, Maya here"
+            )
 
     def test_roleplay_system_prompt_is_its_own_setting(self):
         self.client.patch(

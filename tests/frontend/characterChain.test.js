@@ -4,6 +4,7 @@ import {
   characterColor,
   splitChainMessages,
   userCharacter,
+  withHardBreaks,
 } from "../../frontend/src/roleplay/characterChain.js";
 
 const CAST = [{ name: "Maya", kind: "cast" }, { name: "Jon", kind: "cast" }];
@@ -74,5 +75,20 @@ describe("cast helpers", () => {
     expect(characterColor({ color: "#123456" }, 0)).toBe("#123456");
     expect(characterColor({ color: "" }, 0)).toBe(characterColor({}, 0));
     expect(characterColor({}, 0)).not.toBe(characterColor({}, 1));
+  });
+});
+
+describe("withHardBreaks", () => {
+  it("keeps a single line break inside one reply", () => {
+    expect(withHardBreaks("she looks up\nthen away")).toBe("she looks up  \nthen away");
+  });
+
+  it("leaves a paragraph break alone", () => {
+    expect(withHardBreaks("first beat\n\nsecond beat")).toBe("first beat\n\nsecond beat");
+  });
+
+  it("leaves a fenced block untouched", () => {
+    const fenced = "```\nline one\nline two\n```";
+    expect(withHardBreaks(fenced)).toBe(fenced);
   });
 });

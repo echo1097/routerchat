@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { cx } from "../uiShared.js";
-import { characterColor, splitChainMessages } from "./characterChain.js";
+import { MarkdownContent } from "../chat/MarkdownContent.jsx";
+import { characterColor, splitChainMessages, withHardBreaks } from "./characterChain.js";
 import "./CharacterBook.css";
 
 export function CharacterChainMessage({ content, characters }) {
@@ -46,13 +47,13 @@ export function CharacterChainMessage({ content, characters }) {
             )}
             <div
               className={cx(
-                "max-w-[78%] whitespace-pre-wrap rounded-[22px] text-pretty text-sm leading-6 sm:max-w-[68%]",
+                "character-bubble-body w-fit max-w-full rounded-[22px] text-pretty text-[15px] leading-7",
                 speaker
                   ? "bg-[#1d1d1d] px-4 py-3 text-neutral-100"
                   : "px-0 py-0 text-neutral-400",
               )}
             >
-              {bubble.content}
+              <MarkdownContent>{withHardBreaks(bubble.content)}</MarkdownContent>
             </div>
           </div>
         );

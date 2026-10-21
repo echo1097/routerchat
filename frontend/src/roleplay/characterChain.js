@@ -23,6 +23,11 @@ export function userCharacter(characters) {
   return (characters || []).find((character) => character.kind === "user") || null;
 }
 
+export function withHardBreaks(text) {
+  if (text.includes("```")) return text;
+  return text.replace(/([^\n])\n(?!\n)/g, "$1  \n");
+}
+
 function speakerAt(line, names) {
   const separator = line.indexOf(":");
   if (separator < 1) return null;

@@ -11,7 +11,7 @@ CHARACTER_DETAIL_LABELS = (
     ("description", "About"),
     ("appearance", "Appearance"),
     ("personality", "Personality"),
-    ("speech_style", "Texts like"),
+    ("speech_style", "Voice"),
 )
 
 
@@ -62,9 +62,8 @@ def castPromptBlock(characters: list[dict[str, Any]]) -> str:
         lines.append("Roleplay cast")
         lines.append("")
         lines.append(
-            "This is a group message thread. Reply as the characters below, "
-            "one message per line, each line starting with that character's name "
-            "and a colon."
+            "Play the characters below. Write each reply on its own line, starting with "
+            "that character's name and a colon."
         )
         lines.append("")
         lines.append("Characters you play:")
@@ -77,11 +76,11 @@ def castPromptBlock(characters: list[dict[str, Any]]) -> str:
         lines.append("")
         if cast:
             lines.append(
-                f"{userCharacter['name']} is the person you are texting. "
-                f"Never write a message as {userCharacter['name']}."
+                f"{userCharacter['name']} is the person playing with you. "
+                f"Never write a line as {userCharacter['name']}."
             )
         else:
-            lines.append(f"You are texting {userCharacter['name']}.")
+            lines.append(f"You are playing opposite {userCharacter['name']}.")
         lines.extend(characterDetailLines(userCharacter))
 
     if cast:
@@ -90,24 +89,36 @@ def castPromptBlock(characters: list[dict[str, Any]]) -> str:
         lines.append("How to reply:")
         lines.append(f"- Start every line with one of these exact names and a colon: {names}")
         lines.append(
-            "- Send as many messages as the moment calls for. A quick check in might be two, "
-            "a real argument might be twenty. Stop when the thread would naturally go quiet."
+            "- A reply is whatever that character would do here: a single word, a line of "
+            "dialogue, or a paragraph of what they do, notice and feel. Let the scene set "
+            "the length, not a habit."
         )
         lines.append(
-            "- A character can send several in a row, and a character can say nothing all turn."
+            "- Break a turn into separate lines when it reads as separate beats, like another "
+            "character cutting in, or a pause before someone speaks again. Keep it as one line "
+            "when it is one beat."
         )
         lines.append(
-            "- Only the characters who would really be there answer. Someone asleep, at work, "
-            "out of signal, or who just walked off stays out of the thread until they come back, "
-            "and then they come back to whatever they missed."
+            "- Send as many as the moment calls for. A glance might be one, a real argument "
+            "might be twenty. Stop where the scene would naturally rest."
         )
         lines.append(
-            "- Stay in character. Each one keeps their own voice and typing habits, wants what "
-            "they want, and only knows what they would actually know."
+            "- A character can take several lines in a row, and a character can say nothing all turn."
         )
-        lines.append("- Keep each message about as long as a real text message.")
-        lines.append("- Let the characters react to each other, not only to whoever texted last.")
-        lines.append("- No narrator voice, no stage directions, no headings. Only the messages.")
+        lines.append(
+            "- Only the characters who would really be there answer. Someone asleep, elsewhere, "
+            "out of earshot, or who just walked off stays out until they come back, and then they "
+            "come back to whatever they missed."
+        )
+        lines.append(
+            "- Stay in character. Each one keeps their own voice, wants what they want, and only "
+            "knows what they would actually know."
+        )
+        lines.append("- Let the characters react to each other, not only to whoever spoke last.")
+        lines.append(
+            "- Write only as the characters. No narrator, no scene headings, and no summing up "
+            "what just happened."
+        )
 
     return "\n".join(lines).strip()
 

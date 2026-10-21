@@ -32,8 +32,8 @@ const FIELDS = [
   },
   {
     key: "speech_style",
-    label: "Texts like",
-    placeholder: "Short and clipped? All lowercase? Too many questions?",
+    label: "Voice",
+    placeholder: "How they talk. Clipped? Formal? All lowercase? Never finishes a sentence?",
     rows: 2,
   },
 ];
@@ -469,7 +469,7 @@ export default function CharacterBook({
                 <p>
                   {searching
                     ? "Try a different name."
-                    : "Add the people in this thread. The model texts as everyone except you."}
+                    : "Add the people in this scene. The model plays everyone except you."}
                 </p>
               </div>
             ) : (
@@ -511,7 +511,7 @@ export default function CharacterBook({
                 <p className="lorebook-page-empty-title">
                   {characters.length ? "Pick a character to read or edit them" : "Build your cast"}
                 </p>
-                <p>Everyone in the scene gets their own bubble in the thread.</p>
+                <p>Everyone in the scene answers in their own bubble.</p>
                 <button
                   type="button"
                   onClick={openNewCharacter}

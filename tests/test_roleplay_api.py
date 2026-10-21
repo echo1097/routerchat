@@ -326,7 +326,7 @@ class RoleplayApiTest(unittest.TestCase):
 
         self.assertEqual(messages[0]["role"], "system")
         self.assertIn("stay in character", messages[0]["content"])
-        self.assertIn("Never write a message as Alex.", messages[0]["content"])
+        self.assertIn("Never write a line as Alex.", messages[0]["content"])
         self.assertEqual(messages[1], {"role": "user", "content": "Alex: hey"})
 
     def test_context_messages_stay_bare_without_a_cast(self):

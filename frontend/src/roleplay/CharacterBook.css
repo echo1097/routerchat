@@ -68,6 +68,14 @@
   flex: none;
 }
 
+.character-bubble-body > :first-child {
+  margin-top: 0;
+}
+
+.character-bubble-body > :last-child {
+  margin-bottom: 0;
+}
+
 .character-bubble + .character-bubble {
   padding-top: 14px;
 }

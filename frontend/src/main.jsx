@@ -8,7 +8,16 @@ import {
 } from "./localStorage.js";
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { newSettings, DEFAULT_MODEL } from "./settings/settingsDefaults.js";
-import { parseRoute, storyRoute, routePath, chatRoute } from "./routing.js";
+import {
+  parseRoute,
+  storyRoute,
+  routePath,
+  chatRoute,
+  isConversationPage,
+  modeForPage,
+} from "./routing.js";
+import { createConversationApi } from "./conversations/conversationApi.js";
+import { conversationLabels } from "./conversations/conversationLabels.js";
 import { useTour } from "./tour/useTour.js";
 import { WRITE_TOUR_STEPS } from "./tour/tourSteps.js";
 import { useNotifications } from "./notifications/useNotifications.js";
@@ -48,7 +57,11 @@ import {
 import { api, responseErrorDetail } from "./api.js";
 import { useProviders } from "./providers/useProviders.js";
 import { useModels } from "./providers/useModels.js";
-import { exportFileName, shortTitle, storyExportFileName } from "./textFormatting.js";
+import {
+  conversationExportFileName,
+  shortTitle,
+  storyExportFileName,
+} from "./textFormatting.js";
 import { updateLorebookStream } from "./lorebook/lorebookUpdateApi.js";
 import { repairLorebook as repairLorebookStream } from "./lorebook/repairLorebookApi.js";
 import { generateLorebookEntry as generateLorebookEntryStream } from "./lorebook/generateEntryApi.js";
@@ -117,6 +130,7 @@ function App() {
   const [tempChatId, setTempChatId] = useState(null);
   const [settings, setSettings] = useState(newSettings);
   const [chatSystemPrompt, setChatSystemPrompt] = useState("");
+  const [roleplaySystemPrompt, setRoleplaySystemPrompt] = useState("");
   const [defaultModel, setDefaultModel] = useState(DEFAULT_MODEL);
   const [generateChatName, setGenerateChatName] = useState(
     Boolean(localAppSettings.generate_chat_name),
@@ -140,11 +154,12 @@ function App() {
   const [prompt, setPrompt] = useState("");
   const [openingMessage] = useState(() => pickOpeningMessage());
   const [writingOpeningMessage] = useState(() => pickOpeningMessage("write"));
+  const [roleplayOpeningMessage] = useState(() => pickOpeningMessage("roleplay"));
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [railOpen, setRailOpen] = useState(false);
   const [chatMode, setChatMode] = useState(() => {
     const route = parseRoute();
-    return route.page === "story" ? "write" : route.mode || "chat";
+    return route.page === "home" ? route.mode || "chat" : modeForPage(route.page);
   });
   const [previousChatMode, setPreviousChatMode] = useState(null);
 
@@ -560,17 +575,18 @@ function App() {
   async function closeTempForRouteChange(nextRoute, navigationIntent = null) {
     const currentRoute = routeRef.current;
     const chatId = tempChatIdRef.current;
-    if (currentRoute?.page !== "temp" || !chatId) return;
-    if (nextRoute?.page === "temp" && nextRoute.chatId === chatId) return;
+    const temporaryPages = ["temp", "roleplayTemp"];
+    if (!temporaryPages.includes(currentRoute?.page) || !chatId) return;
+    if (temporaryPages.includes(nextRoute?.page) && nextRoute.chatId === chatId) return;
     await closeTemporaryChat(chatId);
     if (navigationIntent !== null && !navigationIntentIsCurrent(navigationIntent)) return false;
     return true;
   }
 
-  async function navigateToChat(chat, { replace = false } = {}) {
+  async function navigateToChat(chat, { replace = false, mode = conversationMode } = {}) {
     if (rejectWriteNavigationDuringGeneration()) return;
     const navigationIntent = beginNavigationIntent();
-    const nextRoute = chatRoute(chat);
+    const nextRoute = chatRoute(chat, mode);
     try {
       await flushChapterSave(activeStoryIdRef.current, activeChapterIdRef.current);
       if (!navigationIntentIsCurrent(navigationIntent)) return;
@@ -581,11 +597,20 @@ function App() {
     await closeTempForRouteChange(nextRoute, navigationIntent);
     if (!navigationIntentIsCurrent(navigationIntent)) return;
     writeRoute(nextRoute, { replace });
-    setChatMode("chat");
+    setChatMode(mode);
   }
 
   const isEmptyChat = !activeChatId && messages.length === 0;
   const isWritingMode = chatMode === "write";
+  const isRoleplayMode = chatMode === "roleplay";
+  //chat and roleplay share this whole screen, so the mode only decides which routes it talks to
+  const conversationMode = isRoleplayMode ? "roleplay" : "chat";
+  const conversations = useMemo(
+    () => createConversationApi(conversationMode),
+    [conversationMode],
+  );
+  const labels = conversationLabels(conversationMode);
+  const globalSystemPrompt = isRoleplayMode ? roleplaySystemPrompt : chatSystemPrompt;
   const isEmptyWriting = !activeStoryId || !activeChapterId;
   const writingStories = temporaryTourStory
     ? [temporaryTourStory, ...stories.filter((story) => story.id !== temporaryTourStory.id)]
@@ -656,26 +681,21 @@ function App() {
   }, [activeMessages, isWritingMode, latestBrainstormGeneration, latestStoryGeneration, models, settings.model, storyWorkspaceView]);
 
   const loadChats = useCallback(async () => {
-    const payload = await api("/api/chats");
-    setChats(payload.chats || []);
-  }, []);
+    setChats(await conversations.listConversations());
+  }, [conversations]);
 
   const loadFolders = useCallback(async () => {
-    const payload = await api("/api/folders");
-    let nextFolders = payload.folders || [];
+    let nextFolders = await conversations.listFolders();
 
     //folders used to live in localStorage before they had a table, so lift those over once and forget the key
-    const legacyFolders = readLocalChatFolders();
+    const legacyFolders = conversations.mode === "chat" ? readLocalChatFolders() : [];
     if (legacyFolders.length > 0) {
       try {
         if (nextFolders.length === 0) {
           for (const folder of legacyFolders) {
-            await api("/api/folders", {
-              method: "POST",
-              body: JSON.stringify({ name: folder.name }),
-            });
+            await conversations.createFolder(folder.name);
           }
-          nextFolders = (await api("/api/folders")).folders || [];
+          nextFolders = await conversations.listFolders();
         }
         clearLocalChatFolders();
       } catch {
@@ -684,7 +704,7 @@ function App() {
     }
 
     setFolders(nextFolders);
-  }, []);
+  }, [conversations]);
 
   const loadStories = useCallback(async () => {
     const nextStories = await storyApi.listStories();
@@ -923,6 +943,9 @@ function App() {
       setPrivacyMode(nextPrivacyMode);
       setZdrMode(nextZdrMode);
       setChatSystemPrompt(typeof payload.chat_system_prompt === "string" ? payload.chat_system_prompt : "");
+      setRoleplaySystemPrompt(
+        typeof payload.roleplay_system_prompt === "string" ? payload.roleplay_system_prompt : "",
+      );
       writeLocalAppSettings({
         generate_chat_name: nextGenerateChatName,
         hide_free_models: nextHideFreeModels,
@@ -947,6 +970,12 @@ function App() {
       setStatus(error.message);
     }
   }, [activeChatId, activeStoryId]);
+
+  //chat and roleplay share the sidebar, so the old list has to go before the new one arrives
+  useEffect(() => {
+    setChats([]);
+    setFolders([]);
+  }, [conversationMode]);
 
   useEffect(() => {
     loadKeyStatus();
@@ -1018,7 +1047,7 @@ function App() {
   async function closeTemporaryChat(chatId = tempChatIdRef.current) {
     if (!chatId) return;
     try {
-      await api(`/api/chats/${chatId}/close`, { method: "POST" });
+      await conversations.closeConversation(chatId);
     } catch (error) {
       setStatus(error.message);
       throw error;
@@ -1028,8 +1057,9 @@ function App() {
   useEffect(() => {
     function closeTempOnPageExit() {
       const chatId = tempChatIdRef.current;
-      if (!chatId || routeRef.current?.page !== "temp") return;
-      navigator.sendBeacon?.(`/api/chats/${chatId}/close`);
+      const page = routeRef.current?.page;
+      if (!chatId || !["temp", "roleplayTemp"].includes(page)) return;
+      navigator.sendBeacon?.(createConversationApi(modeForPage(page)).closePath(chatId));
     }
 
     window.addEventListener("pagehide", closeTempOnPageExit);
@@ -1039,7 +1069,7 @@ function App() {
     };
   }, []);
 
-  async function loadChat(chatId, { replace = false, fromRoute = false } = {}) {
+  async function loadChat(chatId, { replace = false, fromRoute = false, mode = conversationMode } = {}) {
     if (rejectWriteNavigationDuringGeneration()) {
       writeRoute(routeRef.current, { replace: true });
       return;
@@ -1047,21 +1077,24 @@ function App() {
     const navigationIntent = beginNavigationIntent();
     const loadId = latestChatLoadRef.current + 1;
     latestChatLoadRef.current = loadId;
+    const modeConversations = mode === conversationMode
+      ? conversations
+      : createConversationApi(mode);
     try {
       await flushChapterSave(activeStoryIdRef.current, activeChapterIdRef.current);
       if (!navigationIntentIsCurrent(navigationIntent)) return;
-      const payload = await api(`/api/chats/${chatId}`);
+      const result = await modeConversations.getConversation(chatId);
       if (loadId !== latestChatLoadRef.current || !navigationIntentIsCurrent(navigationIntent)) return;
-      const nextRoute = chatRoute(payload.chat);
+      const nextRoute = chatRoute(result.conversation, mode);
       await closeTempForRouteChange(nextRoute, navigationIntent);
       if (loadId !== latestChatLoadRef.current || !navigationIntentIsCurrent(navigationIntent)) return;
       writeRoute(nextRoute, { replace: replace || fromRoute });
-      setChatMode("chat");
-      applyChat(payload.chat, payload.messages || []);
+      setChatMode(mode);
+      applyChat(result.conversation, result.messages);
     } catch (error) {
       if (loadId !== latestChatLoadRef.current || !navigationIntentIsCurrent(navigationIntent)) return;
       if (fromRoute) {
-        await resetChat({ replace: true });
+        await resetChat({ replace: true, mode });
       } else {
         setStatus(error.message);
       }
@@ -1082,26 +1115,30 @@ function App() {
 
     if (!activeChatId) return;
     try {
-      await api(`/api/chats/${activeChatId}`, {
-        method: "PATCH",
-        body: JSON.stringify(nextSettings),
-      });
+      await conversations.patchConversation(activeChatId, nextSettings);
       await loadChats();
     } catch (error) {
       setStatus(error.message);
     }
   }
 
-  async function saveChatSystemPrompt(systemPrompt) {
+  async function saveGlobalSystemPrompt(systemPrompt) {
+    const settingKey = conversations.systemPromptKey;
     try {
       const payload = await api("/api/settings", {
         method: "PATCH",
-        body: JSON.stringify({ chat_system_prompt: systemPrompt }),
+        body: JSON.stringify({ [settingKey]: systemPrompt }),
       });
-      if (payload.chat_system_prompt !== systemPrompt) {
-        throw new Error("Chat system prompt did not save. Restart the backend and try again.");
+      if (payload[settingKey] !== systemPrompt) {
+        throw new Error(
+          `${labels.title} system prompt did not save. Restart the backend and try again.`,
+        );
       }
-      setChatSystemPrompt(payload.chat_system_prompt);
+      if (settingKey === "roleplay_system_prompt") {
+        setRoleplaySystemPrompt(payload[settingKey]);
+      } else {
+        setChatSystemPrompt(payload[settingKey]);
+      }
     } catch (error) {
       setStatus(error.message);
       throw error;
@@ -1127,7 +1164,7 @@ function App() {
   async function resetChat({ replace = false, mode = chatMode } = {}) {
     if (rejectWriteNavigationDuringGeneration()) return;
     const navigationIntent = beginNavigationIntent();
-    const nextMode = mode === "write" ? "write" : "chat";
+    const nextMode = ["write", "roleplay"].includes(mode) ? mode : "chat";
     const nextRoute = { page: "home", mode: nextMode };
     try {
       await flushChapterSave(activeStoryIdRef.current, activeChapterIdRef.current);
@@ -1181,9 +1218,10 @@ function App() {
 
     const route = parseRoute();
     routeRef.current = route;
-    if (route.page === "chat" || route.page === "temp") {
-      setChatMode("chat");
-      void loadChat(route.chatId, { replace: true, fromRoute: true });
+    if (isConversationPage(route.page)) {
+      const routeMode = modeForPage(route.page);
+      setChatMode(routeMode);
+      void loadChat(route.chatId, { replace: true, fromRoute: true, mode: routeMode });
     } else if (route.page === "story") {
       void loadStoryRoute(route, { replace: true, fromRoute: true });
     } else {
@@ -1200,9 +1238,10 @@ function App() {
         writeRoute(routeRef.current, { replace: true });
         return;
       }
-      if (nextRoute.page === "chat" || nextRoute.page === "temp") {
-        setChatMode("chat");
-        void loadChat(nextRoute.chatId, { replace: true, fromRoute: true });
+      if (isConversationPage(nextRoute.page)) {
+        const routeMode = modeForPage(nextRoute.page);
+        setChatMode(routeMode);
+        void loadChat(nextRoute.chatId, { replace: true, fromRoute: true, mode: routeMode });
         return;
       }
       if (nextRoute.page === "story") {
@@ -1473,20 +1512,19 @@ function App() {
   }
 
   async function createChat({ temporary = false } = {}) {
-    const payload = await api("/api/chats", {
-      method: "POST",
-      body: JSON.stringify({
-        ...settings,
-        chat_system_prompt: chatSystemPrompt,
-        ...(temporary ? { title: "Temporary chat", temporary: true } : {}),
-      }),
+    const conversation = await conversations.createConversation({
+      ...settings,
+      [conversations.systemPromptKey]: globalSystemPrompt,
+      ...(temporary
+        ? { title: `Temporary ${labels.one}`, temporary: true }
+        : {}),
     });
-    applyChat(payload.chat, []);
-    await navigateToChat(payload.chat);
+    applyChat(conversation, []);
+    await navigateToChat(conversation);
     if (!temporary) {
       await loadChats();
     }
-    return payload.chat;
+    return conversation;
   }
 
   async function ensureChat() {
@@ -1513,16 +1551,16 @@ function App() {
     const chat = chats.find((item) => item.id === chatId);
     if (!chat) return;
     setConfirmDialog({
-      title: "Delete chat?",
+      title: labels.deleteTitle,
       chatTitle: chat.title,
       body: "This cannot be undone.",
       confirmLabel: "Delete",
       onConfirm: async () => {
         try {
-          await api(`/api/chats/${chatId}`, { method: "DELETE" });
-          if (chatId === activeChatId) await resetChat();
+          await conversations.deleteConversation(chatId);
+          if (chatId === activeChatId) await resetChat({ mode: chatMode });
           await loadChats();
-          setStatus("Chat deleted");
+          setStatus(labels.deleted);
         } catch (error) {
           setStatus(error.message);
         }
@@ -1531,7 +1569,7 @@ function App() {
   }
 
   async function exportChats(chatId, chat) {
-    const response = await fetch(`/api/chats/${encodeURIComponent(chatId)}/export`);
+    const response = await fetch(conversations.exportPath(chatId));
     if (!response.ok) {
       throw new Error(await responseErrorDetail(response));
     }
@@ -1539,12 +1577,12 @@ function App() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = exportFileName(chat);
+    link.download = conversationExportFileName(chat, conversationMode);
     document.body.appendChild(link);
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
-    showToast(`Exported ${shortTitle(chat?.title) || "chat"}`);
+    showToast(`Exported ${shortTitle(chat?.title) || labels.exportFallback}`);
   }
 
   async function exportChatFromMenu(chat) {
@@ -1557,26 +1595,20 @@ function App() {
   }
 
   async function importChats(payload) {
-    const result = await api("/api/chats/import", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
+    const result = await conversations.importConversations(payload);
     await loadChats();
     showToast(
-      `Imported ${result.imported_chats || 0} chats and ${result.imported_messages || 0} messages`,
+      `Imported ${result.importedConversations} ${labels.many} and ${result.importedMessages} messages`,
     );
     return result;
   }
 
   async function renameChat(chatId, title) {
     try {
-      const payload = await api(`/api/chats/${chatId}`, {
-        method: "PATCH",
-        body: JSON.stringify({ title }),
-      });
+      const result = await conversations.patchConversation(chatId, { title });
       await loadChats();
-      if (chatId === activeChatId && payload.chat) {
-        await navigateToChat(payload.chat, { replace: true });
+      if (chatId === activeChatId && result.conversation) {
+        await navigateToChat(result.conversation, { replace: true });
       }
     } catch (error) {
       setStatus(error.message);
@@ -1591,15 +1623,12 @@ function App() {
     )));
 
     try {
-      const payload = await api(`/api/chats/${chat.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ pinned: nextPinned }),
-      });
+      const result = await conversations.patchConversation(chat.id, { pinned: nextPinned });
       setChats((current) => current.map((item) => (
-        item.id === chat.id ? payload.chat : item
+        item.id === chat.id ? result.conversation : item
       )));
       await loadChats();
-      showToast(nextPinned ? "Chat pinned" : "Chat unpinned");
+      showToast(nextPinned ? labels.pinned : labels.unpinned);
     } catch (error) {
       setChats((current) => current.map((item) => (
         item.id === chat.id ? chat : item
@@ -1610,13 +1639,10 @@ function App() {
 
   async function createFolder(name) {
     try {
-      const payload = await api("/api/folders", {
-        method: "POST",
-        body: JSON.stringify({ name }),
-      });
+      const folder = await conversations.createFolder(name);
       await loadFolders();
-      showToast(`Folder "${payload.folder.name}" created`);
-      return payload.folder;
+      showToast(`Folder "${folder.name}" created`);
+      return folder;
     } catch (error) {
       setStatus(error.message);
       throw error;
@@ -1625,10 +1651,7 @@ function App() {
 
   async function renameFolder(folderId, name) {
     try {
-      await api(`/api/folders/${folderId}`, {
-        method: "PATCH",
-        body: JSON.stringify({ name }),
-      });
+      await conversations.renameFolder(folderId, name);
       await loadFolders();
     } catch (error) {
       setStatus(error.message);
@@ -1642,10 +1665,10 @@ function App() {
       title: "Delete folder?",
       chatTitle: folder.name,
       body: folderChats.length
-        ? `The ${folderChats.length} ${folderChats.length === 1 ? "chat" : "chats"} inside will move back to Recents.`
+        ? `The ${folderChats.length} ${folderChats.length === 1 ? labels.one : labels.many} inside will move back to Recents.`
         : "This cannot be undone.",
       confirmLabel: "Delete folder",
-      secondaryLabel: folderChats.length ? "Delete folder and chats" : null,
+      secondaryLabel: folderChats.length ? labels.deleteFolderSecondary : null,
       onSecondary: async () => {
         await removeFolder(folder, true);
       },
@@ -1657,15 +1680,13 @@ function App() {
 
   async function removeFolder(folder, deleteChats) {
     try {
-      await api(`/api/folders/${folder.id}?delete_chats=${deleteChats ? "true" : "false"}`, {
-        method: "DELETE",
-      });
+      await conversations.deleteFolder(folder.id, deleteChats);
       await loadFolders();
       await loadChats();
       if (deleteChats && chats.some((chat) => chat.folder_id === folder.id && chat.id === activeChatId)) {
-        await resetChat();
+        await resetChat({ mode: chatMode });
       }
-      showToast(deleteChats ? "Folder and chats deleted" : "Folder deleted");
+      showToast(deleteChats ? labels.folderAndItemsDeleted : "Folder deleted");
     } catch (error) {
       setStatus(error.message);
     }
@@ -1681,10 +1702,7 @@ function App() {
     )));
 
     try {
-      await api(`/api/chats/${chat.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ folder_id: nextFolderId || "" }),
-      });
+      await conversations.patchConversation(chat.id, { folder_id: nextFolderId || "" });
       await loadChats();
       await loadFolders();
       const folder = folders.find((item) => item.id === nextFolderId);
@@ -1699,19 +1717,16 @@ function App() {
 
   async function createChatInFolder(folderId) {
     try {
-      const payload = await api("/api/chats", {
-        method: "POST",
-        body: JSON.stringify({
-          ...settings,
-          chat_system_prompt: chatSystemPrompt,
-          folder_id: folderId,
-        }),
+      const conversation = await conversations.createConversation({
+        ...settings,
+        [conversations.systemPromptKey]: globalSystemPrompt,
+        folder_id: folderId,
       });
-      applyChat(payload.chat, []);
-      await navigateToChat(payload.chat);
+      applyChat(conversation, []);
+      await navigateToChat(conversation);
       await loadChats();
       await loadFolders();
-      return payload.chat;
+      return conversation;
     } catch (error) {
       setStatus(error.message);
       throw error;
@@ -1954,13 +1969,13 @@ function App() {
       setPrompt("");
       promptAttachments.releaseAttachments();
 
-      const response = await fetch(`/api/chats/${conversationId}/messages/stream`, {
+      const response = await fetch(conversations.streamPath(conversationId), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: abortRef.current.signal,
         body: JSON.stringify({
           ...settings,
-          chat_system_prompt: chatSystemPrompt,
+          [conversations.systemPromptKey]: globalSystemPrompt,
           message: text,
           regenerate_message_id: regenerateMessageId,
           attachment_ids: sentAttachmentIds,
@@ -2025,12 +2040,12 @@ function App() {
   //the route always answers with a title, so a rejection here is the network rather than the model
   async function nameChat(chatId, tempMode) {
     try {
-      const payload = await api(`/api/chats/${chatId}/title`, { method: "POST" });
+      const result = await conversations.nameConversation(chatId);
       if (!tempMode) {
         await loadChats();
       }
-      if (chatId === activeChatId && payload.chat) {
-        await navigateToChat(payload.chat, { replace: true });
+      if (chatId === activeChatId && result.conversation) {
+        await navigateToChat(result.conversation, { replace: true });
       }
     } catch (error) {
       //a chat that keeps its fallback title is not worth interrupting the reply for, but a silent
@@ -2083,11 +2098,9 @@ function App() {
       confirmLabel: "Delete",
       onConfirm: async () => {
         try {
-          const payload = await api(`/api/chats/${activeChatId}/messages/${message.id}`, {
-            method: "DELETE",
-          });
-          applyChat(payload.chat, payload.messages || []);
-          await navigateToChat(payload.chat, { replace: true });
+          const result = await conversations.deleteMessage(activeChatId, message.id);
+          applyChat(result.conversation, result.messages);
+          await navigateToChat(result.conversation, { replace: true });
           await loadChats();
           setStatus("Prompt deleted");
         } catch (error) {
@@ -2129,7 +2142,7 @@ function App() {
 
   function changeChatMode(nextMode) {
     if (rejectWriteNavigationDuringGeneration()) return;
-    const mode = nextMode === "write" ? "write" : "chat";
+    const mode = ["write", "roleplay"].includes(nextMode) ? nextMode : "chat";
     if (mode !== chatMode) setPreviousChatMode(chatMode);
     void resetChat({ mode });
   }
@@ -3379,7 +3392,11 @@ function App() {
     });
   }
 
-  const landingMessage = isWritingMode ? writingOpeningMessage : openingMessage;
+  const landingMessage = isWritingMode
+    ? writingOpeningMessage
+    : isRoleplayMode
+      ? roleplayOpeningMessage
+      : openingMessage;
   const visibleMessages = activeMessages;
   const visibleActiveChatId = activeConversationId;
   const showLandingComposer = isWritingMode ? isEmptyWriting : isEmptyChat;
@@ -3425,6 +3442,7 @@ function App() {
       ) : (
         <ConversationRail
           chats={sidebarChats}
+          labels={labels}
           activeChatId={visibleActiveChatId}
           models={chatModels}
           onNewChat={() => resetChat({ mode: chatMode })}
@@ -3458,7 +3476,7 @@ function App() {
       <main className="relative grid min-w-0 flex-1 grid-rows-[minmax(0,1fr)_auto]">
         <header className="pointer-events-none absolute left-0 right-0 top-0 z-20 flex items-center gap-3 bg-transparent px-4 py-4 sm:px-8 lg:px-10">
           <IconButton
-            label="Open chats"
+            label={isWritingMode ? "Open stories" : labels.openRail}
             className="pointer-events-auto lg:hidden"
             onClick={() => setRailOpen(true)}
           >
@@ -3466,9 +3484,10 @@ function App() {
           </IconButton>
           {showLandingComposer && !isWritingMode && (
             <div className="ml-auto flex items-center gap-2">
-              <HelpTourButton onClick={tour.start} />
+              {!isRoleplayMode && <HelpTourButton onClick={tour.start} />}
               <TemporaryChatButton
                 active={temporaryChat}
+                label={`Temporary ${labels.one}`}
                 onClick={toggleTemporaryChat}
               />
             </div>
@@ -3701,8 +3720,9 @@ function App() {
         showPromptNavigationRail={showPromptNavigationRail}
         modelLocked={activeModelLocked}
         onPersist={persistSettings}
-        chatSystemPrompt={chatSystemPrompt}
-        onSaveChatSystemPrompt={saveChatSystemPrompt}
+        chatSystemPrompt={globalSystemPrompt}
+        onSaveChatSystemPrompt={saveGlobalSystemPrompt}
+        conversationLabels={labels}
         onModelSelected={(name) => showToast(`Model selected: ${name}`)}
         onSetDefaultModel={updateDefaultModel}
         onToggleGenerateChatName={updateGenerateChatName}

@@ -1,12 +1,14 @@
 import { cx, CONTROL_MOTION } from "../uiShared.js";
 
-export function TemporaryChatButton({ active, onClick }) {
+export function TemporaryChatButton({ active, onClick, label = "Temporary chat" }) {
+  const state = active ? `${label} on` : `${label} off`;
+
   return (
     <button
       type="button"
       data-tour="temp-chat-button"
-      aria-label={active ? "Temporary chat on" : "Temporary chat off"}
-      title={active ? "Temporary chat on" : "Temporary chat off"}
+      aria-label={state}
+      title={state}
       aria-pressed={active}
       onClick={onClick}
       className={cx(

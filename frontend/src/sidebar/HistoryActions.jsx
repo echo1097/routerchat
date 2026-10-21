@@ -6,6 +6,7 @@ import { MaskIcon } from "../components/IconButton.jsx";
 
 export function ChatHistoryActions({
   chat,
+  labels,
   isFirst,
   forceVisible,
   folders,
@@ -17,11 +18,12 @@ export function ChatHistoryActions({
   onMoveToFolder,
 }) {
   const [moveOpen, setMoveOpen] = useState(false);
+
   return (
     <OverflowActions
       id={`chat-${chat.id}`}
       title={chat.title}
-      label="Chat actions"
+      label={`${labels.title} actions`}
       isFirst={isFirst}
       forceVisible={forceVisible}
     >
@@ -31,7 +33,7 @@ export function ChatHistoryActions({
             type="button"
             role="menuitem"
             disabled={renameDisabled}
-            title={renameDisabled ? "Waiting for the chat name" : undefined}
+            title={renameDisabled ? `Waiting for the ${labels.one} name` : undefined}
             onClick={() => {
               closeMenu();
               onRename(chat);
@@ -56,7 +58,7 @@ export function ChatHistoryActions({
             className="chat-history-menu-item text-neutral-200 hover:bg-white/[0.07] focus:bg-white/[0.07] focus:outline-none"
           >
             <i className="fi fi-rr-thumbtack text-[14px] leading-none" aria-hidden="true" />
-            {chat.pinned ? "Unpin chat" : "Pin chat"}
+            {chat.pinned ? `Unpin ${labels.one}` : `Pin ${labels.one}`}
           </button>
           <button
             type="button"
@@ -121,7 +123,7 @@ export function ChatHistoryActions({
             className="chat-history-menu-item text-neutral-200 hover:bg-white/[0.07] focus:bg-white/[0.07] focus:outline-none"
           >
             <i className="fi fi-rr-file-export text-[14px] leading-none" aria-hidden="true" />
-            Export chat
+            {`Export ${labels.one}`}
           </button>
           <button
             type="button"
@@ -133,7 +135,7 @@ export function ChatHistoryActions({
             className="chat-history-menu-item text-red-300 hover:bg-red-500/10 focus:bg-red-500/10 focus:outline-none"
           >
             <Trash2 size={14} />
-            Delete chat
+            {`Delete ${labels.one}`}
           </button>
         </>
       )}
@@ -141,7 +143,7 @@ export function ChatHistoryActions({
   );
 }
 
-export function FolderActions({ folder, onRename, onDelete, onNewChat }) {
+export function FolderActions({ folder, labels, onRename, onDelete, onNewChat }) {
   return (
     <OverflowActions
       id={`folder-${folder.id}`}
@@ -161,7 +163,7 @@ export function FolderActions({ folder, onRename, onDelete, onNewChat }) {
             className="chat-history-menu-item text-neutral-200 hover:bg-white/[0.07] focus:bg-white/[0.07] focus:outline-none"
           >
             <MaskIcon src="/icons/new-message.png" size={14} />
-            New chat here
+            {`New ${labels.one} here`}
           </button>
           <button
             type="button"

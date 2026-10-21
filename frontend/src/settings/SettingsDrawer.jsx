@@ -119,6 +119,7 @@ export function SettingsDrawer({
   onPersist,
   chatSystemPrompt,
   onSaveChatSystemPrompt,
+  conversationLabels,
   onModelSelected,
   onSetDefaultModel,
   onToggleGenerateChatName,
@@ -186,10 +187,13 @@ export function SettingsDrawer({
   const activeCloudChat = chats.find((chat) => chat.id === activeChatId);
   const cloudChat = selectedCloudChat || activeCloudChat || chats[0];
   const cloudChatId = cloudChat?.id || "";
+  const conversationName = conversationLabels?.title || "Chat";
+  const conversationNoun = conversationLabels?.one || "chat";
+  const conversationPlural = conversationLabels?.many || "chats";
   const chatPrompt = useChatSystemPromptAutosave({
     value: chatSystemPrompt,
     onSave: onSaveChatSystemPrompt,
-    active: open && chatMode === "chat",
+    active: open && chatMode !== "write",
     resetKey: chatMode,
   });
   const chatPromptSaveLabel = chatPrompt.saveState.replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -696,7 +700,7 @@ export function SettingsDrawer({
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
             <h2 className="text-balance text-sm font-semibold text-neutral-100">
-              Chat system prompt
+              {`${conversationName} system prompt`}
             </h2>
             <span
               aria-live="polite"
@@ -727,7 +731,7 @@ export function SettingsDrawer({
           )}
         </div>
         <p className="mt-0.5 mb-3 text-pretty text-xs leading-5 text-neutral-500">
-          Optional instructions sent before every message in every chat. Write mode has its own system prompt.
+          {`Optional instructions sent before every message in every ${conversationNoun}. Each mode has its own system prompt.`}
         </p>
       </div>
       <div className="min-h-0 flex-1">
@@ -736,7 +740,7 @@ export function SettingsDrawer({
             value={chatPrompt.draft}
             onChange={(event) => chatPrompt.updateDraft(event.target.value)}
             onBlur={chatPrompt.saveNow}
-            placeholder="No chat system prompt"
+            placeholder={`No ${conversationNoun} system prompt`}
             data-1p-ignore="true"
             className="block h-full w-full resize-none overflow-y-auto bg-transparent text-sm leading-6 text-neutral-100 outline-none placeholder:text-neutral-500"
           />
@@ -749,13 +753,13 @@ export function SettingsDrawer({
     <section className="flex h-full min-h-0 flex-col">
       <section className="flex min-h-0 flex-initial flex-col px-1 py-3">
         <h2 className="shrink-0 text-balance text-sm font-semibold text-neutral-100">
-          Select Chat
+          {`Select ${conversationName}`}
         </h2>
         <div className="mt-2 shrink-0">
           <SearchClearField
             value={cloudSearch}
             onChange={setCloudSearch}
-            placeholder="Search chats"
+            placeholder={`Search ${conversationPlural}`}
           />
         </div>
         <div className="relative mt-2 flex min-h-0 flex-initial flex-col">
@@ -767,7 +771,9 @@ export function SettingsDrawer({
               {filteredCloudChats.length === 0 ? (
                 <div className="grid min-h-10 w-full grid-cols-[18px_minmax(0,1fr)_14px] items-center gap-2 rounded-xl bg-black/15 px-3 py-3 text-pretty text-xs leading-5 text-neutral-500 shadow-[var(--shadow-border)]">
                   <span className="col-start-2 min-w-0">
-                    {chats.length === 0 ? "No chats yet." : "No matching chats."}
+                    {chats.length === 0
+                      ? `No ${conversationPlural} yet.`
+                      : `No matching ${conversationPlural}.`}
                   </span>
                 </div>
               ) : (

@@ -18,6 +18,7 @@ import { NamePromptModal } from "../components/NamePromptModal.jsx";
 
 export function ConversationRail({
   chats,
+  labels,
   activeChatId,
   models,
   onNewChat,
@@ -214,6 +215,7 @@ export function ConversationRail({
           )}
           <ChatHistoryActions
             chat={chat}
+            labels={labels}
             isFirst={index === 0}
             forceVisible={index === 0 && highlightFirstChatActions}
             folders={folders}
@@ -302,6 +304,7 @@ export function ConversationRail({
             )}
             <FolderActions
               folder={folder}
+              labels={labels}
               onRename={startFolderRename}
               onDelete={onDeleteFolder}
               onNewChat={onNewChatInFolder}
@@ -314,7 +317,7 @@ export function ConversationRail({
                 renderChatRows(folderChats, 1)
               ) : (
                 <div className="px-2.5 py-2 text-pretty text-[12px] leading-4 text-[#858585]">
-                  Drag a chat here, or use New chat in this folder.
+                  {labels.emptyFolder}
                 </div>
               )}
             </div>
@@ -354,9 +357,7 @@ export function ConversationRail({
       <div className="space-y-3">
         {folderGroup}
         <div className="px-2.5 py-6 text-pretty text-[13px] leading-5 text-[#858585]">
-          {chatMode === "write"
-            ? "Your stories will appear here."
-            : "Your conversations will appear here."}
+          {labels.emptyRail}
         </div>
       </div>
     ) : (
@@ -403,15 +404,15 @@ export function ConversationRail({
         collapsed={collapsed}
         onCollapse={onCollapse}
         onSearch={() => setSearchOpen(true)}
-        searchLabel="Search chats"
-        closeLabel="Close chats"
+        searchLabel={labels.searchRail}
+        closeLabel={labels.closeRail}
         collapseTourId="collapse-sidebar-button"
         listClassName="space-y-1"
         actions={(
           <div>
             <SidebarActionButton
               icon={<MaskIcon src="/icons/new-message.png" size={18} />}
-              label="New chat"
+              label={labels.newConversation}
               onClick={() => {
                 onNewChat();
                 onCloseMobile();
@@ -430,6 +431,7 @@ export function ConversationRail({
 
       <SidebarSearchModal
         open={searchOpen}
+        label={labels.searchRail}
         items={chats}
         onSelect={(chatId) => {
           setSearchOpen(false);

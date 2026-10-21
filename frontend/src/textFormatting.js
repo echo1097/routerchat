@@ -4,13 +4,15 @@ export function truncatePromptText(value, maxLength = 96) {
   return `${compact.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
-export function exportFileName(chat) {
-  const title = (chat?.title || "chat")
+export function conversationExportFileName(conversation, mode = "chat") {
+  const fallback = mode === "roleplay" ? "roleplay" : "chat";
+  const title = (conversation?.title || fallback)
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 42) || "chat";
-  return `routerchat-${title}-${new Date().toISOString().slice(0, 10)}.json`;
+    .slice(0, 42) || fallback;
+  const prefix = mode === "roleplay" ? "routerchat-roleplay" : "routerchat";
+  return `${prefix}-${title}-${new Date().toISOString().slice(0, 10)}.json`;
 }
 
 export function storyExportFileName(story) {

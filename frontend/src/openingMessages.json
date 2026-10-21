@@ -23,6 +23,30 @@
       "What are we working on while everyone else is asleep?"
     ]
   },
+  "roleplay": {
+    "morning": [
+      "Where does the story open?",
+      "Who are we today?",
+      "What is the first scene?"
+    ],
+    "afternoon": [
+      "Where do we pick up the scene?",
+      "Who walks in next?",
+      "What happens now?",
+      "Set the scene for me."
+    ],
+    "evening": [
+      "What happens after dark?",
+      "Who are we meeting tonight?",
+      "Where does tonight take us?"
+    ],
+    "lateNight": [
+      "Late night scene?",
+      "Who is still awake in this world?",
+      "One more scene before bed?",
+      "Where were we?"
+    ]
+  },
   "write": {
     "morning": [
       "Lets start the day with some coffee and writing!",

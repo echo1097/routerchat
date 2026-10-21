@@ -18,5 +18,6 @@ export const LOREBOOK_MODEL_INHERIT = "";
 
 export const CHAT_MODES = [
   { value: "chat", label: "Chat" },
+  { value: "roleplay", label: "Roleplay" },
   { value: "write", label: "Write" },
 ];

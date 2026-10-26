@@ -418,6 +418,93 @@ class AttachmentApiTest(unittest.TestCase):
         self.assertIn("not a supported file type", response.json()["detail"])
         self.assertEqual(list((paths.DATA_DIR / "attachments").iterdir()), [])
 
+    def test_upload_accepts_text_files_the_extension_list_does_not_know(self):
+        cases = [
+            ("Main.kt", b"fun main() {\n\tprintln(\"hi\")\n}\n"),
+            ("Dockerfile", b"FROM python:3.12\nRUN pip install fastapi\n"),
+            (".gitignore", b"node_modules/\n.venv/\r\n"),
+            ("notes.unknownext", "café ☃ \U0001f600\n".encode("utf-8")),
+            ("build.output", b"\x1b[32mok\x1b[0m\x0c\n"),
+        ]
+
+        for filename, body in cases:
+            with self.subTest(filename=filename):
+                response = self.upload([("files", (filename, body, "application/octet-stream"))])
+
+                self.assertEqual(response.status_code, 200, response.text)
+                attachment = response.json()["attachments"][0]
+                self.assertEqual(attachment["filename"], filename)
+                self.assertEqual(attachment["kind"], "text")
+                self.assertEqual(attachment["mime"], "text/plain")
+
+    def test_upload_rejects_unknown_files_that_are_not_text(self):
+        cases = [
+            ("archive.zip", b"PK\x03\x04\x14\x00\x00\x00"),
+            ("program.exe", b"MZ\x90\x00\x03\x00"),
+            ("latin1.unknownext", b"caf\xe9\n"),
+            ("Makefile", b"all:\n\x00\x01"),
+        ]
+
+        for filename, body in cases:
+            with self.subTest(filename=filename):
+                response = self.upload([("files", (filename, body, "application/octet-stream"))])
+
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(
+                    response.json()["detail"], f"{filename} is not a supported file type."
+                )
+                stored = paths.DATA_DIR / "attachments"
+                self.assertEqual(list(stored.iterdir()) if stored.exists() else [], [])
+
+    def test_unknown_text_file_uses_the_text_size_limit(self):
+        limit = attachmentFiles.MAX_TEXT_BYTES
+
+        atLimit = self.upload([("files", ("edge.unknownext", b"x" * limit))])
+        self.assertEqual(atLimit.status_code, 200, atLimit.text)
+
+        overLimit = self.upload([("files", ("big.unknownext", b"x" * (limit + 1)))])
+        self.assertEqual(overLimit.status_code, 400)
+        self.assertEqual(overLimit.json()["detail"], "big.unknownext is larger than 256KB.")
+
+    def test_unknown_binary_file_reads_no_more_than_the_text_limit(self):
+        readLengths = []
+        originalRead = UploadFile.read
+
+        async def trackRead(upload, size=-1):
+            raw = await originalRead(upload, size)
+            readLengths.append(len(raw))
+            return raw
+
+        oversized = b"\x00" * (2 * 1024 * 1024)
+        with patch.object(UploadFile, "read", trackRead):
+            response = self.upload([("files", ("video.mp4", oversized))])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["detail"], "video.mp4 is not a supported file type.")
+        self.assertLessEqual(sum(readLengths), attachmentFiles.MAX_TEXT_BYTES + 1)
+
+    def test_text_sniffing_tolerates_a_character_cut_at_the_read_limit(self):
+        snowman = "☃".encode("utf-8")
+        limit = attachmentFiles.MAX_TEXT_BYTES
+
+        self.assertTrue(attachmentFiles.looksLikeText(b"x" * (limit - 1) + snowman[:2]))
+        self.assertFalse(attachmentFiles.looksLikeText(b"hello " + snowman[:2]))
+        self.assertFalse(attachmentFiles.looksLikeText(b"hello \xff world"))
+        self.assertTrue(attachmentFiles.looksLikeText(b"tabs\tand\r\nnewlines"))
+        self.assertFalse(attachmentFiles.looksLikeText(b"bell\x07"))
+
+    def test_an_unknown_text_file_is_sent_as_a_plain_fenced_block(self):
+        response = self.upload([("files", ("Dockerfile", b"FROM python:3.12\n"))])
+        attachment = response.json()["attachments"][0]
+
+        with database.getDb() as conn:
+            parts = attachmentContent.attachmentContentParts(conn, [attachment["id"]])
+
+        self.assertEqual(
+            parts,
+            [{"type": "text", "text": "Attached file: Dockerfile\n\n```\nFROM python:3.12\n\n```"}],
+        )
+
     def test_upload_rejects_an_oversized_file(self):
         oversized = b"x" * (attachmentFiles.MAX_TEXT_BYTES + 1)
         response = self.upload([("files", ("big.txt", oversized, "text/plain"))])

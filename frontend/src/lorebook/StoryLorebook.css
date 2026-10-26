@@ -121,8 +121,7 @@
 
 .lorebook-primary-button,
 .lorebook-secondary-button,
-.lorebook-danger-button,
-.lorebook-generate-button {
+.lorebook-danger-button {
   height: 36px;
   display: inline-flex;
   align-items: center;
@@ -146,14 +145,12 @@
   background: #ffffff;
 }
 
-.lorebook-secondary-button,
-.lorebook-generate-button {
+.lorebook-secondary-button {
   background: var(--lb-fill-hover);
   color: var(--lb-text-soft);
 }
 
-.lorebook-secondary-button:hover,
-.lorebook-generate-button:hover {
+.lorebook-secondary-button:hover {
   background: rgba(255, 255, 255, 0.1);
   color: var(--lb-text);
 }
@@ -169,8 +166,7 @@
 }
 
 .lorebook-primary-button:disabled,
-.lorebook-secondary-button:disabled,
-.lorebook-generate-button:disabled {
+.lorebook-secondary-button:disabled {
   cursor: not-allowed;
   background: rgba(255, 255, 255, 0.05);
   color: #6b6b6b;

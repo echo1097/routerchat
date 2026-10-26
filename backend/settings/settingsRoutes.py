@@ -13,7 +13,7 @@ from backend.core.appSettings import (
 )
 from backend.core.utils import patchUpdates
 from backend.providers.registry import getActiveProvider, getProvider
-from backend.settings.settingsModels import ApiKeyRequest, AppSettingsPatchRequest
+from backend.settings.settingsModels import AppSettingsPatchRequest
 
 router = APIRouter()
 
@@ -40,15 +40,6 @@ def appSettingsPayload() -> dict[str, Any]:
 @router.get("/api/settings/key-status")
 async def keyStatus() -> dict[str, Any]:
     return await getActiveProvider().keyStatus()
-
-
-@router.post("/api/settings/openrouter-key")
-async def saveOpenrouterKey(payload: ApiKeyRequest) -> dict[str, Any]:
-    provider = getActiveProvider()
-    api_key = payload.api_key.strip()
-    data = await provider.validateKey(api_key)
-    provider.writeKey(api_key)
-    return provider.normalizeKeyStatus(data, True)
 
 
 @router.get("/api/settings")

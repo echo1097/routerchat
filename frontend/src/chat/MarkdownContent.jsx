@@ -1,10 +1,12 @@
 import remarkGfm from "remark-gfm";
+import rehypeHighlight from "rehype-highlight";
 import { remarkCitationPills, isCitationLink } from "../websearch/citations.js";
 import { memo } from "react";
 import { streamWordsPlugin } from "../streamingText.js";
 import ReactMarkdown from "react-markdown";
 import { MARKDOWN_IMAGE_COMPONENT } from "../markdownImage.jsx";
 import { InlineCitation } from "../websearch/SourcePills.jsx";
+import { CodeBlock } from "./CodeBlock.jsx";
 
 const MARKDOWN_REMARK_PLUGINS = [remarkGfm, remarkCitationPills];
 
@@ -18,7 +20,7 @@ function markdownLinkText(children) {
 
 export const MarkdownContent = memo(function MarkdownContent({ children, streaming, settledRef }) {
 
-  const rehypePlugins = streaming ? [streamWordsPlugin(settledRef)] : undefined;
+  const rehypePlugins = streaming ? [rehypeHighlight, streamWordsPlugin(settledRef)] : [rehypeHighlight];
 
   return (
     <ReactMarkdown
@@ -63,9 +65,7 @@ export const MarkdownContent = memo(function MarkdownContent({ children, streami
           ) : (
             <code {...props} />
           ),
-        pre: ({ node, ...props }) => (
-          <pre className="my-4 overflow-x-auto rounded-2xl bg-black/35 p-4 text-sm leading-6 shadow-[var(--shadow-border)]" {...props} />
-        ),
+        pre: CodeBlock,
         ul: ({ node, ...props }) => (
           <ul className="my-4 list-disc space-y-1 pl-5 text-pretty" {...props} />
         ),

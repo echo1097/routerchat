@@ -13,6 +13,8 @@ class ModelPrice:
     input: float
     output: float
     cacheRead: float
+    longPrompt: ModelPrice | None = None
+    longPromptAfter: int = 0
 
     @property
     def cacheWrite5m(self) -> float:
@@ -34,10 +36,20 @@ PRICES_BY_PREFIX: tuple[tuple[str, ModelPrice], ...] = (
     ("claude-opus-4-7", ModelPrice(5.0, 25.0, 0.50)),
     ("claude-opus-4-6", ModelPrice(5.0, 25.0, 0.50)),
     ("claude-opus-4-5", ModelPrice(5.0, 25.0, 0.50)),
-    ("claude-sonnet-5-5", ModelPrice(2.0, 10.0, 0.20)),
+    ("claude-sonnet-5-5", ModelPrice(2.0, 10.0, 0.10)),
     ("claude-sonnet-5", ModelPrice(2.0, 10.0, 0.20)),
     ("claude-sonnet-4-6", ModelPrice(3.0, 15.0, 0.30)),
     ("claude-sonnet-4-5", ModelPrice(3.0, 15.0, 0.30)),
+    (
+        "claude-haiku-5-5",
+        ModelPrice(
+            0.10,
+            0.50,
+            0.01,
+            longPrompt=ModelPrice(0.50, 2.50, 0.05),
+            longPromptAfter=100_000,
+        ),
+    ),
     ("claude-haiku-4-5", ModelPrice(1.0, 5.0, 0.10)),
 )
 
@@ -59,6 +71,8 @@ def costFor(modelId: str | None, usage: dict[str, Any]) -> float | None:
     if price is None:
         return None
 
+    inputTokens = tokenCount(usage.get("input_tokens"))
+    cacheReads = tokenCount(usage.get("cache_read_input_tokens"))
     cacheWrites = tokenCount(usage.get("cache_creation_input_tokens"))
     breakdown = usage.get("cache_creation")
     if isinstance(breakdown, dict):
@@ -68,9 +82,13 @@ def costFor(modelId: str | None, usage: dict[str, Any]) -> float | None:
         oneHourWrites = 0
         fiveMinuteWrites = cacheWrites
 
+    promptTokens = inputTokens + cacheReads + cacheWrites
+    if price.longPrompt and promptTokens > price.longPromptAfter:
+        price = price.longPrompt
+
     total = (
-        tokenCount(usage.get("input_tokens")) * price.input
-        + tokenCount(usage.get("cache_read_input_tokens")) * price.cacheRead
+        inputTokens * price.input
+        + cacheReads * price.cacheRead
         + fiveMinuteWrites * price.cacheWrite5m
         + oneHourWrites * price.cacheWrite1h
         + tokenCount(usage.get("output_tokens")) * price.output

@@ -155,7 +155,7 @@ class StreamParserTest(unittest.TestCase):
         self.assertEqual(usage["completion_tokens"], 500)
 
         expectedCost = (
-            100 * 2.0 + 20000 * 0.20 + 1000 * 2.5 + 2000 * 4.0 + 500 * 10.0
+            100 * 2.0 + 20000 * 0.10 + 1000 * 2.5 + 2000 * 4.0 + 500 * 10.0
         ) / 1_000_000
         self.assertAlmostEqual(usage["cost"], expectedCost)
 
@@ -172,6 +172,36 @@ class StreamParserTest(unittest.TestCase):
 
     def test_unknown_models_have_no_cost(self):
         self.assertIsNone(costFor("claude-next-9", {"input_tokens": 10, "output_tokens": 10}))
+
+    def test_haiku_5_5_short_prompts_use_the_lower_price(self):
+        cost = costFor("claude-haiku-5-5", {"input_tokens": 1000, "output_tokens": 200})
+
+        self.assertAlmostEqual(cost, (1000 * 0.10 + 200 * 0.50) / 1_000_000)
+
+    def test_haiku_5_5_switches_price_only_past_100k_prompt_tokens(self):
+        atLimit = costFor("claude-haiku-5-5", {"input_tokens": 100_000, "output_tokens": 100})
+        overLimit = costFor("claude-haiku-5-5", {"input_tokens": 100_001, "output_tokens": 100})
+
+        self.assertAlmostEqual(atLimit, (100_000 * 0.10 + 100 * 0.50) / 1_000_000)
+        self.assertAlmostEqual(overLimit, (100_001 * 0.50 + 100 * 2.50) / 1_000_000)
+
+    def test_haiku_5_5_counts_cached_tokens_toward_the_long_prompt_limit(self):
+        usage = {
+            "input_tokens": 1000,
+            "cache_read_input_tokens": 90_000,
+            "cache_creation_input_tokens": 9001,
+            "cache_creation": {"ephemeral_5m_input_tokens": 9001, "ephemeral_1h_input_tokens": 0},
+            "output_tokens": 100,
+        }
+
+        expectedCost = (1000 * 0.50 + 90_000 * 0.05 + 9001 * 0.625 + 100 * 2.50) / 1_000_000
+        self.assertAlmostEqual(costFor("claude-haiku-5-5", usage), expectedCost)
+
+    def test_haiku_5_5_shows_its_short_prompt_price_in_the_model_list(self):
+        self.assertEqual(
+            models.pricingFor("claude-haiku-5-5"),
+            {"prompt": "0.0000001000", "completion": "0.0000005000"},
+        )
 
     def test_completion_text_skips_thinking_blocks(self):
         payload = {

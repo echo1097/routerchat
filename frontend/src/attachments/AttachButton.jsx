@@ -2,7 +2,6 @@ import React, { useRef } from "react";
 import { Plus } from "lucide-react";
 
 import { cx, PROMPT_BAR_CONTROL_MOTION } from "../uiShared.js";
-import { acceptAttribute } from "./attachmentsApi.js";
 
 export default function AttachButton({
   onFilesPicked,
@@ -22,7 +21,6 @@ export default function AttachButton({
         ref={inputRef}
         type="file"
         multiple
-        accept={acceptAttribute(allowImages)}
         className="hidden"
         onChange={(event) => {
           onFilesPicked(event.target.files);

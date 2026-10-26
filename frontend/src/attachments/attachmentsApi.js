@@ -28,12 +28,27 @@ export function attachmentKind(filename) {
   return null;
 }
 
-export function acceptAttribute(allowImages) {
-  const extensions = allowImages
-    ? [...IMAGE_EXTENSIONS, ...PDF_EXTENSIONS, ...TEXT_EXTENSIONS]
-    : [...PDF_EXTENSIONS, ...TEXT_EXTENSIONS];
+function isBinaryByte(byte) {
+  return byte <= 0x08 || (byte >= 0x0e && byte <= 0x1a) || (byte >= 0x1c && byte <= 0x1f);
+}
 
-  return extensions.join(",");
+export async function looksLikeText(file) {
+  try {
+    const bytes = new Uint8Array(await file.slice(0, MAX_TEXT_BYTES + 1).arrayBuffer());
+    if (bytes.some(isBinaryByte)) return false;
+
+    new TextDecoder("utf-8", { fatal: true }).decode(bytes, { stream: file.size > bytes.length });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function detectAttachmentKind(file) {
+  const kind = attachmentKind(file.name);
+  if (kind) return kind;
+
+  return (await looksLikeText(file)) ? "text" : null;
 }
 
 export function readableSize(byteCount) {
@@ -56,9 +71,7 @@ function providerImageLimit(kind, maxImageBytes) {
   return limit > 0 && limit < MAX_IMAGE_BYTES ? limit : null;
 }
 
-export function rejectionReason(file, allowImages, providerLimits = {}) {
-  const kind = attachmentKind(file.name);
-
+export function rejectionReason(file, allowImages, providerLimits = {}, kind = attachmentKind(file.name)) {
   if (!kind) {
     return `${file.name} is not a supported file type.`;
   }

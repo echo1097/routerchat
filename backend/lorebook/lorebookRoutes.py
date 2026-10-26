@@ -3,7 +3,6 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
 
 from backend.core.database import getDb
 from backend.core.utils import utcNow
@@ -29,21 +28,6 @@ from backend.lorebook.lorebookRows import (
 )
 from backend.lorebook.timeline import normalizeTimelineDescription
 from backend.stories.storyQueries import getChapter, requireStory
-
-
-def requestUpdates(payload: BaseModel, reject_null: bool = False) -> dict[str, Any]:
-    if hasattr(payload, "model_dump"):
-        updates = payload.model_dump(exclude_unset=True)
-    else:
-        updates = payload.dict(exclude_unset=True)
-    if reject_null:
-        nullFields = [key for key, value in updates.items() if value is None]
-        if nullFields:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Fields cannot be null: {', '.join(sorted(nullFields))}.",
-            )
-    return updates
 
 
 router = APIRouter()

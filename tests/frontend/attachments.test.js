@@ -3,9 +3,10 @@ import { describe, expect, it } from "vitest";
 import { supportsImageInput } from "../../frontend/src/modelReasoning.js";
 import {
   MAX_TEXT_BYTES,
-  acceptAttribute,
   attachmentKind,
+  detectAttachmentKind,
   fileExtension,
+  looksLikeText,
   readableSize,
   rejectionReason,
   requestSizeRejection,
@@ -32,6 +33,10 @@ const models = [
 
 function fakeFile(name, size) {
   return { name, size };
+}
+
+function realFile(name, bytes) {
+  return new File([bytes], name);
 }
 
 describe("model image input support", () => {
@@ -150,15 +155,53 @@ describe("request size limit", () => {
   });
 });
 
-describe("file picker accept attribute", () => {
-  it("offers images only when the model can read them", () => {
-    expect(acceptAttribute(true)).toContain(".png");
-    expect(acceptAttribute(false)).not.toContain(".png");
+describe("text detection for unknown files", () => {
+  it("treats readable files with any name as text", async () => {
+    expect(await detectAttachmentKind(realFile("Main.kt", "fun main() {\n\tprintln(1)\n}\n"))).toBe("text");
+    expect(await detectAttachmentKind(realFile("Dockerfile", "FROM python:3.12\n"))).toBe("text");
+    expect(await detectAttachmentKind(realFile(".gitignore", "node_modules/\r\n"))).toBe("text");
+    expect(await detectAttachmentKind(realFile("notes.unknownext", "café ☃ 😀"))).toBe("text");
+    expect(await detectAttachmentKind(realFile("build.output", "\x1b[32mok\x1b[0m\f\n"))).toBe("text");
   });
 
-  it("always offers documents", () => {
-    expect(acceptAttribute(false)).toContain(".pdf");
-    expect(acceptAttribute(false)).toContain(".md");
+  it("turns away files that are not text", async () => {
+    expect(await detectAttachmentKind(realFile("archive.zip", new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x00])))).toBe(null);
+    expect(await detectAttachmentKind(realFile("program.exe", new Uint8Array([0x4d, 0x5a, 0x90, 0x00])))).toBe(null);
+    expect(await detectAttachmentKind(realFile("latin1.unknownext", new Uint8Array([0x63, 0x61, 0x66, 0xe9])))).toBe(null);
+  });
+
+  it("keeps using the extension for files it already knows", async () => {
+    expect(await detectAttachmentKind(realFile("shot.png", new Uint8Array([0x89, 0x50, 0x00])))).toBe("image");
+    expect(await detectAttachmentKind(realFile("notes.md", new Uint8Array([0xff, 0x00])))).toBe("text");
+  });
+
+  it("tolerates a character cut off where the check stops reading", async () => {
+    const bytes = new Uint8Array(MAX_TEXT_BYTES + 2).fill(0x61);
+    bytes.set([0xe2, 0x98, 0x83], MAX_TEXT_BYTES - 1);
+
+    expect(await looksLikeText(realFile("long.unknownext", bytes))).toBe(true);
+    expect(await looksLikeText(realFile("short.unknownext", new Uint8Array([0x61, 0xe2, 0x98])))).toBe(false);
+  });
+
+  it("treats a file it cannot read as not text", async () => {
+    const unreadable = {
+      name: "locked.unknownext",
+      slice: () => ({ arrayBuffer: () => Promise.reject(new Error("denied")) }),
+    };
+
+    expect(await looksLikeText(unreadable)).toBe(false);
+  });
+
+  it("lets a detected text file through and sizes it as text", async () => {
+    const small = realFile("Main.kt", "fun main() {}");
+    expect(rejectionReason(small, false, {}, await detectAttachmentKind(small))).toBe(null);
+
+    const big = realFile("big.unknownext", "x".repeat(MAX_TEXT_BYTES + 1));
+    expect(rejectionReason(big, true, {}, await detectAttachmentKind(big))).toContain("larger than");
+
+    const binary = realFile("archive.zip", new Uint8Array([0x00, 0x01]));
+    expect(rejectionReason(binary, true, {}, await detectAttachmentKind(binary)))
+      .toContain("not a supported file type");
   });
 });
 

@@ -3,6 +3,7 @@ import { useCallback, useRef, useState } from "react";
 import {
   MAX_FILES_PER_MESSAGE,
   deleteAttachment,
+  detectAttachmentKind,
   rejectionReason,
   requestSizeRejection,
   totalAttachmentBytes,
@@ -45,7 +46,8 @@ export function useAttachments({
 
     const accepted = [];
     for (const file of picked.slice(0, remainingSlots)) {
-      const reason = rejectionReason(file, allowImages, providerLimits)
+      const kind = await detectAttachmentKind(file);
+      const reason = rejectionReason(file, allowImages, providerLimits, kind)
         || requestSizeRejection(file, usedBytes, providerLimits);
       if (reason) {
         reportError(reason);

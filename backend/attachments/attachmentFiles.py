@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import codecs
+import re
 import sqlite3
 import unicodedata
 from pathlib import Path
@@ -92,6 +94,8 @@ KIND_LIMITS = {
     "text": MAX_TEXT_BYTES,
 }
 
+BINARY_BYTES = re.compile(rb"[\x00-\x08\x0e-\x1a\x1c-\x1f]")
+
 
 def attachmentsDir() -> Path:
     directory = paths.DATA_DIR / "attachments"
@@ -103,7 +107,7 @@ def fileExtension(filename: str) -> str:
     return Path(filename or "").suffix.lower()
 
 
-def classifyUpload(filename: str) -> tuple[str, str]:
+def kindFromExtension(filename: str) -> tuple[str, str] | None:
     extension = fileExtension(filename)
 
     if extension in IMAGE_TYPES:
@@ -112,6 +116,37 @@ def classifyUpload(filename: str) -> tuple[str, str]:
         return "pdf", PDF_TYPES[extension]
     if extension in TEXT_TYPES:
         return "text", TEXT_TYPES[extension]
+
+    return None
+
+
+def uploadLimit(filename: str) -> int:
+    knownKind = kindFromExtension(filename)
+    if knownKind:
+        return KIND_LIMITS[knownKind[0]]
+    return MAX_TEXT_BYTES
+
+
+def looksLikeText(raw: bytes) -> bool:
+    if BINARY_BYTES.search(raw):
+        return False
+
+    cutShort = len(raw) > MAX_TEXT_BYTES
+    try:
+        codecs.getincrementaldecoder("utf-8")().decode(raw, final=not cutShort)
+    except UnicodeDecodeError:
+        return False
+
+    return True
+
+
+def classifyUpload(filename: str, raw: bytes) -> tuple[str, str]:
+    knownKind = kindFromExtension(filename)
+    if knownKind:
+        return knownKind
+
+    if looksLikeText(raw):
+        return "text", "text/plain"
 
     raise HTTPException(
         status_code=400,

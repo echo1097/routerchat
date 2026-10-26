@@ -399,7 +399,7 @@ Ordinary back-and-forth conversation.
 - A context meter near the prompt bar shows how much of the model's context window the conversation is using.
 - If **Generate chat name** is on in settings, the model names the chat from the opening message.
 
-**Attachments.** A plus button sits at the left of the prompt bar controls. Up to 5 files per message. Images (png, jpg, webp, gif) up to 10 MB, but only for models that accept image input, PDFs up to 10 MB, and text or code files up to 256 KB. Files can also be dragged onto the window. If a user says they cannot attach an image, check whether the selected model supports images.
+**Attachments.** A plus button sits at the left of the prompt bar controls. Up to 5 files per message. Images (png, jpg, webp, gif) up to 10 MB, but only for models that accept image input, PDFs up to 10 MB, and text or code files up to 256 KB. Any file that is plain text works, whatever its name or extension (Dockerfile, .kt, .env and so on). Binary files like zip, docx, audio or video are turned away. Files can also be dragged onto the window. If a user says they cannot attach an image, check whether the selected model supports images.
 
 Anthropic has extra limits, and RouterChat blocks files that break them before anything is sent, with a message naming the limit. Images can be at most 7.5 MB. All files in one request can total about 21 MB. PDFs can total 100 pages on smaller-context models and 600 pages on models with a 1 million token context. Earlier files in a chat are sent again with every message, so they count toward the size and page limits too. The fix is to remove a file or start a new chat.
 

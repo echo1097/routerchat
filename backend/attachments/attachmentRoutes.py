@@ -19,6 +19,7 @@ from backend.attachments.attachmentFiles import (
     readAttachmentBytes,
     readableSize,
     safeFilename,
+    uploadLimit,
 )
 from backend.attachments.pdfPages import countPdfPages
 from backend.core.database import getDb
@@ -46,14 +47,15 @@ async def uploadAttachments(
     try:
         for upload in files:
             filename = safeFilename(upload.filename or "file")
-            kind, mime = classifyUpload(filename)
-            limit = KIND_LIMITS[kind]
-            raw = await upload.read(limit + 1)
+            raw = await upload.read(uploadLimit(filename) + 1)
 
             if not raw:
                 raise HTTPException(
                     status_code=400, detail=f"{filename} is empty."
                 )
+
+            kind, mime = classifyUpload(filename, raw)
+            limit = KIND_LIMITS[kind]
 
             if len(raw) > limit:
                 raise HTTPException(

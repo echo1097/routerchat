@@ -133,13 +133,6 @@ export const storyApi = {
     );
   },
 
-  async updateLorebookFromChapter(storyId, chapterId) {
-    return api(`/api/stories/${encodeURIComponent(storyId)}/lorebook/update`, {
-      method: "POST",
-      body: JSON.stringify({ chapter_id: chapterId }),
-    });
-  },
-
   async repairTimeline({ storyId, currentTimeline, onEvent }) {
     const response = await fetch(
       `/api/stories/${encodeURIComponent(storyId)}/lorebook/timeline/repair/stream`,

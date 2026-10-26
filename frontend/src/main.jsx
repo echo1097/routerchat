@@ -3526,7 +3526,6 @@ function App() {
             activeChapterId={activeChapterId}
             workspaceView={storyWorkspaceView}
             chapterContent={chapterContent}
-            contextWindowInfo={contextWindowInfo}
             saveState={chapterSaveState}
             generationStatus={storyGenerationStatus}
             canvasStreaming={canvasStreaming}
@@ -3538,10 +3537,6 @@ function App() {
             writeEditPreview={writeEditPreview}
             canvasScrollPosition={chapterCanvasScrollPosition(activeStoryId, activeChapterId)}
             onOpenRail={() => setRailOpen(true)}
-            onOpenLorebook={() => {
-              setStoryWorkspaceView("lorebook");
-              writeRoute(storyRoute(activeStoryId, activeChapterId, "lorebook"));
-            }}
             onBackToChapter={() => {
               setStoryWorkspaceView("chapter");
               writeRoute(storyRoute(activeStoryId, activeChapterId, "chapter"));

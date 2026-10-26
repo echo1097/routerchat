@@ -158,5 +158,3 @@ export const WRITE_TOUR_STEPS = [
     workspaceView: "chapter",
   },
 ];
-
-export const TOUR_STEPS = CHAT_TOUR_STEPS;

@@ -477,10 +477,16 @@ class StoryApiTest(unittest.TestCase):
             "backend.providers.streaming.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
-                f"/api/stories/{story['id']}/lorebook/update",
+                f"/api/stories/{story['id']}/lorebook/update/stream",
                 json={"chapter_id": chapter["id"], "force": force},
             )
         return response, calls
+
+    def lorebookUpdateResult(self, response):
+        events = [json.loads(line) for line in response.text.splitlines() if line]
+        completed = [event["value"] for event in events if event["type"] == "complete"]
+        self.assertEqual(len(completed), 1, events)
+        return completed[0]
 
     def callLorebookUpdateWithStreamState(
         self,
@@ -490,7 +496,6 @@ class StoryApiTest(unittest.TestCase):
         *,
         complete,
         finishReason=None,
-        streaming=False,
     ):
         requestBody = {}
 
@@ -512,12 +517,11 @@ class StoryApiTest(unittest.TestCase):
                     finishReason=finishReason,
                 )
 
-        endpoint = "update/stream" if streaming else "update"
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
             "backend.providers.streaming.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
-                f"/api/stories/{story['id']}/lorebook/{endpoint}",
+                f"/api/stories/{story['id']}/lorebook/update/stream",
                 json={"chapter_id": chapter["id"]},
             )
         return response, requestBody
@@ -746,16 +750,14 @@ class StoryApiTest(unittest.TestCase):
         summary = {"name": chapter["title"], "category": "synopsis", "description": "A visitor arrives."}
         entry = {"name": "Visitor", "category": "character", "description": "A visitor arrives.", "aliases": []}
         outputs = {
-            "update": {"updates": [{"action": "create", **summary}]},
-            "update_stream": {"updates": [{"action": "create", **summary}]},
+            "update_stream":{"updates": [{"action": "create", **summary}]},
             "generate": entry,
             "generate_summary": entry,
             "repair": {"entries": [entry], "summaries": {chapter["id"]: {"description": "A visitor arrives."}}},
             "timeline_repair": {"timeline": "- A visitor arrives."},
         }
         endpoints = {
-            "update": ("update", {"chapter_id": chapter["id"]}),
-            "update_stream": ("update/stream", {"chapter_id": chapter["id"]}),
+            "update_stream":("update/stream", {"chapter_id": chapter["id"]}),
             "generate": ("generate/stream", {"category": "character", "brief": "A visitor"}),
             "generate_summary": ("generate/stream", {"category": "synopsis", "chapter_id": chapter["id"]}),
             "repair": ("repair/stream", {}),
@@ -811,19 +813,16 @@ class StoryApiTest(unittest.TestCase):
         return response, requestBodies
 
     def testAllLorebookActionsSaveModelAndTokens(self):
-        for action in ("update", "update_stream", "generate", "generate_summary", "repair", "timeline_repair"):
+        for action in ("update_stream", "generate", "generate_summary", "repair", "timeline_repair"):
             with self.subTest(action=action):
                 story, chapter = self.storyWithChapter("Usage test", "A visitor arrives.")
                 models.cacheModels([models.normalizeModel({"id": "test/lorebook", "supported_parameters": []})])
                 self.client.patch(f"/api/stories/{story['id']}", json={"lorebook_model": "test/lorebook"})
                 response, requests = self.callTrackedLorebook(story, chapter, action)
                 self.assertEqual(response.status_code, 200)
-                if action == "update":
-                    self.assertIsNone(response.json()["error"])
-                else:
-                    events = [json.loads(line) for line in response.text.splitlines() if line]
-                    self.assertEqual(events[-1]["type"], "complete")
-                    self.assertFalse(events[-1]["value"].get("error"))
+                events = [json.loads(line) for line in response.text.splitlines() if line]
+                self.assertEqual(events[-1]["type"], "complete")
+                self.assertFalse(events[-1]["value"].get("error"))
                 with database.getDb() as conn:
                     rows = conn.execute("SELECT * FROM lorebook_usage WHERE story_id = ?", (story["id"],)).fetchall()
                     history = conn.execute("SELECT id FROM lorebook_update_runs WHERE story_id = ?", (story["id"],)).fetchone()
@@ -837,7 +836,7 @@ class StoryApiTest(unittest.TestCase):
                 self.assertEqual(row["reasoning_tokens"], 10)
                 self.assertEqual(row["total_tokens"], 130)
                 self.assertEqual(row["cost"], 0)
-                chapterId = chapter["id"] if action in ("update", "update_stream", "generate_summary") else None
+                chapterId = chapter["id"] if action in ("update_stream", "generate_summary") else None
                 self.assertEqual(row["chapter_id"], chapterId)
                 if history:
                     self.assertEqual(history["id"], row["id"])
@@ -845,7 +844,7 @@ class StoryApiTest(unittest.TestCase):
                     self.assertIsNone(self.lorebookRow(story, "Visitor"))
 
     def testFailedLorebookOutputsStillSaveUsage(self):
-        for action in ("update", "generate", "repair", "timeline_repair"):
+        for action in ("update_stream", "generate", "repair", "timeline_repair"):
             for failure in ("invalid", "truncated", "incomplete", "provider_error"):
                 with self.subTest(action=action, failure=failure):
                     story, chapter = self.storyWithChapter("Failed usage test", "A visitor arrives.")
@@ -856,8 +855,8 @@ class StoryApiTest(unittest.TestCase):
                         complete=failure != "incomplete",
                         statusCode=503 if failure == "provider_error" else 200,
                     )
-                    if action == "update":
-                        self.assertTrue(response.json()["error"])
+                    if action == "update_stream":
+                        self.assertTrue(self.lorebookUpdateResult(response)["error"])
                     else:
                         events = [json.loads(line) for line in response.text.splitlines() if line]
                         self.assertEqual(events[-1]["type"], "error")
@@ -934,7 +933,7 @@ class StoryApiTest(unittest.TestCase):
     def testLorebookPreflightRejectionDoesNotRecordUsage(self):
         story, chapter = self.storyWithChapter("Blank usage test", "")
         with patch("httpx.AsyncClient", side_effect=AssertionError("Provider call forbidden")):
-            self.client.post(f"/api/stories/{story['id']}/lorebook/update", json={"chapter_id": chapter["id"]})
+            self.client.post(f"/api/stories/{story['id']}/lorebook/update/stream", json={"chapter_id": chapter["id"]})
             self.client.post(f"/api/stories/{story['id']}/lorebook/generate/stream", json={"category": "character", "brief": ""})
             self.client.post(f"/api/stories/{story['id']}/lorebook/repair/stream")
             self.client.post(f"/api/stories/{story['id']}/lorebook/timeline/repair/stream", json={"current_timeline": ""})
@@ -958,7 +957,7 @@ class StoryApiTest(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        payload = response.json()
+        payload = self.lorebookUpdateResult(response)
         self.assertEqual([update["action"] for update in payload["applied"]], ["create"])
         self.assertIsNone(payload["error"])
         self.assertEqual(len(calls), 1)
@@ -1069,7 +1068,7 @@ class StoryApiTest(unittest.TestCase):
         response, calls = self.callLorebookUpdate(story, chapter, rawOutput=rawOutput)
 
         self.assertEqual(response.status_code, 200)
-        payload = response.json()
+        payload = self.lorebookUpdateResult(response)
         self.assertEqual(payload["skipped"], [])
         entries = {entry["name"]: entry for entry in payload["entries"]}
         self.assertEqual(
@@ -1143,7 +1142,7 @@ class StoryApiTest(unittest.TestCase):
         })
         response, _ = self.callLorebookUpdate(story, chapter, rawOutput=rawOutput)
 
-        payload = response.json()
+        payload = self.lorebookUpdateResult(response)
         self.assertEqual(len(payload["applied"]), 1)
         self.assertEqual(len(payload["skipped"]), 1)
         self.assertEqual(payload["skipped"][0]["operationIndex"], 0)
@@ -1195,7 +1194,7 @@ class StoryApiTest(unittest.TestCase):
         })
         response, _ = self.callLorebookUpdate(story, chapter, rawOutput=rawOutput)
 
-        payload = response.json()
+        payload = self.lorebookUpdateResult(response)
         self.assertEqual(payload["applied"], [])
         self.assertEqual(payload["skipped"][0]["code"], "lorebook_revision_conflict")
         self.assertEqual(self.lorebookRow(story, "Kael")["description"], "old fact")
@@ -1237,7 +1236,7 @@ class StoryApiTest(unittest.TestCase):
         })
         response, _ = self.callLorebookUpdate(story, chapter, rawOutput=rawOutput)
 
-        payload = response.json()
+        payload = self.lorebookUpdateResult(response)
         self.assertEqual(payload["skipped"], [])
         self.assertIn("Wall stone", [entry["name"] for entry in payload["entries"]])
         self.assertEqual(self.lorebookRow(story, "Old wall")["disabled"], 1)
@@ -1261,7 +1260,7 @@ class StoryApiTest(unittest.TestCase):
             }),
         )
 
-        payload = response.json()
+        payload = self.lorebookUpdateResult(response)
         self.assertIsNone(payload["error"])
         self.assertEqual([update["action"] for update in payload["applied"]], ["create"])
         self.assertEqual([item["code"] for item in payload["skipped"]], ["lorebook_summary_missing"])
@@ -1301,7 +1300,7 @@ class StoryApiTest(unittest.TestCase):
             }),
         )
 
-        payload = response.json()
+        payload = self.lorebookUpdateResult(response)
         self.assertIsNone(payload["error"])
         self.assertEqual([update["action"] for update in payload["applied"]], ["create", "update"])
         self.assertEqual(
@@ -1465,7 +1464,7 @@ class StoryApiTest(unittest.TestCase):
                     finishReason=finishReason,
                 )
 
-                payload = response.json()
+                payload = self.lorebookUpdateResult(response)
                 self.assertEqual(payload["error"], expectedError)
                 self.assertEqual(payload["applied"], [])
                 self.assertIsNone(self.lorebookRow(story, "Mara"))
@@ -1504,7 +1503,6 @@ class StoryApiTest(unittest.TestCase):
             rawOutput,
             complete=False,
             finishReason="stop",
-            streaming=True,
         )
         events = [json.loads(line) for line in streamResponse.text.splitlines() if line]
         completed = next(event["value"] for event in events if event["type"] == "complete")
@@ -1566,7 +1564,7 @@ class StoryApiTest(unittest.TestCase):
                     ]
                 }),
             )
-            self.assertIsNone(response.json()["error"])
+            self.assertIsNone(self.lorebookUpdateResult(response)["error"])
 
         summaries = [
             entry
@@ -1635,7 +1633,7 @@ class StoryApiTest(unittest.TestCase):
             }),
         )
 
-        self.assertIsNone(response.json()["error"])
+        self.assertIsNone(self.lorebookUpdateResult(response)["error"])
         saved = self.client.get(f"/api/stories/{story['id']}/lorebook").json()["entries"]
         self.assertEqual(len(saved), 1)
         self.assertEqual(saved[0]["id"], legacy["id"])
@@ -2042,7 +2040,7 @@ class StoryApiTest(unittest.TestCase):
             ],
         )
 
-        payload = response.json()
+        payload = self.lorebookUpdateResult(response)
         #"category: character" + the two description lines + "alias: Chloe"
         self.assertEqual(payload["applied"][0]["wordsAdded"], 11)
         self.assertEqual(payload["applied"][0]["wordsRemoved"], 0)
@@ -2073,7 +2071,7 @@ class StoryApiTest(unittest.TestCase):
             updates=[self.excludeDecision(mara)],
         )
 
-        payload = response.json()
+        payload = self.lorebookUpdateResult(response)
         #"category: character" plus the three two-word description lines
         self.assertEqual(payload["applied"][0]["wordsRemoved"], 8)
         self.assertEqual(payload["applied"][0]["wordsAdded"], 0)
@@ -2106,7 +2104,7 @@ class StoryApiTest(unittest.TestCase):
             ],
         )
 
-        payload = response.json()
+        payload = self.lorebookUpdateResult(response)
         #description is untouched, only "alias: The Knight" arrived, and that still has to read as an edit
         self.assertEqual(payload["applied"][0]["wordsAdded"], 3)
         self.assertEqual(payload["applied"][0]["wordsRemoved"], 0)
@@ -2148,8 +2146,8 @@ class StoryApiTest(unittest.TestCase):
             ],
         )
 
-        self.assertEqual([update["action"] for update in response.json()["applied"]], ["update"])
-        entry = [e for e in response.json()["entries"] if e["name"] == "Kael"][0]
+        self.assertEqual([update["action"] for update in self.lorebookUpdateResult(response)["applied"]], ["update"])
+        entry = [e for e in self.lorebookUpdateResult(response)["entries"] if e["name"] == "Kael"][0]
         self.assertEqual(entry["description"], "a knight of the north\n\nHe lost his sword.")
         self.assertEqual(entry["aliases"], ["The Knight", "Kae"])
         self.assertEqual(entry["tags"], ["protagonist", "noble"])
@@ -2177,7 +2175,7 @@ class StoryApiTest(unittest.TestCase):
             ],
         )
 
-        payload = response.json()
+        payload = self.lorebookUpdateResult(response)
         self.assertEqual(payload["applied"], [])
         self.assertEqual(self.lorebookRow(story, "Kael")["revision"], kael["revision"])
         labels = [entry["label"] for entry in payload["history"]]
@@ -2226,7 +2224,7 @@ class StoryApiTest(unittest.TestCase):
 
         response, calls = self.callLorebookUpdate(story, chapter, updates=[])
 
-        payload = response.json()
+        payload = self.lorebookUpdateResult(response)
         self.assertEqual(calls, [])
         self.assertTrue(payload["unchanged"])
         self.assertTrue(payload["skipped_run"])
@@ -2243,7 +2241,7 @@ class StoryApiTest(unittest.TestCase):
             story, chapter, "{\"updates\": []}", complete=False, finishReason="stop"
         )
 
-        self.assertTrue(response.json()["error"])
+        self.assertTrue(self.lorebookUpdateResult(response)["error"])
         self.assertIsNone(self.snapshotRow(chapter))
 
     def callLorebookUpdateWithRetry(self, story, chapter, firstOutput, secondOutput):
@@ -2271,7 +2269,7 @@ class StoryApiTest(unittest.TestCase):
             "backend.providers.streaming.httpx.AsyncClient", FakeClient
         ):
             response = self.client.post(
-                f"/api/stories/{story['id']}/lorebook/update",
+                f"/api/stories/{story['id']}/lorebook/update/stream",
                 json={"chapter_id": chapter["id"]},
             )
         return response, calls
@@ -2324,7 +2322,7 @@ class StoryApiTest(unittest.TestCase):
 
         response, calls = self.callLorebookUpdateWithRetry(story, chapter, firstOutput, secondOutput)
 
-        payload = response.json()
+        payload = self.lorebookUpdateResult(response)
         self.assertIsNone(payload["error"])
         self.assertEqual(len(calls), 2)
         retryPrompt = json.loads(calls[1]["messages"][1]["content"])
@@ -2378,7 +2376,7 @@ class StoryApiTest(unittest.TestCase):
 
         response, calls = self.callLorebookUpdateWithRetry(story, chapter, firstOutput, firstOutput)
 
-        payload = response.json()
+        payload = self.lorebookUpdateResult(response)
         self.assertEqual(len(calls), 1)
         self.assertEqual([item["code"] for item in payload["skipped"]], ["lorebook_edit_invalid_operation"])
 
@@ -2411,7 +2409,7 @@ class StoryApiTest(unittest.TestCase):
 
         response, calls = self.callLorebookUpdateWithRetry(story, chapter, firstOutput, None)
 
-        payload = response.json()
+        payload = self.lorebookUpdateResult(response)
         self.assertEqual(len(calls), 2)
         self.assertIsNone(payload["error"])
         self.assertIn("ended before the provider completed", payload["retry_error"])
@@ -2435,17 +2433,23 @@ class StoryApiTest(unittest.TestCase):
         importedBundle = self.client.get(f"/api/stories/{imported['story_id']}").json()
         self.assertFalse(importedBundle["story"]["lorebook_retry"])
 
-    def test_manual_lorebook_update_skips_a_blank_chapter(self):
+    def test_manual_lorebook_update_rejects_a_blank_chapter(self):
         story, chapter = self.storyWithChapter("Empty Chapter", "   ")
 
         response, calls = self.callLorebookUpdate(story, chapter, updates=[])
 
-        self.assertEqual(response.status_code, 200)
-        payload = response.json()
-        self.assertTrue(payload["skipped"])
-        self.assertEqual(payload["applied"], [])
-        self.assertEqual(payload["history"], []) #no model call ran so there is nothing to log
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()["detail"], "Write something in this chapter first.")
         self.assertEqual(calls, [])
+        with database.getDb() as conn:
+            runCount = conn.execute(
+                "SELECT COUNT(*) FROM lorebook_update_runs WHERE story_id = ?", (story["id"],)
+            ).fetchone()[0]
+            historyCount = conn.execute(
+                "SELECT COUNT(*) FROM chapter_history_entries WHERE chapter_id = ?", (chapter["id"],)
+            ).fetchone()[0]
+        self.assertEqual(runCount, 0)
+        self.assertEqual(historyCount, 0)
 
     def test_manual_lorebook_update_stream_reports_thinking_before_the_entries(self):
         story, chapter = self.storyWithChapter("Streamed Lore", "Rafe carried a bone lantern.")
@@ -2556,7 +2560,7 @@ class StoryApiTest(unittest.TestCase):
             ],
         )
 
-        payload = response.json()
+        payload = self.lorebookUpdateResult(response)
         self.assertEqual(payload["applied"], [])
         self.assertEqual([item["code"] for item in payload["skipped"]], ["lorebook_create_exists"])
         self.assertEqual(self.lorebookRow(story, "Chloe")["description"], "red hair")
@@ -2586,7 +2590,7 @@ class StoryApiTest(unittest.TestCase):
             ],
         )
 
-        payload = response.json()
+        payload = self.lorebookUpdateResult(response)
         self.assertEqual(payload["applied"], [])
         self.assertEqual([item["code"] for item in payload["skipped"]], ["lorebook_create_hidden"])
         with database.getDb() as conn:
@@ -2618,7 +2622,7 @@ class StoryApiTest(unittest.TestCase):
             updates=[{"action": "include", "entryId": mara["id"], "entryRevision": mara["revision"]}],
         )
 
-        payload = response.json()
+        payload = self.lorebookUpdateResult(response)
         self.assertEqual([update["action"] for update in payload["applied"]], ["include"])
         self.assertEqual(payload["skipped"], [])
         row = self.lorebookRow(story, "Mara")
@@ -2644,7 +2648,7 @@ class StoryApiTest(unittest.TestCase):
             story, chapter, updates=[self.excludeDecision(mara)]
         )
 
-        payload = response.json()
+        payload = self.lorebookUpdateResult(response)
         self.assertEqual(payload["applied"], [])
         self.assertEqual([item["code"] for item in payload["skipped"]], ["lorebook_target_hidden"])
         labels = [entry["label"] for entry in payload["history"]]
@@ -2676,7 +2680,7 @@ class StoryApiTest(unittest.TestCase):
             ],
         )
 
-        self.assertEqual([update["action"] for update in response.json()["applied"]], ["create"])
+        self.assertEqual([update["action"] for update in self.lorebookUpdateResult(response)["applied"]], ["create"])
         with database.getDb() as conn:
             rows = conn.execute(
                 "SELECT description, disabled FROM lorebook_entries WHERE story_id = ? AND lower(name) = 'timeline' ORDER BY disabled",
@@ -2698,7 +2702,7 @@ class StoryApiTest(unittest.TestCase):
             story, chapter, updates=[self.excludeDecision(mara)]
         )
 
-        payload = response.json()
+        payload = self.lorebookUpdateResult(response)
         hideRow, summaryRow = payload["history"]
         #nothing was deleted so the label names the include/exclude toggle that undoes it
         self.assertTrue(hideRow["label"].endswith("excluded Mara from context"))
@@ -2721,7 +2725,7 @@ class StoryApiTest(unittest.TestCase):
             updates=[self.excludeDecision(blackwall)],
         )
 
-        payload = response.json()
+        payload = self.lorebookUpdateResult(response)
         self.assertEqual([update["action"] for update in payload["applied"]], ["delete"])
         self.assertTrue(any(
             entry["label"].endswith("excluded The Blackwall from context")
@@ -2760,7 +2764,7 @@ class StoryApiTest(unittest.TestCase):
             updates=[self.excludeDecision(timeline)],
         )
 
-        payload = response.json()
+        payload = self.lorebookUpdateResult(response)
         self.assertEqual(payload["applied"], [])
         self.assertEqual([item["code"] for item in payload["skipped"]], ["lorebook_timeline_required"])
         self.assertEqual(self.lorebookRow(story, "Timeline")["disabled"], 0)
@@ -2774,7 +2778,7 @@ class StoryApiTest(unittest.TestCase):
             updates=[{"action": "exclude", "entryId": str(uuid.uuid4()), "entryRevision": 0}],
         )
 
-        payload = response.json()
+        payload = self.lorebookUpdateResult(response)
         self.assertEqual(payload["applied"], [])
         self.assertEqual([item["code"] for item in payload["skipped"]], ["lorebook_target_missing"])
         self.assertEqual([entry["category"] for entry in payload["entries"]], ["synopsis"])

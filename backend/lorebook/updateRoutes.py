@@ -14,38 +14,6 @@ from backend.stories.storyQueries import requireChapter, requireStory
 router = APIRouter()
 
 
-@router.post("/api/stories/{story_id}/lorebook/update")
-async def updateLorebookFromChapter(
-    story_id: str, payload: LorebookUpdateRequest
-) -> dict[str, Any]:
-    with getDb() as conn:
-        story = requireStory(conn, story_id)
-        chapter = requireChapter(conn, story_id, payload.chapter_id)
-
-    source_text = chapter["content"] or ""
-    if not source_text.strip():
-        return {"applied": [], "skipped": True, "entries": [], "history": []}
-
-    started_at = time.perf_counter()
-    result: dict[str, Any] = {}
-    #this one has nowhere to put reasoning, the streaming sibling endpoint is the one write mode calls
-    async for event in runLorebookUpdate(
-        story_id,
-        payload.chapter_id,
-        source_text,
-        lorebookModelFor(story),
-        story["max_tokens"],
-        force=payload.force,
-    ):
-        if event["type"] == "result":
-            result = event["value"]
-
-    durationMs = (time.perf_counter() - started_at) * 1000
-    return finalizeLorebookUpdate(
-        story_id, payload.chapter_id, story, result, durationMs
-    )
-
-
 async def streamLorebookUpdate(
     story_id: str,
     chapter_id: str,

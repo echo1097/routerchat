@@ -36,7 +36,7 @@ PRICES_BY_PREFIX: tuple[tuple[str, ModelPrice], ...] = (
     ("claude-opus-4-7", ModelPrice(5.0, 25.0, 0.50)),
     ("claude-opus-4-6", ModelPrice(5.0, 25.0, 0.50)),
     ("claude-opus-4-5", ModelPrice(5.0, 25.0, 0.50)),
-    ("claude-sonnet-5-5", ModelPrice(2.0, 10.0, 0.20)),
+    ("claude-sonnet-5-5", ModelPrice(2.0, 10.0, 0.10)),
     ("claude-sonnet-5", ModelPrice(2.0, 10.0, 0.20)),
     ("claude-sonnet-4-6", ModelPrice(3.0, 15.0, 0.30)),
     ("claude-sonnet-4-5", ModelPrice(3.0, 15.0, 0.30)),

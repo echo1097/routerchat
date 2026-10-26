@@ -155,7 +155,7 @@ class StreamParserTest(unittest.TestCase):
         self.assertEqual(usage["completion_tokens"], 500)
 
         expectedCost = (
-            100 * 2.0 + 20000 * 0.20 + 1000 * 2.5 + 2000 * 4.0 + 500 * 10.0
+            100 * 2.0 + 20000 * 0.10 + 1000 * 2.5 + 2000 * 4.0 + 500 * 10.0
         ) / 1_000_000
         self.assertAlmostEqual(usage["cost"], expectedCost)
 

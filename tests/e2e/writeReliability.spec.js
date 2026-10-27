@@ -649,7 +649,7 @@ test("renames a story inline like chat mode", async ({ page }) => {
   expect(nativeDialogs).toEqual([]);
 });
 
-test("exports and imports a complete story from the story rail", async ({ page }) => {
+test("exports a story from the story rail and imports one from the write home", async ({ page }) => {
   const api = await installWriteApi(page);
   await api.open();
 
@@ -665,7 +665,11 @@ test("exports and imports a complete story from the story rail", async ({ page }
     /^routerchat-story-reliability-story-\d{4}-\d{2}-\d{2}\.json$/,
   );
 
+  await page.getByRole("button", { name: "Home", exact: true }).click();
+  await expect(page).toHaveURL(/\/\?mode=write$/);
+
   const importButton = page.getByRole("button", { name: "Import story" });
+  await expect(importButton).toHaveCount(1);
   await expect(importButton).toBeVisible();
   //the icon sits inside a sizing wrapper, so match the masked span itself rather than nesting depth
   const importIcon = importButton.locator('span[aria-hidden="true"]');
@@ -701,7 +705,7 @@ test("exports and imports a complete story from the story rail", async ({ page }
     brainstorm: { nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } },
   };
 
-  await page.getByLabel("Import story file").setInputFiles({
+  await page.getByLabel("Choose a story file to import").setInputFiles({
     name: "portable-story.json",
     mimeType: "application/json",
     buffer: Buffer.from(JSON.stringify(archive)),
@@ -711,7 +715,7 @@ test("exports and imports a complete story from the story rail", async ({ page }
   await expect(page.getByRole("heading", { name: "Imported opening" })).toBeVisible();
   await expect(page.getByText("Imported Imported adventure")).toBeVisible();
   expect(api.state.storyImportRequests).toEqual([archive]);
-  await expect(page.getByLabel("Import story file")).toHaveValue("");
+  await expect(page.getByLabel("Choose a story file to import")).toHaveCount(0);
 });
 
 test("renames a chapter inline after flushing its draft and keeps failures editable", async ({ page }) => {

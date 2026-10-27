@@ -29,7 +29,6 @@ export function StoryRail({
   onSelectStory,
   onSelectChapter,
   onNewStory,
-  onImportStory,
   onRenameStory,
   onExportStory,
   onRenameChapter,
@@ -44,9 +43,7 @@ export function StoryRail({
   const [renameDraft, setRenameDraft] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [recentsOpen, setRecentsOpen] = useState(true);
-  const [importingStory, setImportingStory] = useState(false);
   const renameInputRef = useRef(null);
-  const importInputRef = useRef(null);
   const skipRenameCommitRef = useRef(false);
 
   function startRename(entityType, item) {
@@ -87,20 +84,6 @@ export function StoryRail({
     }
   }
 
-  async function importStoryFile(event) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-
-    setImportingStory(true);
-    try {
-      const imported = await onImportStory(file);
-      if (imported) onCloseMobile();
-    } finally {
-      setImportingStory(false);
-    }
-  }
-
   return (
     <>
       <SidebarShell
@@ -137,20 +120,6 @@ export function StoryRail({
                 onNewStory();
                 onCloseMobile();
               }}
-            />
-            <SidebarActionButton
-              icon={<MaskIcon src="/icons/file-import.png" size={16} />}
-              label={importingStory ? "Importing story" : "Import story"}
-              disabled={navigationLocked || importingStory}
-              onClick={() => importInputRef.current?.click()}
-            />
-            <input
-              ref={importInputRef}
-              type="file"
-              aria-label="Import story file"
-              accept="application/json,.json"
-              className="hidden"
-              onChange={importStoryFile}
             />
           </div>
         )}

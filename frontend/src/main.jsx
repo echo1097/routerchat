@@ -688,10 +688,13 @@ function App() {
   }, []);
 
   const loadStories = useCallback(async () => {
-    const nextStories = await storyApi.listStories();
-    setStories(nextStories);
-    setStoriesLoaded(true);
-    return nextStories;
+    try {
+      const nextStories = await storyApi.listStories();
+      setStories(nextStories);
+      return nextStories;
+    } finally {
+      setStoriesLoaded(true);
+    }
   }, []);
 
   function chapterWithCoordinatorState(chapter) {

@@ -161,7 +161,9 @@ export function WriteLanding({
   const savedStories = stories.filter((story) => !story.temporary);
   const latestStory = savedStories[0] || null;
   const otherStories = savedStories.slice(1, 1 + otherStoryLimit);
-  const isFirstStory = storiesLoaded && !latestStory;
+  const isFirstStory = !latestStory;
+
+  if (!storiesLoaded) return null;
 
   async function importStoryFile(event) {
     const file = event.target.files?.[0];
@@ -204,39 +206,37 @@ export function WriteLanding({
           </>
         )}
 
-        {storiesLoaded && (
-          <div
-            className={cx("write-landing-in flex items-center justify-center gap-2", isFirstStory ? "mt-7" : "mt-8")}
-            style={enterStyle(latestStory ? 3 : 2)}
+        <div
+          className={cx("write-landing-in flex items-center justify-center gap-2", isFirstStory ? "mt-7" : "mt-8")}
+          style={enterStyle(latestStory ? 3 : 2)}
+        >
+          <button
+            type="button"
+            disabled={navigationLocked}
+            onClick={onNewStory}
+            className={cx(isFirstStory ? primaryPill : secondaryPill, CONTROL_MOTION)}
           >
-            <button
-              type="button"
-              disabled={navigationLocked}
-              onClick={onNewStory}
-              className={cx(isFirstStory ? primaryPill : secondaryPill, CONTROL_MOTION)}
-            >
-              <MaskIcon src="/icons/newbook.png" size={16} />
-              New story
-            </button>
-            <button
-              type="button"
-              disabled={navigationLocked || importingStory}
-              onClick={() => importInputRef.current?.click()}
-              className={cx(secondaryPill, CONTROL_MOTION)}
-            >
-              <MaskIcon src="/icons/file-import.png" size={15} />
-              {importingStory ? "Importing story" : "Import story"}
-            </button>
-            <input
-              ref={importInputRef}
-              type="file"
-              aria-label="Choose a story file to import"
-              accept=".json,application/json"
-              className="hidden"
-              onChange={importStoryFile}
-            />
-          </div>
-        )}
+            <MaskIcon src="/icons/newbook.png" size={16} />
+            New story
+          </button>
+          <button
+            type="button"
+            disabled={navigationLocked || importingStory}
+            onClick={() => importInputRef.current?.click()}
+            className={cx(secondaryPill, CONTROL_MOTION)}
+          >
+            <MaskIcon src="/icons/file-import.png" size={15} />
+            {importingStory ? "Importing story" : "Import story"}
+          </button>
+          <input
+            ref={importInputRef}
+            type="file"
+            aria-label="Choose a story file to import"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={importStoryFile}
+          />
+        </div>
       </div>
     </section>
   );

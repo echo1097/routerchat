@@ -33,7 +33,7 @@ const REASONING_EFFORTS = [
 ];
 
 const SETTINGS_PAGES = [
-  { id: "connection", label: "Connection" },
+  { id: "provider", label: "Provider" },
   { id: "models", label: "Models" },
   { id: "generation", label: "Generation" },
   { id: "chat", label: "Chat", mode: "chat" },
@@ -120,7 +120,7 @@ export function SettingsDrawer({
   const [exporting, setExporting] = useState(false);
   const [selectedCloudChatId, setSelectedCloudChatId] = useState("");
   const [cloudSearch, setCloudSearch] = useState("");
-  const [activePage, setActivePage] = useState("connection");
+  const [activePage, setActivePage] = useState("provider");
   const [jump, setJump] = useState({ target: "", count: 0 });
   const [flashGroupId, setFlashGroupId] = useState("");
   const fileInputRef = useRef(null);
@@ -212,7 +212,7 @@ export function SettingsDrawer({
       status: keyConnected ? "key saved" : "no key saved",
       tone: keyConnected ? "ok" : "error",
       warning: keyConnected ? "" : "No key",
-      page: "connection",
+      page: "provider",
       target: "settings-group-account",
     },
     {
@@ -234,14 +234,14 @@ export function SettingsDrawer({
           id: "privacy",
           label: "Privacy",
           value: privacyLabel,
-          page: "connection",
+          page: "provider",
           target: "settings-group-privacy",
         }
       : {
           id: "caching",
           label: "Prompt cache",
           value: cachingLabel,
-          page: "connection",
+          page: "provider",
           target: "settings-group-caching",
         },
   ].map((item) => ({
@@ -370,7 +370,7 @@ export function SettingsDrawer({
 
   useEffect(() => {
     if (visibleSettingsPages.some((page) => page.id === activePage)) return;
-    setActivePage("connection");
+    setActivePage("provider");
   }, [activePage, visibleSettingsPages]);
 
   const voicePage = useLingeringPage(open, activePage === "voice");
@@ -1124,7 +1124,7 @@ export function SettingsDrawer({
           className="settings-page-slide t-page-slide min-h-0 flex-1"
           data-page={String(activePageIndex)}
         >
-          <SettingsScrollPage pageId="1" label="Connection settings" active={activePageIndex === 1}>
+          <SettingsScrollPage pageId="1" label="Provider settings" active={activePageIndex === 1}>
             <div className="space-y-7">
               {accountGroup}
               {cachingGroup}
@@ -1153,7 +1153,7 @@ export function SettingsDrawer({
           <SettingsFixedPage pageId="6" label="Transcription settings">
             {!provider.capabilities?.transcription && (
               <p className="mb-4 rounded-2xl bg-white/[0.04] px-4 py-3 text-pretty text-[12.5px] leading-5 text-neutral-400">
-                {provider.name} has no voice typing of its own. Voice input uses OpenRouter, so it needs an OpenRouter key saved under Connection.
+                {provider.name} has no voice typing of its own. Voice input uses OpenRouter, so it needs an OpenRouter key saved under Provider.
               </p>
             )}
             {voicePage.mounted && <TranscriptionSettings key={voicePage.session} />}

@@ -72,8 +72,8 @@ test("shows weekly spending and model details without provider requests", async 
   await expect(dialog.getByRole("table")).toContainText("retired-model");
   await expect(dialog.getByRole("region", { name: "Lifetime model totals" })).not.toContainText("All time");
   await page.screenshot({ path: testInfo.outputPath("usage-desktop.png"), animations: "disabled" });
-  await dialog.getByRole("tab", { name: "Connection", exact: true }).click();
-  await expect(page.getByRole("dialog", { name: "Connection", exact: true })).toBeVisible();
+  await dialog.getByRole("tab", { name: "Provider", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Provider", exact: true })).toBeVisible();
 });
 
 test("fits the empty usage page on a narrow screen", async ({ page }, testInfo) => {

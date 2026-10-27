@@ -1,5 +1,4 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { ArrowRight } from "lucide-react";
 import { MaskIcon } from "../components/IconButton.jsx";
 import { CONTROL_MOTION, cx } from "../uiShared.js";
 import { excerptParagraphs, formatEditedAgo, storyMetaLine } from "./landingFormatting.js";
@@ -18,36 +17,52 @@ function enterStyle(order) {
 }
 
 
+function ExcerptWindow({ text, className }) {
+  const windowRef = useRef(null);
+  const textRef = useRef(null);
+  const [clipped, setClipped] = useState(false);
+
+  useLayoutEffect(() => {
+    const windowBox = windowRef.current;
+    const textBox = textRef.current;
+    if (!windowBox || !textBox) return undefined;
+
+    const checkClipped = () => setClipped(textBox.offsetHeight > windowBox.clientHeight + 1);
+    checkClipped();
+
+    const observer = new ResizeObserver(checkClipped);
+    observer.observe(windowBox);
+    observer.observe(textBox);
+    return () => observer.disconnect();
+  }, [text]);
+
+  return (
+    <div
+      ref={windowRef}
+      className={cx(
+        "flex max-h-[96px] flex-col justify-end overflow-hidden",
+        clipped && "write-landing-excerpt-fade",
+        className,
+      )}
+    >
+      <p ref={textRef} className="shrink-0 text-pretty text-[17px] leading-8 text-neutral-200">
+        {text}
+      </p>
+    </div>
+  );
+}
+
+
 function ResumeStory({ story, disabled, onOpenStory }) {
   const resume = story.resume || null;
   const lastParagraph = excerptParagraphs(resume?.excerpt).at(-1) || "";
-  const excerptRef = useRef(null);
-  const excerptTextRef = useRef(null);
-  const [excerptClipped, setExcerptClipped] = useState(false);
   const metaLine = storyMetaLine(story);
   const editedAgo = formatEditedAgo(story.updated_at);
   const title = story.title || "Untitled story";
 
-  useLayoutEffect(() => {
-    const excerptBox = excerptRef.current;
-    const excerptText = excerptTextRef.current;
-    if (!excerptBox || !excerptText) return undefined;
-
-    const checkClipped = () => setExcerptClipped(excerptText.offsetHeight > excerptBox.clientHeight + 1);
-    checkClipped();
-
-    const observer = new ResizeObserver(checkClipped);
-    observer.observe(excerptBox);
-    observer.observe(excerptText);
-    return () => observer.disconnect();
-  }, [lastParagraph]);
-
   return (
-    <div
-      className="write-landing-in mt-9 w-full rounded-[24px] bg-[#141414] p-5 ring-1 ring-inset ring-white/[0.07] sm:p-6"
-      style={enterStyle(1)}
-    >
-      <div className="flex items-start justify-between gap-4">
+    <div className="write-landing-in mt-10 w-full" style={enterStyle(1)}>
+      <div className="flex items-center justify-between gap-4">
         <div className="min-w-0">
           <h2 className="truncate text-[22px] font-semibold leading-tight tracking-[-0.012em] text-neutral-50">
             {title}
@@ -69,30 +84,13 @@ function ResumeStory({ story, disabled, onOpenStory }) {
           disabled={disabled}
           aria-label={`Continue ${title}`}
           onClick={() => onOpenStory(story.id, resume?.chapter_id || null)}
-          className={cx(primaryPill, "group shrink-0 pl-4 pr-3.5", CONTROL_MOTION)}
+          className={cx(primaryPill, "shrink-0", CONTROL_MOTION)}
         >
           Continue
-          <ArrowRight
-            aria-hidden="true"
-            size={16}
-            strokeWidth={2.25}
-            className="transition-transform duration-200 ease-out group-hover:translate-x-0.5"
-          />
         </button>
       </div>
-
       {lastParagraph ? (
-        <div
-          ref={excerptRef}
-          className={cx(
-            "mt-5 flex max-h-[96px] flex-col justify-end overflow-hidden",
-            excerptClipped && "write-landing-excerpt-fade",
-          )}
-        >
-          <p ref={excerptTextRef} className="shrink-0 text-pretty text-[17px] leading-8 text-neutral-200">
-            {lastParagraph}
-          </p>
-        </div>
+        <ExcerptWindow text={lastParagraph} className="mt-5" />
       ) : (
         <p className="mt-5 text-[14px] leading-6 text-neutral-400">
           {story.synopsis?.trim() || "Nothing written yet. The first line is yours."}
@@ -107,7 +105,7 @@ function OtherStories({ stories, disabled, onOpenStory }) {
   if (stories.length === 0) return null;
 
   return (
-    <div className="write-landing-in mt-8" style={enterStyle(2)}>
+    <div className="write-landing-in -mx-3 mt-8" style={enterStyle(2)}>
       <h2 className="px-3 text-[13px] font-medium text-neutral-400">Other stories</h2>
       <ul className="mt-1.5">
         {stories.map((story) => {

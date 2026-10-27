@@ -691,7 +691,6 @@ textarea::placeholder {
   flex: 0 0 24px;
   place-items: center;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
   color: #a3a3a3;
   opacity: 0;
   pointer-events: none;
@@ -701,7 +700,6 @@ textarea::placeholder {
     opacity 150ms ease-out,
     transform 220ms var(--modal-ease),
     filter 150ms ease-out,
-    background-color 150ms ease-out,
     color 150ms ease-out;
 }
 .model-search-clear.is-visible {
@@ -711,7 +709,6 @@ textarea::placeholder {
   filter: none;
 }
 .model-search-clear:hover {
-  background: rgba(255, 255, 255, 0.11);
   color: #f5f5f5;
 }
 .model-search-clear.is-visible:active {

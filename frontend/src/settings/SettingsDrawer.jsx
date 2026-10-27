@@ -8,9 +8,8 @@ import {
   priceLabel,
   getModelContextLimit,
   formatTokens,
-  isFreeModel,
-  isBatchModel,
 } from "../modelFormatting.js";
+import { searchModels } from "./modelSearch.js";
 import { SearchClearField } from "../components/SearchClearField.jsx";
 import { ModelPicker } from "./ModelPicker.jsx";
 import { LOREBOOK_MODEL_INHERIT } from "./settingsDefaults.js";
@@ -22,7 +21,9 @@ import { useLingeringPage } from "./useLingeringPage.js";
 import { DEFAULT_PROVIDER } from "../providers/providerApi.js";
 import { PROVIDER_OPTIONS } from "../providers/providerOptions.js";
 import { SettingSwitch, SettingRow, SettingGroup, SettingChip } from "./SettingControls.jsx";
-import { SettingsStatusStrip } from "./SettingsStatusStrip.jsx";
+import { SettingsStatusLine } from "./SettingsStatusLine.jsx";
+import { SettingsScrollPage, SettingsFixedPage } from "./SettingsScrollPage.jsx";
+import { ScrollEdgeBlur, useScrollEdges } from "../components/ScrollEdgeBlur.jsx";
 
 const REASONING_EFFORTS = [
   { value: "low", label: "Low" },
@@ -43,9 +44,6 @@ const SETTINGS_PAGES = [
   { id: "usage", label: "Usage" },
 ];
 
-const PAGE_CLASS = "t-page settings-inline py-5 md:py-6";
-const SCROLL_PAGE_CLASS = cx("settings-scroll-page overflow-y-auto", PAGE_CLASS);
-const LIST_PAGE_CLASS = cx("flex min-h-0 flex-col", PAGE_CLASS);
 
 function rangeProgress(value, min, max) {
   return `${((Number(value) - min) / (max - min)) * 100}%`;
@@ -123,8 +121,6 @@ export function SettingsDrawer({
   const [selectedCloudChatId, setSelectedCloudChatId] = useState("");
   const [cloudSearch, setCloudSearch] = useState("");
   const [activePage, setActivePage] = useState("connection");
-  const [chatListScrolled, setChatListScrolled] = useState(false);
-  const [chatListHasMoreBelow, setChatListHasMoreBelow] = useState(false);
   const [jump, setJump] = useState({ target: "", count: 0 });
   const [flashGroupId, setFlashGroupId] = useState("");
   const fileInputRef = useRef(null);
@@ -183,31 +179,15 @@ export function SettingsDrawer({
     ));
   }, [chats, cloudSearch, chatModels]);
 
-  const filteredModels = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    return models
-      .filter((model) => {
-        if (hideFreeModels && isFreeModel(model)) return false;
-        if (hideBatchModels && isBatchModel(model)) return false;
-        if (!normalized) return true;
-        return [model.name, model.id, model.description]
-          .filter(Boolean)
-          .some((value) => value.toLowerCase().includes(normalized));
-      });
-  }, [hideBatchModels, hideFreeModels, models, query]);
+  const filteredModels = useMemo(
+    () => searchModels(models, query, { hideFree: hideFreeModels, hideBatch: hideBatchModels }),
+    [hideBatchModels, hideFreeModels, models, query],
+  );
 
-  const filteredLorebookModels = useMemo(() => {
-    const normalized = lorebookQuery.trim().toLowerCase();
-    return models
-      .filter((model) => {
-        if (hideFreeModels && isFreeModel(model)) return false;
-        if (hideBatchModels && isBatchModel(model)) return false;
-        if (!normalized) return true;
-        return [model.name, model.id, model.description]
-          .filter(Boolean)
-          .some((value) => value.toLowerCase().includes(normalized));
-      });
-  }, [hideBatchModels, hideFreeModels, lorebookQuery, models]);
+  const filteredLorebookModels = useMemo(
+    () => searchModels(models, lorebookQuery, { hideFree: hideFreeModels, hideBatch: hideBatchModels }),
+    [hideBatchModels, hideFreeModels, lorebookQuery, models],
+  );
 
   const lorebookInherits = !settings.lorebook_model;
   const lorebookModelId = settings.lorebook_model || settings.model;
@@ -218,20 +198,20 @@ export function SettingsDrawer({
     ? `${formatTokens(lorebookModelContextLimit)} context`
     : "";
 
-  const privacyLabel = zdrMode ? "Zero retention" : privacyMode ? "No training" : "Standard";
-  const cachingLabel = disablePromptCaching ? "Off" : hourPromptCache ? "1 hour" : "5 minutes";
+  const privacyLabel = zdrMode ? "Zero retention" : privacyMode ? "No training" : "Standard privacy";
+  const cachingLabel = disablePromptCaching ? "Cache off" : hourPromptCache ? "1 hour cache" : "5 minute cache";
   const reasoningLabel = canThink
-    ? REASONING_EFFORTS.find((effort) => effort.value === reasoningEffort)?.label || "On"
-    : "Not supported";
+    ? `${REASONING_EFFORTS.find((effort) => effort.value === reasoningEffort)?.label || "On"} reasoning`
+    : "No reasoning";
 
   const statusItems = [
     {
       id: "provider",
       label: "Provider",
-      caption: keyConnected ? "Provider" : "No key saved",
       value: providerName,
       status: keyConnected ? "key saved" : "no key saved",
       tone: keyConnected ? "ok" : "error",
+      warning: keyConnected ? "" : "No key",
       page: "connection",
       target: "settings-group-account",
     },
@@ -269,19 +249,7 @@ export function SettingsDrawer({
     pageLabel: SETTINGS_PAGES.find((page) => page.id === item.page)?.label || "",
   }));
 
-  function updateChatListEdges(element) {
-    const scrollTop = element.scrollTop;
-    const bottomOffset = element.scrollHeight - element.clientHeight - scrollTop;
-    setChatListScrolled(scrollTop > 2);
-    setChatListHasMoreBelow(bottomOffset > 2);
-  }
-
-  useEffect(() => {
-    const chatList = chatListRef.current;
-    if (!chatList) return;
-
-    requestAnimationFrame(() => updateChatListEdges(chatList));
-  }, [filteredCloudChats.length, activePage]);
+  const chatListEdges = useScrollEdges(chatListRef, [filteredCloudChats.length, activePage]);
 
   useEffect(() => {
     const hasQuery = query.trim().length > 0;
@@ -449,10 +417,6 @@ export function SettingsDrawer({
   function jumpTo(pageId, targetId) {
     setActivePage(pageId);
     setJump((current) => ({ target: targetId || "", count: current.count + 1 }));
-  }
-
-  function handleChatListScroll(event) {
-    updateChatListEdges(event.currentTarget);
   }
 
   async function exportChats() {
@@ -1038,7 +1002,6 @@ export function SettingsDrawer({
         <div className="relative mt-1 flex min-h-0 flex-initial flex-col">
           <div
             ref={chatListRef}
-            onScroll={handleChatListScroll}
             className="settings-chat-list min-h-0 flex-initial space-y-0.5 overflow-y-auto"
           >
             {filteredCloudChats.length === 0 ? (
@@ -1055,8 +1018,7 @@ export function SettingsDrawer({
                     onClick={() => setSelectedCloudChatId(chat.id)}
                     aria-pressed={selected}
                     className={cx(
-                      "grid min-h-11 w-full grid-cols-[minmax(0,1fr)_16px] items-center gap-3 rounded-xl px-3 py-2 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
-                      CONTROL_MOTION,
+                      "grid min-h-11 w-full grid-cols-[minmax(0,1fr)_16px] items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors duration-150 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/20 active:bg-white/[0.09]",
                       selected
                         ? "bg-white/[0.07] text-neutral-50"
                         : "text-neutral-300 hover:bg-white/[0.04] hover:text-neutral-100",
@@ -1078,20 +1040,8 @@ export function SettingsDrawer({
               })
             )}
           </div>
-          <div
-            aria-hidden="true"
-            className={cx(
-              "settings-list-fade pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-[#141414] to-transparent transition-opacity duration-150 ease-out",
-              chatListScrolled ? "opacity-100" : "opacity-0",
-            )}
-          />
-          <div
-            aria-hidden="true"
-            className={cx(
-              "settings-list-fade pointer-events-none absolute inset-x-0 bottom-0 h-7 bg-gradient-to-t from-[#141414] to-transparent transition-opacity duration-150 ease-out",
-              chatListHasMoreBelow ? "opacity-100" : "opacity-0",
-            )}
-          />
+          <ScrollEdgeBlur edge="top" visible={chatListEdges.top} tone="#141414" size={28} />
+          <ScrollEdgeBlur edge="bottom" visible={chatListEdges.bottom} tone="#141414" size={36} />
         </div>
       </SettingGroup>
 
@@ -1141,28 +1091,30 @@ export function SettingsDrawer({
         aria-hidden={!open}
         className="settings-page-panel flex h-full min-h-0 w-full flex-col text-neutral-100"
       >
-        <header className="settings-inline shrink-0 pt-4 md:pt-8">
-          <div className="flex h-10 items-center justify-between gap-4">
-            <h1 className="text-[22px] font-[650] leading-tight tracking-[-0.012em] text-neutral-50">
-              Settings
-            </h1>
-            <IconButton label="Close settings" onClick={onClose}>
-              <X size={17} />
-            </IconButton>
-          </div>
-          <div className="mt-4 md:mt-5">
-            <SettingsStatusStrip items={statusItems} onJump={jumpTo} />
-          </div>
-          <div className="mt-4 border-b border-white/[0.07] pb-4 md:mt-5">
-            <SlidingTabs
-              options={visibleSettingsPages}
-              value={activePage}
-              onChange={choosePage}
-              getValue={(page) => page.id}
-              getLabel={(page) => page.label}
-              ariaLabel="Settings sections"
-              className="settings-tabs flex w-full"
-            />
+        <header className="shrink-0 pt-4 md:pt-8">
+          <div className="settings-inline">
+            <div className="flex h-10 items-center justify-between gap-4">
+              <h1 className="text-[22px] font-[650] leading-tight tracking-[-0.012em] text-neutral-50">
+                Settings
+              </h1>
+              <IconButton label="Close settings" onClick={onClose}>
+                <X size={17} />
+              </IconButton>
+            </div>
+            <div className="mt-2">
+              <SettingsStatusLine items={statusItems} onJump={jumpTo} />
+            </div>
+            <div className="mt-4 md:mt-5">
+              <SlidingTabs
+                options={visibleSettingsPages}
+                value={activePage}
+                onChange={choosePage}
+                getValue={(page) => page.id}
+                getLabel={(page) => page.label}
+                ariaLabel="Settings sections"
+                className="settings-tabs flex w-full"
+              />
+            </div>
           </div>
         </header>
 
@@ -1170,52 +1122,52 @@ export function SettingsDrawer({
           className="settings-page-slide t-page-slide min-h-0 flex-1"
           data-page={String(activePageIndex)}
         >
-          <section className={SCROLL_PAGE_CLASS} data-page-id="1" aria-label="Connection settings">
+          <SettingsScrollPage pageId="1" label="Connection settings" active={activePageIndex === 1}>
             <div className="space-y-7">
               {accountGroup}
               {cachingGroup}
               {capabilities.routingOptions && routingGroup}
               {capabilities.routingOptions && privacyGroup}
             </div>
-          </section>
-          <section className={LIST_PAGE_CLASS} data-page-id="2" aria-label="Model settings">
+          </SettingsScrollPage>
+          <SettingsFixedPage pageId="2" label="Model settings">
             {modelsSection}
-          </section>
-          <section className={SCROLL_PAGE_CLASS} data-page-id="3" aria-label="Generation settings">
+          </SettingsFixedPage>
+          <SettingsScrollPage pageId="3" label="Generation settings" active={activePageIndex === 3}>
             <div className="space-y-7">
               {reasoningGroup}
               {outputGroup}
             </div>
-          </section>
-          <section className={SCROLL_PAGE_CLASS} data-page-id="4" aria-label="Chat settings">
+          </SettingsScrollPage>
+          <SettingsScrollPage pageId="4" label="Chat settings" active={activePageIndex === 4}>
             <div className="space-y-7">
               {systemPromptGroup}
               {chatsGroup}
             </div>
-          </section>
-          <section className={LIST_PAGE_CLASS} data-page-id="5" aria-label="Lorebook settings">
+          </SettingsScrollPage>
+          <SettingsFixedPage pageId="5" label="Lorebook settings">
             {lorebookSection}
-          </section>
-          <section className={LIST_PAGE_CLASS} data-page-id="6" aria-label="Transcription settings">
+          </SettingsFixedPage>
+          <SettingsFixedPage pageId="6" label="Transcription settings">
             {!provider.capabilities?.transcription && (
               <p className="mb-4 rounded-2xl bg-white/[0.04] px-4 py-3 text-pretty text-[12.5px] leading-5 text-neutral-400">
                 {provider.name} has no voice typing of its own. Voice input uses OpenRouter, so it needs an OpenRouter key saved under Connection.
               </p>
             )}
             {voicePage.mounted && <TranscriptionSettings key={voicePage.session} />}
-          </section>
-          <section className={SCROLL_PAGE_CLASS} data-page-id="7" aria-label="Interface settings">
+          </SettingsFixedPage>
+          <SettingsScrollPage pageId="7" label="Interface settings" active={activePageIndex === 7}>
             <div className="space-y-7">
               {displayGroup}
               {updatesGroup}
             </div>
-          </section>
-          <section className={cx("overflow-hidden", PAGE_CLASS)} data-page-id="8" aria-label="Data settings">
+          </SettingsScrollPage>
+          <SettingsFixedPage pageId="8" label="Data settings">
             {chatTransferSection}
-          </section>
-          <section className={SCROLL_PAGE_CLASS} data-page-id="9" aria-label="Usage settings">
+          </SettingsFixedPage>
+          <SettingsScrollPage pageId="9" label="Usage settings" active={activePageIndex === 9}>
             {usagePage.mounted && <UsagePanel key={usagePage.session} models={models} />}
-          </section>
+          </SettingsScrollPage>
         </div>
       </section>
     </div>

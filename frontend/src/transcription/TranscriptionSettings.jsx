@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { ModelPicker } from "../settings/ModelPicker.jsx";
+import { searchModels } from "../settings/modelSearch.js";
 
 export function TranscriptionSettings() {
   const [models, setModels] = useState([]);
@@ -42,10 +43,7 @@ export function TranscriptionSettings() {
     }
   }
 
-  const searchText = query.trim().toLowerCase();
-  const filteredModels = models.filter((model) =>
-    `${model.name || ""} ${model.id}`.toLowerCase().includes(searchText),
-  );
+  const filteredModels = searchModels(models, query);
   const selectedName = models.find((model) => model.id === selectedModel)?.name || selectedModel;
 
   return (
@@ -73,6 +71,7 @@ export function TranscriptionSettings() {
         selectedId={selectedModel}
         onSelect={selectModel}
         disabled={loading || saving}
+        loading={loading}
         activePage="transcription"
         emptyMessage={loading ? "Loading models…" : models.length ? "No matching models." : "No transcription models available."}
       />

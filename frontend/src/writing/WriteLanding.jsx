@@ -43,64 +43,33 @@ function ResumeStory({ story, disabled, onOpenStory }) {
   }, [lastParagraph]);
 
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      aria-label={`Continue ${title}`}
-      onClick={() => onOpenStory(story.id, resume?.chapter_id || null)}
-      className={cx(
-        "write-landing-in group mt-9 block w-full rounded-[24px] bg-[#141414] p-5 text-left ring-1 ring-inset ring-white/[0.07] hover:bg-[#181818] hover:ring-white/[0.11] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/[0.22] disabled:cursor-not-allowed disabled:opacity-60 sm:p-6",
-        "transition-[background-color,box-shadow,scale] duration-200 ease-out active:scale-[0.99]",
-      )}
+    <div
+      className="write-landing-in mt-9 w-full rounded-[24px] bg-[#141414] p-5 ring-1 ring-inset ring-white/[0.07] sm:p-6"
       style={enterStyle(1)}
     >
-      <span className="flex items-baseline justify-between gap-4">
-        <span className="min-w-0 truncate text-[22px] font-semibold leading-tight tracking-[-0.012em] text-neutral-50">
-          {title}
-        </span>
-        {editedAgo && (
-          <span className="hidden shrink-0 text-[13px] font-medium tabular-nums text-neutral-400 sm:inline">
-            {editedAgo}
-          </span>
-        )}
-      </span>
-
-      {(metaLine || editedAgo) && (
-        <span className="mt-1.5 block text-[13px] tabular-nums text-neutral-400">
-          {metaLine}
-          {editedAgo && (
-            <span className="sm:hidden">{metaLine ? ` · ${editedAgo}` : editedAgo}</span>
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h2 className="truncate text-[22px] font-semibold leading-tight tracking-[-0.012em] text-neutral-50">
+            {title}
+          </h2>
+          {(metaLine || editedAgo) && (
+            <p className="mt-1.5 text-[13px] tabular-nums text-neutral-400">
+              {metaLine}
+              {editedAgo && (
+                <span className="block sm:inline">
+                  {metaLine && <span className="hidden sm:inline"> · </span>}
+                  {editedAgo}
+                </span>
+              )}
+            </p>
           )}
-        </span>
-      )}
-
-      {lastParagraph ? (
-        <span
-          ref={excerptRef}
-          className={cx(
-            "mt-5 flex max-h-[96px] flex-col justify-end overflow-hidden",
-            excerptClipped && "write-landing-excerpt-fade",
-          )}
-        >
-          <span ref={excerptTextRef} className="block shrink-0 text-pretty text-[17px] leading-8 text-neutral-200">
-            {lastParagraph}
-          </span>
-        </span>
-      ) : (
-        <span className="mt-5 block text-[14px] leading-6 text-neutral-400">
-          {story.synopsis?.trim() || "Nothing written yet. The first line is yours."}
-        </span>
-      )}
-
-      <span className="mt-5 flex items-center justify-between gap-3">
-        <span className="min-w-0 truncate text-[13px] text-neutral-400">
-          {resume?.chapter_title ? `In ${resume.chapter_title}` : ""}
-        </span>
-        <span
-          className={cx(
-            "inline-flex h-10 shrink-0 items-center gap-2 rounded-full bg-neutral-100 pl-4 pr-3.5 text-sm font-semibold text-neutral-950 group-hover:bg-white",
-            "transition-[background-color] duration-150 ease-out",
-          )}
+        </div>
+        <button
+          type="button"
+          disabled={disabled}
+          aria-label={`Continue ${title}`}
+          onClick={() => onOpenStory(story.id, resume?.chapter_id || null)}
+          className={cx(primaryPill, "group shrink-0 pl-4 pr-3.5", CONTROL_MOTION)}
         >
           Continue
           <ArrowRight
@@ -109,9 +78,27 @@ function ResumeStory({ story, disabled, onOpenStory }) {
             strokeWidth={2.25}
             className="transition-transform duration-200 ease-out group-hover:translate-x-0.5"
           />
-        </span>
-      </span>
-    </button>
+        </button>
+      </div>
+
+      {lastParagraph ? (
+        <div
+          ref={excerptRef}
+          className={cx(
+            "mt-5 flex max-h-[96px] flex-col justify-end overflow-hidden",
+            excerptClipped && "write-landing-excerpt-fade",
+          )}
+        >
+          <p ref={excerptTextRef} className="shrink-0 text-pretty text-[17px] leading-8 text-neutral-200">
+            {lastParagraph}
+          </p>
+        </div>
+      ) : (
+        <p className="mt-5 text-[14px] leading-6 text-neutral-400">
+          {story.synopsis?.trim() || "Nothing written yet. The first line is yours."}
+        </p>
+      )}
+    </div>
   );
 }
 

@@ -619,19 +619,21 @@ export function SettingsDrawer({
       bodyClassName={capabilities.freeModels ? "settings-group-split" : undefined}
     >
       {capabilities.freeModels && (
-        <SettingRow title="Hide free models">
+        <SettingRow title="Hide free models" compact>
           <SettingSwitch
             checked={hideFreeModels}
             onChange={onToggleHideFreeModels}
             label="Hide free models"
+            small
           />
         </SettingRow>
       )}
-      <SettingRow title="Hide batch models">
+      <SettingRow title="Hide batch models" compact>
         <SettingSwitch
           checked={hideBatchModels}
           onChange={onToggleHideBatchModels}
           label="Hide batch models"
+          small
         />
       </SettingRow>
     </SettingGroup>

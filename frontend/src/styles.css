@@ -794,6 +794,9 @@ textarea::placeholder {
 .settings-switch {
   background: rgba(255, 255, 255, 0.09);
 }
+.settings-switch.is-small {
+  --toggle-travel: 16px;
+}
 .settings-switch:not(:disabled):hover {
   background: rgba(255, 255, 255, 0.13);
 }

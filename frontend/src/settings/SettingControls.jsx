@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { cx } from "../uiShared.js";
 
-export function SettingSwitch({ checked, onChange, label, disabled = false }) {
+export function SettingSwitch({ checked, onChange, label, disabled = false, small = false }) {
   const [interacted, setInteracted] = useState(false);
 
   return (
@@ -17,21 +17,28 @@ export function SettingSwitch({ checked, onChange, label, disabled = false }) {
       }}
       data-on={String(checked)}
       className={cx(
-        "settings-switch t-toggle relative h-7 w-12 shrink-0 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white/25 disabled:cursor-not-allowed",
+        "settings-switch t-toggle relative shrink-0 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white/25 disabled:cursor-not-allowed",
+        small ? "is-small h-6 w-10" : "h-7 w-12",
         interacted && "is-init",
         disabled && "opacity-40",
       )}
     >
-      <span className="settings-switch-thumb t-toggle-thumb absolute left-1 top-1 h-5 w-5 rounded-full" />
+      <span
+        className={cx(
+          "settings-switch-thumb t-toggle-thumb absolute left-1 top-1 rounded-full",
+          small ? "h-4 w-4" : "h-5 w-5",
+        )}
+      />
     </button>
   );
 }
 
-export function SettingRow({ title, description, children, stacked = false }) {
+export function SettingRow({ title, description, children, stacked = false, compact = false }) {
   return (
     <div
       className={cx(
-        "settings-row px-4 py-3.5",
+        "settings-row px-4",
+        compact ? "py-2" : "py-3.5",
         stacked ? "space-y-3" : "flex items-center justify-between gap-4",
       )}
     >

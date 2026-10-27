@@ -1,5 +1,5 @@
 import { TranscriptionSettings } from "../transcription/TranscriptionSettings.jsx";
-import { ArrowLeft, MessageSquarePlus, SlidersHorizontal, X, Check } from "lucide-react";
+import { X, Check } from "lucide-react";
 import { useState, useRef, useMemo, useEffect } from "react";
 import { cx, CONTROL_MOTION } from "../uiShared.js";
 import { supportsThinking, resolveReasoningEffort, supportsReasoningEffort } from "../modelReasoning.js";
@@ -14,14 +14,15 @@ import {
 import { SearchClearField } from "../components/SearchClearField.jsx";
 import { ModelPicker } from "./ModelPicker.jsx";
 import { LOREBOOK_MODEL_INHERIT } from "./settingsDefaults.js";
-import { Accordion } from "../components/Accordion.jsx";
 import { SlidingTabs } from "../components/SlidingTabs.jsx";
-import { MaskIcon, IconButton } from "../components/IconButton.jsx";
+import { IconButton } from "../components/IconButton.jsx";
 import { UsagePanel } from "./UsagePanel.jsx";
 import { useChatSystemPromptAutosave } from "./useChatSystemPromptAutosave.js";
 import { useLingeringPage } from "./useLingeringPage.js";
 import { DEFAULT_PROVIDER } from "../providers/providerApi.js";
 import { PROVIDER_OPTIONS } from "../providers/providerOptions.js";
+import { SettingSwitch, SettingRow, SettingGroup, SettingChip } from "./SettingControls.jsx";
+import { SettingsStatusStrip } from "./SettingsStatusStrip.jsx";
 
 const REASONING_EFFORTS = [
   { value: "low", label: "Low" },
@@ -31,59 +32,33 @@ const REASONING_EFFORTS = [
 ];
 
 const SETTINGS_PAGES = [
-  { id: "general", label: "API", iconClass: "fi fi-rr-key" },
-  { id: "models", label: "Models", iconClass: "fi fi-rr-bulb" },
-  { id: "transcription", label: "Transcription", iconSrc: "/icons/mic.png" },
-  { id: "system", label: "System", iconClass: "fi fi-rr-settings" },
-  { id: "updates", label: "Updates", iconSrc: "/icons/update.png" },
-  { id: "ui", label: "UI", iconClass: "fi fi-rr-apps-add" },
-  { id: "cloud", label: "Chats", icon: MessageSquarePlus },
-  { id: "advanced", label: "Advanced", icon: SlidersHorizontal },
-  { id: "lorebook", label: "Lorebook", iconSrc: "/icons/newbook.png" },
-  { id: "usage", label: "Usage", iconSrc: "/icons/money.png" },
+  { id: "connection", label: "Connection" },
+  { id: "models", label: "Models" },
+  { id: "generation", label: "Generation" },
+  { id: "chat", label: "Chat", mode: "chat" },
+  { id: "writing", label: "Writing", mode: "write" },
+  { id: "voice", label: "Voice" },
+  { id: "interface", label: "Interface" },
+  { id: "data", label: "Data" },
+  { id: "usage", label: "Usage" },
 ];
+
+const PAGE_CLASS = "t-page settings-inline py-5 md:py-6";
+const SCROLL_PAGE_CLASS = cx("settings-scroll-page overflow-y-auto", PAGE_CLASS);
+const LIST_PAGE_CLASS = cx("flex min-h-0 flex-col", PAGE_CLASS);
 
 function rangeProgress(value, min, max) {
   return `${((Number(value) - min) / (max - min)) * 100}%`;
 }
 
-function SettingSwitch({ checked, onChange, label, disabled = false }) {
-  const [interacted, setInteracted] = useState(false);
-
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      disabled={disabled}
-      onClick={() => {
-        setInteracted(true);
-        onChange(!checked);
-      }}
-      data-on={String(checked)}
-      className={cx(
-        "t-toggle relative h-7 w-12 shrink-0 rounded-full shadow-[var(--shadow-border)] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 disabled:cursor-not-allowed",
-        interacted && "is-init",
-        disabled && "opacity-45",
-        checked ? "bg-accent/80" : "bg-white/[0.08]",
-      )}
-    >
-      <span className="t-toggle-thumb absolute left-1 top-1 h-5 w-5 rounded-full bg-neutral-50" />
-    </button>
-  );
+function pageVisibleInMode(page, chatMode) {
+  if (page.mode === "write") return chatMode === "write";
+  if (page.mode === "chat") return chatMode !== "write";
+  return true;
 }
 
-function SettingRow({ title, description, children }) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <div className="min-w-0">
-        <h2 className="text-balance text-sm font-semibold text-neutral-100">{title}</h2>
-        <p className="mt-0.5 text-pretty text-xs leading-5 text-neutral-500">{description}</p>
-      </div>
-      {children}
-    </div>
-  );
+function prefersReducedMotion() {
+  return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 }
 
 export function SettingsDrawer({
@@ -147,13 +122,11 @@ export function SettingsDrawer({
   const [exporting, setExporting] = useState(false);
   const [selectedCloudChatId, setSelectedCloudChatId] = useState("");
   const [cloudSearch, setCloudSearch] = useState("");
-  const [activePage, setActivePage] = useState("general");
+  const [activePage, setActivePage] = useState("connection");
   const [chatListScrolled, setChatListScrolled] = useState(false);
   const [chatListHasMoreBelow, setChatListHasMoreBelow] = useState(false);
-  const [openAccordions, setOpenAccordions] = useState({
-    reasoning: true,
-    generation: true,
-  });
+  const [jump, setJump] = useState({ target: "", count: 0 });
+  const [flashGroupId, setFlashGroupId] = useState("");
   const fileInputRef = useRef(null);
   const chatListRef = useRef(null);
   const modelSearchWrapRef = useRef(null);
@@ -194,9 +167,11 @@ export function SettingsDrawer({
   });
   const chatPromptSaveLabel = chatPrompt.saveState.replace(/\b\w/g, (letter) => letter.toUpperCase());
 
-  const visibleSettingsPages = chatMode === "write"
-    ? SETTINGS_PAGES.filter((page) => page.id !== "system")
-    : SETTINGS_PAGES.filter((page) => page.id !== "lorebook");
+  const visibleSettingsPages = useMemo(
+    () => SETTINGS_PAGES.filter((page) => pageVisibleInMode(page, chatMode)),
+    [chatMode],
+  );
+  const activePageLabel = visibleSettingsPages.find((page) => page.id === activePage)?.label || "Settings";
 
   const filteredCloudChats = useMemo(() => {
     const normalized = cloudSearch.trim().toLowerCase();
@@ -243,6 +218,57 @@ export function SettingsDrawer({
     ? `${formatTokens(lorebookModelContextLimit)} context`
     : "";
 
+  const privacyLabel = zdrMode ? "Zero retention" : privacyMode ? "No training" : "Standard";
+  const cachingLabel = disablePromptCaching ? "Off" : hourPromptCache ? "1 hour" : "5 minutes";
+  const reasoningLabel = canThink
+    ? REASONING_EFFORTS.find((effort) => effort.value === reasoningEffort)?.label || "On"
+    : "Not supported";
+
+  const statusItems = [
+    {
+      id: "provider",
+      label: "Provider",
+      caption: keyConnected ? "Provider" : "No key saved",
+      value: providerName,
+      status: keyConnected ? "key saved" : "no key saved",
+      tone: keyConnected ? "ok" : "error",
+      page: "connection",
+      target: "settings-group-account",
+    },
+    {
+      id: "model",
+      label: "Model",
+      value: settings.model ? selectedModelOutputName : "None",
+      page: "models",
+      target: "",
+    },
+    {
+      id: "reasoning",
+      label: "Reasoning",
+      value: reasoningLabel,
+      page: "generation",
+      target: "settings-group-reasoning",
+    },
+    capabilities.routingOptions
+      ? {
+          id: "privacy",
+          label: "Privacy",
+          value: privacyLabel,
+          page: "connection",
+          target: "settings-group-privacy",
+        }
+      : {
+          id: "caching",
+          label: "Prompt cache",
+          value: cachingLabel,
+          page: "connection",
+          target: "settings-group-caching",
+        },
+  ].map((item) => ({
+    ...item,
+    pageLabel: SETTINGS_PAGES.find((page) => page.id === item.page)?.label || "",
+  }));
+
   function updateChatListEdges(element) {
     const scrollTop = element.scrollTop;
     const bottomOffset = element.scrollHeight - element.clientHeight - scrollTop;
@@ -256,12 +282,6 @@ export function SettingsDrawer({
 
     requestAnimationFrame(() => updateChatListEdges(chatList));
   }, [filteredCloudChats.length, activePage]);
-
-  useEffect(() => {
-    if (chatMode === "write" && activePage === "system") {
-      setActivePage("general");
-    }
-  }, [activePage, chatMode]);
 
   useEffect(() => {
     const hasQuery = query.trim().length > 0;
@@ -382,10 +402,10 @@ export function SettingsDrawer({
 
   useEffect(() => {
     if (visibleSettingsPages.some((page) => page.id === activePage)) return;
-    setActivePage("general");
+    setActivePage("connection");
   }, [activePage, visibleSettingsPages]);
 
-  const transcriptionPage = useLingeringPage(open, activePage === "transcription");
+  const voicePage = useLingeringPage(open, activePage === "voice");
   const usagePage = useLingeringPage(open, activePage === "usage");
 
   useEffect(() => {
@@ -400,23 +420,39 @@ export function SettingsDrawer({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [open, onClose]);
 
+  useEffect(() => {
+    if (!jump.target) return undefined;
+
+    const frame = requestAnimationFrame(() => {
+      const target = document.getElementById(jump.target);
+      const scroller = target?.closest(".settings-scroll-page");
+      if (!target || !scroller) return;
+
+      scroller.scrollTo({
+        top: Math.max(0, target.offsetTop - 20),
+        behavior: prefersReducedMotion() ? "auto" : "smooth",
+      });
+      setFlashGroupId(jump.target);
+    });
+    const timer = window.setTimeout(() => setFlashGroupId(""), 1400);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  }, [jump]);
+
   function choosePage(pageId) {
     setActivePage(pageId);
   }
 
-  function toggleAccordion(id) {
-    setOpenAccordions((current) => ({
-      ...current,
-      [id]: !current[id],
-    }));
+  function jumpTo(pageId, targetId) {
+    setActivePage(pageId);
+    setJump((current) => ({ target: targetId || "", count: current.count + 1 }));
   }
 
   function handleChatListScroll(event) {
     updateChatListEdges(event.currentTarget);
-  }
-
-  function handleModelSearchChange(event) {
-    setQuery(event.target.value);
   }
 
   async function exportChats() {
@@ -447,105 +483,95 @@ export function SettingsDrawer({
     }
   }
 
-  const StatusDot = (
-    <span
-      aria-label={keyConnected ? `${providerName} key connected` : `${providerName} key not set`}
-      title={keyConnected ? `${providerName} key connected` : `${providerName} key not set`}
-      className={cx(
-        "relative top-px inline-block h-2 w-2 rounded-full",
-        keyConnected
-          ? "bg-emerald-300 shadow-[0_0_0_3px_rgba(110,231,183,0.12)]"
-          : "bg-rose-400 shadow-[0_0_0_3px_rgba(251,113,133,0.12)]",
-      )}
-    />
-  );
+  const fieldClass = "h-10 min-w-0 flex-1 rounded-full bg-white/[0.045] px-4 text-sm text-neutral-100 outline-none ring-1 ring-inset ring-white/[0.07] transition-[background-color,box-shadow] duration-150 ease-out placeholder:text-neutral-500 focus:bg-white/[0.06] focus:ring-white/[0.18]";
 
-  const providerSection = (
-    <section className="border-b border-white/[0.08] pb-4">
-      <SettingRow
-        title="Provider"
-        description="Where your messages are sent"
-      />
-      <SlidingTabs
-        options={PROVIDER_OPTIONS}
-        value={selectedProviderId}
-        onChange={chooseProvider}
-        getValue={(option) => option.id}
-        getLabel={(option) => option.tabLabel}
-        ariaLabel="API provider"
-        className="provider-tabs mt-3 flex w-full"
-      />
-    </section>
-  );
-
-  const saveButtonClass = cx(
-    "h-10 rounded-xl bg-neutral-100 px-3 text-sm font-semibold text-neutral-950 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:cursor-not-allowed disabled:bg-neutral-800 disabled:text-neutral-500 disabled:shadow-[var(--shadow-border)] disabled:active:scale-100",
+  const primaryButtonClass = cx(
+    "h-10 shrink-0 rounded-full bg-neutral-100 px-5 text-sm font-semibold text-neutral-950 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30 disabled:cursor-not-allowed disabled:bg-white/[0.05] disabled:text-[#6b6b6b] disabled:active:scale-100",
     CONTROL_MOTION,
   );
 
-  const fieldClass = "h-10 min-w-0 flex-1 rounded-xl bg-black/20 px-3 text-sm text-neutral-100 shadow-[var(--shadow-border)] outline-none transition-[background-color,box-shadow] duration-150 ease-out placeholder:text-neutral-600 focus:bg-black/25 focus:shadow-[0_0_0_1px_rgba(255,255,255,0.16)]";
+  const secondaryButtonClass = cx(
+    "flex h-9 items-center justify-center gap-2 rounded-full bg-white/[0.06] px-4 text-[13px] font-medium text-neutral-300 hover:bg-white/[0.1] hover:text-neutral-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 disabled:cursor-not-allowed disabled:bg-white/[0.04] disabled:text-[#6b6b6b] disabled:active:scale-100",
+    CONTROL_MOTION,
+  );
 
-  const keySection = (
-    <section className="border-b border-white/[0.08] py-3">
-      <div className="mb-2.5 flex items-center justify-between gap-3">
-        <h2 className="flex items-center gap-2 text-balance text-sm font-semibold text-neutral-100">
-          {providerName} key
-          {StatusDot}
-        </h2>
-      </div>
-      <div className="flex gap-2">
-        <input
-          type="password"
-          value={apiKey}
-          onChange={(event) => setApiKey(event.target.value)}
-          placeholder={keyPlaceholder}
-          aria-label={`${providerName} key`}
-          className={fieldClass}
+  const smallPillButtonClass = cx(
+    "inline-flex min-h-6 shrink-0 items-center gap-1 rounded-full px-2.5 text-[11.5px] font-medium leading-none focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 disabled:cursor-default disabled:active:scale-100",
+    CONTROL_MOTION,
+  );
+
+  const keyStatusPill = (
+    <span
+      className={cx(
+        "inline-flex min-h-6 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[11.5px] font-medium leading-none",
+        keyConnected
+          ? "bg-emerald-300/[0.1] text-[#6ee7b7]"
+          : "bg-red-500/[0.14] text-[#fca5a5]",
+      )}
+    >
+      <span
+        aria-hidden="true"
+        className={cx("h-1.5 w-1.5 rounded-full", keyConnected ? "bg-[#6ee7b7]" : "bg-[#fca5a5]")}
+      />
+      {keyConnected ? "Key saved" : "No key"}
+    </span>
+  );
+
+  const accountGroup = (
+    <SettingGroup
+      id="settings-group-account"
+      title="Account"
+      flash={flashGroupId === "settings-group-account"}
+    >
+      <SettingRow title="Provider" description="Where your messages are sent" stacked>
+        <SlidingTabs
+          options={PROVIDER_OPTIONS}
+          value={selectedProviderId}
+          onChange={chooseProvider}
+          getValue={(option) => option.id}
+          getLabel={(option) => option.tabLabel}
+          ariaLabel="API provider"
+          className="provider-tabs settings-inner-tabs flex w-full"
         />
-        <button
-          type="button"
-          onClick={saveKey}
-          disabled={saving || !apiKey.trim()}
-          className={saveButtonClass}
+      </SettingRow>
+      <div className="settings-row space-y-3 px-4 py-3.5">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-balance text-sm font-medium text-neutral-100">{providerName} key</h3>
+          {keyStatusPill}
+        </div>
+        <form
+          className="flex gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            saveKey();
+          }}
         >
-          {saving ? "Saving" : "Save"}
-        </button>
+          <input
+            type="password"
+            value={apiKey}
+            onChange={(event) => setApiKey(event.target.value)}
+            placeholder={keyConnected ? "Paste a new key to replace it" : keyPlaceholder}
+            aria-label={`${providerName} key`}
+            className={fieldClass}
+          />
+          <button
+            type="submit"
+            disabled={saving || !apiKey.trim()}
+            className={primaryButtonClass}
+          >
+            {saving ? "Saving" : "Save"}
+          </button>
+        </form>
       </div>
-    </section>
+    </SettingGroup>
   );
 
-  const chatNameSection = (
-    <section className="border-b border-white/[0.08] py-3">
-      <SettingRow
-        title="Generate chat name"
-        description="Let the model name chats"
-      >
-        <SettingSwitch
-          checked={generateChatName}
-          onChange={onToggleGenerateChatName}
-          label="Generate chat name"
-        />
-      </SettingRow>
-    </section>
-  );
-
-  const modelFilterSection = (
-    <section className="border-b border-white/[0.08] py-3">
-      <SettingRow
-        title="Disable free models"
-        description={`Don't show free ${providerName} models in the model picker`}
-      >
-        <SettingSwitch
-          checked={hideFreeModels}
-          onChange={onToggleHideFreeModels}
-          label="Hide free models"
-        />
-      </SettingRow>
-    </section>
-  );
-
-  const promptCachingSection = (
-    <section className="border-b border-white/[0.08] py-3">
+  const cachingGroup = (
+    <SettingGroup
+      id="settings-group-caching"
+      title="Prompt caching"
+      flash={flashGroupId === "settings-group-caching"}
+    >
       <SettingRow
         title="Disable prompt caching"
         description="Don't cache chats and stories to save on repeat tokens"
@@ -556,11 +582,6 @@ export function SettingsDrawer({
           label="Disable prompt caching"
         />
       </SettingRow>
-    </section>
-  );
-
-  const hourPromptCacheSection = (
-    <section className="border-b border-white/[0.08] py-3">
       <SettingRow
         title="Keep cache for 1 hour"
         description="Cached prompts last an hour instead of 5 minutes. Saving to the cache costs a bit more, reusing it stays cheap"
@@ -572,34 +593,14 @@ export function SettingsDrawer({
           disabled={disablePromptCaching}
         />
       </SettingRow>
-    </section>
+    </SettingGroup>
   );
 
-  const batchFilterSection = (
-    <section className="border-b border-white/[0.08] py-3">
-      <SettingRow
-        title="Disable batch models"
-        description={`Don't show batch ${providerName} models in the model picker`}
-      >
-        <SettingSwitch
-          checked={hideBatchModels}
-          onChange={onToggleHideBatchModels}
-          label="Hide batch models"
-        />
-      </SettingRow>
-    </section>
-  );
-
-  const turboSection = (
-    <section className="border-b border-white/[0.08] py-3">
+  const routingGroup = (
+    <SettingGroup id="settings-group-routing" title="Routing">
       <SettingRow title="Turbo" description={`Prioritize the fastest ${providerName} providers`}>
         <SettingSwitch checked={nitroMode} onChange={onToggleNitroMode} label="Turbo" />
       </SettingRow>
-    </section>
-  );
-
-  const cheapestSection = (
-    <section className="border-b border-white/[0.08] py-3">
       <SettingRow
         title="Cheapest first"
         description={`Prioritize the lowest priced ${providerName} providers`}
@@ -610,11 +611,15 @@ export function SettingsDrawer({
           label="Cheapest first"
         />
       </SettingRow>
-    </section>
+    </SettingGroup>
   );
 
-  const privacySection = (
-    <section className="border-b border-white/[0.08] py-3">
+  const privacyGroup = (
+    <SettingGroup
+      id="settings-group-privacy"
+      title="Privacy"
+      flash={flashGroupId === "settings-group-privacy"}
+    >
       <SettingRow
         title="Privacy mode"
         description={
@@ -630,11 +635,6 @@ export function SettingsDrawer({
           disabled={zdrMode}
         />
       </SettingRow>
-    </section>
-  );
-
-  const zdrSection = (
-    <section className="py-3">
       <SettingRow
         title="Zero data retention"
         description="Only use providers that store nothing at all. Fewer models available"
@@ -645,281 +645,82 @@ export function SettingsDrawer({
           label="Zero data retention"
         />
       </SettingRow>
-    </section>
+    </SettingGroup>
   );
 
-  const smoothTextSection = (
-    <section className="py-3">
-      <SettingRow title="Smooth text" description="Resolve model responses in a word at a time">
+  const modelFiltersGroup = (
+    <SettingGroup
+      id="settings-group-model-filters"
+      title="Model list"
+      bodyClassName={capabilities.freeModels ? "settings-group-split" : undefined}
+    >
+      {capabilities.freeModels && (
+        <SettingRow title="Hide free models">
+          <SettingSwitch
+            checked={hideFreeModels}
+            onChange={onToggleHideFreeModels}
+            label="Hide free models"
+          />
+        </SettingRow>
+      )}
+      <SettingRow title="Hide batch models">
         <SettingSwitch
-          checked={smoothStreaming}
-          onChange={onToggleSmoothStreaming}
-          label="Smooth text"
+          checked={hideBatchModels}
+          onChange={onToggleHideBatchModels}
+          label="Hide batch models"
         />
       </SettingRow>
-    </section>
+    </SettingGroup>
   );
 
-  const updateChecksSection = (
-    <section className="py-3">
-      <SettingRow
-        title="Check for updates"
-        description="Look for a new RouterChat release on GitHub each time the app starts. This only shows a dot next to the version number. Nothing is downloaded or installed automatically, and RouterChat never sends usage data."
-      >
-        <SettingSwitch
-          checked={updateChecks}
-          onChange={onToggleUpdateChecks}
-          label="Check for updates"
-        />
-      </SettingRow>
-    </section>
-  );
-
-  const promptNavigationSection = (
-    <section className="border-b border-white/[0.08] py-3">
-      <SettingRow
-        title="Navigation bar"
-        description="Show a navigation bar for easily navigating long chats"
-      >
-        <SettingSwitch
-          checked={showPromptNavigationRail}
-          onChange={onTogglePromptNavigationRail}
-          label="Navigation bar"
-        />
-      </SettingRow>
-    </section>
-  );
-
-  const systemSection = (
-    <section className="flex h-full min-h-0 flex-col">
-      <div className="shrink-0">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <h2 className="text-balance text-sm font-semibold text-neutral-100">
-              Chat system prompt
-            </h2>
-            <span
-              aria-live="polite"
-              className={cx(
-                "inline-flex shrink-0 items-center rounded-full bg-white/[0.045] px-2 py-0.5 text-[11px] font-semibold leading-normal shadow-[var(--shadow-border)]",
-                chatPrompt.saveState === "save failed"
-                  ? "text-red-300"
-                  : chatPrompt.saveState === "saving" || chatPrompt.saveState === "unsaved"
-                    ? "text-neutral-400"
-                    : "text-emerald-300",
-              )}
-            >
-              {chatPromptSaveLabel}
-            </span>
-          </div>
-          {chatPrompt.draft && (
-            <button
-              type="button"
-              onClick={() => chatPrompt.updateDraft("")}
-              className={cx(
-                "flex shrink-0 items-center gap-1 rounded-full bg-white/[0.055] px-2 py-0.5 text-[11px] font-medium leading-normal text-neutral-400 shadow-[var(--shadow-border)] hover:bg-white/[0.085] hover:text-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
-                CONTROL_MOTION,
-              )}
-            >
-              <X size={11} strokeWidth={2.2} />
-              Clear
-            </button>
-          )}
-        </div>
-        <p className="mt-0.5 mb-3 text-pretty text-xs leading-5 text-neutral-500">
-          Optional instructions sent before every message in every chat. Write mode has its own system prompt.
-        </p>
-      </div>
-      <div className="min-h-0 flex-1">
-        <div className="prompt-edit-surface h-full w-full rounded-[22px] px-4 py-3">
-          <textarea
-            value={chatPrompt.draft}
-            onChange={(event) => chatPrompt.updateDraft(event.target.value)}
-            onBlur={chatPrompt.saveNow}
-            placeholder="No chat system prompt"
-            data-1p-ignore="true"
-            className="block h-full w-full resize-none overflow-y-auto bg-transparent text-sm leading-6 text-neutral-100 outline-none placeholder:text-neutral-500"
-          />
-        </div>
-      </div>
-    </section>
-  );
-
-  const importExportSection = (
-    <section className="flex h-full min-h-0 flex-col">
-      <section className="flex min-h-0 flex-initial flex-col px-1 py-3">
-        <h2 className="shrink-0 text-balance text-sm font-semibold text-neutral-100">
-          Select Chat
-        </h2>
-        <div className="mt-2 shrink-0">
-          <SearchClearField
-            value={cloudSearch}
-            onChange={setCloudSearch}
-            placeholder="Search chats"
-          />
-        </div>
-        <div className="relative mt-2 flex min-h-0 flex-initial flex-col">
-          <div
-            ref={chatListRef}
-            onScroll={handleChatListScroll}
-            className="settings-chat-list min-h-0 flex-initial space-y-1 overflow-y-auto"
-          >
-              {filteredCloudChats.length === 0 ? (
-                <div className="grid min-h-10 w-full grid-cols-[18px_minmax(0,1fr)_14px] items-center gap-2 rounded-xl bg-black/15 px-3 py-3 text-pretty text-xs leading-5 text-neutral-500 shadow-[var(--shadow-border)]">
-                  <span className="col-start-2 min-w-0">
-                    {chats.length === 0 ? "No chats yet." : "No matching chats."}
-                  </span>
-                </div>
-              ) : (
-                filteredCloudChats.map((chat) => {
-                  const selected = chat.id === cloudChatId;
-                  return (
-                    <button
-                      key={chat.id}
-                      type="button"
-                      onClick={() => setSelectedCloudChatId(chat.id)}
-                      className={cx(
-                        "grid min-h-10 w-full grid-cols-[18px_minmax(0,1fr)_14px] items-center gap-2 rounded-xl px-3 py-2 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
-                        CONTROL_MOTION,
-                        selected
-                          ? "bg-white/[0.065] text-neutral-100 shadow-[var(--shadow-border)]"
-                          : "text-neutral-300 hover:bg-white/[0.035] hover:text-neutral-100",
-                      )}
-                    >
-                      <span className="col-start-2 min-w-0">
-                        <span className="block truncate text-sm font-medium">
-                          {chat.title}
-                        </span>
-                        <span className="mt-0.5 block truncate text-xs text-neutral-500">
-                          {promptModelName(chatModels, chat.model)}
-                        </span>
-                      </span>
-                      <Check
-                        size={14}
-                        aria-hidden="true"
-                        className={cx(
-                          "col-start-3 justify-self-end text-neutral-200",
-                          selected ? "opacity-100" : "opacity-0",
-                        )}
-                      />
-                    </button>
-                  );
-                })
-              )}
-          </div>
-          <div
-            aria-hidden="true"
-            className={cx(
-              "settings-list-fade pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-[#202020]/95 to-transparent transition-opacity duration-150 ease-out",
-              chatListScrolled ? "opacity-100" : "opacity-0",
-            )}
-          />
-          <div
-            aria-hidden="true"
-            className={cx(
-              "settings-list-fade pointer-events-none absolute inset-x-0 bottom-0 h-7 bg-gradient-to-t from-[#202020]/95 to-transparent transition-opacity duration-150 ease-out",
-              chatListHasMoreBelow ? "opacity-100" : "opacity-0",
-            )}
-          />
-          </div>
-      </section>
-
-      <section className="shrink-0 pb-1 pt-3">
-        <div className="flex gap-2">
-          <button
-            type="button"
-            disabled={exporting || importing || !cloudChatId}
-            onClick={exportChats}
-            className={cx(
-              "flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-white/[0.055] px-3 text-xs font-semibold text-neutral-100 shadow-[var(--shadow-border)] hover:bg-white/[0.085] hover:shadow-[var(--shadow-border-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 disabled:cursor-not-allowed disabled:text-neutral-600 disabled:opacity-60 disabled:active:scale-100",
-              CONTROL_MOTION,
-            )}
-          >
-            <i className="fi fi-rr-download text-[13px] leading-none" aria-hidden="true" />
-            {exporting ? "Exporting" : "Export"}
-          </button>
-
-          <button
-            type="button"
-            disabled={exporting || importing}
-            onClick={() => fileInputRef.current?.click()}
-            className={cx(
-              "flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-white/[0.055] px-3 text-xs font-semibold text-neutral-100 shadow-[var(--shadow-border)] hover:bg-white/[0.085] hover:shadow-[var(--shadow-border-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 disabled:cursor-not-allowed disabled:text-neutral-600 disabled:opacity-60 disabled:active:scale-100",
-              CONTROL_MOTION,
-            )}
-          >
-            <i className="fi fi-rr-cloud-upload-alt text-[13px] leading-none" aria-hidden="true" />
-            {importing ? "Importing" : "Import"}
-          </button>
-        </div>
-      </section>
-
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="application/json,.json"
-        className="hidden"
-        onChange={importChats}
-      />
-    </section>
-  );
-
-  const modelList = (
+  const modelsSection = (
     <section className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="flex items-center gap-2 text-balance text-sm font-semibold text-neutral-100">
-            Model
-            {modelLocked && (
-              <span className="inline-flex min-h-6 items-center rounded-full bg-white/[0.04] px-2 text-[11px] font-medium text-neutral-500 shadow-[var(--shadow-border)]">
-                Model locked
-              </span>
-            )}
+      <div className="mb-5 min-w-0 px-1">
+        <p className="mb-1 text-[13px] font-semibold text-neutral-400">Current model</p>
+        <div className="flex min-w-0 items-center gap-2">
+          <h2 className="truncate text-lg font-semibold tracking-[-0.01em] text-neutral-50">
+            {selectedModel?.name || settings.model || "No model selected"}
           </h2>
-          <p className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-neutral-500">
-            <span className="truncate">{selectedModel?.name || settings.model}</span>
-            {selectedModelPrice && (
-              <span className="inline-flex min-h-5 shrink-0 items-center rounded-full bg-white/[0.055] px-2 text-[11px] font-medium leading-none tabular-nums text-neutral-500 shadow-[var(--shadow-border)]">
-                {selectedModelPrice}
-              </span>
+          {modelLocked && <SettingChip className="text-neutral-500">Model locked</SettingChip>}
+        </div>
+        <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
+          {selectedModelPrice && <SettingChip>{selectedModelPrice}</SettingChip>}
+          {selectedModelContext && <SettingChip>{selectedModelContext}</SettingChip>}
+          <button
+            type="button"
+            disabled={providerDiffers || !settings.model || settings.model === defaultModel}
+            onClick={setSelectedModelAsDefault}
+            className={cx(
+              smallPillButtonClass,
+              settings.model === defaultModel
+                ? "bg-white/[0.045] text-neutral-500"
+                : "bg-white/[0.08] text-neutral-200 hover:bg-white/[0.12] hover:text-neutral-50",
             )}
-            <button
-              type="button"
-              disabled={providerDiffers || !settings.model || settings.model === defaultModel}
-              onClick={setSelectedModelAsDefault}
-              className={cx(
-                "inline-flex min-h-5 shrink-0 items-center rounded-full px-2 text-[11px] font-medium leading-none shadow-[var(--shadow-border)] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 disabled:cursor-default disabled:active:scale-100",
-                CONTROL_MOTION,
-                settings.model === defaultModel
-                  ? "bg-white/[0.045] text-neutral-500"
-                  : "bg-white/[0.065] text-neutral-300 hover:bg-white/[0.1] hover:text-neutral-100",
-              )}
-            >
-              {settings.model === defaultModel ? "Default" : "Set default"}
-            </button>
-          </p>
+          >
+            {settings.model === defaultModel && <Check size={12} strokeWidth={2.2} aria-hidden="true" />}
+            {settings.model === defaultModel ? "Default" : "Set as default"}
+          </button>
         </div>
       </div>
 
       {providerDiffers && (
-        <div className="mb-3 flex items-center justify-between gap-3 rounded-xl bg-white/[0.035] px-3 py-2.5 shadow-[var(--shadow-border)]">
-          <p className="min-w-0 text-pretty text-xs leading-5 text-neutral-400">
+        <div className="mb-5 flex items-center justify-between gap-3 rounded-2xl bg-[#fde68a]/[0.08] px-4 py-3">
+          <p className="min-w-0 text-pretty text-[12.5px] leading-5 text-[#fde68a]/90">
             This {conversationKind} uses {conversationProvider.name}, not {provider.name}.
           </p>
           {onMoveToProvider && (
             <button
               type="button"
               onClick={onMoveToProvider}
-              className={cx(
-                "inline-flex h-8 shrink-0 items-center rounded-lg bg-white/[0.065] px-3 text-xs font-medium text-neutral-200 shadow-[var(--shadow-border)] hover:bg-white/[0.1] hover:text-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
-                CONTROL_MOTION,
-              )}
+              className={cx(secondaryButtonClass, "h-8 shrink-0 px-3 text-xs")}
             >
               Move to {provider.name}
             </button>
           )}
         </div>
       )}
+
+      <div className="mb-5 shrink-0">{modelFiltersGroup}</div>
 
       <ModelPicker
         models={filteredModels}
@@ -936,7 +737,7 @@ export function SettingsDrawer({
         searchWrapRef={modelSearchWrapRef}
         searchInputRef={modelSearchInputRef}
         note={modelLocked && (
-          <p className="mt-2 text-pretty text-xs leading-5 text-neutral-600">
+          <p className="mt-2 px-1 text-pretty text-xs leading-5 text-[#8a8a8a]">
             Model selection is locked after the first message in a chat.
           </p>
         )}
@@ -944,43 +745,225 @@ export function SettingsDrawer({
     </section>
   );
 
+  const reasoningGroup = (
+    <SettingGroup
+      id="settings-group-reasoning"
+      title="Reasoning"
+      flash={flashGroupId === "settings-group-reasoning"}
+    >
+      <SettingRow
+        title="Reasoning effort"
+        description={canThink
+          ? "How long the model thinks before it answers"
+          : `${selectedModelOutputName || "This model"} doesn't support reasoning`}
+        stacked
+      >
+        <SlidingTabs
+          options={REASONING_EFFORTS}
+          value={reasoningEffort}
+          onChange={(value) => commit({ reasoning_effort: value })}
+          getValue={(effort) => effort.value}
+          getLabel={(effort) => effort.shortLabel || effort.label}
+          isOptionDisabled={(effort) => !supportsReasoningEffort(
+            models,
+            settings.model,
+            effort.value,
+          )}
+          ariaLabel="Reasoning effort"
+          disabled={!canThink}
+          className="settings-inner-tabs flex w-full"
+        />
+      </SettingRow>
+    </SettingGroup>
+  );
+
+  const outputGroup = (
+    <SettingGroup id="settings-group-output" title="Output">
+      <div className="settings-row px-4 py-3.5">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="text-sm font-medium text-neutral-100">Temperature</h3>
+            <p className="mt-0.5 text-pretty text-[12.5px] leading-5 text-[#8a8a8a]">
+              {temperatureLocked
+                ? `${selectedModelOutputName} picks its own temperature`
+                : "Lower is focused, higher is more varied"}
+            </p>
+          </div>
+          <span className="settings-value-chip">
+            {temperatureLocked ? "Auto" : settings.temperature}
+          </span>
+        </div>
+        <input
+          type="range"
+          min="0"
+          max="1.5"
+          step="0.1"
+          value={settings.temperature}
+          aria-label="Temperature"
+          onChange={(event) => updateSetting({ temperature: Number(event.target.value) })}
+          onMouseUp={() => onPersist(settings)}
+          onTouchEnd={() => onPersist(settings)}
+          style={{ "--range-progress": rangeProgress(settings.temperature, 0, 1.5) }}
+          disabled={temperatureLocked}
+          className={cx("settings-range", temperatureLocked && "cursor-not-allowed opacity-40")}
+        />
+      </div>
+      <div className="settings-row px-4 py-3.5">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="text-sm font-medium text-neutral-100">Max output tokens</h3>
+            <p className="mt-0.5 truncate text-[12.5px] leading-5 tabular-nums text-[#8a8a8a]">
+              {selectedModelContext
+                ? `${selectedModelOutputName} has ${selectedModelContext}`
+                : selectedModelOutputName}
+            </p>
+          </div>
+          {editingMaxTokens ? (
+            <input
+              type="text"
+              autoFocus
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={maxTokensDraft}
+              aria-label="Max output tokens"
+              data-1p-ignore="true"
+              onChange={(event) => {
+                const digitsOnly = event.target.value.replace(/[^0-9]/g, "");
+                setMaxTokensDraft(digitsOnly);
+              }}
+              onBlur={commitMaxTokensDraft}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  commitMaxTokensDraft();
+                } else if (event.key === "Escape") {
+                  event.preventDefault();
+                  setEditingMaxTokens(false);
+                }
+              }}
+              className="settings-value-chip w-20 bg-white/[0.1] outline-none ring-1 ring-inset ring-white/[0.18]"
+            />
+          ) : (
+            <button
+              type="button"
+              title="Type an exact number"
+              onClick={() => {
+                setMaxTokensDraft(String(settings.max_tokens));
+                setEditingMaxTokens(true);
+              }}
+              className={cx(
+                "settings-value-chip w-20 hover:bg-white/[0.1] hover:text-neutral-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
+                CONTROL_MOTION,
+              )}
+            >
+              {settings.max_tokens}
+            </button>
+          )}
+        </div>
+        <input
+          type="range"
+          min="1000"
+          max="128000"
+          step="1000"
+          value={settings.max_tokens}
+          aria-label="Max output tokens slider"
+          onChange={(event) => updateSetting({ max_tokens: Number(event.target.value) })}
+          onMouseUp={() => onPersist(settings)}
+          onTouchEnd={() => onPersist(settings)}
+          style={{ "--range-progress": rangeProgress(settings.max_tokens, 1000, 128000) }}
+          className="settings-range"
+        />
+      </div>
+    </SettingGroup>
+  );
+
+  const systemPromptGroup = (
+    <SettingGroup
+      id="settings-group-system-prompt"
+      title="System prompt"
+      note="Sent before every message in every chat. Write mode has its own system prompt."
+      trailing={(
+        <div className="flex items-center gap-1.5">
+          <span
+            aria-live="polite"
+            className={cx(
+              "inline-flex min-h-6 items-center rounded-full px-2.5 text-[11.5px] font-medium leading-none",
+              chatPrompt.saveState === "save failed"
+                ? "bg-red-500/[0.14] text-[#fca5a5]"
+                : chatPrompt.saveState === "saving" || chatPrompt.saveState === "unsaved"
+                  ? "bg-white/[0.05] text-neutral-400"
+                  : "bg-emerald-300/[0.1] text-[#6ee7b7]",
+            )}
+          >
+            {chatPromptSaveLabel}
+          </span>
+          {chatPrompt.draft && (
+            <button
+              type="button"
+              onClick={() => chatPrompt.updateDraft("")}
+              className={cx(
+                smallPillButtonClass,
+                "bg-white/[0.06] text-neutral-400 hover:bg-white/[0.1] hover:text-neutral-100",
+              )}
+            >
+              <X size={11} strokeWidth={2.2} aria-hidden="true" />
+              Clear
+            </button>
+          )}
+        </div>
+      )}
+    >
+      <textarea
+        value={chatPrompt.draft}
+        onChange={(event) => chatPrompt.updateDraft(event.target.value)}
+        onBlur={chatPrompt.saveNow}
+        placeholder="No chat system prompt"
+        aria-label="Chat system prompt"
+        data-1p-ignore="true"
+        className="settings-prompt-field block w-full resize-none overflow-y-auto rounded-2xl bg-transparent px-4 py-3.5 text-sm leading-6 text-neutral-100 outline-none placeholder:text-neutral-500"
+      />
+    </SettingGroup>
+  );
+
+  const chatsGroup = (
+    <SettingGroup id="settings-group-chats" title="Chats">
+      <SettingRow title="Generate chat name" description="Let the model name chats">
+        <SettingSwitch
+          checked={generateChatName}
+          onChange={onToggleGenerateChatName}
+          label="Generate chat name"
+        />
+      </SettingRow>
+    </SettingGroup>
+  );
+
   const lorebookSection = (
     <section className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-balance text-sm font-semibold text-neutral-100">Lorebook model</h2>
-          <p className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-neutral-500">
-            <span className="truncate">{lorebookModel?.name || lorebookModelId}</span>
-            {lorebookModelPrice && (
-              <span className="inline-flex min-h-5 shrink-0 items-center rounded-full bg-white/[0.055] px-2 text-[11px] font-medium leading-none tabular-nums text-neutral-500 shadow-[var(--shadow-border)]">
-                {lorebookModelPrice}
-              </span>
-            )}
-            {lorebookModelContext && (
-              <span className="inline-flex min-h-5 shrink-0 items-center rounded-full bg-white/[0.055] px-2 text-[11px] font-medium leading-none tabular-nums text-neutral-500 shadow-[var(--shadow-border)]">
-                {lorebookModelContext}
-              </span>
-            )}
-            {lorebookInherits && (
-              <span className="inline-flex min-h-5 shrink-0 items-center rounded-full bg-white/[0.045] px-2 text-[11px] font-medium leading-none text-neutral-500 shadow-[var(--shadow-border)]">
-                Same as global
-              </span>
-            )}
-          </p>
-        </div>
+      <div className="mb-5 shrink-0">
+        <SettingGroup id="settings-group-lorebook" title="Lorebook">
+          <SettingRow
+            title="Retry skipped edits"
+            description="Make one follow-up call to fix lorebook edits that did not apply"
+          >
+            <SettingSwitch
+              checked={settings.lorebook_retry !== false}
+              onChange={(value) => commit({ lorebook_retry: value })}
+              label="Retry skipped edits"
+            />
+          </SettingRow>
+        </SettingGroup>
       </div>
 
-      <div className="mb-3 border-b border-white/[0.08] pb-3">
-        <SettingRow
-          title="Retry skipped edits"
-          description="Make one follow-up call to fix lorebook edits that did not apply"
-        >
-          <SettingSwitch
-            checked={settings.lorebook_retry !== false}
-            onChange={(value) => commit({ lorebook_retry: value })}
-            label="Retry skipped edits"
-          />
-        </SettingRow>
+      <div className="mb-3 min-w-0 px-1">
+        <h2 className="text-[13px] font-semibold text-neutral-400">Lorebook model</h2>
+        <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
+          <span className="mr-1 truncate text-sm font-medium text-neutral-100">
+            {lorebookModel?.name || lorebookModelId}
+          </span>
+          {lorebookModelPrice && <SettingChip>{lorebookModelPrice}</SettingChip>}
+          {lorebookModelContext && <SettingChip>{lorebookModelContext}</SettingChip>}
+          {lorebookInherits && <SettingChip className="text-neutral-500">Same as global</SettingChip>}
+        </div>
       </div>
 
       <ModelPicker
@@ -1000,137 +983,153 @@ export function SettingsDrawer({
     </section>
   );
 
-  const reasoningSection = (
-    <Accordion
-      id="reasoning"
-      title="Reasoning"
-      open={openAccordions.reasoning}
-      onToggle={toggleAccordion}
-      trailing={!canThink ? "Unavailable" : null}
-    >
-      <SlidingTabs
-        options={REASONING_EFFORTS}
-        value={reasoningEffort}
-        onChange={(value) => commit({ reasoning_effort: value })}
-        getValue={(effort) => effort.value}
-        getLabel={(effort) => effort.shortLabel || effort.label}
-        isOptionDisabled={(effort) => !supportsReasoningEffort(
-          models,
-          settings.model,
-          effort.value,
-        )}
-        ariaLabel="Reasoning effort"
-        disabled={!canThink}
-        className="reasoning-tabs w-full"
-      />
-    </Accordion>
+  const displayGroup = (
+    <SettingGroup id="settings-group-display" title="Display">
+      <SettingRow
+        title="Navigation bar"
+        description="Show a navigation bar for easily navigating long chats"
+      >
+        <SettingSwitch
+          checked={showPromptNavigationRail}
+          onChange={onTogglePromptNavigationRail}
+          label="Navigation bar"
+        />
+      </SettingRow>
+      <SettingRow title="Smooth text" description="Resolve model responses in a word at a time">
+        <SettingSwitch
+          checked={smoothStreaming}
+          onChange={onToggleSmoothStreaming}
+          label="Smooth text"
+        />
+      </SettingRow>
+    </SettingGroup>
   );
 
-  const generationSection = (
-    <Accordion
-      id="generation"
-      title="Generation"
-      open={openAccordions.generation}
-      onToggle={toggleAccordion}
-    >
-      <div className="space-y-3">
-        <div className="settings-slider-row">
-          <div className="mb-2.5 flex items-center justify-between text-xs font-medium">
-            <span className="text-neutral-400">Temperature</span>
-            <span className="min-w-9 rounded-full bg-white/[0.055] px-2 py-0.5 text-center tabular-nums text-neutral-200 shadow-[var(--shadow-border)]">
-              {temperatureLocked ? "Auto" : settings.temperature}
-            </span>
-          </div>
-          <input
-            type="range"
-            min="0"
-            max="1.5"
-            step="0.1"
-            value={settings.temperature}
-            onChange={(event) => updateSetting({ temperature: Number(event.target.value) })}
-            onMouseUp={() => onPersist(settings)}
-            onTouchEnd={() => onPersist(settings)}
-            style={{ "--range-progress": rangeProgress(settings.temperature, 0, 1.5) }}
-            disabled={temperatureLocked}
-            className={cx("settings-range", temperatureLocked && "cursor-not-allowed opacity-40")}
-          />
-          {temperatureLocked && (
-            <p className="mt-2 text-pretty text-xs leading-5 text-neutral-500">
-              {selectedModelOutputName} picks its own temperature
-            </p>
-          )}
-        </div>
-        <div className="settings-slider-row">
-          <div className="mb-2.5 flex items-center justify-between text-xs font-medium">
-            <span className="text-neutral-400">Max output tokens</span>
-            <div className="flex items-center gap-1.5">
-              <span className="max-w-[220px] truncate rounded-full bg-white/[0.055] px-2 py-0.5 text-[11px] font-medium leading-normal tabular-nums text-neutral-500 shadow-[var(--shadow-border)]">
-                {selectedModelContext
-                  ? `${selectedModelOutputName} - ${selectedModelContext}`
-                  : selectedModelOutputName}
-              </span>
-              {editingMaxTokens ? (
-                <input
-                  type="text"
-                  autoFocus
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  value={maxTokensDraft}
-                  data-1p-ignore="true"
-                  onChange={(event) => {
-                    const digitsOnly = event.target.value.replace(/[^0-9]/g, "");
-                    setMaxTokensDraft(digitsOnly);
-                  }}
-                  onBlur={commitMaxTokensDraft}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      commitMaxTokensDraft();
-                    } else if (event.key === "Escape") {
-                      event.preventDefault();
-                      setEditingMaxTokens(false);
-                    }
-                  }}
-                  className="w-16 shrink-0 rounded-full bg-white/[0.08] px-2 py-0.5 text-center tabular-nums text-neutral-100 shadow-[var(--shadow-border)] outline-none focus-visible:ring-2 focus-visible:ring-white/20"
-                />
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMaxTokensDraft(String(settings.max_tokens));
-                    setEditingMaxTokens(true);
-                  }}
-                  className={cx(
-                    "w-16 shrink-0 rounded-full bg-white/[0.055] px-2 py-0.5 text-center tabular-nums text-neutral-200 shadow-[var(--shadow-border)] hover:bg-white/[0.085] hover:text-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
-                    CONTROL_MOTION,
-                  )}
-                >
-                  {settings.max_tokens}
-                </button>
-              )}
-            </div>
-          </div>
-          <input
-            type="range"
-            min="1000"
-            max="128000"
-            step="1000"
-            value={settings.max_tokens}
-            onChange={(event) => updateSetting({ max_tokens: Number(event.target.value) })}
-            onMouseUp={() => onPersist(settings)}
-            onTouchEnd={() => onPersist(settings)}
-            style={{ "--range-progress": rangeProgress(settings.max_tokens, 1000, 128000) }}
-            className="settings-range"
+  const updatesGroup = (
+    <SettingGroup id="settings-group-updates" title="Updates">
+      <SettingRow
+        title="Check for updates"
+        description="Look for a new RouterChat release on GitHub each time the app starts. This only shows a dot next to the version number. Nothing is downloaded or installed automatically, and RouterChat never sends usage data."
+      >
+        <SettingSwitch
+          checked={updateChecks}
+          onChange={onToggleUpdateChecks}
+          label="Check for updates"
+        />
+      </SettingRow>
+    </SettingGroup>
+  );
+
+  const chatTransferSection = (
+    <section className="flex h-full min-h-0 flex-col">
+      <SettingGroup
+        id="settings-group-transfer"
+        title="Export or import a chat"
+        className="flex min-h-0 flex-initial flex-col"
+        bodyClassName="flex min-h-0 flex-initial flex-col p-2"
+      >
+        <div className="shrink-0 p-1">
+          <SearchClearField
+            value={cloudSearch}
+            onChange={setCloudSearch}
+            placeholder="Search chats"
           />
         </div>
+        <div className="relative mt-1 flex min-h-0 flex-initial flex-col">
+          <div
+            ref={chatListRef}
+            onScroll={handleChatListScroll}
+            className="settings-chat-list min-h-0 flex-initial space-y-0.5 overflow-y-auto"
+          >
+            {filteredCloudChats.length === 0 ? (
+              <p className="px-3 py-6 text-center text-pretty text-[12.5px] leading-5 text-[#8a8a8a]">
+                {chats.length === 0 ? "No chats yet. Start one and it will show up here." : "No chats match that search."}
+              </p>
+            ) : (
+              filteredCloudChats.map((chat) => {
+                const selected = chat.id === cloudChatId;
+                return (
+                  <button
+                    key={chat.id}
+                    type="button"
+                    onClick={() => setSelectedCloudChatId(chat.id)}
+                    aria-pressed={selected}
+                    className={cx(
+                      "grid min-h-11 w-full grid-cols-[minmax(0,1fr)_16px] items-center gap-3 rounded-xl px-3 py-2 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
+                      CONTROL_MOTION,
+                      selected
+                        ? "bg-white/[0.07] text-neutral-50"
+                        : "text-neutral-300 hover:bg-white/[0.04] hover:text-neutral-100",
+                    )}
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium">{chat.title}</span>
+                      <span className="mt-0.5 block truncate text-xs text-[#8a8a8a]">
+                        {promptModelName(chatModels, chat.model)}
+                      </span>
+                    </span>
+                    <Check
+                      size={15}
+                      aria-hidden="true"
+                      className={cx("text-neutral-200", selected ? "opacity-100" : "opacity-0")}
+                    />
+                  </button>
+                );
+              })
+            )}
+          </div>
+          <div
+            aria-hidden="true"
+            className={cx(
+              "settings-list-fade pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-[#141414] to-transparent transition-opacity duration-150 ease-out",
+              chatListScrolled ? "opacity-100" : "opacity-0",
+            )}
+          />
+          <div
+            aria-hidden="true"
+            className={cx(
+              "settings-list-fade pointer-events-none absolute inset-x-0 bottom-0 h-7 bg-gradient-to-t from-[#141414] to-transparent transition-opacity duration-150 ease-out",
+              chatListHasMoreBelow ? "opacity-100" : "opacity-0",
+            )}
+          />
+        </div>
+      </SettingGroup>
+
+      <div className="flex shrink-0 items-center justify-center gap-2 pt-4">
+        <button
+          type="button"
+          disabled={exporting || importing || !cloudChatId}
+          onClick={exportChats}
+          className={secondaryButtonClass}
+        >
+          <i className="fi fi-rr-download text-[13px] leading-none" aria-hidden="true" />
+          {exporting ? "Exporting" : "Export"}
+        </button>
+        <button
+          type="button"
+          disabled={exporting || importing}
+          onClick={() => fileInputRef.current?.click()}
+          className={secondaryButtonClass}
+        >
+          <i className="fi fi-rr-cloud-upload-alt text-[13px] leading-none" aria-hidden="true" />
+          {importing ? "Importing" : "Import"}
+        </button>
       </div>
-    </Accordion>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/json,.json"
+        className="hidden"
+        onChange={importChats}
+      />
+    </section>
   );
 
   return (
     <div
       className={cx(
-        "modal-interaction-guard settings-page fixed inset-0 z-50 bg-[#202020]",
+        "modal-interaction-guard settings-page fixed inset-0 z-50 bg-[#080808]",
         open ? "is-open" : "is-closing is-inert pointer-events-none",
       )}
       inert={open ? undefined : ""}
@@ -1138,183 +1137,85 @@ export function SettingsDrawer({
       <section
         role="dialog"
         aria-modal="true"
-        aria-labelledby="settings-modal-title"
+        aria-label={activePageLabel}
         aria-hidden={!open}
-        className="settings-page-frame mx-auto grid h-full w-full grid-cols-1 text-neutral-100 md:grid-cols-[200px_minmax(0,1fr)]"
+        className="settings-page-panel flex h-full min-h-0 w-full flex-col text-neutral-100"
       >
-        <aside className="settings-page-rail hidden min-h-0 flex-col px-3 pb-3 pt-7 md:flex">
-          <div className="mb-5 flex items-center gap-2.5">
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close settings"
-              className={cx(
-                "grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white/[0.06] text-neutral-100 hover:bg-white/[0.1] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
-                CONTROL_MOTION,
-              )}
-            >
-              <ArrowLeft size={18} strokeWidth={1.9} />
-            </button>
-            <span className="text-[15px] font-semibold text-neutral-50">Settings</span>
+        <header className="settings-inline shrink-0 pt-4 md:pt-8">
+          <div className="flex h-10 items-center justify-between gap-4">
+            <h1 className="text-[22px] font-[650] leading-tight tracking-[-0.012em] text-neutral-50">
+              Settings
+            </h1>
+            <IconButton label="Close settings" onClick={onClose}>
+              <X size={17} />
+            </IconButton>
           </div>
-          <nav className="space-y-1 overflow-y-auto" aria-label="Settings sections">
-            {visibleSettingsPages.map((page) => {
-              const Icon = page.icon;
-              const selected = activePage === page.id;
-              return (
-                <button
-                  key={page.id}
-                  type="button"
-                  onClick={() => choosePage(page.id)}
-                  aria-current={selected ? "page" : undefined}
-                  className={cx(
-                    "flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] font-medium leading-none focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
-                    CONTROL_MOTION,
-                    selected
-                      ? "bg-white/[0.08] text-neutral-50"
-                      : "text-neutral-400 hover:bg-white/[0.045] hover:text-neutral-100",
-                    )}
-                >
-                  <span
-                    className={cx(
-                      "settings-nav-icon",
-                      page.id === "models" && "-translate-x-0.5",
-                    )}
-                    aria-hidden="true"
-                  >
-                    {page.iconClass && (
-                      <i className={cx(page.iconClass, "text-[15px] leading-none")} />
-                    )}
-                    {page.iconSrc && <MaskIcon src={page.iconSrc} size={15} />}
-                    {!page.iconClass && !page.iconSrc && <Icon size={15} strokeWidth={1.9} />}
-                  </span>
-                  <span className="truncate">{page.label}</span>
-                </button>
-              );
-            })}
-          </nav>
-        </aside>
+          <div className="mt-4 md:mt-5">
+            <SettingsStatusStrip items={statusItems} onJump={jumpTo} />
+          </div>
+          <div className="mt-4 border-b border-white/[0.07] pb-4 md:mt-5">
+            <SlidingTabs
+              options={visibleSettingsPages}
+              value={activePage}
+              onChange={choosePage}
+              getValue={(page) => page.id}
+              getLabel={(page) => page.label}
+              ariaLabel="Settings sections"
+              className="settings-tabs flex w-full"
+            />
+          </div>
+        </header>
 
-        <div className="settings-page-panel flex min-h-0 min-w-0 flex-col overflow-hidden">
-          <header className="settings-inline pt-4 md:pt-7">
-            <div className="border-b border-white/10 pb-3 md:pb-4">
-              <div className="flex items-center justify-between gap-4 md:h-9">
-                <h1
-                  id="settings-modal-title"
-                  className="text-balance text-xl font-semibold tracking-[-0.01em] text-neutral-50 md:text-2xl"
-                >
-                  {visibleSettingsPages.find((page) => page.id === activePage)?.label || "Settings"}
-                </h1>
-                <div className="md:hidden">
-                  <IconButton label="Close settings" onClick={onClose}>
-                    <X size={17} />
-                  </IconButton>
-                </div>
-              </div>
-              <SlidingTabs
-                options={visibleSettingsPages}
-                value={activePage}
-                onChange={choosePage}
-                getValue={(page) => page.id}
-                getLabel={(page) => page.label}
-                ariaLabel="Settings sections"
-                className="settings-mobile-tabs mt-3 flex w-full md:hidden"
-              />
+        <div
+          className="settings-page-slide t-page-slide min-h-0 flex-1"
+          data-page={String(activePageIndex)}
+        >
+          <section className={SCROLL_PAGE_CLASS} data-page-id="1" aria-label="Connection settings">
+            <div className="space-y-7">
+              {accountGroup}
+              {cachingGroup}
+              {capabilities.routingOptions && routingGroup}
+              {capabilities.routingOptions && privacyGroup}
             </div>
-          </header>
-
-          <div
-            className="settings-page-slide t-page-slide min-h-0 flex-1"
-            data-page={String(activePageIndex)}
-          >
-            <section
-              className="settings-scroll-page t-page space-y-0 overflow-y-auto settings-inline py-4 md:py-5"
-              data-page-id="1"
-              aria-label="API settings"
-            >
-              {providerSection}
-              {keySection}
-              {chatNameSection}
-              {capabilities.freeModels && modelFilterSection}
-              {promptCachingSection}
-              {hourPromptCacheSection}
-              {batchFilterSection}
-              {capabilities.routingOptions && (
-                <>
-                  {turboSection}
-                  {cheapestSection}
-                  {privacySection}
-                  {zdrSection}
-                </>
-              )}
-            </section>
-            <section
-              className="t-page flex min-h-0 flex-col settings-inline py-4 md:py-5"
-              data-page-id="2"
-              aria-label="Model settings"
-            >
-              {modelList}
-            </section>
-            <section className="t-page flex min-h-0 flex-col settings-inline py-4 md:py-5" data-page-id="3" aria-label="Transcription settings">
-              {!provider.capabilities?.transcription && (
-                <p className="mb-3 text-pretty text-xs leading-5 text-neutral-500">
-                  {provider.name} has no voice typing of its own. Voice input uses OpenRouter, so it needs an OpenRouter key saved under API.
-                </p>
-              )}
-              {transcriptionPage.mounted && <TranscriptionSettings key={transcriptionPage.session} />}
-            </section>
-            <section
-              className="t-page flex min-h-0 flex-col settings-inline py-4 md:py-5"
-              data-page-id="4"
-              aria-label="System settings"
-            >
-              {systemSection}
-            </section>
-            <section
-              className="settings-scroll-page t-page space-y-0 overflow-y-auto settings-inline py-4 md:py-5"
-              data-page-id="5"
-              aria-label="Updates settings"
-            >
-              {updateChecksSection}
-            </section>
-            <section
-              className="settings-scroll-page t-page space-y-0 overflow-y-auto settings-inline py-4 md:py-5"
-              data-page-id="6"
-              aria-label="UI settings"
-            >
-              {promptNavigationSection}
-              {smoothTextSection}
-            </section>
-            <section
-              className="t-page overflow-hidden settings-inline py-4 md:py-5"
-              data-page-id="7"
-              aria-label="Chats settings"
-            >
-              {importExportSection}
-            </section>
-            <section
-              className="settings-scroll-page t-page space-y-0 overflow-y-auto settings-inline py-4 md:py-5"
-              data-page-id="8"
-              aria-label="Advanced settings"
-            >
-              {reasoningSection}
-              {generationSection}
-            </section>
-            <section
-              className="t-page flex min-h-0 flex-col settings-inline py-4 md:py-5"
-              data-page-id="9"
-              aria-label="Lorebook settings"
-            >
-              {lorebookSection}
-            </section>
-            <section
-              className="settings-scroll-page t-page settings-inline overflow-y-auto py-4 md:py-5"
-              data-page-id="10"
-              aria-label="Usage settings"
-            >
-              {usagePage.mounted && <UsagePanel key={usagePage.session} models={models} />}
-            </section>
-          </div>
+          </section>
+          <section className={LIST_PAGE_CLASS} data-page-id="2" aria-label="Model settings">
+            {modelsSection}
+          </section>
+          <section className={SCROLL_PAGE_CLASS} data-page-id="3" aria-label="Generation settings">
+            <div className="space-y-7">
+              {reasoningGroup}
+              {outputGroup}
+            </div>
+          </section>
+          <section className={SCROLL_PAGE_CLASS} data-page-id="4" aria-label="Chat settings">
+            <div className="space-y-7">
+              {systemPromptGroup}
+              {chatsGroup}
+            </div>
+          </section>
+          <section className={LIST_PAGE_CLASS} data-page-id="5" aria-label="Lorebook settings">
+            {lorebookSection}
+          </section>
+          <section className={LIST_PAGE_CLASS} data-page-id="6" aria-label="Transcription settings">
+            {!provider.capabilities?.transcription && (
+              <p className="mb-4 rounded-2xl bg-white/[0.04] px-4 py-3 text-pretty text-[12.5px] leading-5 text-neutral-400">
+                {provider.name} has no voice typing of its own. Voice input uses OpenRouter, so it needs an OpenRouter key saved under Connection.
+              </p>
+            )}
+            {voicePage.mounted && <TranscriptionSettings key={voicePage.session} />}
+          </section>
+          <section className={SCROLL_PAGE_CLASS} data-page-id="7" aria-label="Interface settings">
+            <div className="space-y-7">
+              {displayGroup}
+              {updatesGroup}
+            </div>
+          </section>
+          <section className={cx("overflow-hidden", PAGE_CLASS)} data-page-id="8" aria-label="Data settings">
+            {chatTransferSection}
+          </section>
+          <section className={SCROLL_PAGE_CLASS} data-page-id="9" aria-label="Usage settings">
+            {usagePage.mounted && <UsagePanel key={usagePage.session} models={models} />}
+          </section>
         </div>
       </section>
     </div>

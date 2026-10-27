@@ -52,9 +52,9 @@ export function ModelPicker({
       <div
         key={key}
         className={cx(
-          "grid min-h-[52px] items-center gap-3 rounded-lg px-1 py-2 transition-colors duration-150 ease-out",
+          "grid min-h-[52px] items-center gap-3 rounded-xl px-3 py-2 transition-colors duration-150 ease-out",
           columns,
-          isSelected ? "bg-white/[0.035]" : "hover:bg-white/[0.02]",
+          isSelected ? "bg-white/[0.06]" : "hover:bg-white/[0.03]",
           disabled && !isSelected && "opacity-45",
         )}
       >
@@ -69,13 +69,13 @@ export function ModelPicker({
           )}
         >
           <span className="block truncate text-sm font-medium text-neutral-100">{name}</span>
-          <span className="mt-0.5 block truncate text-xs text-neutral-600">{subLabel}</span>
+          <span className="mt-0.5 block truncate text-xs text-[#8a8a8a]">{subLabel}</span>
         </button>
-        <span className="min-w-0 whitespace-nowrap px-1 text-right text-xs tabular-nums text-neutral-500">
+        <span className="min-w-0 whitespace-nowrap px-1 text-right text-xs tabular-nums text-neutral-400">
           {renderPrice && model ? renderPrice(model) : price}
         </span>
         {showContext && (
-          <span className="min-w-0 whitespace-nowrap px-1 text-right text-xs tabular-nums text-neutral-500">
+          <span className="min-w-0 whitespace-nowrap px-1 text-right text-xs tabular-nums text-neutral-400">
             {context}
           </span>
         )}
@@ -89,7 +89,7 @@ export function ModelPicker({
         <div ref={searchWrapRef} className="t-input-wrap">
           <div
             ref={searchInputRef}
-            className="t-input model-search-input flex h-10 items-center gap-2 rounded-xl bg-black/20 px-3 text-neutral-500 shadow-[var(--shadow-border)] transition-[background-color,box-shadow] duration-150 ease-out focus-within:bg-black/25 focus-within:shadow-[0_0_0_1px_rgba(255,255,255,0.16)]"
+            className="t-input model-search-input flex h-10 items-center gap-2 rounded-full bg-white/[0.045] px-4 text-neutral-500 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.07)] transition-[background-color,box-shadow] duration-150 ease-out focus-within:bg-white/[0.06] focus-within:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)]"
           >
             <Search size={15} />
             <input
@@ -98,7 +98,7 @@ export function ModelPicker({
               onChange={(event) => onQueryChange(event.target.value)}
               placeholder="Search models"
               data-1p-ignore="true"
-              className="min-w-0 flex-1 bg-transparent text-sm text-neutral-100 outline-none placeholder:text-neutral-600"
+              className="min-w-0 flex-1 bg-transparent text-sm text-neutral-100 outline-none placeholder:text-neutral-500"
             />
             <span className="rounded-full bg-white/[0.05] px-2 py-0.5 text-[11px] tabular-nums text-neutral-500">
               {models.length}
@@ -108,7 +108,7 @@ export function ModelPicker({
         {note}
       </div>
 
-      <div className={cx("grid items-center gap-3 px-1 pb-2 pt-1 text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-600", columns)}>
+      <div className={cx("grid items-center gap-3 px-3 pb-2 pt-1 text-xs font-medium text-neutral-500", columns)}>
         <span>Model</span>
         <span className="whitespace-nowrap px-1 text-right">{priceHeader}</span>
         {showContext && <span className="whitespace-nowrap px-1 text-right">Context</span>}
@@ -129,7 +129,7 @@ export function ModelPicker({
           })}
 
           {models.length === 0 ? (
-            <div className="mt-3 rounded-[18px] bg-black/15 p-4 text-pretty text-sm leading-6 text-neutral-500 shadow-[var(--shadow-border)]">
+            <div className="mt-2 rounded-2xl bg-[#141414] p-4 text-pretty text-sm leading-6 text-neutral-400 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.07)]">
               {emptyMessage}
             </div>
           ) : (
@@ -148,14 +148,14 @@ export function ModelPicker({
         <div
           aria-hidden="true"
           className={cx(
-            "settings-list-fade pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-[#202020]/95 to-transparent transition-opacity duration-150 ease-out",
+            "settings-list-fade pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-[#080808] to-transparent transition-opacity duration-150 ease-out",
             listScrolled ? "opacity-100" : "opacity-0",
           )}
         />
         <div
           aria-hidden="true"
           className={cx(
-            "settings-list-fade pointer-events-none absolute inset-x-0 bottom-0 h-7 bg-gradient-to-t from-[#202020]/95 to-transparent transition-opacity duration-150 ease-out",
+            "settings-list-fade pointer-events-none absolute inset-x-0 bottom-0 h-7 bg-gradient-to-t from-[#080808] to-transparent transition-opacity duration-150 ease-out",
             listHasMoreBelow ? "opacity-100" : "opacity-0",
           )}
         />

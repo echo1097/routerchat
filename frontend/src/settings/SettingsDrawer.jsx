@@ -663,7 +663,6 @@ export function SettingsDrawer({
                 : "bg-white/[0.08] text-neutral-200 hover:bg-white/[0.12] hover:text-neutral-50",
             )}
           >
-            {settings.model === defaultModel && <Check size={12} strokeWidth={2.2} aria-hidden="true" />}
             {settings.model === defaultModel ? "Default" : "Set as default"}
           </button>
         </div>

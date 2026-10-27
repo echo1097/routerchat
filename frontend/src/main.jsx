@@ -86,6 +86,7 @@ function App() {
   const [folders, setFolders] = useState([]);
   const [messages, setMessages] = useState([]);
   const [stories, setStories] = useState([]);
+  const [storiesLoaded, setStoriesLoaded] = useState(false);
   const [chapters, setChapters] = useState([]);
   const [lorebookEntries, setLorebookEntries] = useState([]);
   const [lorebookUpdating, setLorebookUpdating] = useState(false);
@@ -689,6 +690,7 @@ function App() {
   const loadStories = useCallback(async () => {
     const nextStories = await storyApi.listStories();
     setStories(nextStories);
+    setStoriesLoaded(true);
     return nextStories;
   }, []);
 
@@ -960,6 +962,11 @@ function App() {
   useEffect(() => {
     scrollToBottom(true);
   }, [activeChatId, activeStoryId, activeChapterId, scrollToBottom]);
+
+  useEffect(() => {
+    if (!isWritingMode || !isEmptyWriting) return;
+    loadStories().catch(() => {});
+  }, [isWritingMode, isEmptyWriting, loadStories]);
 
   useEffect(() => {
     if (!isWritingMode || activeStoryId || stories.length === 0) return;
@@ -2254,17 +2261,17 @@ function App() {
     }
   }
 
-  async function selectStory(storyId) {
+  async function selectStory(storyId, chapterId = null) {
     if (rejectWriteNavigationDuringGeneration()) return;
     const navigationIntent = beginNavigationIntent();
     const expectedLoadId = navigationIntent;
     try {
-      const result = await loadStoryBundle(storyId, null, { navigationIntent });
+      const result = await loadStoryBundle(storyId, chapterId, { navigationIntent });
       if (!result) return;
       if (!navigationIntentIsCurrent(navigationIntent)) return;
       commitStoryBundle(result);
       setStoryWorkspaceView("chapter");
-      writeRoute(storyRoute(result.story.id, null, "chapter"));
+      writeRoute(storyRoute(result.story.id, chapterId ? result.chapter?.id || null : null, "chapter"));
     } catch (error) {
       if (!navigationIntentIsCurrent(navigationIntent) || expectedLoadId !== latestStoryLoadRef.current) return;
       setStatus(error.message);
@@ -3591,7 +3598,17 @@ function App() {
 
         {showComposer && (showLandingComposer ? (
           isWritingMode ? (
-            <WriteLanding openingMessage={landingMessage} />
+            <WriteLanding
+              openingMessage={landingMessage}
+              stories={stories}
+              storiesLoaded={storiesLoaded}
+              navigationLocked={hasActiveWriteGeneration()}
+              onOpenStory={selectStory}
+              onNewStory={() => {
+                if (!isStreaming) setNewStoryDialogOpen(true);
+              }}
+              onImportStory={importStoryFile}
+            />
           ) : (
             <Composer
               contextKey={`${activeChatId}:${activeStoryId}:${activeChapterId}`}

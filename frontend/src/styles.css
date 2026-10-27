@@ -558,14 +558,6 @@ textarea::placeholder {
   outline: none;
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.22);
 }
-.settings-status-icon {
-  flex: 0 0 auto;
-  color: #737373;
-  transition: color 150ms ease-out;
-}
-.settings-status-item:hover .settings-status-icon {
-  color: #d4d4d4;
-}
 .settings-status-dot {
   width: 7px;
   height: 7px;

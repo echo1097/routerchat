@@ -49,7 +49,7 @@ export function TranscriptionSettings() {
   return (
     <section className="flex min-h-0 flex-1 flex-col">
       <div className="mb-4 min-w-0 px-1">
-        <h2 className="text-[13px] font-semibold text-neutral-400">Voice typing model</h2>
+        <h2 className="text-[13px] font-semibold text-neutral-400">Dictation model</h2>
         <p className="mt-1.5 truncate text-sm font-medium text-neutral-100">{selectedName || "Loading models…"}</p>
       </div>
       <ModelPicker

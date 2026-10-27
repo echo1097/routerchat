@@ -128,7 +128,7 @@ export function ModelPicker({
             >
               <X size={13} strokeWidth={2.2} aria-hidden="true" />
             </button>
-            <span className="min-w-7 rounded-full bg-white/[0.05] px-2 py-0.5 text-center text-[11px] tabular-nums text-neutral-500">
+            <span className="w-11 shrink-0 rounded-full bg-white/[0.05] py-0.5 text-center text-[11px] tabular-nums text-neutral-500">
               {loading ? "-" : models.length}
             </span>
           </div>

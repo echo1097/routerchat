@@ -752,7 +752,7 @@ export function SettingsDrawer({
             <p className="mt-0.5 text-pretty text-[12.5px] leading-5 text-[#8a8a8a]">
               {temperatureLocked
                 ? `${selectedModelOutputName} picks its own temperature`
-                : "Lower is focused, higher is more varied"}
+                : "Low is predictable, high is more creative"}
             </p>
           </div>
           <span className="settings-value-chip">

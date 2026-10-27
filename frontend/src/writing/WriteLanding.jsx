@@ -1,11 +1,10 @@
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { ArrowRight } from "lucide-react";
 import { MaskIcon } from "../components/IconButton.jsx";
 import { CONTROL_MOTION, cx } from "../uiShared.js";
 import { excerptParagraphs, formatEditedAgo, storyMetaLine } from "./landingFormatting.js";
 
 const otherStoryLimit = 4;
-const longExcerptLength = 140;
 
 const primaryPill =
   "inline-flex h-10 items-center justify-center gap-2 rounded-full bg-neutral-100 px-4 text-sm font-semibold text-neutral-950 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/25 disabled:cursor-not-allowed disabled:opacity-55";
@@ -21,11 +20,27 @@ function enterStyle(order) {
 
 function ResumeStory({ story, disabled, onOpenStory }) {
   const resume = story.resume || null;
-  const paragraphs = excerptParagraphs(resume?.excerpt);
-  const isLongExcerpt = (resume?.excerpt || "").length > longExcerptLength;
+  const lastParagraph = excerptParagraphs(resume?.excerpt).at(-1) || "";
+  const excerptRef = useRef(null);
+  const excerptTextRef = useRef(null);
+  const [excerptClipped, setExcerptClipped] = useState(false);
   const metaLine = storyMetaLine(story);
   const editedAgo = formatEditedAgo(story.updated_at);
   const title = story.title || "Untitled story";
+
+  useLayoutEffect(() => {
+    const excerptBox = excerptRef.current;
+    const excerptText = excerptTextRef.current;
+    if (!excerptBox || !excerptText) return undefined;
+
+    const checkClipped = () => setExcerptClipped(excerptText.offsetHeight > excerptBox.clientHeight + 1);
+    checkClipped();
+
+    const observer = new ResizeObserver(checkClipped);
+    observer.observe(excerptBox);
+    observer.observe(excerptText);
+    return () => observer.disconnect();
+  }, [lastParagraph]);
 
   return (
     <button
@@ -34,7 +49,7 @@ function ResumeStory({ story, disabled, onOpenStory }) {
       aria-label={`Continue ${title}`}
       onClick={() => onOpenStory(story.id, resume?.chapter_id || null)}
       className={cx(
-        "write-landing-in group mt-9 block w-full rounded-[24px] bg-[#141414] p-5 text-left ring-1 ring-inset ring-white/[0.07] hover:bg-[#161616] hover:ring-white/[0.11] focus:outline-none focus-visible:ring-white/25 disabled:cursor-not-allowed disabled:opacity-60 sm:p-6",
+        "write-landing-in group mt-9 block w-full rounded-[24px] bg-[#141414] p-5 text-left ring-1 ring-inset ring-white/[0.07] hover:bg-[#181818] hover:ring-white/[0.11] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/[0.22] disabled:cursor-not-allowed disabled:opacity-60 sm:p-6",
         "transition-[background-color,box-shadow,scale] duration-200 ease-out active:scale-[0.99]",
       )}
       style={enterStyle(1)}
@@ -44,7 +59,7 @@ function ResumeStory({ story, disabled, onOpenStory }) {
           {title}
         </span>
         {editedAgo && (
-          <span className="hidden shrink-0 text-[13px] font-medium tabular-nums text-neutral-500 sm:inline">
+          <span className="hidden shrink-0 text-[13px] font-medium tabular-nums text-neutral-400 sm:inline">
             {editedAgo}
           </span>
         )}
@@ -59,25 +74,26 @@ function ResumeStory({ story, disabled, onOpenStory }) {
         </span>
       )}
 
-      {paragraphs.length > 0 ? (
+      {lastParagraph ? (
         <span
+          ref={excerptRef}
           className={cx(
             "mt-5 flex max-h-[96px] flex-col justify-end overflow-hidden",
-            isLongExcerpt && "write-landing-excerpt-fade",
+            excerptClipped && "write-landing-excerpt-fade",
           )}
         >
-          <span className="block whitespace-pre-line text-pretty text-[17px] leading-8 text-neutral-200">
-            {paragraphs.join("\n")}
+          <span ref={excerptTextRef} className="block shrink-0 text-pretty text-[17px] leading-8 text-neutral-200">
+            {lastParagraph}
           </span>
         </span>
       ) : (
-        <span className="mt-5 block text-[14px] leading-6 text-neutral-500">
+        <span className="mt-5 block text-[14px] leading-6 text-neutral-400">
           {story.synopsis?.trim() || "Nothing written yet. The first line is yours."}
         </span>
       )}
 
       <span className="mt-5 flex items-center justify-between gap-3">
-        <span className="min-w-0 truncate text-[13px] text-neutral-500">
+        <span className="min-w-0 truncate text-[13px] text-neutral-400">
           {resume?.chapter_title ? `In ${resume.chapter_title}` : ""}
         </span>
         <span
@@ -105,7 +121,7 @@ function OtherStories({ stories, disabled, onOpenStory }) {
 
   return (
     <div className="write-landing-in mt-8" style={enterStyle(2)}>
-      <h2 className="px-3 text-[13px] font-medium text-neutral-500">Other stories</h2>
+      <h2 className="px-3 text-[13px] font-medium text-neutral-400">Other stories</h2>
       <ul className="mt-1.5">
         {stories.map((story) => {
           const chapterCount = Number(story.chapter_count) || 0;
@@ -124,7 +140,7 @@ function OtherStories({ stories, disabled, onOpenStory }) {
                 <span className="min-w-0 flex-1 truncate text-[14px] font-medium text-neutral-300 group-hover:text-white">
                   {story.title || "Untitled story"}
                 </span>
-                <span className="shrink-0 text-[13px] tabular-nums text-neutral-500">
+                <span className="shrink-0 text-[13px] tabular-nums text-neutral-400">
                   {chapterCount > 0 && (
                     <span className="hidden sm:inline">
                       {chapterCount === 1 ? "1 chapter" : `${chapterCount} chapters`}

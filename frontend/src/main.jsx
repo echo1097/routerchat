@@ -3421,7 +3421,6 @@ function App() {
           onNewStory={() => {
             if (!isStreaming) setNewStoryDialogOpen(true);
           }}
-          onImportStory={importStoryFile}
           onRenameStory={renameStoryItem}
           onExportStory={exportStoryItem}
           onRenameChapter={renameChapterItem}

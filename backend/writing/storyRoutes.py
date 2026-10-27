@@ -25,6 +25,7 @@ from backend.stories.storyQueries import (
     requireStory,
     updateStoryColumns,
 )
+from backend.stories.storySummaries import emptySummary, listStorySummaries
 from backend.stories.storyRows import (
     requestUpdates,
     rowToChapter,
@@ -39,7 +40,13 @@ router = APIRouter()
 def listStoriesRoute() -> dict[str, Any]:
     with getDb() as conn:
         rows = listStories(conn)
-    return {"stories": [rowToStory(row) for row in rows]}
+        summaries = listStorySummaries(conn)
+    return {
+        "stories": [
+            {**rowToStory(row), **summaries.get(row["id"], emptySummary())}
+            for row in rows
+        ]
+    }
 
 
 @router.post("/api/stories")

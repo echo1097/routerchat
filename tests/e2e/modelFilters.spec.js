@@ -25,20 +25,19 @@ test("hides batch models from the model list when disabled", async ({ page }) =>
   await page.locator('[data-tour="model-button"]').click();
   await page.getByRole("menuitem", { name: /Settings/ }).click();
 
-  const batchSwitch = page.getByRole("switch", { name: "Hide batch models" });
+  await page.getByRole("tab", { name: "Models", exact: true }).click();
+  const modelsPage = page.getByRole("dialog", { name: "Models", exact: true });
+  await expect(modelsPage).toContainText("Test model (batch)");
+
+  const batchSwitch = modelsPage.getByRole("switch", { name: "Hide batch models" });
   await expect(batchSwitch).toBeVisible();
   await batchSwitch.click();
   await expect.poll(() => patches).toContainEqual({ hide_batch_models: true });
-
-  await page.getByRole("button", { name: "Models", exact: true }).click();
-  const modelsPage = page.getByRole("dialog", { name: "Models", exact: true });
   await expect(modelsPage).toContainText("Test model");
   await expect(modelsPage).not.toContainText("Test model (batch)");
 
-  await page.getByRole("button", { name: "API", exact: true }).click();
-  await page.getByRole("switch", { name: "Hide batch models" }).click();
-  await page.getByRole("button", { name: "Models", exact: true }).click();
-  await expect(page.getByRole("dialog", { name: "Models", exact: true })).toContainText("Test model (batch)");
+  await batchSwitch.click();
+  await expect(modelsPage).toContainText("Test model (batch)");
 });
 
 test("turns prompt caching off from the api settings", async ({ page }) => {
@@ -72,7 +71,7 @@ test("shows model names without the maker prefix and the maker underneath", asyn
   await fixture.open();
   await page.locator('[data-tour="model-button"]').click();
   await page.getByRole("menuitem", { name: /Settings/ }).click();
-  await page.getByRole("button", { name: "Models", exact: true }).click();
+  await page.getByRole("tab", { name: "Models", exact: true }).click();
 
   const modelsPage = page.getByRole("dialog", { name: "Models", exact: true });
   await expect(modelsPage).toContainText("GLM 5.3");

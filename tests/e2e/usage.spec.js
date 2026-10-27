@@ -44,8 +44,7 @@ async function openUsage(page, data, provider) {
   await fixture.open();
   await page.locator('[data-tour="model-button"]').click();
   await page.getByRole("menuitem", { name: /Settings/ }).click();
-  const usageControl = page.viewportSize().width < 768 ? page.getByRole("tab", { name: "Usage", exact: true }) : page.getByRole("button", { name: "Usage", exact: true });
-  await usageControl.click();
+  await page.getByRole("tab", { name: "Usage", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Usage", exact: true });
   if (provider) await dialog.getByLabel("Usage by provider").getByRole("tab", { name: provider, exact: true }).click();
   return dialog;
@@ -73,8 +72,8 @@ test("shows weekly spending and model details without provider requests", async 
   await expect(dialog.getByRole("table")).toContainText("retired-model");
   await expect(dialog.getByRole("region", { name: "Lifetime model totals" })).not.toContainText("All time");
   await page.screenshot({ path: testInfo.outputPath("usage-desktop.png"), animations: "disabled" });
-  await dialog.getByRole("button", { name: "API", exact: true }).click();
-  await expect(page.getByRole("dialog", { name: "API", exact: true })).toBeVisible();
+  await dialog.getByRole("tab", { name: "Connection", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Connection", exact: true })).toBeVisible();
 });
 
 test("fits the empty usage page on a narrow screen", async ({ page }, testInfo) => {
@@ -98,7 +97,7 @@ test("retries a failed request and reloads usage when reopened", async ({ page }
   await fixture.open();
   await page.locator('[data-tour="model-button"]').click();
   await page.getByRole("menuitem", { name: /Settings/ }).click();
-  await page.getByRole("button", { name: "Usage", exact: true }).click();
+  await page.getByRole("tab", { name: "Usage", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Usage could not be loaded.");
   await page.getByRole("button", { name: "Try again" }).click();
   await expect(page.getByRole("region", { name: "Total spend", exact: true })).toContainText("$2.30");

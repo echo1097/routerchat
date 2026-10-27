@@ -68,7 +68,7 @@ test("a story keeps its own provider until it is moved", async ({ page }) => {
   await fixture.open();
   await page.locator('[data-tour="model-button"]').click();
   await page.getByRole("menuitem", { name: /Settings/ }).click();
-  await page.getByRole("button", { name: "Models", exact: true }).click();
+  await page.getByRole("tab", { name: "Models", exact: true }).click();
 
   const modelsPage = page.getByRole("dialog", { name: "Models", exact: true });
   await expect(modelsPage).toContainText("This story uses OpenRouter, not Anthropic.");

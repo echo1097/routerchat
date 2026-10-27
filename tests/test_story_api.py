@@ -5485,6 +5485,39 @@ class StoryApiTest(unittest.TestCase):
         stories = self.client.get("/api/stories").json()["stories"]
         self.assertEqual(sum(item["title"] == "Portable story" for item in stories), 3)
 
+    def test_story_list_includes_counts_and_where_the_writer_left_off(self):
+        story, first = self.storyWithChapter("Lantern Road", "Wren reached the lighthouse at dusk.")
+        second = self.client.post(
+            f"/api/stories/{story['id']}/chapters",
+            json={"title": "Chapter 2", "content": "# The Keeper\n\nThe lamp came on.\n\n\"You're *early*,\" he said."},
+        ).json()["chapter"]
+        empty = self.client.post("/api/stories", json={"title": "Blank page"}).json()["story"]
+
+        stories = {item["id"]: item for item in self.client.get("/api/stories").json()["stories"]}
+
+        lantern = stories[story["id"]]
+        self.assertEqual(lantern["chapter_count"], 2)
+        self.assertEqual(lantern["word_count"], first["word_count"] + second["word_count"])
+        self.assertEqual(lantern["resume"]["chapter_id"], second["id"])
+        self.assertEqual(lantern["resume"]["chapter_title"], "Chapter 2")
+        self.assertEqual(lantern["resume"]["excerpt"], "The lamp came on.\n\n\"You're early,\" he said.")
+
+        blank = stories[empty["id"]]
+        self.assertEqual(blank["chapter_count"], 0)
+        self.assertEqual(blank["word_count"], 0)
+        self.assertIsNone(blank["resume"])
+
+    def test_story_list_excerpt_keeps_only_the_tail_of_long_chapters(self):
+        longText = " ".join(f"word{index}" for index in range(200))
+        story, _chapter = self.storyWithChapter("Long one", longText)
+
+        listed = next(item for item in self.client.get("/api/stories").json()["stories"] if item["id"] == story["id"])
+        excerpt = listed["resume"]["excerpt"]
+
+        self.assertTrue(excerpt.startswith("…word"))
+        self.assertTrue(excerpt.endswith("word199"))
+        self.assertLessEqual(len(excerpt), 261)
+
     def test_story_import_rejects_invalid_archives_without_creating_a_story(self):
         baseArchive = {
             "schema": "routerchat.story.v1",

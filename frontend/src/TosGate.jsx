@@ -156,14 +156,7 @@ function FullScreen({ children }) {
 }
 
 export function TosLoadingScreen() {
-  return (
-    <FullScreen>
-      <div className="flex items-center gap-3 text-sm text-muted">
-        <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} />
-        <span>Loading terms</span>
-      </div>
-    </FullScreen>
-  );
+  return <FullScreen />;
 }
 
 const UNAVAILABLE_REASONS = {

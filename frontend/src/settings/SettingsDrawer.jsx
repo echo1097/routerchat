@@ -14,7 +14,6 @@ import { SearchClearField } from "../components/SearchClearField.jsx";
 import { ModelPicker } from "./ModelPicker.jsx";
 import { LOREBOOK_MODEL_INHERIT } from "./settingsDefaults.js";
 import { SlidingTabs } from "../components/SlidingTabs.jsx";
-import { IconButton } from "../components/IconButton.jsx";
 import { UsagePanel } from "./UsagePanel.jsx";
 import { useChatSystemPromptAutosave } from "./useChatSystemPromptAutosave.js";
 import { useLingeringPage } from "./useLingeringPage.js";
@@ -1098,9 +1097,15 @@ export function SettingsDrawer({
               <h1 className="text-[22px] font-[650] leading-tight tracking-[-0.012em] text-neutral-50">
                 Settings
               </h1>
-              <IconButton label="Close settings" onClick={onClose}>
-                <X size={17} />
-              </IconButton>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close settings"
+                title="Close settings"
+                className="settings-close"
+              >
+                <X size={28} strokeWidth={2} aria-hidden="true" className="-translate-y-px" />
+              </button>
             </div>
             <div className="mt-2">
               <SettingsStatusLine items={statusItems} onJump={jumpTo} />

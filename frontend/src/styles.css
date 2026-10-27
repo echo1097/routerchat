@@ -522,6 +522,30 @@ textarea::placeholder {
   overflow: hidden;
 }
 
+.settings-close {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  margin-right: -12px;
+  place-items: center;
+  border-radius: 999px;
+  color: #a3a3a3;
+  transition:
+    color 150ms ease-out,
+    scale 150ms ease-out;
+}
+.settings-close:hover {
+  color: #f5f5f5;
+}
+.settings-close:active {
+  scale: 0.92;
+}
+.settings-close:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.22);
+}
+
 .settings-status-line {
   display: flex;
   flex-wrap: wrap;

@@ -720,7 +720,7 @@ export function SettingsDrawer({
       <SettingRow
         title="Reasoning effort"
         description={canThink
-          ? "How long the model thinks before it answers"
+          ? "Higher effort means more thoughtful responses, but takes longer and costs more."
           : `${selectedModelOutputName || "This model"} doesn't support reasoning`}
         stacked
       >

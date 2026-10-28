@@ -1,16 +1,16 @@
 import {
   Activity,
   Database,
-  KeyRound,
   Layers,
   MessageSquare,
   Mic,
+  Network,
   PenLine,
   SlidersHorizontal,
 } from "lucide-react";
 
 export const SETTINGS_PAGES = [
-  { id: "provider", label: "Provider", icon: KeyRound, group: "Models" },
+  { id: "provider", label: "Provider", icon: Network, group: "Models" },
   { id: "models", label: "Models", icon: Layers, group: "Models" },
   { id: "generation", label: "Generation", icon: SlidersHorizontal, group: "Models" },
   { id: "chat", label: "Chat", icon: MessageSquare, group: "App", mode: "chat" },

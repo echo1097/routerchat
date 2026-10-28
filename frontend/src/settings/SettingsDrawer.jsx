@@ -49,6 +49,7 @@ export function SettingsDrawer({
   onSaveKey,
   onSwitchProvider,
   provider = DEFAULT_PROVIDER,
+  providers = [],
   conversationProvider = provider,
   conversationKind = "chat",
   onMoveToProvider,
@@ -417,44 +418,45 @@ export function SettingsDrawer({
     CONTROL_MOTION,
   );
 
-  const keyStatusPill = (
-    <span
-      className={cx(
-        "inline-flex min-h-6 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[11.5px] font-medium leading-none",
-        keyConnected
-          ? "bg-emerald-300/[0.1] text-[#6ee7b7]"
-          : "bg-red-500/[0.14] text-[#fca5a5]",
-      )}
-    >
-      <span
-        aria-hidden="true"
-        className={cx("h-1.5 w-1.5 rounded-full", keyConnected ? "bg-[#6ee7b7]" : "bg-[#fca5a5]")}
-      />
-      {keyConnected ? "Key saved" : "No key"}
-    </span>
-  );
+  function providerHasKey(providerId) {
+    if (providerId === provider.id) return keyConnected;
+    return Boolean(providers.find((item) => item.id === providerId)?.hasKey);
+  }
+
+  function providerTabLabel(option) {
+    const hasKey = providerHasKey(option.id);
+
+    return (
+      <span className="inline-flex items-center justify-center gap-2">
+        <span
+          aria-hidden="true"
+          title={hasKey ? "Key saved" : "No key saved"}
+          className={cx("settings-key-dot", hasKey && "is-saved")}
+        />
+        {option.tabLabel}
+        <span className="sr-only">{hasKey ? ", key saved" : ", no key saved"}</span>
+      </span>
+    );
+  }
 
   const accountGroup = (
     <SettingGroup
       id="settings-group-account"
       title="Account"
     >
-      <SettingRow title="Provider" description="Where your messages are sent" stacked>
+      <SettingRow title="Provider" description="Where your messages are sent. A green dot means its key is saved" stacked>
         <SlidingTabs
           options={PROVIDER_OPTIONS}
           value={selectedProviderId}
           onChange={chooseProvider}
           getValue={(option) => option.id}
-          getLabel={(option) => option.tabLabel}
+          getLabel={providerTabLabel}
           ariaLabel="API provider"
           className="provider-tabs settings-inner-tabs flex w-full"
         />
       </SettingRow>
       <div className="settings-row space-y-3 px-5 py-4">
-        <div className="flex items-center justify-between gap-3">
-          <h3 className="text-balance text-[14.5px] font-medium text-neutral-50">{providerName} key</h3>
-          {keyStatusPill}
-        </div>
+        <h3 className="text-balance text-[14.5px] font-medium text-neutral-50">{providerName} key</h3>
         <form
           className="flex gap-2"
           onSubmit={(event) => {

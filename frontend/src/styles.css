@@ -580,6 +580,16 @@ textarea::placeholder {
   opacity: 1;
   pointer-events: auto;
 }
+.settings-key-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.2);
+}
+.settings-key-dot.is-saved {
+  background: #6ee7b7;
+}
 .settings-nav-warning {
   width: 7px;
   height: 7px;

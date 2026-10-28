@@ -67,22 +67,20 @@ export function SettingsNav({
   onSelectPage,
   onSelectResult,
   onBack,
-  onCollapse,
   onCloseMobile,
 }) {
   const searching = query.trim().length > 0;
 
   return (
-    <div className="flex h-full w-[264px] flex-col px-3 pb-3 pt-3.5">
-      <div className="flex h-9 items-center justify-between">
-        <SettingsNavToggle label="Collapse settings menu" onClick={onCollapse} className="hidden lg:grid" />
-        <SettingsNavToggle label="Close settings menu" onClick={onCloseMobile} className="lg:hidden" />
+    <div className="flex h-full w-[264px] flex-col px-3 pb-3 pt-3.5 lg:pt-5">
+      <div className="mb-5 flex h-9 items-center lg:hidden">
+        <SettingsNavToggle label="Close settings menu" onClick={onCloseMobile} />
       </div>
 
       <button
         type="button"
         onClick={onBack}
-        className={cx(navRowClass, "mt-5 text-neutral-200 hover:bg-white/[0.06] hover:text-white")}
+        className={cx(navRowClass, "text-neutral-200 hover:bg-white/[0.06] hover:text-white")}
       >
         <ArrowLeft size={18} strokeWidth={1.75} aria-hidden="true" className="shrink-0" />
         Back to app

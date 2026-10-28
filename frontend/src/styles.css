@@ -547,11 +547,7 @@ textarea::placeholder {
     position: relative;
     flex: 0 0 auto;
     transform: none;
-    transition: width 250ms var(--modal-ease), border-color 250ms var(--modal-ease);
-  }
-  .settings-nav.is-collapsed {
-    width: 0;
-    border-right-color: transparent;
+    transition: none;
   }
 }
 .settings-nav .cloud-search {

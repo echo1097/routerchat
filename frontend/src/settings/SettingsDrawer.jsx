@@ -105,7 +105,6 @@ export function SettingsDrawer({
   const [activePage, setActivePage] = useState("provider");
   const [jump, setJump] = useState({ target: "", count: 0 });
   const [navQuery, setNavQuery] = useState("");
-  const [navCollapsed, setNavCollapsed] = useState(false);
   const [navOpenMobile, setNavOpenMobile] = useState(false);
   const fileInputRef = useRef(null);
   const chatListRef = useRef(null);
@@ -990,8 +989,8 @@ export function SettingsDrawer({
               })
             )}
           </div>
-          <ScrollEdgeBlur edge="top" visible={chatListEdges.top} tone="#141414" size={28} />
-          <ScrollEdgeBlur edge="bottom" visible={chatListEdges.bottom} tone="#141414" size={36} />
+          <ScrollEdgeBlur edge="top" visible={chatListEdges.top} size={28} />
+          <ScrollEdgeBlur edge="bottom" visible={chatListEdges.bottom} size={36} />
         </div>
       </SettingGroup>
 
@@ -1048,11 +1047,7 @@ export function SettingsDrawer({
         />
 
         <aside
-          className={cx(
-            "settings-nav",
-            navOpenMobile && "is-open-mobile",
-            navCollapsed && "is-collapsed",
-          )}
+          className={cx("settings-nav", navOpenMobile && "is-open-mobile")}
         >
           <SettingsNav
             pages={visibleSettingsPages}
@@ -1064,25 +1059,17 @@ export function SettingsDrawer({
             onSelectPage={choosePage}
             onSelectResult={chooseSearchResult}
             onBack={onClose}
-            onCollapse={() => setNavCollapsed(true)}
             onCloseMobile={() => setNavOpenMobile(false)}
           />
         </aside>
 
         <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-          <div className="absolute left-3 top-3.5 z-10">
+          <div className="absolute left-3 top-3.5 z-10 lg:hidden">
             <SettingsNavToggle
               label="Open settings menu"
               onClick={() => setNavOpenMobile(true)}
-              className="settings-floating-toggle lg:hidden"
+              className="settings-floating-toggle"
             />
-            {navCollapsed && (
-              <SettingsNavToggle
-                label="Expand settings menu"
-                onClick={() => setNavCollapsed(false)}
-                className="settings-floating-toggle hidden lg:grid"
-              />
-            )}
           </div>
 
           <div

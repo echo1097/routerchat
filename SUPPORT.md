@@ -3,7 +3,6 @@
 ## Getting help
 
 - **Guides:** the [setup guide](docs/setup.md) for the one-click install, or the [developer guide](docs/developer.md) if you run from source.
-- **AI help:** paste the [support assistant prompt](docs/assistant.md) into any AI assistant for step by step troubleshooting.
 - **Feedback:** use the **Feedback** button at the bottom of the sidebar, or [this form](https://forms.gle/gTth2TcXLYAArvGm6).
 - **Bugs:** [open a GitHub issue](https://github.com/echo1097/routerchat/issues).
 - **Security issues:** never report them publicly. Follow [SECURITY.md](SECURITY.md).

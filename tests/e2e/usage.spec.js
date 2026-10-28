@@ -144,7 +144,7 @@ test("chart tooltip only lists models with usage that day", async ({ page }) => 
   await expect(tooltips.nth(2)).toContainText("No usage");
 });
 
-test("all tab shows provider logos and readable Anthropic model names", async ({ page }) => {
+test("all tab shows provider logos and plain model names", async ({ page }) => {
   const data = makeUsage();
   data.models = [
     { id: "test/model", provider: "openrouter", cost: 1.61, requests: 24, totalTokens: 215600 },
@@ -157,13 +157,16 @@ test("all tab shows provider logos and readable Anthropic model names", async ({
   const chart = dialog.getByRole("region", { name: "Usage by model", exact: true });
   const legend = chart.locator(".usage-legend");
 
-  await expect(legend).toContainText("Anthropic: Opus 5.5");
+  await expect(legend).toContainText("Opus 5.5");
   await expect(legend).not.toContainText("claude-opus-5-5");
+  await expect(legend).not.toContainText("Anthropic:");
   await expect(legend.locator(".usage-provider-logo")).toHaveCount(2);
+  await expect(legend.locator("span").first()).toHaveText("Test model");
+  expect(await legend.locator("span").first().evaluate((label) => label.children[1].classList.contains("usage-provider-logo"))).toBe(true);
   await expect(chart.locator(".usage-tooltip").first().locator(".usage-provider-logo")).toHaveCount(2);
 
   await dialog.getByLabel("Usage by provider").getByRole("tab", { name: "Anthropic", exact: true }).click();
-  await expect(dialog.getByRole("region", { name: "Usage by model", exact: true }).locator(".usage-legend")).toContainText("Anthropic: Opus 5.5");
+  await expect(dialog.getByRole("region", { name: "Usage by model", exact: true }).locator(".usage-legend")).toContainText("Opus 5.5");
   await expect(dialog.locator(".usage-provider-logo")).toHaveCount(0);
 });
 

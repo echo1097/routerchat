@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { cx } from "../uiShared.js";
-import { stripClaude } from "../modelFormatting.js";
+import { modelDisplayName, stripClaude } from "../modelFormatting.js";
 import { SlidingTabs } from "../components/SlidingTabs.jsx";
 import { PROVIDER_ICONS, PROVIDER_OPTIONS } from "../providers/providerOptions.js";
 import { MaskIcon } from "../components/IconButton.jsx";
@@ -43,15 +43,11 @@ function readableModelId(modelId) {
 }
 
 function usageModelName(item, models) {
-  if (item.name) return stripClaude(item.name);
-  const knownName = models.find((model) => model.id === item.id)?.name;
-  if (knownName) return stripClaude(knownName);
+  const knownName = item.name || models.find((model) => model.id === item.id)?.name;
+  if (knownName) return modelDisplayName({ name: knownName });
   if (item.id === "unknown") return "Unrecorded model";
   if (item.id.includes("/")) return item.id.split("/").at(-1);
-
-  const providerName = PROVIDER_OPTIONS.find((option) => option.id === item.provider)?.name;
-  const readableName = readableModelId(item.id);
-  return stripClaude(providerName ? `${providerName}: ${readableName}` : readableName);
+  return stripClaude(readableModelId(item.id));
 }
 
 function ProviderLogo({ provider }) {
@@ -224,8 +220,8 @@ function UsageChart({ title, days, series, getValue, money = false, showProvider
                     {usedSeries.map((item) => (
                       <div className="usage-tooltip-row" key={item.id}>
                         <i style={{ background: item.color }} />
-                        <span>{item.name}</span>
                         {showProvider && <ProviderLogo provider={item.provider} />}
+                        <span>{item.name}</span>
                         <span className="usage-tooltip-value">{formatUsage(getValue(day, item), money)}</span>
                       </div>
                     ))}
@@ -242,8 +238,8 @@ function UsageChart({ title, days, series, getValue, money = false, showProvider
         {series.map((item) => (
           <span key={item.id}>
             <i style={{ background: item.color }} />
-            {item.name}
             {showProvider && <ProviderLogo provider={item.provider} />}
+            {item.name}
           </span>
         ))}
       </div>

@@ -424,13 +424,11 @@
 }
 
 .usage-provider-logo {
-  margin-left: 6px;
-  vertical-align: -1px;
   opacity: 0.85;
 }
 
 .usage-tooltip-row .usage-provider-logo {
-  margin: 3px 0 0 -2px;
+  margin: 3px -2px 0;
 }
 
 .usage-tooltip-empty {

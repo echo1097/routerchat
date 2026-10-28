@@ -159,9 +159,11 @@ function UsageChart({ title, days, series, getValue, money = false }) {
           </div>
           {days.map((day, dayIndex) => {
             const dayTotal = series.reduce((sum, item) => sum + (getValue(day, item) || 0), 0);
+            const usedSeries = series.filter((item) => getValue(day, item) !== 0);
+
             return (
               <div className="usage-day" key={day.date}>
-                <div className="usage-bar" tabIndex={0} aria-label={`${day.date}: ${series.map((item) => `${item.name} ${formatUsage(getValue(day, item), money)}`).join(", ")}`}>
+                <div className="usage-bar" tabIndex={0} aria-label={`${day.date}: ${usedSeries.length === 0 ? "No usage" : usedSeries.map((item) => `${item.name} ${formatUsage(getValue(day, item), money)}`).join(", ")}`}>
                   <div
                     className={cx("usage-stack", dayTotal > 0 && "has-value")}
                     style={{
@@ -187,7 +189,8 @@ function UsageChart({ title, days, series, getValue, money = false }) {
                     })}
                   </strong>
                   <div className="usage-tooltip-details">
-                    {series.map((item) => (
+                    {usedSeries.length === 0 && <span className="usage-tooltip-empty">No usage</span>}
+                    {usedSeries.map((item) => (
                       <div className="usage-tooltip-row" key={item.id}>
                         <i style={{ background: item.color }} />
                         <span>{item.name}</span>

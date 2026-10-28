@@ -129,6 +129,21 @@ test("distinguishes missing costs from free usage", async ({ page }) => {
   await expect(chart.locator(".usage-tooltip").first()).toContainText("Unavailable");
 });
 
+test("chart tooltip only lists models with usage that day", async ({ page }) => {
+  const data = makeUsage();
+  data.days[1].models["other/model"] = 0;
+  data.days[2].models = { "test/model": 0, "other/model": 0 };
+  const dialog = await openUsage(page, data);
+  const chart = dialog.getByRole("region", { name: "Usage by model", exact: true });
+  const tooltips = chart.locator(".usage-tooltip");
+
+  await expect(tooltips.nth(0).locator(".usage-tooltip-row")).toHaveCount(2);
+  await expect(tooltips.nth(1).locator(".usage-tooltip-row")).toHaveCount(1);
+  await expect(tooltips.nth(1)).not.toContainText("$0.00");
+  await expect(tooltips.nth(2).locator(".usage-tooltip-row")).toHaveCount(0);
+  await expect(tooltips.nth(2)).toContainText("No usage");
+});
+
 test("shows clean summary totals and labels partial lifetime totals", async ({ page }) => {
   const data = makeUsage();
   data.current.partialCost = true;

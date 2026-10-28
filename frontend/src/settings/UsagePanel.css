@@ -423,6 +423,13 @@
   color: #d9d9d9;
 }
 
+.usage-tooltip-empty {
+  display: block;
+  padding: 3px 0;
+  line-height: 17px;
+  color: #8f8f8f;
+}
+
 .usage-tooltip-row i {
   width: 7px;
   height: 7px;

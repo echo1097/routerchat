@@ -9,11 +9,15 @@ from fastapi import HTTPException
 from backend.core.appSettings import readAppSetting
 from backend.core.database import getDb
 from backend.core.utils import utcNow
+from backend.providers.openrouter.apiKey import readOpenrouterKey
 from backend.providers.openrouter.client import (
     DEFAULT_MODEL_ID,
     OPENROUTER_BASE_URL,
     headersForKey,
 )
+
+MISSING_MODEL_LOOKUP_TIMEOUT = httpx.Timeout(10.0)
+lookedUpModelIds: set[str] = set()
 
 
 def normalizeModel(model: dict[str, Any]) -> dict[str, Any]:
@@ -94,12 +98,57 @@ async def fetchModelsFromOpenrouter(api_key: str) -> list[dict[str, Any]]:
             status_code=response.status_code,
             detail=f"OpenRouter model fetch failed: {response.text}",
         )
+    return modelsFromPayload(response.json())
+
+
+def modelsFromPayload(payload: dict[str, Any]) -> list[dict[str, Any]]:
     models = [
         normalizeModel(item)
-        for item in response.json().get("data", [])
+        for item in payload.get("data", [])
         if outputsTextModel(item)
     ]
     return [model for model in models if model.get("id")]
+
+
+def findModel(models: list[dict[str, Any]], model_id: str) -> dict[str, Any] | None:
+    normalizedModelId = str(model_id or "").removesuffix(":nitro")
+    for model in models:
+        if model.get("id") in {model_id, normalizedModelId}:
+            return model
+    return None
+
+
+def lookUpMissingModel(model_id: str) -> dict[str, Any] | None:
+    normalizedModelId = str(model_id or "").removesuffix(":nitro")
+    if not normalizedModelId or normalizedModelId in lookedUpModelIds:
+        return None
+    lookedUpModelIds.add(normalizedModelId)
+
+    apiKey = readOpenrouterKey()
+    if not apiKey:
+        return None
+
+    try:
+        response = httpx.get(
+            f"{OPENROUTER_BASE_URL}/models",
+            headers=headersForKey(apiKey),
+            params={"output_modalities": "text"},
+            timeout=MISSING_MODEL_LOOKUP_TIMEOUT,
+        )
+    except httpx.HTTPError:
+        return None
+    if response.status_code >= 400:
+        return None
+
+    try:
+        models = modelsFromPayload(response.json())
+    except ValueError:
+        return None
+    if not models:
+        return None
+
+    cacheModels(models)
+    return findModel(models, model_id)
 
 
 def defaultModelId() -> str:
@@ -114,11 +163,7 @@ def defaultModelId() -> str:
 
 
 def modelMetadata(model_id: str) -> dict[str, Any] | None:
-    normalizedModelId = str(model_id or "").removesuffix(":nitro")
-    for model in cachedModels():
-        if model.get("id") in {model_id, normalizedModelId}:
-            return model
-    return None
+    return findModel(cachedModels(), model_id) or lookUpMissingModel(model_id)
 
 
 def modelSupportsReasoning(model_id: str) -> bool:

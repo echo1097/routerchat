@@ -1,5 +1,6 @@
 import asyncio
 import os
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -11,7 +12,7 @@ import backend.providers.envKeys as envKeys
 import backend.providers.streaming as streaming
 from backend.providers.anthropic import modelRules, models, requestBuilder
 from backend.providers.anthropic.adapter import anthropicProvider
-from backend.providers.anthropic.pricing import costFor
+from backend.providers.anthropic.pricing import PRICES_BY_PREFIX, costFor
 from backend.providers.anthropic.schemaCleaner import cleanSchema
 from backend.providers.anthropic.streamParser import completionText
 from backend.providers.base import ChatOptions, ChatRequest
@@ -599,6 +600,26 @@ class ModelNormalizeTest(unittest.TestCase):
     def test_dated_ids_match_their_family(self):
         self.assertEqual(modelRules.rulesFor("claude-haiku-4-5-20251001"), modelRules.BUDGET_THINKING)
         self.assertEqual(modelRules.rulesFor("claude-opus-4-5-20251101"), modelRules.BUDGET_THINKING)
+
+    def test_haiku_5_5_never_sends_temperature_before_the_model_list_loads(self):
+        adaptiveCapabilities = {"thinking": {"supported": True, "types": {"adaptive": {"supported": True}}}}
+
+        self.assertEqual(modelRules.rulesFor("claude-haiku-5-5"), modelRules.ALWAYS_THINKING)
+        self.assertEqual(
+            modelRules.rulesFor("claude-haiku-5-5"),
+            modelRules.rulesFor("claude-haiku-5-5", adaptiveCapabilities),
+        )
+        self.assertNotIn("temperature", bodyFor("claude-haiku-5-5", thinkingEnabled=False))
+
+    def test_every_priced_claude_5_model_has_its_own_rules(self):
+        explicitPrefixes = [prefix for prefix, _ in modelRules.RULES_BY_PREFIX]
+
+        for pricedPrefix, _ in PRICES_BY_PREFIX:
+            major = int(re.match(r"claude-[a-z]+-(\d+)", pricedPrefix).group(1))
+            if major < 5:
+                continue
+            with self.subTest(model=pricedPrefix):
+                self.assertTrue(any(pricedPrefix.startswith(prefix) for prefix in explicitPrefixes))
 
 
 class ProviderSwitchTest(unittest.TestCase):

@@ -117,7 +117,13 @@ export function SettingsNav({
                               : "text-neutral-300 hover:bg-white/[0.05] hover:text-white",
                           )}
                         >
-                          <Icon size={18} strokeWidth={1.75} aria-hidden="true" className="shrink-0" />
+                          {page.iconSrc ? (
+                            <span aria-hidden="true" className="grid h-[18px] w-[18px] shrink-0 place-items-center">
+                              <MaskIcon src={page.iconSrc} size={16} />
+                            </span>
+                          ) : (
+                            <Icon size={18} strokeWidth={1.75} aria-hidden="true" className="shrink-0" />
+                          )}
                           <span className="min-w-0 flex-1 truncate">{page.label}</span>
                           {warning && (
                             <span className="settings-nav-warning" title={warning}>

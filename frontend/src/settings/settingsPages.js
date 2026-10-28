@@ -1,23 +1,21 @@
 import {
   Activity,
-  Boxes,
   Database,
   KeyRound,
   MessageSquare,
   Mic,
-  MonitorCog,
   PenLine,
   SlidersHorizontal,
 } from "lucide-react";
 
 export const SETTINGS_PAGES = [
   { id: "provider", label: "Provider", icon: KeyRound, group: "Models" },
-  { id: "models", label: "Models", icon: Boxes, group: "Models" },
+  { id: "models", label: "Models", iconSrc: "/icons/model.png", group: "Models" },
   { id: "generation", label: "Generation", icon: SlidersHorizontal, group: "Models" },
   { id: "chat", label: "Chat", icon: MessageSquare, group: "App", mode: "chat" },
   { id: "writing", label: "Writing", icon: PenLine, group: "App", mode: "write" },
   { id: "voice", label: "Voice", icon: Mic, group: "App" },
-  { id: "interface", label: "Interface", icon: MonitorCog, group: "App" },
+  { id: "interface", label: "Interface", iconSrc: "/icons/interface.png", group: "App" },
   { id: "data", label: "Data", icon: Database, group: "Data" },
   { id: "usage", label: "Usage", icon: Activity, group: "Data" },
 ];

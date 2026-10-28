@@ -566,6 +566,7 @@ export function SettingsDrawer({
     <SettingGroup
       id="settings-group-model-filters"
       title="Model list"
+      evenSpacing
       bodyClassName={capabilities.freeModels ? "settings-group-split" : undefined}
     >
       {capabilities.freeModels && (
@@ -591,8 +592,8 @@ export function SettingsDrawer({
 
   const modelsSection = (
     <section className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-6 shrink-0">
-        <SettingGroup id="settings-group-current-model" title="Current model">
+      <div className="mb-4 shrink-0">
+        <SettingGroup id="settings-group-current-model" title="Current model" evenSpacing>
           <div className="settings-row flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-5 py-4">
             <h3 className="min-w-0 truncate text-[15px] font-semibold tracking-[-0.01em] text-neutral-50">
               {selectedModel ? modelDisplayName(selectedModel) : settings.model || "No model selected"}
@@ -620,7 +621,7 @@ export function SettingsDrawer({
       </div>
 
       {providerDiffers && (
-        <div className="mb-5 flex items-center justify-between gap-3 rounded-2xl bg-[#fde68a]/[0.08] px-4 py-3">
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl bg-[#fde68a]/[0.08] px-4 py-3">
           <p className="min-w-0 text-pretty text-[12.5px] leading-5 text-[#fde68a]/90">
             This {conversationKind} uses {conversationProvider.name}, not {provider.name}.
           </p>
@@ -636,7 +637,7 @@ export function SettingsDrawer({
         </div>
       )}
 
-      <div className="mb-3 shrink-0">{modelFiltersGroup}</div>
+      <div className="mb-4 shrink-0">{modelFiltersGroup}</div>
 
       <ModelPicker
         models={filteredModels}
@@ -1087,7 +1088,7 @@ export function SettingsDrawer({
                 {capabilities.routingOptions && privacyGroup}
               </div>
             </SettingsScrollPage>
-            <SettingsFixedPage pageId="2" title={pageTitle("models")} label="Model settings">
+            <SettingsFixedPage pageId="2" title={pageTitle("models")} label="Model settings" evenSpacing>
               {modelsSection}
             </SettingsFixedPage>
             <SettingsScrollPage pageId="3" title={pageTitle("generation")} label="Generation settings">

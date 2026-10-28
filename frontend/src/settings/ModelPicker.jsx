@@ -98,7 +98,7 @@ export function ModelPicker({
 
   return (
     <>
-      <div className="pb-3">
+      <div className={framed ? "pb-4" : "pb-3"}>
         <div ref={searchWrapRef} className="t-input-wrap">
           <div
             ref={searchInputRef}

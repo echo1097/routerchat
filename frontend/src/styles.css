@@ -770,6 +770,12 @@ textarea::placeholder {
     height: auto;
   }
 }
+.settings-picker-frame {
+  overflow: hidden;
+  padding: 8px 6px 6px;
+  border-radius: 16px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
 .settings-prompt-field {
   height: clamp(180px, 38vh, 420px);
 }

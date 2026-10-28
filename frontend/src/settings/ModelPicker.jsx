@@ -23,6 +23,7 @@ export function ModelPicker({
   activePage,
   searchWrapRef,
   searchInputRef,
+  framed = false,
 }) {
   const listRef = useRef(null);
   const queryInputRef = useRef(null);
@@ -136,48 +137,50 @@ export function ModelPicker({
         {note}
       </div>
 
-      <div className={cx("grid items-center gap-3 px-3 pb-2 pt-1 text-xs font-medium text-neutral-500", columns)}>
-        <span>Model</span>
-        <span className="whitespace-nowrap px-1 text-right">{priceHeader}</span>
-        {showContext && <span className="whitespace-nowrap px-1 text-right">Context</span>}
-      </div>
-
-      <div className="relative min-h-0 flex-1">
-        <div
-          ref={listRef}
-          className="settings-thin-scroll h-full min-h-0 space-y-0.5 overflow-y-auto"
-        >
-          {loading ? skeletonRows() : (
-            <>
-              {inheritOption && !query.trim() && row({
-                key: LOREBOOK_MODEL_INHERIT,
-                name: inheritOption.name,
-                subLabel: inheritOption.subLabel,
-                ...(inheritOption.model ? modelRowValues(inheritOption.model) : { price: "-", context: "-" }),
-                isSelected: selectedId === LOREBOOK_MODEL_INHERIT,
-              })}
-
-              {models.length === 0 ? (
-                <div className="mt-2 rounded-2xl bg-[#141414] p-4 text-pretty text-sm leading-6 text-neutral-400 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.07)]">
-                  {emptyMessage}
-                </div>
-              ) : (
-                models.map((model) =>
-                  row({
-                    model,
-                    key: model.id,
-                    name: modelDisplayName(model),
-                    subLabel: modelMaker(model),
-                    ...modelRowValues(model),
-                    isSelected: model.id === selectedId,
-                  }),
-                )
-              )}
-            </>
-          )}
+      <div className={cx("flex min-h-0 flex-1 flex-col", framed && "settings-picker-frame")}>
+        <div className={cx("grid items-center gap-3 px-3 pb-2 pt-1 text-xs font-medium text-neutral-500", columns)}>
+          <span>Model</span>
+          <span className="whitespace-nowrap px-1 text-right">{priceHeader}</span>
+          {showContext && <span className="whitespace-nowrap px-1 text-right">Context</span>}
         </div>
-        <ScrollEdgeBlur edge="top" visible={edges.top} size={40} />
-        <ScrollEdgeBlur edge="bottom" visible={edges.bottom} size={44} />
+
+        <div className="relative min-h-0 flex-1">
+          <div
+            ref={listRef}
+            className="settings-thin-scroll h-full min-h-0 space-y-0.5 overflow-y-auto"
+          >
+            {loading ? skeletonRows() : (
+              <>
+                {inheritOption && !query.trim() && row({
+                  key: LOREBOOK_MODEL_INHERIT,
+                  name: inheritOption.name,
+                  subLabel: inheritOption.subLabel,
+                  ...(inheritOption.model ? modelRowValues(inheritOption.model) : { price: "-", context: "-" }),
+                  isSelected: selectedId === LOREBOOK_MODEL_INHERIT,
+                })}
+
+                {models.length === 0 ? (
+                  <div className="mt-2 rounded-2xl bg-[#141414] p-4 text-pretty text-sm leading-6 text-neutral-400 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.07)]">
+                    {emptyMessage}
+                  </div>
+                ) : (
+                  models.map((model) =>
+                    row({
+                      model,
+                      key: model.id,
+                      name: modelDisplayName(model),
+                      subLabel: modelMaker(model),
+                      ...modelRowValues(model),
+                      isSelected: model.id === selectedId,
+                    }),
+                  )
+                )}
+              </>
+            )}
+          </div>
+          <ScrollEdgeBlur edge="top" visible={edges.top} size={40} />
+          <ScrollEdgeBlur edge="bottom" visible={edges.bottom} size={44} />
+        </div>
       </div>
     </>
   );

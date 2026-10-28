@@ -5,6 +5,7 @@ import { cx, CONTROL_MOTION } from "../uiShared.js";
 import { supportsThinking, resolveReasoningEffort, supportsReasoningEffort } from "../modelReasoning.js";
 import {
   promptModelName,
+  modelDisplayName,
   priceLabel,
   getModelContextLimit,
   formatTokens,
@@ -590,31 +591,32 @@ export function SettingsDrawer({
 
   const modelsSection = (
     <section className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-5 min-w-0">
-        <p className="mb-1 text-[13px] font-semibold text-neutral-400">Current model</p>
-        <div className="flex min-w-0 items-center gap-2">
-          <h2 className="truncate text-lg font-semibold tracking-[-0.01em] text-neutral-50">
-            {selectedModel?.name || settings.model || "No model selected"}
-          </h2>
-          {modelLocked && <SettingChip className="text-neutral-500">Model locked</SettingChip>}
-        </div>
-        <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
-          {selectedModelPrice && <SettingChip>{selectedModelPrice}</SettingChip>}
-          {selectedModelContext && <SettingChip>{selectedModelContext}</SettingChip>}
-          <button
-            type="button"
-            disabled={providerDiffers || !settings.model || settings.model === defaultModel}
-            onClick={setSelectedModelAsDefault}
-            className={cx(
-              smallPillButtonClass,
-              settings.model === defaultModel
-                ? "bg-white/[0.045] text-neutral-500"
-                : "bg-white/[0.08] text-neutral-200 hover:bg-white/[0.12] hover:text-neutral-50",
-            )}
-          >
-            {settings.model === defaultModel ? "Default" : "Set as default"}
-          </button>
-        </div>
+      <div className="mb-8 shrink-0">
+        <SettingGroup id="settings-group-current-model" title="Current model">
+          <div className="settings-row flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-5 py-4">
+            <h3 className="min-w-0 truncate text-[15px] font-semibold tracking-[-0.01em] text-neutral-50">
+              {selectedModel ? modelDisplayName(selectedModel) : settings.model || "No model selected"}
+            </h3>
+            <div className="flex flex-wrap items-center justify-end gap-1.5">
+              {modelLocked && <SettingChip className="text-neutral-500">Model locked</SettingChip>}
+              {selectedModelPrice && <SettingChip>{selectedModelPrice}</SettingChip>}
+              {selectedModelContext && <SettingChip>{selectedModelContext}</SettingChip>}
+              <button
+                type="button"
+                disabled={providerDiffers || !settings.model || settings.model === defaultModel}
+                onClick={setSelectedModelAsDefault}
+                className={cx(
+                  smallPillButtonClass,
+                  settings.model === defaultModel
+                    ? "bg-white/[0.045] text-neutral-500"
+                    : "bg-white/[0.08] text-neutral-200 hover:bg-white/[0.12] hover:text-neutral-50",
+                )}
+              >
+                {settings.model === defaultModel ? "Default" : "Set as default"}
+              </button>
+            </div>
+          </div>
+        </SettingGroup>
       </div>
 
       {providerDiffers && (
@@ -650,6 +652,7 @@ export function SettingsDrawer({
         activePage={activePage}
         searchWrapRef={modelSearchWrapRef}
         searchInputRef={modelSearchInputRef}
+        framed
         note={modelLocked && (
           <p className="mt-2 text-pretty text-xs leading-5 text-[#8a8a8a]">
             Model selection is locked after the first message in a chat.

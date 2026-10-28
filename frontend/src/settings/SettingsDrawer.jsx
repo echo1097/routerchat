@@ -565,7 +565,7 @@ export function SettingsDrawer({
   const modelFiltersGroup = (
     <SettingGroup
       id="settings-group-model-filters"
-      title="Model list"
+      title="Model picker"
       evenSpacing
       bodyClassName={capabilities.freeModels ? "settings-group-split" : undefined}
     >

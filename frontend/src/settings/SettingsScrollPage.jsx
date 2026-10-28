@@ -1,6 +1,4 @@
-import { useRef } from "react";
 import { cx } from "../uiShared.js";
-import { ScrollEdgeBlur, useScrollEdges } from "../components/ScrollEdgeBlur.jsx";
 
 function SettingsPageTitle({ children }) {
   return (
@@ -11,26 +9,16 @@ function SettingsPageTitle({ children }) {
 }
 
 
-export function SettingsScrollPage({ pageId, title, label, active, className, children }) {
-  const scrollRef = useRef(null);
-  const edges = useScrollEdges(scrollRef, [active]);
-
+export function SettingsScrollPage({ pageId, title, label, className, children }) {
   return (
     <section
-      ref={scrollRef}
       className={cx("settings-scroll-page t-page overflow-y-auto", className)}
       data-page-id={pageId}
       aria-label={label}
     >
-      <div className="settings-scroll-edge is-top">
-        <ScrollEdgeBlur edge="top" visible={edges.top} size={40} />
-      </div>
       <div className="settings-inline settings-page-body">
         <SettingsPageTitle>{title}</SettingsPageTitle>
         {children}
-      </div>
-      <div className="settings-scroll-edge is-bottom">
-        <ScrollEdgeBlur edge="bottom" visible={edges.bottom} size={56} />
       </div>
     </section>
   );

@@ -639,17 +639,6 @@ textarea::placeholder {
   -webkit-backdrop-filter: blur(8px);
   mask-image: linear-gradient(var(--edge-dir), #000 0%, transparent 35%);
 }
-.settings-scroll-edge {
-  position: sticky;
-  z-index: 3;
-  height: 0;
-}
-.settings-scroll-edge.is-top {
-  top: 0;
-}
-.settings-scroll-edge.is-bottom {
-  bottom: 0;
-}
 
 .model-picker-row {
   transition: background-color 150ms ease-out;

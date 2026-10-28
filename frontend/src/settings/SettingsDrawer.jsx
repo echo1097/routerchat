@@ -1076,7 +1076,7 @@ export function SettingsDrawer({
             className="settings-page-slide t-page-slide min-h-0 flex-1"
             data-page={String(activePageIndex)}
           >
-            <SettingsScrollPage pageId="1" title={pageTitle("provider")} label="Provider settings" active={activePageIndex === 1}>
+            <SettingsScrollPage pageId="1" title={pageTitle("provider")} label="Provider settings">
               <div className="settings-group-stack">
                 {accountGroup}
                 {cachingGroup}
@@ -1087,13 +1087,13 @@ export function SettingsDrawer({
             <SettingsFixedPage pageId="2" title={pageTitle("models")} label="Model settings">
               {modelsSection}
             </SettingsFixedPage>
-            <SettingsScrollPage pageId="3" title={pageTitle("generation")} label="Generation settings" active={activePageIndex === 3}>
+            <SettingsScrollPage pageId="3" title={pageTitle("generation")} label="Generation settings">
               <div className="settings-group-stack">
                 {reasoningGroup}
                 {outputGroup}
               </div>
             </SettingsScrollPage>
-            <SettingsScrollPage pageId="4" title={pageTitle("chat")} label="Chat settings" active={activePageIndex === 4}>
+            <SettingsScrollPage pageId="4" title={pageTitle("chat")} label="Chat settings">
               <div className="settings-group-stack">
                 {systemPromptGroup}
                 {chatsGroup}
@@ -1110,7 +1110,7 @@ export function SettingsDrawer({
               )}
               {voicePage.mounted && <TranscriptionSettings key={voicePage.session} />}
             </SettingsFixedPage>
-            <SettingsScrollPage pageId="7" title={pageTitle("interface")} label="Interface settings" active={activePageIndex === 7}>
+            <SettingsScrollPage pageId="7" title={pageTitle("interface")} label="Interface settings">
               <div className="settings-group-stack">
                 {displayGroup}
                 {updatesGroup}
@@ -1119,7 +1119,7 @@ export function SettingsDrawer({
             <SettingsFixedPage pageId="8" title={pageTitle("data")} label="Data settings">
               {chatTransferSection}
             </SettingsFixedPage>
-            <SettingsScrollPage pageId="9" title={pageTitle("usage")} label="Usage settings" active={activePageIndex === 9}>
+            <SettingsScrollPage pageId="9" title={pageTitle("usage")} label="Usage settings">
               {usagePage.mounted && <UsagePanel key={usagePage.session} models={models} />}
             </SettingsScrollPage>
           </div>

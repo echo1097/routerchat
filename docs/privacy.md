@@ -37,7 +37,7 @@ These connections reveal your IP address and basic browser details, the same way
 
 * On by default. When RouterChat starts, it asks `api.github.com` for the latest release. If a newer one exists, a dot appears next to the version number in the sidebar.
 * Nothing is downloaded or installed as a result.
-* You can turn this off in Settings > Updates.
+* You can turn this off in Settings > Interface.
 
 ### Changelog (GitHub)
 

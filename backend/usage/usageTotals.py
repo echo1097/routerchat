@@ -70,8 +70,11 @@ def finishTotals(totals):
     return result
 
 
-def finishModels(modelTotals):
-    models = [{"id": modelId, **finishTotals(totals)} for modelId, totals in modelTotals.items()]
+def finishModels(modelTotals, modelProviders):
+    models = [
+        {"id": modelId, "provider": modelProviders.get(modelId), **finishTotals(totals)}
+        for modelId, totals in modelTotals.items()
+    ]
     models.sort(key=lambda model: (-(model["cost"] or 0), -model["requests"], model["id"]))
     return models
 
@@ -88,6 +91,7 @@ def getUsage(conn, offsetMinutes=0, now=None, timeZone=None, provider=None):
     days = {}
     modelTotals = {}
     lifetimeTotals = {}
+    modelProviders = {}
     seenGenerations = set()
     seenWeeklyGenerations = set()
 
@@ -96,7 +100,7 @@ def getUsage(conn, offsetMinutes=0, now=None, timeZone=None, provider=None):
         days[date] = {**emptyTotals(), "date": date, "models": {}}
 
     query = """
-        SELECT model, generation_id, prompt_tokens, completion_tokens, reasoning_tokens,
+        SELECT model, provider, generation_id, prompt_tokens, completion_tokens, reasoning_tokens,
                cached_tokens, total_tokens, cost, created_at
         FROM usage_entries
         WHERE julianday(created_at) <= julianday(?)
@@ -119,6 +123,7 @@ def getUsage(conn, offsetMinutes=0, now=None, timeZone=None, provider=None):
             continue
         generationId = row["generation_id"]
         modelId = row["model"] or "unknown"
+        modelProviders.setdefault(modelId, row["provider"])
         if not generationId or generationId not in seenGenerations:
             if modelId not in lifetimeTotals:
                 lifetimeTotals[modelId] = emptyTotals()
@@ -150,6 +155,6 @@ def getUsage(conn, offsetMinutes=0, now=None, timeZone=None, provider=None):
         "current": finishTotals(currentTotals),
         "previous": finishTotals(previousTotals),
         "days": [finishTotals(day) for day in days.values()],
-        "models": finishModels(modelTotals),
-        "lifetimeModels": finishModels(lifetimeTotals),
+        "models": finishModels(modelTotals, modelProviders),
+        "lifetimeModels": finishModels(lifetimeTotals, modelProviders),
     }

@@ -877,6 +877,10 @@ textarea::placeholder {
   transition-delay: var(--page-stagger);
 }
 
+.settings-page-slide {
+  --page-slide-dur: 340ms;
+  --page-fade-dur: 340ms;
+}
 .settings-page-slide .t-page {
   transform: translateY(calc(10px * var(--page-exit-enabled)));
 }

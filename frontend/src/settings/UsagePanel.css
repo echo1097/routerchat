@@ -346,7 +346,7 @@
   font-size: 11px;
 }
 
-.usage-legend span {
+.usage-legend > span {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -366,7 +366,7 @@
   top: -4px;
   left: calc(100% - 2px);
   z-index: 5;
-  width: 208px;
+  width: 236px;
   opacity: 0;
   visibility: hidden;
   transform: translateY(3px);
@@ -423,6 +423,21 @@
   color: #d9d9d9;
 }
 
+.usage-provider-logo {
+  opacity: 0.85;
+}
+
+.usage-tooltip-row .usage-provider-logo {
+  margin: 3px -2px 0;
+}
+
+.usage-tooltip-empty {
+  display: block;
+  padding: 3px 0;
+  line-height: 17px;
+  color: #8f8f8f;
+}
+
 .usage-tooltip-row i {
   width: 7px;
   height: 7px;
@@ -431,7 +446,7 @@
   flex-shrink: 0;
 }
 
-.usage-tooltip-row span {
+.usage-tooltip-row > span {
   display: -webkit-box;
   min-width: 0;
   overflow: hidden;

@@ -160,6 +160,13 @@ class UsageLedgerTest(unittest.TestCase):
         self.assertEqual(self.usageTotals("openai"), [])
         self.assertEqual(self.client.get("/api/usage?provider=nope").status_code, 422)
 
+    def testModelsIncludeTheProviderThatServedThem(self):
+        recordUsage("message", "open-1", "anthropic/claude-opus-5.5", {"cost": 1.0, "total_tokens": 10}, "2026-09-01T12:00:00Z", provider="openrouter")
+        recordUsage("message", "claude-1", "claude-opus-5-5", {"cost": 2.0, "total_tokens": 20}, "2026-09-01T12:00:00Z", provider="anthropic")
+
+        providers = {model["id"]: model["provider"] for model in self.usageTotals()}
+        self.assertEqual(providers, {"anthropic/claude-opus-5.5": "openrouter", "claude-opus-5-5": "anthropic"})
+
     def testLocalUsageIsFreeSoAllTotalsStayComplete(self):
         recordUsage("message", "open-1", "test/model", {"cost": 1.0, "total_tokens": 10}, "2026-09-01T12:00:00Z", provider="openrouter")
         recordUsage("message", "local-1", "local/model", {"total_tokens": 20}, "2026-09-01T12:00:00Z", provider="local")

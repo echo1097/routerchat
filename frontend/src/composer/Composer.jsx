@@ -20,6 +20,7 @@ import { ContextWindowMeter } from "../components/ContextWindowMeter.jsx";
 import { WriteHistoryModal } from "../writing/WriteHistoryModal.jsx";
 import { SystemPromptModal } from "../settings/SystemPromptModal.jsx";
 import { DEFAULT_PROVIDER } from "../providers/providerApi.js";
+import { PROVIDER_ICONS } from "../providers/providerOptions.js";
 
 const WRITE_GENERATION_MODES = {
   edit: "Edit Chapter",
@@ -29,11 +30,6 @@ const WRITE_GENERATION_MODES = {
 const LOREBOOK_UPDATE_MODES = {
   auto: "Auto Lorebook",
   manual: "Manual Lorebook",
-};
-
-const PROVIDER_ICONS = {
-  openrouter: "/icons/open-router.svg",
-  anthropic: "/icons/claude.png",
 };
 
 function ComposerMenuButton({ label, detail, active = false, dataTour, disabled = false, onClick }) {

@@ -2,6 +2,7 @@ import {
   Activity,
   Database,
   KeyRound,
+  Layers,
   MessageSquare,
   Mic,
   PenLine,
@@ -10,7 +11,7 @@ import {
 
 export const SETTINGS_PAGES = [
   { id: "provider", label: "Provider", icon: KeyRound, group: "Models" },
-  { id: "models", label: "Models", iconSrc: "/icons/model.png", group: "Models" },
+  { id: "models", label: "Models", icon: Layers, group: "Models" },
   { id: "generation", label: "Generation", icon: SlidersHorizontal, group: "Models" },
   { id: "chat", label: "Chat", icon: MessageSquare, group: "App", mode: "chat" },
   { id: "writing", label: "Writing", icon: PenLine, group: "App", mode: "write" },

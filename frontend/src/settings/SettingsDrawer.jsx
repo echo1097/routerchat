@@ -656,6 +656,7 @@ export function SettingsDrawer({
         searchWrapRef={modelSearchWrapRef}
         searchInputRef={modelSearchInputRef}
         framed
+        showCached
         note={modelLocked && (
           <p className="mt-2 text-pretty text-xs leading-5 text-[#8a8a8a]">
             Model selection is locked after the first message in a chat.

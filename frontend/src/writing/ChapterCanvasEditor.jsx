@@ -145,6 +145,7 @@ export default function ChapterCanvasEditor({
   useEffect(() => {
     const readyFrame = requestAnimationFrame(() => {
       editorReadyRef.current = true;
+      shellRef.current?.setAttribute("data-ready", "true");
     });
 
     return () => cancelAnimationFrame(readyFrame);

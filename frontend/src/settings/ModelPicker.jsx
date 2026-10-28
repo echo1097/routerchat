@@ -34,7 +34,7 @@ export function ModelPicker({
     : showCached
       ? "grid-cols-[minmax(0,1fr)_96px_64px] sm:grid-cols-[minmax(0,1fr)_96px_84px_64px]"
       : "grid-cols-[minmax(0,1fr)_96px_64px]";
-  const cachedCellClass = "hidden whitespace-nowrap px-1 text-right sm:block";
+  const cachedCellClass = "hidden whitespace-nowrap px-1 text-center sm:block";
   const edges = useScrollEdges(listRef, [models.length, activePage, loading]);
 
   function modelRowValues(model) {

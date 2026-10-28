@@ -39,6 +39,7 @@ RULES_BY_PREFIX: tuple[tuple[str, ModelRules], ...] = (
     ("claude-opus-4-8", ADAPTIVE_STRICT),
     ("claude-opus-4-7", ADAPTIVE_STRICT),
     ("claude-sonnet-5-5", ADAPTIVE_BETWEEN_TOOLS),
+    ("claude-haiku-5-5", ALWAYS_THINKING),
     ("claude-sonnet-5", ADAPTIVE_STRICT),
     ("claude-opus-4-6", ADAPTIVE_CLASSIC),
     ("claude-sonnet-4-6", ADAPTIVE_CLASSIC),

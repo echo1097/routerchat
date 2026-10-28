@@ -1,8 +1,13 @@
 import { cx } from "../uiShared.js";
 
-function SettingsPageTitle({ children }) {
+function SettingsPageTitle({ evenSpacing = false, children }) {
   return (
-    <h1 className="settings-page-title mb-7 shrink-0 text-[24px] font-semibold leading-tight tracking-[-0.015em] text-neutral-50">
+    <h1
+      className={cx(
+        "settings-page-title shrink-0 text-[24px] font-semibold leading-tight tracking-[-0.015em] text-neutral-50",
+        evenSpacing ? "mb-4" : "mb-7",
+      )}
+    >
       {children}
     </h1>
   );
@@ -25,7 +30,7 @@ export function SettingsScrollPage({ pageId, title, label, className, children }
 }
 
 
-export function SettingsFixedPage({ pageId, title, label, children }) {
+export function SettingsFixedPage({ pageId, title, label, evenSpacing = false, children }) {
   return (
     <section
       className="t-page flex min-h-0 flex-col overflow-hidden"
@@ -33,7 +38,7 @@ export function SettingsFixedPage({ pageId, title, label, children }) {
       aria-label={label}
     >
       <div className="settings-inline settings-page-body flex min-h-0 flex-1 flex-col">
-        <SettingsPageTitle>{title}</SettingsPageTitle>
+        <SettingsPageTitle evenSpacing={evenSpacing}>{title}</SettingsPageTitle>
         {children}
       </div>
     </section>

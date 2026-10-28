@@ -1,16 +1,16 @@
 import {
   Activity,
   Database,
-  KeyRound,
   Layers,
   MessageSquare,
   Mic,
+  Network,
   PenLine,
   SlidersHorizontal,
 } from "lucide-react";
 
 export const SETTINGS_PAGES = [
-  { id: "provider", label: "Provider", icon: KeyRound, group: "Models" },
+  { id: "provider", label: "Provider", icon: Network, group: "Models" },
   { id: "models", label: "Models", icon: Layers, group: "Models" },
   { id: "generation", label: "Generation", icon: SlidersHorizontal, group: "Models" },
   { id: "chat", label: "Chat", icon: MessageSquare, group: "App", mode: "chat" },
@@ -30,9 +30,9 @@ export const SETTINGS_SEARCH_INDEX = [
   { title: "Cheapest first", page: "provider", target: "settings-group-routing", keywords: "price routing", requires: "routingOptions" },
   { title: "Privacy mode", page: "provider", target: "settings-group-privacy", keywords: "training", requires: "routingOptions" },
   { title: "Zero data retention", page: "provider", target: "settings-group-privacy", keywords: "zdr privacy", requires: "routingOptions" },
-  { title: "Default model", page: "models", target: "", keywords: "current model" },
-  { title: "Hide free models", page: "models", target: "settings-group-model-filters", keywords: "model list", requires: "freeModels" },
-  { title: "Hide batch models", page: "models", target: "settings-group-model-filters", keywords: "model list" },
+  { title: "Default model", page: "models", target: "settings-group-current-model", keywords: "current model" },
+  { title: "Hide free models", page: "models", target: "settings-group-model-filters", keywords: "model picker list", requires: "freeModels" },
+  { title: "Hide batch models", page: "models", target: "settings-group-model-filters", keywords: "model picker list" },
   { title: "Reasoning effort", page: "generation", target: "settings-group-reasoning", keywords: "thinking" },
   { title: "Temperature", page: "generation", target: "settings-group-output", keywords: "creative" },
   { title: "Max output tokens", page: "generation", target: "settings-group-output", keywords: "length" },

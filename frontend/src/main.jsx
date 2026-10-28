@@ -3691,6 +3691,7 @@ function App() {
         onSaveKey={saveKey}
         onSwitchProvider={switchProvider}
         provider={activeProvider}
+        providers={providers}
         conversationProvider={currentProvider}
         conversationKind={isWritingMode ? "story" : "chat"}
         onMoveToProvider={isWritingMode && activeStoryId ? moveStoryToActiveProvider : null}

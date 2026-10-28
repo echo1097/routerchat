@@ -5,6 +5,7 @@ import { cx, CONTROL_MOTION } from "../uiShared.js";
 import { supportsThinking, resolveReasoningEffort, supportsReasoningEffort } from "../modelReasoning.js";
 import {
   promptModelName,
+  modelDisplayName,
   priceLabel,
   getModelContextLimit,
   formatTokens,
@@ -48,6 +49,7 @@ export function SettingsDrawer({
   onSaveKey,
   onSwitchProvider,
   provider = DEFAULT_PROVIDER,
+  providers = [],
   conversationProvider = provider,
   conversationKind = "chat",
   onMoveToProvider,
@@ -416,22 +418,26 @@ export function SettingsDrawer({
     CONTROL_MOTION,
   );
 
-  const keyStatusPill = (
-    <span
-      className={cx(
-        "inline-flex min-h-6 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[11.5px] font-medium leading-none",
-        keyConnected
-          ? "bg-emerald-300/[0.1] text-[#6ee7b7]"
-          : "bg-red-500/[0.14] text-[#fca5a5]",
-      )}
-    >
-      <span
-        aria-hidden="true"
-        className={cx("h-1.5 w-1.5 rounded-full", keyConnected ? "bg-[#6ee7b7]" : "bg-[#fca5a5]")}
-      />
-      {keyConnected ? "Key saved" : "No key"}
-    </span>
-  );
+  function providerHasKey(providerId) {
+    if (providerId === provider.id) return keyConnected;
+    return Boolean(providers.find((item) => item.id === providerId)?.hasKey);
+  }
+
+  function providerTabLabel(option) {
+    const hasKey = providerHasKey(option.id);
+
+    return (
+      <span className="inline-flex items-center justify-center gap-2">
+        <span
+          aria-hidden="true"
+          title={hasKey ? "Key saved" : "No key saved"}
+          className={cx("settings-key-dot", hasKey && "is-saved")}
+        />
+        {option.tabLabel}
+        <span className="sr-only">{hasKey ? ", key saved" : ", no key saved"}</span>
+      </span>
+    );
+  }
 
   const accountGroup = (
     <SettingGroup
@@ -444,16 +450,13 @@ export function SettingsDrawer({
           value={selectedProviderId}
           onChange={chooseProvider}
           getValue={(option) => option.id}
-          getLabel={(option) => option.tabLabel}
+          getLabel={providerTabLabel}
           ariaLabel="API provider"
           className="provider-tabs settings-inner-tabs flex w-full"
         />
       </SettingRow>
       <div className="settings-row space-y-3 px-5 py-4">
-        <div className="flex items-center justify-between gap-3">
-          <h3 className="text-balance text-[14.5px] font-medium text-neutral-50">{providerName} key</h3>
-          {keyStatusPill}
-        </div>
+        <h3 className="text-balance text-[14.5px] font-medium text-neutral-50">{providerName} key</h3>
         <form
           className="flex gap-2"
           onSubmit={(event) => {
@@ -564,7 +567,8 @@ export function SettingsDrawer({
   const modelFiltersGroup = (
     <SettingGroup
       id="settings-group-model-filters"
-      title="Model list"
+      title="Model picker"
+      evenSpacing
       bodyClassName={capabilities.freeModels ? "settings-group-split" : undefined}
     >
       {capabilities.freeModels && (
@@ -590,35 +594,36 @@ export function SettingsDrawer({
 
   const modelsSection = (
     <section className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-5 min-w-0">
-        <p className="mb-1 text-[13px] font-semibold text-neutral-400">Current model</p>
-        <div className="flex min-w-0 items-center gap-2">
-          <h2 className="truncate text-lg font-semibold tracking-[-0.01em] text-neutral-50">
-            {selectedModel?.name || settings.model || "No model selected"}
-          </h2>
-          {modelLocked && <SettingChip className="text-neutral-500">Model locked</SettingChip>}
-        </div>
-        <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
-          {selectedModelPrice && <SettingChip>{selectedModelPrice}</SettingChip>}
-          {selectedModelContext && <SettingChip>{selectedModelContext}</SettingChip>}
-          <button
-            type="button"
-            disabled={providerDiffers || !settings.model || settings.model === defaultModel}
-            onClick={setSelectedModelAsDefault}
-            className={cx(
-              smallPillButtonClass,
-              settings.model === defaultModel
-                ? "bg-white/[0.045] text-neutral-500"
-                : "bg-white/[0.08] text-neutral-200 hover:bg-white/[0.12] hover:text-neutral-50",
-            )}
-          >
-            {settings.model === defaultModel ? "Default" : "Set as default"}
-          </button>
-        </div>
+      <div className="mb-4 shrink-0">
+        <SettingGroup id="settings-group-current-model" title="Current model" evenSpacing>
+          <div className="settings-row flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-5 py-4">
+            <h3 className="min-w-0 truncate text-[15px] font-semibold tracking-[-0.01em] text-neutral-50">
+              {selectedModel ? modelDisplayName(selectedModel) : settings.model || "No model selected"}
+            </h3>
+            <div className="flex flex-wrap items-center justify-end gap-1.5">
+              {modelLocked && <SettingChip className="text-neutral-500">Model locked</SettingChip>}
+              {selectedModelPrice && <SettingChip>{selectedModelPrice}</SettingChip>}
+              {selectedModelContext && <SettingChip>{selectedModelContext}</SettingChip>}
+              <button
+                type="button"
+                disabled={providerDiffers || !settings.model || settings.model === defaultModel}
+                onClick={setSelectedModelAsDefault}
+                className={cx(
+                  smallPillButtonClass,
+                  settings.model === defaultModel
+                    ? "bg-white/[0.045] text-neutral-500"
+                    : "bg-white/[0.08] text-neutral-200 hover:bg-white/[0.12] hover:text-neutral-50",
+                )}
+              >
+                {settings.model === defaultModel ? "Default" : "Set as default"}
+              </button>
+            </div>
+          </div>
+        </SettingGroup>
       </div>
 
       {providerDiffers && (
-        <div className="mb-5 flex items-center justify-between gap-3 rounded-2xl bg-[#fde68a]/[0.08] px-4 py-3">
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl bg-[#fde68a]/[0.08] px-4 py-3">
           <p className="min-w-0 text-pretty text-[12.5px] leading-5 text-[#fde68a]/90">
             This {conversationKind} uses {conversationProvider.name}, not {provider.name}.
           </p>
@@ -634,7 +639,7 @@ export function SettingsDrawer({
         </div>
       )}
 
-      <div className="mb-5 shrink-0">{modelFiltersGroup}</div>
+      <div className="mb-4 shrink-0">{modelFiltersGroup}</div>
 
       <ModelPicker
         models={filteredModels}
@@ -650,6 +655,7 @@ export function SettingsDrawer({
         activePage={activePage}
         searchWrapRef={modelSearchWrapRef}
         searchInputRef={modelSearchInputRef}
+        framed
         note={modelLocked && (
           <p className="mt-2 text-pretty text-xs leading-5 text-[#8a8a8a]">
             Model selection is locked after the first message in a chat.
@@ -1084,7 +1090,7 @@ export function SettingsDrawer({
                 {capabilities.routingOptions && privacyGroup}
               </div>
             </SettingsScrollPage>
-            <SettingsFixedPage pageId="2" title={pageTitle("models")} label="Model settings">
+            <SettingsFixedPage pageId="2" title={pageTitle("models")} label="Model settings" evenSpacing>
               {modelsSection}
             </SettingsFixedPage>
             <SettingsScrollPage pageId="3" title={pageTitle("generation")} label="Generation settings">

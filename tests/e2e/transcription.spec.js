@@ -47,7 +47,7 @@ async function installChat(page) {
     if (path === "/api/models") body = { models: [{ id: "test/model", name: "Test model", pricing: {} }] };
     if (path === "/api/chats") body = { chats: [chat] };
     if (path === "/api/chats/chat-1") body = { chat, messages: [] };
-    if (path === "/api/transcription/models") body = { models: [{ id: "openai/whisper-1", name: "Whisper" }, { id: "test/stt", name: "Other transcription model" }] };
+    if (path === "/api/transcription/models") body = { models: [{ id: "openai/whisper-1", name: "Whisper" }, { id: "test/stt", name: "Other transcription model" }, { id: "test/hourly-stt", name: "Hourly transcription model", pricing: { prompt: "0.0001", completion: "0" } }] };
     if (path === "/api/transcription") {
       transcriptions.push(route.request().postDataJSON());
       body = { text: "spoken prompt" };
@@ -108,6 +108,8 @@ test("transcription model selection is saved independently", async ({ page }) =>
   const transcriptionSettings = page.getByRole("region", { name: "Transcription settings", exact: true });
   await expect(transcriptionSettings.getByText("Price + Context", { exact: true })).toHaveCount(0);
   await expect(transcriptionSettings.getByRole("link", { name: "View pricing for Whisper", exact: true })).toHaveAttribute("href", "https://openrouter.ai/openai/whisper-1");
+  await expect(transcriptionSettings.getByText("$0.36 / hr", { exact: true })).toBeVisible();
+  await expect(transcriptionSettings.getByRole("link", { name: "View pricing for Hourly transcription model" })).toHaveCount(0);
   await transcriptionSettings.getByPlaceholder("Search models").fill("other");
   await expect(transcriptionSettings.getByRole("button", { name: "Whisper" })).toHaveCount(0);
   await transcriptionSettings.getByRole("button", { name: "Other transcription model test", exact: true }).click();

@@ -200,7 +200,7 @@ class StreamParserTest(unittest.TestCase):
     def test_haiku_5_5_shows_its_short_prompt_price_in_the_model_list(self):
         self.assertEqual(
             models.pricingFor("claude-haiku-5-5"),
-            {"prompt": "0.0000001000", "completion": "0.0000005000"},
+            {"prompt": "0.0000001000", "completion": "0.0000005000", "input_cache_read": "0.0000000100"},
         )
 
     def test_completion_text_skips_thinking_blocks(self):

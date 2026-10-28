@@ -405,7 +405,7 @@ Anthropic has extra limits, and RouterChat blocks files that break them before a
 
 **Web search.** A **Web search** button next to the plus button. When it is on, the model searches before answering and sources appear as pills under the reply, with inline citations in the text. OpenRouter bills each search, so mention the cost. Web search is Chat mode only, it does not exist in Write mode, and it is OpenRouter only, so the button is missing in Anthropic chats.
 
-**Voice input.** A microphone button is available in Chat, Write, and Brainstorm. It records for up to two minutes, then either transcribes into the prompt or transcribes and sends. The selected model comes from Settings, Voice. Recordings are always sent to OpenRouter, whichever provider is active, so a saved OpenRouter key is required, and transcription is disabled while Privacy mode or Zero data retention is enabled. The browser may ask for microphone permission.
+**Voice input.** A microphone button is available in Chat, Write, and Brainstorm. It records for up to two minutes, then either transcribes into the prompt or transcribes and sends. The selected model comes from Settings, Dictation. Recordings are always sent to OpenRouter, whichever provider is active, so a saved OpenRouter key is required, and transcription is disabled while Privacy mode or Zero data retention is enabled. The browser may ask for microphone permission.
 
 ### Write mode
 
@@ -444,14 +444,14 @@ Write mode troubleshooting notes:
 
 Click the model name in the prompt bar, then **Settings**. Settings fills the window: a sidebar on the left lists the pages, and the selected page shows on the right. Leave with **Back to app** at the top of the sidebar or press Escape. The search box in the sidebar finds a setting by name and jumps to it. On a narrow window the sidebar is hidden behind the menu button in the top left corner, and on a wide one the button at the top of the sidebar collapses it.
 
-The pages are grouped under Models (Provider, Models, Generation), App (Chat or Writing, Voice, Interface) and Data (Data, Usage). **Chat** only shows in Chat mode and **Writing** only in Write mode. A small rose dot next to **Provider** means no key is saved for the selected provider.
+The pages are grouped under Models (Provider, Models, Generation), App (Chat or Writing, Dictation, Interface) and Data (Data, Usage). **Chat** only shows in Chat mode and **Writing** only in Write mode. A small rose dot next to **Provider** means no key is saved for the selected provider.
 
 - **Provider**: pick the provider (OpenRouter or Anthropic) and save that provider's key, plus Disable prompt caching and Keep cache for 1 hour. With OpenRouter selected there are also Turbo (fastest providers, stored internally as `nitro_mode`, so both names may appear), Cheapest first (lowest priced providers), Privacy mode (skip providers that may keep prompts for training), and Zero data retention (only providers that store nothing, which leaves fewer models available). Zero data retention covers Privacy mode, so turning it on disables the Privacy toggle. Those OpenRouter toggles are hidden while Anthropic is selected.
 - **Models**: search models, pick the active one, and **Set as default**. Hide batch models, and with OpenRouter also Hide free models, sit above the list. The list shows the models of the provider this chat or story uses, and only loads after a valid key for it is saved. **Set as default** is disabled when the chat or story uses a different provider than the active one. If it says to save an API key to load models, send them to the Provider page.
 - **Generation**: reasoning effort (Low, Medium, High, Max), temperature (shown as Auto and disabled for models that pick their own), and max output tokens. Reasoning shows as unavailable when the selected model does not support it, individual effort levels grey out when the model does not offer them, and the Thinking toggle only appears in the model menu for models that can think.
 - **Chat**: the optional system prompt sent before every message, and Generate chat name. Chat mode only. Write mode has no chat system prompt because each story has its own in the writing tools menu instead.
 - **Writing**: Retry skipped edits for the lorebook, and the model used for lorebook work in the current story. Write mode only.
-- **Voice**: choose the OpenRouter dictation model used by voice input. The list loads after a valid OpenRouter key is saved. With Anthropic active, the page notes that voice input uses OpenRouter.
+- **Dictation**: choose the OpenRouter dictation model used by voice input. The list loads after a valid OpenRouter key is saved. With Anthropic active, the page notes that voice input uses OpenRouter.
 - **Interface**: Navigation bar on or off, for moving through long chats, Smooth text on or off, which shows replies a word at a time, and Check for updates. When update checks are on, RouterChat asks GitHub for the latest release each time it starts and shows a dot next to the version number if there is a newer one. It never downloads or installs anything.
 - **Data**: pick a chat and export it as JSON, or import one. Import may assign new ids to avoid collisions, which is normal. A single chat can also be exported from its menu in the sidebar.
 - **Usage**: review spending, requests, and token usage for the last 7 days, plus lifetime totals per model. Tabs at the top switch between All, OpenRouter, and Anthropic. It covers every request RouterChat sends: chat, story, brainstorm, lorebook, and transcription. Usage is kept in its own file, so it stays after chats or stories are deleted, and importing a chat or story does not add to it. Usage from before providers were added was moved over once and counts as OpenRouter. Missing usage details may make a total partial or unavailable.
@@ -558,7 +558,7 @@ The selected model does not take image input. Documents still work. Switching mo
 
 ### Voice input does not work
 
-Check that the browser has microphone permission, that a dictation model is selected on the Voice settings page, and that the OpenRouter key and credits are available. Privacy mode and Zero data retention disable transcription. Recordings have a two-minute limit.
+Check that the browser has microphone permission, that a dictation model is selected on the Dictation settings page, and that the OpenRouter key and credits are available. Privacy mode and Zero data retention disable transcription. Recordings have a two-minute limit.
 
 ### Chats or stories disappeared
 

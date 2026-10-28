@@ -15,7 +15,7 @@ export const SETTINGS_PAGES = [
   { id: "generation", label: "Generation", icon: SlidersHorizontal, group: "Models" },
   { id: "chat", label: "Chat", icon: MessageSquare, group: "App", mode: "chat" },
   { id: "writing", label: "Writing", icon: PenLine, group: "App", mode: "write" },
-  { id: "voice", label: "Voice", icon: Mic, group: "App" },
+  { id: "voice", label: "Dictation", icon: Mic, group: "App" },
   { id: "interface", label: "Interface", iconSrc: "/icons/interface.png", group: "App" },
   { id: "data", label: "Data", icon: Database, group: "Data" },
   { id: "usage", label: "Usage", icon: Activity, group: "Data" },

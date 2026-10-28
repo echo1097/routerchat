@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { ModelPicker } from "../settings/ModelPicker.jsx";
+import { searchModels } from "../settings/modelSearch.js";
 
 export function TranscriptionSettings() {
   const [models, setModels] = useState([]);
@@ -42,19 +43,14 @@ export function TranscriptionSettings() {
     }
   }
 
-  const searchText = query.trim().toLowerCase();
-  const filteredModels = models.filter((model) =>
-    `${model.name || ""} ${model.id}`.toLowerCase().includes(searchText),
-  );
+  const filteredModels = searchModels(models, query);
   const selectedName = models.find((model) => model.id === selectedModel)?.name || selectedModel;
 
   return (
     <section className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-sm font-semibold text-neutral-100">Model</h2>
-          <p className="mt-0.5 truncate text-xs text-neutral-500">{selectedName || "Loading models…"}</p>
-        </div>
+      <div className="mb-4 min-w-0">
+        <h2 className="text-[13px] font-semibold text-neutral-400">Dictation model</h2>
+        <p className="mt-1.5 truncate text-sm font-medium text-neutral-100">{selectedName || "Loading models…"}</p>
       </div>
       <ModelPicker
         priceHeader="Price"
@@ -75,6 +71,7 @@ export function TranscriptionSettings() {
         selectedId={selectedModel}
         onSelect={selectModel}
         disabled={loading || saving}
+        loading={loading}
         activePage="transcription"
         emptyMessage={loading ? "Loading models…" : models.length ? "No matching models." : "No transcription models available."}
       />

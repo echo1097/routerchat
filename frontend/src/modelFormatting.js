@@ -77,6 +77,13 @@ export function priceLabel(model) {
   )}`;
 }
 
+export function cachedPriceLabel(model) {
+  const cacheRead = Number((Number(model.pricing?.input_cache_read) * 1000000).toPrecision(12));
+  if (!Number.isFinite(cacheRead) || cacheRead <= 0) return "";
+  if (cacheRead >= 0.1) return `$${cacheRead.toFixed(2).replace(/\.00$/, "")}`;
+  return `$${Number(cacheRead.toPrecision(2))}`;
+}
+
 export function isBatchModel(model) {
   return String(model.id || "").endsWith(":batch");
 }

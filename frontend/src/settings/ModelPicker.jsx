@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { getModelContextLimit, priceLabel, formatTokens, modelDisplayName, modelMaker } from "../modelFormatting.js";
+import { getModelContextLimit, priceLabel, cachedPriceLabel, formatTokens, modelDisplayName, modelMaker } from "../modelFormatting.js";
 import { cx } from "../uiShared.js";
 import { Search, X } from "lucide-react";
 import { LOREBOOK_MODEL_INHERIT } from "./settingsDefaults.js";
@@ -24,17 +24,24 @@ export function ModelPicker({
   searchWrapRef,
   searchInputRef,
   framed = false,
+  showCached = false,
 }) {
   const listRef = useRef(null);
   const queryInputRef = useRef(null);
   const showContext = !renderPrice;
-  const columns = showContext ? "grid-cols-[minmax(0,1fr)_96px_64px]" : "grid-cols-[minmax(0,1fr)_136px]";
+  const columns = !showContext
+    ? "grid-cols-[minmax(0,1fr)_136px]"
+    : showCached
+      ? "grid-cols-[minmax(0,1fr)_96px_64px] sm:grid-cols-[minmax(0,1fr)_96px_84px_64px]"
+      : "grid-cols-[minmax(0,1fr)_96px_64px]";
+  const cachedCellClass = "hidden whitespace-nowrap px-1 text-center sm:block";
   const edges = useScrollEdges(listRef, [models.length, activePage, loading]);
 
   function modelRowValues(model) {
     const contextLimit = getModelContextLimit(model);
     return {
       price: priceLabel(model) || "-",
+      cached: cachedPriceLabel(model) || "-",
       context: Number.isFinite(contextLimit) ? formatTokens(contextLimit) : "-",
     };
   }
@@ -44,7 +51,7 @@ export function ModelPicker({
     queryInputRef.current?.focus();
   }
 
-  function row({ key, name, subLabel, price, context, isSelected, model }) {
+  function row({ key, name, subLabel, price, cached, context, isSelected, model }) {
     return (
       <div
         key={key}
@@ -71,6 +78,11 @@ export function ModelPicker({
         <span className="pointer-events-none relative z-[1] min-w-0 whitespace-nowrap px-1 text-right text-xs tabular-nums text-neutral-400">
           {renderPrice && model ? <span className="pointer-events-auto">{renderPrice(model)}</span> : price}
         </span>
+        {showCached && (
+          <span className={cx("pointer-events-none relative min-w-0 text-xs tabular-nums text-neutral-400", cachedCellClass)}>
+            {cached}
+          </span>
+        )}
         {showContext && (
           <span className="pointer-events-none relative min-w-0 whitespace-nowrap px-1 text-right text-xs tabular-nums text-neutral-400">
             {context}
@@ -91,6 +103,7 @@ export function ModelPicker({
           <i className="model-picker-skeleton block h-2 w-16" />
         </span>
         <i className="model-picker-skeleton ml-auto block h-2.5 w-14" />
+        {showCached && <i className="model-picker-skeleton ml-auto hidden h-2.5 w-9 sm:block" />}
         {showContext && <i className="model-picker-skeleton ml-auto block h-2.5 w-9" />}
       </div>
     ));
@@ -141,6 +154,7 @@ export function ModelPicker({
         <div className={cx("grid items-center gap-3 px-3 pb-2 pt-1 text-xs font-medium text-neutral-500", columns)}>
           <span>Model</span>
           <span className="whitespace-nowrap px-1 text-right">{priceHeader}</span>
+          {showCached && <span className={cachedCellClass} title="Cached input per million tokens">Cached read</span>}
           {showContext && <span className="whitespace-nowrap px-1 text-right">Context</span>}
         </div>
 
@@ -155,7 +169,7 @@ export function ModelPicker({
                   key: LOREBOOK_MODEL_INHERIT,
                   name: inheritOption.name,
                   subLabel: inheritOption.subLabel,
-                  ...(inheritOption.model ? modelRowValues(inheritOption.model) : { price: "-", context: "-" }),
+                  ...(inheritOption.model ? modelRowValues(inheritOption.model) : { price: "-", cached: "-", context: "-" }),
                   isSelected: selectedId === LOREBOOK_MODEL_INHERIT,
                 })}
 

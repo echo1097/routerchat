@@ -80,3 +80,24 @@ test("shows model names without the maker prefix and the maker underneath", asyn
   await expect(modelsPage).not.toContainText("Z.ai: GLM 5.3");
   await expect(modelsPage).not.toContainText("z-ai/glm-5.3");
 });
+
+test("shows the cached input price next to each model", async ({ page }) => {
+  const fixture = await installWriteApi(page);
+  const cachedModels = [
+    { ...models[0], pricing: { prompt: "0.000001", completion: "0.000002", input_cache_read: "0.0000001" } },
+    { id: "test/uncached", name: "Uncached model", pricing: { prompt: "0.000001", completion: "0.000002" }, architecture: { output_modalities: ["text"] }, supported_parameters: [] },
+  ];
+  await page.route("**/api/models", (route) => route.fulfill({ json: { models: cachedModels } }));
+
+  await fixture.open();
+  await page.locator('[data-tour="model-button"]').click();
+  await page.getByRole("menuitem", { name: /Settings/ }).click();
+  await openSettingsPage(page, "Models");
+
+  const modelsPage = page.getByRole("region", { name: "Model settings", exact: true });
+  await expect(modelsPage.getByText("Cached read", { exact: true })).toBeVisible();
+  const cachedRow = modelsPage.locator(".model-picker-row").filter({ hasText: "Test model" });
+  await expect(cachedRow).toContainText("$0.10");
+  const uncachedRow = modelsPage.locator(".model-picker-row").filter({ hasText: "Uncached model" });
+  await expect(uncachedRow).not.toContainText("$0.10");
+});

@@ -45,6 +45,7 @@ def pricingFor(modelId: str) -> dict[str, str]:
     return {
         "prompt": f"{price.input / PER_MILLION:.10f}",
         "completion": f"{price.output / PER_MILLION:.10f}",
+        "input_cache_read": f"{price.cacheRead / PER_MILLION:.10f}",
     }
 
 

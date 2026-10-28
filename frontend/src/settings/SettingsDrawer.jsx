@@ -444,7 +444,7 @@ export function SettingsDrawer({
       id="settings-group-account"
       title="Account"
     >
-      <SettingRow title="Provider" description="Where your messages are sent. A green dot means its key is saved" stacked>
+      <SettingRow title="Provider" description="Where your messages are sent" stacked>
         <SlidingTabs
           options={PROVIDER_OPTIONS}
           value={selectedProviderId}

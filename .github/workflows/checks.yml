@@ -1,0 +1,93 @@
+name: Checks
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    name: Build and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Test frontend
+        run: npm run test:frontend
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.7.19"
+
+      - name: Confirm the dependency lock is current
+        run: |
+          uv pip compile --universal --python-version 3.13 --generate-hashes \
+            --custom-compile-command "uv pip compile --universal --python-version 3.13 --generate-hashes requirements.txt -o requirements.lock" \
+            requirements.txt -o requirements.lock
+          git diff --exit-code -- requirements.lock
+
+      - name: Create the test environment
+        run: |
+          python -m venv .venv
+          uv pip sync --require-hashes --python .venv/bin/python requirements.lock
+
+      - name: Test backend
+        run: .venv/bin/python -m unittest discover -s tests -p "test_*.py"
+
+  browser:
+    name: Browser tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install the test browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser tests
+        run: npm run test:e2e
+
+      - name: Upload failure details
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-test-results
+          path: test-results/
+          retention-days: 7

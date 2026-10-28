@@ -591,7 +591,7 @@ export function SettingsDrawer({
 
   const modelsSection = (
     <section className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-8 shrink-0">
+      <div className="mb-6 shrink-0">
         <SettingGroup id="settings-group-current-model" title="Current model">
           <div className="settings-row flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-5 py-4">
             <h3 className="min-w-0 truncate text-[15px] font-semibold tracking-[-0.01em] text-neutral-50">

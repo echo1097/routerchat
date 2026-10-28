@@ -72,7 +72,7 @@ export function SettingsNav({
   const searching = query.trim().length > 0;
 
   return (
-    <div className="flex h-full w-[264px] flex-col px-3 pb-3 pt-3.5 lg:pt-5">
+    <div className="flex h-full w-[292px] flex-col px-3 pb-3 pt-3.5 lg:w-[276px] lg:pt-5">
       <div className="mb-5 flex h-9 items-center lg:hidden">
         <SettingsNavToggle label="Close settings menu" onClick={onCloseMobile} />
       </div>

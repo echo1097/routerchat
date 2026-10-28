@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { installWriteApi } from "./writeReliability.fixture.js";
+import { openSettingsPage } from "./settingsNav.js";
 
 test.beforeEach(async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -25,7 +26,7 @@ test("hides batch models from the model list when disabled", async ({ page }) =>
   await page.locator('[data-tour="model-button"]').click();
   await page.getByRole("menuitem", { name: /Settings/ }).click();
 
-  await page.getByRole("tab", { name: "Models", exact: true }).click();
+  await openSettingsPage(page, "Models");
   const modelsPage = page.getByRole("dialog", { name: "Models", exact: true });
   await expect(modelsPage).toContainText("Test model (batch)");
 
@@ -71,7 +72,7 @@ test("shows model names without the maker prefix and the maker underneath", asyn
   await fixture.open();
   await page.locator('[data-tour="model-button"]').click();
   await page.getByRole("menuitem", { name: /Settings/ }).click();
-  await page.getByRole("tab", { name: "Models", exact: true }).click();
+  await openSettingsPage(page, "Models");
 
   const modelsPage = page.getByRole("dialog", { name: "Models", exact: true });
   await expect(modelsPage).toContainText("GLM 5.3");

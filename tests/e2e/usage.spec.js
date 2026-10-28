@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { installWriteApi } from "./writeReliability.fixture.js";
+import { openSettingsPage } from "./settingsNav.js";
 
 test.beforeEach(async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -44,7 +45,7 @@ async function openUsage(page, data, provider) {
   await fixture.open();
   await page.locator('[data-tour="model-button"]').click();
   await page.getByRole("menuitem", { name: /Settings/ }).click();
-  await page.getByRole("tab", { name: "Usage", exact: true }).click();
+  await openSettingsPage(page, "Usage");
   const dialog = page.getByRole("dialog", { name: "Usage", exact: true });
   if (provider) await dialog.getByLabel("Usage by provider").getByRole("tab", { name: provider, exact: true }).click();
   return dialog;
@@ -72,7 +73,7 @@ test("shows weekly spending and model details without provider requests", async 
   await expect(dialog.getByRole("table")).toContainText("retired-model");
   await expect(dialog.getByRole("region", { name: "Lifetime model totals" })).not.toContainText("All time");
   await page.screenshot({ path: testInfo.outputPath("usage-desktop.png"), animations: "disabled" });
-  await dialog.getByRole("tab", { name: "Provider", exact: true }).click();
+  await openSettingsPage(page, "Provider");
   await expect(page.getByRole("dialog", { name: "Provider", exact: true })).toBeVisible();
 });
 
@@ -97,12 +98,12 @@ test("retries a failed request and reloads usage when reopened", async ({ page }
   await fixture.open();
   await page.locator('[data-tour="model-button"]').click();
   await page.getByRole("menuitem", { name: /Settings/ }).click();
-  await page.getByRole("tab", { name: "Usage", exact: true }).click();
+  await openSettingsPage(page, "Usage");
   await expect(page.getByRole("alert")).toContainText("Usage could not be loaded.");
   await page.getByRole("button", { name: "Try again" }).click();
   await expect(page.getByRole("region", { name: "Total spend", exact: true })).toContainText("$2.30");
   await expect(page.getByRole("button", { name: "Refresh usage" })).toHaveCount(0);
-  await page.getByRole("dialog", { name: "Usage", exact: true }).getByRole("button", { name: "Close settings" }).click();
+  await page.getByRole("dialog", { name: "Usage", exact: true }).getByRole("button", { name: "Back to app" }).click();
   await page.locator('[data-tour="model-button"]').click();
   await page.getByRole("menuitem", { name: /Settings/ }).click();
   await expect.poll(() => requestCount).toBe(3);

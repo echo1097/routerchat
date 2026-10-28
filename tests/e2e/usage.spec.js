@@ -144,6 +144,29 @@ test("chart tooltip only lists models with usage that day", async ({ page }) => 
   await expect(tooltips.nth(2)).toContainText("No usage");
 });
 
+test("all tab shows provider logos and readable Anthropic model names", async ({ page }) => {
+  const data = makeUsage();
+  data.models = [
+    { id: "test/model", provider: "openrouter", cost: 1.61, requests: 24, totalTokens: 215600 },
+    { id: "claude-opus-5-5", provider: "anthropic", cost: 0.69, requests: 11, totalTokens: 92400 },
+  ];
+  for (const day of data.days) {
+    day.models = { "test/model": day.cost * 0.7, "claude-opus-5-5": day.cost * 0.3 };
+  }
+  const dialog = await openUsage(page, data);
+  const chart = dialog.getByRole("region", { name: "Usage by model", exact: true });
+  const legend = chart.locator(".usage-legend");
+
+  await expect(legend).toContainText("Anthropic: Opus 5.5");
+  await expect(legend).not.toContainText("claude-opus-5-5");
+  await expect(legend.locator(".usage-provider-logo")).toHaveCount(2);
+  await expect(chart.locator(".usage-tooltip").first().locator(".usage-provider-logo")).toHaveCount(2);
+
+  await dialog.getByLabel("Usage by provider").getByRole("tab", { name: "Anthropic", exact: true }).click();
+  await expect(dialog.getByRole("region", { name: "Usage by model", exact: true }).locator(".usage-legend")).toContainText("Anthropic: Opus 5.5");
+  await expect(dialog.locator(".usage-provider-logo")).toHaveCount(0);
+});
+
 test("shows clean summary totals and labels partial lifetime totals", async ({ page }) => {
   const data = makeUsage();
   data.current.partialCost = true;

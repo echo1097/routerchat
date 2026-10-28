@@ -3,7 +3,8 @@ import { api } from "../api.js";
 import { cx } from "../uiShared.js";
 import { stripClaude } from "../modelFormatting.js";
 import { SlidingTabs } from "../components/SlidingTabs.jsx";
-import { PROVIDER_OPTIONS } from "../providers/providerOptions.js";
+import { PROVIDER_ICONS, PROVIDER_OPTIONS } from "../providers/providerOptions.js";
+import { MaskIcon } from "../components/IconButton.jsx";
 import "./UsagePanel.css";
 
 const chartColors = ["#c59af5", "#e5ae78", "#7dc7ba", "#e68eb0", "#aebad1", "#b9c984"];
@@ -26,6 +27,36 @@ export function formatUsage(value, money = false, partial = false) {
     maximumFractionDigits: value > 0 && value < 0.01 ? 4 : 2,
   }).format(value);
   return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value);
+}
+
+function readableModelId(modelId) {
+  const words = [];
+  for (const part of modelId.replace(/-\d{8}$/, "").split("-")) {
+    const previous = words.at(-1);
+    if (/^\d+$/.test(part) && /^\d+$/.test(previous || "")) {
+      words[words.length - 1] = `${previous}.${part}`;
+    } else {
+      words.push(part.charAt(0).toUpperCase() + part.slice(1));
+    }
+  }
+  return words.join(" ");
+}
+
+function usageModelName(item, models) {
+  if (item.name) return stripClaude(item.name);
+  const knownName = models.find((model) => model.id === item.id)?.name;
+  if (knownName) return stripClaude(knownName);
+  if (item.id === "unknown") return "Unrecorded model";
+  if (item.id.includes("/")) return item.id.split("/").at(-1);
+
+  const providerName = PROVIDER_OPTIONS.find((option) => option.id === item.provider)?.name;
+  const readableName = readableModelId(item.id);
+  return stripClaude(providerName ? `${providerName}: ${readableName}` : readableName);
+}
+
+function ProviderLogo({ provider }) {
+  if (!PROVIDER_ICONS[provider]) return null;
+  return <MaskIcon src={PROVIDER_ICONS[provider]} size={11} className="usage-provider-logo" />;
 }
 
 function dayLabel(date) {
@@ -139,7 +170,7 @@ function UsageMetric({ metric, usage }) {
   );
 }
 
-function UsageChart({ title, days, series, getValue, money = false }) {
+function UsageChart({ title, days, series, getValue, money = false, showProvider = false }) {
   const maxValue = Math.max(...days.map((day) => series.reduce((sum, item) => sum + getValue(day, item), 0)), 0);
   const scaleMax = niceCeiling(maxValue);
   return (
@@ -194,6 +225,7 @@ function UsageChart({ title, days, series, getValue, money = false }) {
                       <div className="usage-tooltip-row" key={item.id}>
                         <i style={{ background: item.color }} />
                         <span>{item.name}</span>
+                        {showProvider && <ProviderLogo provider={item.provider} />}
                         <span className="usage-tooltip-value">{formatUsage(getValue(day, item), money)}</span>
                       </div>
                     ))}
@@ -208,7 +240,11 @@ function UsageChart({ title, days, series, getValue, money = false }) {
       </div>
       <div className="usage-legend">
         {series.map((item) => (
-          <span key={item.id}><i style={{ background: item.color }} />{item.name}</span>
+          <span key={item.id}>
+            <i style={{ background: item.color }} />
+            {item.name}
+            {showProvider && <ProviderLogo provider={item.provider} />}
+          </span>
         ))}
       </div>
     </section>
@@ -305,14 +341,12 @@ function UsageReport({ tab, models }) {
 
   const modelSeries = usage.models.map((item, index) => ({
     ...item,
-    name: stripClaude(item.name || models.find((model) => model.id === item.id)?.name
-      || (item.id === "unknown" ? "Unrecorded model" : item.id.split("/").at(-1))),
+    name: usageModelName(item, models),
     color: chartColors[index % chartColors.length],
   }));
   const lifetimeModels = (usage.lifetimeModels || []).map((item, index) => ({
     ...item,
-    name: stripClaude(item.name || models.find((model) => model.id === item.id)?.name
-      || (item.id === "unknown" ? "Unrecorded model" : item.id.split("/").at(-1))),
+    name: usageModelName(item, models),
     color: modelSeries.find((model) => model.id === item.id)?.color || chartColors[index % chartColors.length],
   }));
   const topModels = modelSeries.slice(0, 5);
@@ -342,7 +376,7 @@ function UsageReport({ tab, models }) {
         ))}
       </div>
       <div className={isAllTab ? "usage-charts is-single" : "usage-charts"}>
-        <UsageChart title="Usage by model" days={usage.days} series={chartSeries} getValue={getModelSpend} money />
+        <UsageChart title="Usage by model" days={usage.days} series={chartSeries} getValue={getModelSpend} money showProvider={isAllTab} />
         {!isAllTab && (
           <UsageChart title="Token breakdown" days={usage.days} series={tokenSeries} getValue={(day, item) => day[item.id]} />
         )}

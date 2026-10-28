@@ -1127,7 +1127,7 @@ export function SettingsDrawer({
               {chatTransferSection}
             </SettingsFixedPage>
             <SettingsScrollPage pageId="9" title={pageTitle("usage")} label="Usage settings">
-              {usagePage.mounted && <UsagePanel key={usagePage.session} models={models} />}
+              {usagePage.mounted && <UsagePanel key={usagePage.session} models={chatModels} />}
             </SettingsScrollPage>
           </div>
         </main>

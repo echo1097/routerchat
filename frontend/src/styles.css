@@ -510,100 +510,85 @@ textarea::placeholder {
   transition-duration: var(--modal-open-dur);
 }
 .settings-inline {
-  --settings-measure: 760px;
-  padding-inline: max(16px, calc((100% - var(--settings-measure)) / 2));
+  --settings-measure: 720px;
+  padding-inline: max(20px, calc((100% - var(--settings-measure)) / 2));
+}
+.settings-page-body {
+  padding-top: 64px;
+  padding-bottom: 32px;
+}
+@media (min-width: 1024px) {
+  .settings-page-body {
+    padding-top: 40px;
+  }
 }
 
-.settings-page .t-page,
-.settings-page-panel > header {
+.settings-page .t-page {
   scrollbar-gutter: stable both-edges;
 }
-.settings-page-panel > header {
+
+.settings-nav {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  z-index: 30;
+  width: 264px;
   overflow: hidden;
+  border-right: 1px solid rgba(255, 255, 255, 0.07);
+  background: #080808;
+  transform: translateX(-100%);
+  transition: transform 250ms var(--modal-ease);
 }
-
-.settings-close {
-  display: grid;
-  width: 40px;
-  height: 40px;
-  flex: 0 0 40px;
-  margin-right: -12px;
-  place-items: center;
+.settings-nav.is-open-mobile {
+  transform: none;
+}
+@media (min-width: 1024px) {
+  .settings-nav {
+    position: relative;
+    flex: 0 0 auto;
+    transform: none;
+    transition: width 250ms var(--modal-ease), border-color 250ms var(--modal-ease);
+  }
+  .settings-nav.is-collapsed {
+    width: 0;
+    border-right-color: transparent;
+  }
+}
+.settings-nav .cloud-search {
   border-radius: 999px;
-  color: #a3a3a3;
-  transition:
-    color 150ms ease-out,
-    scale 150ms ease-out;
-}
-.settings-close:hover {
-  color: #f5f5f5;
-}
-.settings-close:active {
-  scale: 0.92;
-}
-.settings-close:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.22);
-}
-
-.settings-status-line {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px;
-  margin-left: -10px;
-}
-.settings-status-item {
-  display: inline-flex;
-  min-width: 0;
-  max-width: 240px;
-  height: 30px;
-  align-items: center;
-  gap: 8px;
-  padding: 0 10px;
-  border-radius: 999px;
-  color: #a3a3a3;
-  font-size: 13px;
-  font-weight: 500;
-  white-space: nowrap;
-  transition:
-    background-color 150ms ease-out,
-    color 150ms ease-out,
-    scale 150ms ease-out;
-}
-.settings-status-item:hover {
   background: rgba(255, 255, 255, 0.06);
-  color: #f5f5f5;
+  box-shadow: none;
 }
-.settings-status-item:active {
-  scale: 0.97;
+.settings-nav .cloud-search:focus-within {
   background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
 }
-.settings-status-item:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.22);
+.settings-page .settings-floating-toggle {
+  background: #0e0e0e;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
-.settings-status-dot {
+.settings-page .settings-floating-toggle:hover {
+  background: #181818;
+}
+.settings-nav-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  background: rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 250ms var(--modal-ease);
+}
+.settings-nav-backdrop.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+.settings-nav-warning {
   width: 7px;
   height: 7px;
   flex: 0 0 7px;
-  margin-inline: 3.5px;
   border-radius: 999px;
-}
-.settings-status-dot.is-ok {
-  background: #6ee7b7;
-}
-.settings-status-dot.is-error {
   background: #fca5a5;
-}
-.settings-status-warning {
-  display: inline-flex;
-  height: 20px;
-  align-items: center;
-  padding: 0 7px;
-  border-radius: 999px;
-  background: rgba(239, 68, 68, 0.16);
-  color: #fca5a5;
-  font-size: 11px;
 }
 
 .scroll-edge-blur {
@@ -747,52 +732,57 @@ textarea::placeholder {
   scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
 }
 
-.settings-tabs {
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.settings-tabs::-webkit-scrollbar {
-  display: none;
-}
 .settings-page .t-tab {
   font-size: 13px;
   font-weight: 500;
 }
-.settings-tabs .t-tab {
-  flex: 1 0 auto;
-  padding: 4px 14px;
-}
 
+.settings-group-stack > .settings-group + .settings-group {
+  margin-top: 40px;
+}
 .settings-group {
   scroll-margin-top: 20px;
 }
 .settings-group-body {
   border-radius: 16px;
-  background: #141414;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
   transition:
     background-color 700ms var(--modal-ease),
     box-shadow 700ms var(--modal-ease);
 }
 .settings-group-body > .settings-row + .settings-row {
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  position: relative;
+}
+.settings-group-body > .settings-row + .settings-row::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 20px;
+  right: 20px;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
 }
 .settings-group.is-flash .settings-group-body {
-  background: #1a1a1a;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.24);
   transition-duration: 200ms;
 }
 .settings-group-body:has(> .settings-prompt-field:focus) {
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
 }
 @media (min-width: 640px) {
   .settings-group-split {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .settings-group-split > .settings-row + .settings-row {
-    border-top: 0;
-    border-left: 1px solid rgba(255, 255, 255, 0.06);
+  .settings-group-split > .settings-row + .settings-row::before {
+    top: 12px;
+    bottom: 12px;
+    left: 0;
+    right: auto;
+    width: 1px;
+    height: auto;
   }
 }
 .settings-prompt-field {
@@ -902,6 +892,9 @@ textarea::placeholder {
   transition-delay: var(--page-stagger);
 }
 
+.settings-page-slide .t-page {
+  transform: translateY(calc(10px * var(--page-exit-enabled)));
+}
 .t-clear {
   position: relative;
   overflow: hidden;
@@ -2360,7 +2353,9 @@ sticky header veil and reads as clipping through the blur */
   .t-resize { transition: none !important; }
   .t-modal { transition: none !important; }
   .settings-page,
-  .settings-page-panel { transition: none !important; }
+  .settings-page-panel,
+  .settings-nav,
+  .settings-nav-backdrop { transition: none !important; }
   .t-page-slide .t-page { transition: none !important; }
   .t-tabs-pill, .t-tab { transition: none !important; }
   .t-icon-swap .t-icon { transition: none !important; }

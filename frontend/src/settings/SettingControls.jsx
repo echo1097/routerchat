@@ -37,15 +37,15 @@ export function SettingRow({ title, description, children, stacked = false, comp
   return (
     <div
       className={cx(
-        "settings-row px-4",
-        compact ? "py-2" : "py-3.5",
+        "settings-row px-5",
+        compact ? "py-2.5" : "py-4",
         stacked ? "space-y-3" : "flex items-center justify-between gap-4",
       )}
     >
       <div className="min-w-0">
-        <h3 className="text-balance text-sm font-medium text-neutral-100">{title}</h3>
+        <h3 className="text-balance text-[14.5px] font-medium text-neutral-50">{title}</h3>
         {description && (
-          <p className="mt-0.5 text-pretty text-[12.5px] leading-5 text-[#8a8a8a]">{description}</p>
+          <p className="mt-1 text-pretty text-[13px] leading-5 text-[#8a8a8a]">{description}</p>
         )}
       </div>
       {children}
@@ -53,7 +53,7 @@ export function SettingRow({ title, description, children, stacked = false, comp
   );
 }
 
-export function SettingGroup({ id, title, trailing, note, flash = false, className, bodyClassName, children }) {
+export function SettingGroup({ id, title, trailing, note, className, bodyClassName, children }) {
   const titleId = `${id}-title`;
 
   return (
@@ -61,10 +61,10 @@ export function SettingGroup({ id, title, trailing, note, flash = false, classNa
       id={id}
       role="group"
       aria-labelledby={titleId}
-      className={cx("settings-group", flash && "is-flash", className)}
+      className={cx("settings-group", className)}
     >
-      <div className="mb-2 flex min-h-6 items-center justify-between gap-3 px-1">
-        <h2 id={titleId} className="text-[13px] font-semibold text-neutral-400">
+      <div className="mb-3 flex min-h-6 items-center justify-between gap-3">
+        <h2 id={titleId} className="text-[16px] font-semibold tracking-[-0.01em] text-neutral-100">
           {title}
         </h2>
         {trailing}
@@ -73,7 +73,7 @@ export function SettingGroup({ id, title, trailing, note, flash = false, classNa
         {children}
       </div>
       {note && (
-        <p className="mt-2 px-1 text-pretty text-xs leading-5 text-[#8a8a8a]">{note}</p>
+        <p className="mt-2.5 text-pretty text-[13px] leading-5 text-[#8a8a8a]">{note}</p>
       )}
     </div>
   );

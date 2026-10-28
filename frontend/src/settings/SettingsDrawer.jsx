@@ -20,7 +20,8 @@ import { useLingeringPage } from "./useLingeringPage.js";
 import { DEFAULT_PROVIDER } from "../providers/providerApi.js";
 import { PROVIDER_OPTIONS } from "../providers/providerOptions.js";
 import { SettingSwitch, SettingRow, SettingGroup, SettingChip } from "./SettingControls.jsx";
-import { SettingsStatusLine } from "./SettingsStatusLine.jsx";
+import { SettingsNav, SettingsNavToggle } from "./SettingsNav.jsx";
+import { SETTINGS_PAGES, pageVisibleInMode, searchSettings } from "./settingsPages.js";
 import { SettingsScrollPage, SettingsFixedPage } from "./SettingsScrollPage.jsx";
 import { ScrollEdgeBlur, useScrollEdges } from "../components/ScrollEdgeBlur.jsx";
 
@@ -31,27 +32,9 @@ const REASONING_EFFORTS = [
   { value: "max", label: "Max" },
 ];
 
-const SETTINGS_PAGES = [
-  { id: "provider", label: "Provider" },
-  { id: "models", label: "Models" },
-  { id: "generation", label: "Generation" },
-  { id: "chat", label: "Chat", mode: "chat" },
-  { id: "writing", label: "Writing", mode: "write" },
-  { id: "voice", label: "Voice" },
-  { id: "interface", label: "Interface" },
-  { id: "data", label: "Data" },
-  { id: "usage", label: "Usage" },
-];
-
 
 function rangeProgress(value, min, max) {
   return `${((Number(value) - min) / (max - min)) * 100}%`;
-}
-
-function pageVisibleInMode(page, chatMode) {
-  if (page.mode === "write") return chatMode === "write";
-  if (page.mode === "chat") return chatMode !== "write";
-  return true;
 }
 
 function prefersReducedMotion() {
@@ -121,7 +104,9 @@ export function SettingsDrawer({
   const [cloudSearch, setCloudSearch] = useState("");
   const [activePage, setActivePage] = useState("provider");
   const [jump, setJump] = useState({ target: "", count: 0 });
-  const [flashGroupId, setFlashGroupId] = useState("");
+  const [navQuery, setNavQuery] = useState("");
+  const [navCollapsed, setNavCollapsed] = useState(false);
+  const [navOpenMobile, setNavOpenMobile] = useState(false);
   const fileInputRef = useRef(null);
   const chatListRef = useRef(null);
   const modelSearchWrapRef = useRef(null);
@@ -197,56 +182,14 @@ export function SettingsDrawer({
     ? `${formatTokens(lorebookModelContextLimit)} context`
     : "";
 
-  const privacyLabel = zdrMode ? "Zero retention" : privacyMode ? "No training" : "Standard privacy";
-  const cachingLabel = disablePromptCaching ? "Cache off" : hourPromptCache ? "1 hour cache" : "5 minute cache";
-  const reasoningLabel = canThink
-    ? `${REASONING_EFFORTS.find((effort) => effort.value === reasoningEffort)?.label || "On"} reasoning`
-    : "No reasoning";
+  const searchResults = useMemo(
+    () => searchSettings(navQuery, { pages: visibleSettingsPages, capabilities }),
+    [capabilities, navQuery, visibleSettingsPages],
+  );
 
-  const statusItems = [
-    {
-      id: "provider",
-      label: "Provider",
-      value: providerName,
-      status: keyConnected ? "key saved" : "no key saved",
-      tone: keyConnected ? "ok" : "error",
-      warning: keyConnected ? "" : "No key",
-      page: "provider",
-      target: "settings-group-account",
-    },
-    {
-      id: "model",
-      label: "Model",
-      value: settings.model ? selectedModelOutputName : "None",
-      page: "models",
-      target: "",
-    },
-    {
-      id: "reasoning",
-      label: "Reasoning",
-      value: reasoningLabel,
-      page: "generation",
-      target: "settings-group-reasoning",
-    },
-    capabilities.routingOptions
-      ? {
-          id: "privacy",
-          label: "Privacy",
-          value: privacyLabel,
-          page: "provider",
-          target: "settings-group-privacy",
-        }
-      : {
-          id: "caching",
-          label: "Prompt cache",
-          value: cachingLabel,
-          page: "provider",
-          target: "settings-group-caching",
-        },
-  ].map((item) => ({
-    ...item,
-    pageLabel: SETTINGS_PAGES.find((page) => page.id === item.page)?.label || "",
-  }));
+  function pageTitle(pageId) {
+    return SETTINGS_PAGES.find((page) => page.id === pageId)?.label || "";
+  }
 
   const chatListEdges = useScrollEdges(chatListRef, [filteredCloudChats.length, activePage]);
 
@@ -380,42 +323,53 @@ export function SettingsDrawer({
 
     function handleKeyDown(event) {
       if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (navOpenMobile) {
+        setNavOpenMobile(false);
+        return;
+      }
       onClose();
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [open, onClose]);
+  }, [open, onClose, navOpenMobile]);
+
+  useEffect(() => {
+    if (!open) setNavOpenMobile(false);
+  }, [open]);
 
   useEffect(() => {
     if (!jump.target) return undefined;
 
-    const frame = requestAnimationFrame(() => {
-      const target = document.getElementById(jump.target);
-      const scroller = target?.closest(".settings-scroll-page");
-      if (!target || !scroller) return;
+    const target = document.getElementById(jump.target);
+    if (!target) return undefined;
 
-      scroller.scrollTo({
+    const frame = requestAnimationFrame(() => {
+      const scroller = target.closest(".settings-scroll-page");
+      scroller?.scrollTo({
         top: Math.max(0, target.offsetTop - 20),
         behavior: prefersReducedMotion() ? "auto" : "smooth",
       });
-      setFlashGroupId(jump.target);
+      target.classList.add("is-flash");
     });
-    const timer = window.setTimeout(() => setFlashGroupId(""), 1400);
+    const timer = window.setTimeout(() => target.classList.remove("is-flash"), 1400);
 
     return () => {
       cancelAnimationFrame(frame);
       window.clearTimeout(timer);
+      target.classList.remove("is-flash");
     };
   }, [jump]);
 
   function choosePage(pageId) {
     setActivePage(pageId);
+    setNavOpenMobile(false);
   }
 
-  function jumpTo(pageId, targetId) {
-    setActivePage(pageId);
-    setJump((current) => ({ target: targetId || "", count: current.count + 1 }));
+  function chooseSearchResult(result) {
+    setActivePage(result.page);
+    setJump((current) => ({ target: result.target || "", count: current.count + 1 }));
+    setNavOpenMobile(false);
   }
 
   async function exportChats() {
@@ -484,7 +438,6 @@ export function SettingsDrawer({
     <SettingGroup
       id="settings-group-account"
       title="Account"
-      flash={flashGroupId === "settings-group-account"}
     >
       <SettingRow title="Provider" description="Where your messages are sent" stacked>
         <SlidingTabs
@@ -497,9 +450,9 @@ export function SettingsDrawer({
           className="provider-tabs settings-inner-tabs flex w-full"
         />
       </SettingRow>
-      <div className="settings-row space-y-3 px-4 py-3.5">
+      <div className="settings-row space-y-3 px-5 py-4">
         <div className="flex items-center justify-between gap-3">
-          <h3 className="text-balance text-sm font-medium text-neutral-100">{providerName} key</h3>
+          <h3 className="text-balance text-[14.5px] font-medium text-neutral-50">{providerName} key</h3>
           {keyStatusPill}
         </div>
         <form
@@ -533,7 +486,6 @@ export function SettingsDrawer({
     <SettingGroup
       id="settings-group-caching"
       title="Prompt caching"
-      flash={flashGroupId === "settings-group-caching"}
     >
       <SettingRow
         title="Disable prompt caching"
@@ -581,7 +533,6 @@ export function SettingsDrawer({
     <SettingGroup
       id="settings-group-privacy"
       title="Privacy"
-      flash={flashGroupId === "settings-group-privacy"}
     >
       <SettingRow
         title="Privacy mode"
@@ -640,7 +591,7 @@ export function SettingsDrawer({
 
   const modelsSection = (
     <section className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-5 min-w-0 px-1">
+      <div className="mb-5 min-w-0">
         <p className="mb-1 text-[13px] font-semibold text-neutral-400">Current model</p>
         <div className="flex min-w-0 items-center gap-2">
           <h2 className="truncate text-lg font-semibold tracking-[-0.01em] text-neutral-50">
@@ -701,7 +652,7 @@ export function SettingsDrawer({
         searchWrapRef={modelSearchWrapRef}
         searchInputRef={modelSearchInputRef}
         note={modelLocked && (
-          <p className="mt-2 px-1 text-pretty text-xs leading-5 text-[#8a8a8a]">
+          <p className="mt-2 text-pretty text-xs leading-5 text-[#8a8a8a]">
             Model selection is locked after the first message in a chat.
           </p>
         )}
@@ -713,7 +664,6 @@ export function SettingsDrawer({
     <SettingGroup
       id="settings-group-reasoning"
       title="Reasoning"
-      flash={flashGroupId === "settings-group-reasoning"}
     >
       <SettingRow
         title="Reasoning effort"
@@ -743,11 +693,11 @@ export function SettingsDrawer({
 
   const outputGroup = (
     <SettingGroup id="settings-group-output" title="Output">
-      <div className="settings-row px-4 py-3.5">
+      <div className="settings-row px-5 py-4">
         <div className="mb-3 flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <h3 className="text-sm font-medium text-neutral-100">Temperature</h3>
-            <p className="mt-0.5 text-pretty text-[12.5px] leading-5 text-[#8a8a8a]">
+            <h3 className="text-[14.5px] font-medium text-neutral-50">Temperature</h3>
+            <p className="mt-1 text-pretty text-[13px] leading-5 text-[#8a8a8a]">
               {temperatureLocked
                 ? `${selectedModelOutputName} picks its own temperature`
                 : "Low is predictable, high is more creative"}
@@ -772,11 +722,11 @@ export function SettingsDrawer({
           className={cx("settings-range", temperatureLocked && "cursor-not-allowed opacity-40")}
         />
       </div>
-      <div className="settings-row px-4 py-3.5">
+      <div className="settings-row px-5 py-4">
         <div className="mb-3 flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <h3 className="text-sm font-medium text-neutral-100">Max output tokens</h3>
-            <p className="mt-0.5 truncate text-[12.5px] leading-5 tabular-nums text-[#8a8a8a]">
+            <h3 className="text-[14.5px] font-medium text-neutral-50">Max output tokens</h3>
+            <p className="mt-1 truncate text-[13px] leading-5 tabular-nums text-[#8a8a8a]">
               {selectedModelContext
                 ? `${selectedModelOutputName} has ${selectedModelContext}`
                 : selectedModelOutputName}
@@ -884,7 +834,7 @@ export function SettingsDrawer({
         placeholder="No chat system prompt"
         aria-label="Chat system prompt"
         data-1p-ignore="true"
-        className="settings-prompt-field block w-full resize-none overflow-y-auto rounded-2xl bg-transparent px-4 py-3.5 text-sm leading-6 text-neutral-100 outline-none placeholder:text-neutral-500"
+        className="settings-prompt-field block w-full resize-none overflow-y-auto rounded-2xl bg-transparent px-5 py-4 text-sm leading-6 text-neutral-100 outline-none placeholder:text-neutral-500"
       />
     </SettingGroup>
   );
@@ -918,7 +868,7 @@ export function SettingsDrawer({
         </SettingGroup>
       </div>
 
-      <div className="mb-3 min-w-0 px-1">
+      <div className="mb-3 min-w-0">
         <h2 className="text-[13px] font-semibold text-neutral-400">Lorebook model</h2>
         <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
           <span className="mr-1 truncate text-sm font-medium text-neutral-100">
@@ -1089,92 +1039,104 @@ export function SettingsDrawer({
         aria-modal="true"
         aria-label={activePageLabel}
         aria-hidden={!open}
-        className="settings-page-panel flex h-full min-h-0 w-full flex-col text-neutral-100"
+        className="settings-page-panel relative flex h-full min-h-0 w-full text-neutral-100"
       >
-        <header className="shrink-0 pt-4 md:pt-8">
-          <div className="settings-inline">
-            <div className="flex h-10 items-center justify-between gap-4">
-              <h1 className="text-[22px] font-[650] leading-tight tracking-[-0.012em] text-neutral-50">
-                Settings
-              </h1>
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label="Close settings"
-                title="Close settings"
-                className="settings-close"
-              >
-                <X size={28} strokeWidth={2} aria-hidden="true" className="-translate-y-px" />
-              </button>
-            </div>
-            <div className="mt-2">
-              <SettingsStatusLine items={statusItems} onJump={jumpTo} />
-            </div>
-            <div className="mt-4 md:mt-5">
-              <SlidingTabs
-                options={visibleSettingsPages}
-                value={activePage}
-                onChange={choosePage}
-                getValue={(page) => page.id}
-                getLabel={(page) => page.label}
-                ariaLabel="Settings sections"
-                className="settings-tabs flex w-full"
-              />
-            </div>
-          </div>
-        </header>
-
         <div
-          className="settings-page-slide t-page-slide min-h-0 flex-1"
-          data-page={String(activePageIndex)}
+          aria-hidden="true"
+          onClick={() => setNavOpenMobile(false)}
+          className={cx("settings-nav-backdrop lg:hidden", navOpenMobile && "is-open")}
+        />
+
+        <aside
+          className={cx(
+            "settings-nav",
+            navOpenMobile && "is-open-mobile",
+            navCollapsed && "is-collapsed",
+          )}
         >
-          <SettingsScrollPage pageId="1" label="Provider settings" active={activePageIndex === 1}>
-            <div className="space-y-7">
-              {accountGroup}
-              {cachingGroup}
-              {capabilities.routingOptions && routingGroup}
-              {capabilities.routingOptions && privacyGroup}
-            </div>
-          </SettingsScrollPage>
-          <SettingsFixedPage pageId="2" label="Model settings">
-            {modelsSection}
-          </SettingsFixedPage>
-          <SettingsScrollPage pageId="3" label="Generation settings" active={activePageIndex === 3}>
-            <div className="space-y-7">
-              {reasoningGroup}
-              {outputGroup}
-            </div>
-          </SettingsScrollPage>
-          <SettingsScrollPage pageId="4" label="Chat settings" active={activePageIndex === 4}>
-            <div className="space-y-7">
-              {systemPromptGroup}
-              {chatsGroup}
-            </div>
-          </SettingsScrollPage>
-          <SettingsFixedPage pageId="5" label="Lorebook settings">
-            {lorebookSection}
-          </SettingsFixedPage>
-          <SettingsFixedPage pageId="6" label="Transcription settings">
-            {!provider.capabilities?.transcription && (
-              <p className="mb-4 rounded-2xl bg-white/[0.04] px-4 py-3 text-pretty text-[12.5px] leading-5 text-neutral-400">
-                {provider.name} has no voice typing of its own. Voice input uses OpenRouter, so it needs an OpenRouter key saved under Provider.
-              </p>
+          <SettingsNav
+            pages={visibleSettingsPages}
+            activePage={activePage}
+            warnings={{ provider: keyConnected ? "" : "No key saved" }}
+            query={navQuery}
+            onQueryChange={setNavQuery}
+            results={searchResults}
+            onSelectPage={choosePage}
+            onSelectResult={chooseSearchResult}
+            onBack={onClose}
+            onCollapse={() => setNavCollapsed(true)}
+            onCloseMobile={() => setNavOpenMobile(false)}
+          />
+        </aside>
+
+        <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+          <div className="absolute left-3 top-3.5 z-10">
+            <SettingsNavToggle
+              label="Open settings menu"
+              onClick={() => setNavOpenMobile(true)}
+              className="settings-floating-toggle lg:hidden"
+            />
+            {navCollapsed && (
+              <SettingsNavToggle
+                label="Expand settings menu"
+                onClick={() => setNavCollapsed(false)}
+                className="settings-floating-toggle hidden lg:grid"
+              />
             )}
-            {voicePage.mounted && <TranscriptionSettings key={voicePage.session} />}
-          </SettingsFixedPage>
-          <SettingsScrollPage pageId="7" label="Interface settings" active={activePageIndex === 7}>
-            <div className="space-y-7">
-              {displayGroup}
-              {updatesGroup}
-            </div>
-          </SettingsScrollPage>
-          <SettingsFixedPage pageId="8" label="Data settings">
-            {chatTransferSection}
-          </SettingsFixedPage>
-          <SettingsScrollPage pageId="9" label="Usage settings" active={activePageIndex === 9}>
-            {usagePage.mounted && <UsagePanel key={usagePage.session} models={models} />}
-          </SettingsScrollPage>
-        </div>
+          </div>
+
+          <div
+            className="settings-page-slide t-page-slide min-h-0 flex-1"
+            data-page={String(activePageIndex)}
+          >
+            <SettingsScrollPage pageId="1" title={pageTitle("provider")} label="Provider settings" active={activePageIndex === 1}>
+              <div className="settings-group-stack">
+                {accountGroup}
+                {cachingGroup}
+                {capabilities.routingOptions && routingGroup}
+                {capabilities.routingOptions && privacyGroup}
+              </div>
+            </SettingsScrollPage>
+            <SettingsFixedPage pageId="2" title={pageTitle("models")} label="Model settings">
+              {modelsSection}
+            </SettingsFixedPage>
+            <SettingsScrollPage pageId="3" title={pageTitle("generation")} label="Generation settings" active={activePageIndex === 3}>
+              <div className="settings-group-stack">
+                {reasoningGroup}
+                {outputGroup}
+              </div>
+            </SettingsScrollPage>
+            <SettingsScrollPage pageId="4" title={pageTitle("chat")} label="Chat settings" active={activePageIndex === 4}>
+              <div className="settings-group-stack">
+                {systemPromptGroup}
+                {chatsGroup}
+              </div>
+            </SettingsScrollPage>
+            <SettingsFixedPage pageId="5" title={pageTitle("writing")} label="Lorebook settings">
+              {lorebookSection}
+            </SettingsFixedPage>
+            <SettingsFixedPage pageId="6" title={pageTitle("voice")} label="Transcription settings">
+              {!provider.capabilities?.transcription && (
+                <p className="mb-4 rounded-2xl bg-white/[0.04] px-4 py-3 text-pretty text-[12.5px] leading-5 text-neutral-400">
+                  {provider.name} has no voice typing of its own. Voice input uses OpenRouter, so it needs an OpenRouter key saved under Provider.
+                </p>
+              )}
+              {voicePage.mounted && <TranscriptionSettings key={voicePage.session} />}
+            </SettingsFixedPage>
+            <SettingsScrollPage pageId="7" title={pageTitle("interface")} label="Interface settings" active={activePageIndex === 7}>
+              <div className="settings-group-stack">
+                {displayGroup}
+                {updatesGroup}
+              </div>
+            </SettingsScrollPage>
+            <SettingsFixedPage pageId="8" title={pageTitle("data")} label="Data settings">
+              {chatTransferSection}
+            </SettingsFixedPage>
+            <SettingsScrollPage pageId="9" title={pageTitle("usage")} label="Usage settings" active={activePageIndex === 9}>
+              {usagePage.mounted && <UsagePanel key={usagePage.session} models={models} />}
+            </SettingsScrollPage>
+          </div>
+        </main>
       </section>
     </div>
   );

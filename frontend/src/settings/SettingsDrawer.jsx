@@ -636,7 +636,7 @@ export function SettingsDrawer({
         </div>
       )}
 
-      <div className="mb-5 shrink-0">{modelFiltersGroup}</div>
+      <div className="mb-3 shrink-0">{modelFiltersGroup}</div>
 
       <ModelPicker
         models={filteredModels}

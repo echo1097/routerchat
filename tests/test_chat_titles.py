@@ -76,6 +76,9 @@ def fakeClientFor(titleResponse, calls):
 
 class ChatTitleTest(unittest.TestCase):
     def setUp(self):
+        modelLookup = patch("backend.providers.openrouter.models.lookUpMissingModel", return_value=None)
+        modelLookup.start()
+        self.addCleanup(modelLookup.stop)
         self.tempDir = tempfile.TemporaryDirectory()
         self.originalDataDir = paths.DATA_DIR
         self.originalDbPath = paths.DB_PATH

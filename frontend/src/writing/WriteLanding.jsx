@@ -61,41 +61,60 @@ function ResumeStory({ story, disabled, onOpenStory }) {
   const title = story.title || "Untitled story";
 
   return (
-    <div className="write-landing-in mt-10 w-full" style={enterStyle(1)}>
-      <div className="flex items-center justify-between gap-4">
-        <div className="min-w-0">
-          <h2 className="truncate text-[22px] font-semibold leading-tight tracking-[-0.012em] text-neutral-50">
-            {title}
-          </h2>
-          {(metaLine || editedAgo) && (
-            <p className="mt-1.5 text-[13px] tabular-nums text-neutral-400">
-              {metaLine}
-              {editedAgo && (
-                <span className="block sm:inline">
-                  {metaLine && <span className="hidden sm:inline"> · </span>}
-                  {editedAgo}
-                </span>
-              )}
-            </p>
-          )}
-        </div>
-        <button
-          type="button"
-          disabled={disabled}
-          aria-label={`Continue ${title}`}
-          onClick={() => onOpenStory(story.id, resume?.chapter_id || null)}
-          className={cx(primaryPill, "shrink-0", CONTROL_MOTION)}
-        >
-          Continue
-        </button>
-      </div>
-      {lastParagraph ? (
-        <ExcerptWindow text={lastParagraph} className="mt-5" />
-      ) : (
-        <p className="mt-5 text-[14px] leading-6 text-neutral-400">
-          {story.synopsis?.trim() || "Nothing written yet. The first line is yours."}
-        </p>
+    <div
+      className={cx(
+        "write-landing-in group relative mt-10 w-full rounded-2xl bg-white/[0.03] p-6 has-[:hover:enabled]:bg-white/[0.05]",
+        CONTROL_MOTION,
       )}
+      style={enterStyle(1)}
+    >
+      <button
+        type="button"
+        disabled={disabled}
+        aria-label={`Continue ${title}`}
+        onClick={() => onOpenStory(story.id, resume?.chapter_id || null)}
+        className="absolute inset-0 rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 disabled:cursor-not-allowed"
+      />
+
+      <div className="pointer-events-none relative">
+        <h2 className="truncate text-[22px] font-semibold leading-tight tracking-[-0.012em] text-neutral-50">
+          {title}
+        </h2>
+        {(metaLine || editedAgo) && (
+          <p className="mt-1.5 text-[13px] tabular-nums text-neutral-400">
+            {metaLine}
+            {editedAgo && (
+              <span className="block sm:inline">
+                {metaLine && <span className="hidden sm:inline"> · </span>}
+                {editedAgo}
+              </span>
+            )}
+          </p>
+        )}
+
+        {lastParagraph ? (
+          <ExcerptWindow text={lastParagraph} className="mt-5" />
+        ) : (
+          <p className="mt-5 text-[14px] leading-6 text-neutral-400">
+            {story.synopsis?.trim() || "Nothing written yet. The first line is yours."}
+          </p>
+        )}
+
+        <span
+          className={cx(
+            "mt-5 inline-flex items-center gap-1.5 text-[14px] font-medium text-neutral-400 group-has-[:hover:enabled]:text-white",
+            CONTROL_MOTION,
+          )}
+        >
+          Continue writing
+          <span
+            aria-hidden="true"
+            className={cx("group-has-[:hover:enabled]:translate-x-0.5", CONTROL_MOTION)}
+          >
+            →
+          </span>
+        </span>
+      </div>
     </div>
   );
 }

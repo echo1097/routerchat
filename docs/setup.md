@@ -30,7 +30,7 @@ curl -fsSL https://echo1097.github.io/get-routerchat/install.sh | sh
 irm https://echo1097.github.io/get-routerchat/install.ps1 | iex
 ```
 
-RouterChat then opens at `http://127.0.0.1:8000`. Open settings, go to **API**, pick **OpenRouter** or **Anthropic** under **Provider**, paste that provider's key, and save.
+RouterChat then opens at `http://127.0.0.1:8000`. Open settings, go to **Provider**, pick **OpenRouter** or **Anthropic**, paste that provider's key, and save.
 
 ---
 
@@ -94,7 +94,7 @@ RouterChat has two modes, switched with the toggle at the top of the left sideba
 
 **Chat** works like any chat app. The whole conversation stays on screen.
 
-**Write** is a book editor. You create a story with chapters, describe what should happen, and the AI writes it onto the page. **New Chapter** writes a fresh one, **Edit Chapter** rewrites the current one.
+**Write** is a book editor. You create a story with chapters, describe what should happen, and the AI writes it onto the page. **New Chapter** writes a fresh one, **Edit Chapter** rewrites the current one. The Write home shows your most recent story with its last paragraph, so clicking it picks up right where you left off.
 
 Write mode also has a **Lorebook**, which automatically tracks your characters, places, and events so the AI remembers them fifty chapters later, and **Brainstorm**, for exploring ideas without changing the story. Both are in the menu next to the prompt box.
 
@@ -102,7 +102,7 @@ Write mode also has a **Lorebook**, which automatically tracks your characters, 
 
 ### Providers
 
-RouterChat can talk to **OpenRouter** or **Anthropic** (Claude). Pick one under **Provider** on the **API** settings page. Each has its own key, and switching does not remove the other one.
+RouterChat can talk to **OpenRouter** or **Anthropic** (Claude). Pick one on the **Provider** settings page. Each has its own key, and switching does not remove the other one. A green dot next to a provider means its key is saved.
 
 - New chats and stories use the provider that is selected at the time.
 - A chat keeps the provider it was started with.
@@ -125,22 +125,24 @@ RouterChat can talk to **OpenRouter** or **Anthropic** (Claude). Pick one under 
 
 ### Settings
 
-Click the model name next to the prompt box, then **Settings**. Each mode shows nine pages:
+Click the model name next to the prompt box, then **Settings**. Settings opens as a full page with a sidebar of pages on the left. Use **Back to app** at the top of the sidebar or press **Escape** to leave. The search box in the sidebar finds a setting by name and takes you to it. On a narrow window, the sidebar hides behind the menu button in the top left corner.
 
-- **Chat:** API, Models, Transcription, System, Updates, UI, Chats, Advanced, Usage
-- **Write:** API, Models, Transcription, Updates, UI, Chats, Advanced, Lorebook, Usage
+The pages are grouped like this:
+
+- **Models:** Provider, Models, Generation
+- **App:** Chat (Chat mode only) or Writing (Write mode only), Dictation, Interface
+- **Data:** Data, Usage
 
 | Page | What it does |
 | --- | --- |
-| **API** | Provider, API key, chat naming, prompt caching, model filtering, and for OpenRouter: Turbo, Cheapest first, Privacy mode, Zero data retention |
-| **Models** | Search, pick, and set a default model |
-| **Transcription** | OpenRouter model used for voice input |
-| **System** | Instruction sent before every Chat message (Write uses a per-story system prompt instead) |
-| **Updates** | Turn the check for new releases on or off. When a newer version is out, a dot appears next to the version number in the sidebar. Nothing is installed automatically |
-| **UI** | Navigation bar and smooth text |
-| **Chats** | Export or import chats as files |
-| **Advanced** | Reasoning effort, temperature, max response length. Some Claude models pick their own temperature, shown as **Auto** |
-| **Lorebook** | Model used for a story's lorebook work (Write only) |
+| **Provider** | Pick OpenRouter or Anthropic and save its API key, plus prompt caching. For OpenRouter also Turbo, Cheapest first, Privacy mode, and Zero data retention. A red dot on Provider in the sidebar means no key is saved |
+| **Models** | Your current model with its price and context size, **Set as default**, and the model picker. The picker shows each model's price, **Cached read** price, and context size, and can hide batch models (and free models on OpenRouter) |
+| **Generation** | Reasoning effort, temperature, and max output tokens. Some Claude models pick their own temperature, shown as **Auto** |
+| **Chat** | The system prompt sent before every message, and automatic chat names (Chat only; Write uses a per-story system prompt instead) |
+| **Writing** | Retrying skipped lorebook edits, and the model used for a story's lorebook work (Write only) |
+| **Dictation** | The OpenRouter model used for voice input. Each model shows its price, usually per hour of audio |
+| **Interface** | Navigation bar, smooth text, and the check for new releases. When a newer version is out, a dot appears next to the version number in the sidebar. Nothing is installed automatically |
+| **Data** | Export or import chats as files |
 | **Usage** | Last 7 days of spending, requests, and tokens, plus lifetime totals per model, with tabs for all providers, OpenRouter, and Anthropic |
 
 ---
@@ -150,7 +152,7 @@ Click the model name next to the prompt box, then **Settings**. Each mode shows 
 | Problem | Fix |
 | --- | --- |
 | **"Port 8000 is used by another program"** | Another program, often another RouterChat, is using it. Close it and start again. |
-| **Models won't load** | The key for the selected provider is missing or invalid. Check which provider is selected on the API page and re-save its key. |
+| **Models won't load** | The key for the selected provider is missing or invalid. Check which provider is selected on the Provider page and re-save its key. |
 | **Web search or the microphone is missing** | Web search only works with OpenRouter. Voice input needs a saved OpenRouter key, even if you chat with Anthropic. |
 | **Your chats vanished** | Packaged installs store them in `user-data/routerchat.sqlite3`, developer installs in `data/routerchat.sqlite3`. Don't delete or share that file. |
 | **Everything is broken** | Rerun the installer to repair. If that fails, follow [SUPPORT.md](../SUPPORT.md) and share only sanitized logs. |

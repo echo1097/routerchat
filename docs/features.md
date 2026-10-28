@@ -4,7 +4,7 @@
     - macOS and Windows
 - API providers
     - Use OpenRouter or Anthropic (Claude), each with its own API key
-    - Switch providers in API settings
+    - Switch providers on the Provider settings page, with a dot showing which providers have a saved key
     - Chats and stories remember the provider they were started with, and stories can be moved to another one
     - Claude thinking, with effort limited to what each model supports
     - Files Anthropic would reject are blocked before sending
@@ -16,28 +16,31 @@
     - In-app changelog
     - Update check that shows a dot next to the version number when a new release is out, and can be turned off
     - Feedback button
+    - Full page settings with a sidebar, grouped pages, and a search box that jumps to any setting
 - Writing Mode improvements
     - Brainstorming canvas with branching ideas, copy buttons, and prompt regeneration
     - Chapter editor with a formatting toolbar
     - Chapter history
     - Remove chapters from the context
     - Import and export full stories, including chapters and lorebooks
+    - Write home that picks up where you left off, showing your latest story and its last paragraph
 - Chat Mode improvements
     - Web search with sources and citations
-    - Image, PDF, text, and code attachments, with drag and drop
+    - Image, PDF, and any text or code file as an attachment, with drag and drop
     - Folders, pinned chats, and chat search
     - Temporary chats
     - Automatic chat names
     - Chat import and export
     - Edit prompts, regenerate replies, and see token usage and cost for each response
     - Copy buttons on prompts
+    - Code blocks with syntax colors, language labels, and a copy button
 - Memory for Write mode
     - Lorebook entries for characters, locations, items, events, notes, chapter summaries, and a timeline
     - Write entries yourself or let the model generate them, with automatic or manual lorebook updates
     - Repair tools for the lorebook and timeline
 - Voice input
     - Record and transcribe speech in Chat, Write, and Brainstorm
-    - Choose which transcription model to use
+    - Choose which transcription model to use, with each model's price shown
 - Usage tracking
     - Spending, request counts, and token usage for the last 7 days
     - Token breakdown split into input, cached reads, output, and reasoning
@@ -48,8 +51,9 @@
     - On by default in Chat and Write modes to save on repeat tokens, with OpenRouter and Anthropic
     - Cache is kept for 1 hour by default on models that support it, or 5 minutes if you turn that off
     - Write mode keeps the cache when you move to a new chapter
-    - Can be turned off in API settings
+    - Can be turned off on the Provider settings page
 - Model settings
+    - Model picker shows price, cached read price, and context size for each model
     - Option to hide batch models
     - Reasoning level shown on the model button
     - Provider preference for fastest or lowest price (OpenRouter)

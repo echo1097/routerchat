@@ -91,7 +91,7 @@ python3 -m backend.local_access open-browser \
   --base-url http://127.0.0.1:8000
 ```
 
-**10. Add your API key.** In settings, go to **API**, pick **OpenRouter** or **Anthropic** under **Provider**, paste that provider's key, and save. Keys are saved to `.env` in the project folder as `OPENROUTER_API_KEY` and `ANTHROPIC_API_KEY`. A key saved in `.env` wins over one exported in your terminal.
+**10. Add your API key.** In settings, go to **Provider**, pick **OpenRouter** or **Anthropic**, paste that provider's key, and save. Keys are saved to `.env` in the project folder as `OPENROUTER_API_KEY` and `ANTHROPIC_API_KEY`. A key saved in `.env` wins over one exported in your terminal.
 
 ### On Windows
 

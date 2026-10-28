@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { ModelPicker } from "../settings/ModelPicker.jsx";
 import { searchModels } from "../settings/modelSearch.js";
+import { transcriptionPrice } from "./transcriptionPrice.js";
 
 export function TranscriptionSettings() {
   const [models, setModels] = useState([]);
@@ -54,17 +55,22 @@ export function TranscriptionSettings() {
       </div>
       <ModelPicker
         priceHeader="Price"
-        renderPrice={(model) => (
-          <a
-            href={`https://openrouter.ai/${model.id.split("/").map(encodeURIComponent).join("/")}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label={`View pricing for ${model.name || model.id}`}
-            className="whitespace-nowrap underline underline-offset-2 hover:text-neutral-200"
-          >
-            View pricing
-          </a>
-        )}
+        renderPrice={(model) => {
+          const price = transcriptionPrice(model);
+          if (price) return <span title={price.title}>{price.label}</span>;
+
+          return (
+            <a
+              href={`https://openrouter.ai/${model.id.split("/").map(encodeURIComponent).join("/")}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`View pricing for ${model.name || model.id}`}
+              className="whitespace-nowrap underline underline-offset-2 hover:text-neutral-200"
+            >
+              View pricing
+            </a>
+          );
+        }}
         models={filteredModels}
         query={query}
         onQueryChange={setQuery}

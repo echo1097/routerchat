@@ -28,7 +28,7 @@ export function ModelPicker({
   const listRef = useRef(null);
   const queryInputRef = useRef(null);
   const showContext = !renderPrice;
-  const columns = showContext ? "grid-cols-[minmax(0,1fr)_96px_64px]" : "grid-cols-[minmax(0,1fr)_104px]";
+  const columns = showContext ? "grid-cols-[minmax(0,1fr)_96px_64px]" : "grid-cols-[minmax(0,1fr)_136px]";
   const edges = useScrollEdges(listRef, [models.length, activePage, loading]);
 
   function modelRowValues(model) {

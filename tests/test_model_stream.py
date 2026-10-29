@@ -2,6 +2,7 @@ import asyncio
 import unittest
 from unittest.mock import patch
 
+from backend.providers.errorKinds import providerError
 from backend.providers.modelStream import ModelStream
 
 
@@ -77,10 +78,11 @@ class ModelStreamTest(unittest.TestCase):
     def test_an_error_event_is_recorded_not_raised(self):
         stream, seen = runStream([
             {"type": "open", "generationId": "gen-open"},
-            {"type": "error", "message": "provider said no", "generationId": "gen-open"},
+            {"type": "error", "error": providerError("serverError", "OpenRouter"), "generationId": "gen-open"},
         ])
 
-        self.assertEqual(stream.errorMessage, "provider said no")
+        self.assertEqual(stream.error.kind, "serverError")
+        self.assertIn("OpenRouter returned an error", stream.errorMessage)
         self.assertFalse(stream.receivedDone)
         self.assertEqual(seen, [])
         self.assertEqual(stream.generationId, "gen-open")

@@ -6,6 +6,7 @@ import httpx
 from fastapi import HTTPException
 
 from backend.providers.base import Capabilities, ChatOptions, ChatRequest, Provider
+from backend.providers.errorKinds import ProviderError
 from backend.providers.openrouter import apiKey as keyStore
 from backend.providers.openrouter import models as modelStore
 from backend.providers.openrouter import anthropicRules, requestOptions, usage
@@ -14,7 +15,7 @@ from backend.providers.openrouter.client import (
     OPENROUTER_TIMEOUT,
     headersForKey,
 )
-from backend.providers.openrouter.errors import openrouterErrorMessage
+from backend.providers.openrouter.errors import openrouterError, streamError
 from backend.webSearch.sources import normalizeSources
 
 
@@ -126,6 +127,9 @@ class OpenRouterProvider(Provider):
         return headers.get("X-Generation-Id")
 
     def parseStreamChunk(self, chunk: dict[str, Any]) -> dict[str, Any]:
+        if isinstance(chunk.get("error"), dict):
+            return {"event": "error", "error": streamError(chunk["error"])}
+
         parsed: dict[str, Any] = {
             "id": chunk.get("id"),
             "usage": usage.normalizeUsage(chunk.get("usage")),
@@ -161,8 +165,8 @@ class OpenRouterProvider(Provider):
             return None
         return (choices[0].get("message") or {}).get("content")
 
-    def errorMessage(self, statusCode: int, responseText: str) -> str:
-        return openrouterErrorMessage(statusCode, responseText)
+    def providerError(self, statusCode: int, responseText: str) -> ProviderError:
+        return openrouterError(statusCode, responseText)
 
     async def fetchFinalUsage(self, apiKey: str, generationId: str) -> dict[str, Any] | None:
         return await usage.fetchGenerationUsage(apiKey, generationId)

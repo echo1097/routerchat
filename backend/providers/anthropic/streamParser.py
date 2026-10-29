@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.providers.anthropic.errors import refusalMessage, streamErrorMessage
+from backend.providers.anthropic.errors import refusalError, streamError
 from backend.providers.anthropic.pricing import costFor
 
 FINISH_REASONS = {
@@ -78,7 +78,7 @@ class AnthropicStreamParser:
         if eventType == "message_stop":
             return [{"event": "done"}]
         if eventType == "error":
-            return [{"event": "error", "message": streamErrorMessage(chunk)}]
+            return [{"event": "error", "error": streamError(chunk)}]
         return []
 
     def messageStart(self, chunk: dict[str, Any]) -> list[dict[str, Any]]:
@@ -114,7 +114,7 @@ class AnthropicStreamParser:
             events.append(usageChunk)
 
         if stopReason == "refusal":
-            events.append({"event": "error", "message": refusalMessage(delta.get("stop_details"))})
+            events.append({"event": "error", "error": refusalError(delta.get("stop_details"))})
             return events
 
         if stopReason:

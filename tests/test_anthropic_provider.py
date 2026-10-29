@@ -130,6 +130,14 @@ class StreamParserTest(unittest.TestCase):
         self.assertEqual(content, "Hi!")
         self.assertEqual(finishReasons, ["length"])
 
+    def test_thinking_tokens_become_reasoning_tokens(self):
+        chunks = chunksOf(runFixture("thinkingOn.sse"))
+
+        usage = [chunk["usage"] for chunk in chunks if chunk["usage"]][-1]
+
+        self.assertEqual(usage["completion_tokens"], 90)
+        self.assertEqual(usage["reasoning_tokens"], 72)
+
     def test_refusal_is_reported_as_an_error(self):
         events = runFixture("refusal.sse")
 

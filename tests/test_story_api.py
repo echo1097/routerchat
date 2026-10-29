@@ -22,6 +22,7 @@ import backend.tos.loadTos as loadTos
 import backend.tos.tosAcceptance as tosAcceptance
 import backend.providers.openrouter.models as models
 import backend.providers.openrouter.requestOptions as requestOptions
+from backend.providers.errorKinds import appError
 from backend.providers.registry import getActiveProvider, getProvider
 import backend.core.migrations as migrations
 import backend.core.paths as paths
@@ -3311,7 +3312,7 @@ class StoryApiTest(unittest.TestCase):
 
         async def failingStream(provider, request):
             yield {"type": "open", "generationId": "gen-1"}
-            yield {"type": "error", "message": "provider said no", "generationId": "gen-1"}
+            yield {"type": "error", "error": appError("No", "provider said no"), "generationId": "gen-1"}
 
         async def runUpdate():
             return [
@@ -4997,12 +4998,12 @@ class StoryApiTest(unittest.TestCase):
             (
                 "truncated",
                 "length",
-                "Brainstorm generation hit the model token limit before it finished.",
+                "The model hit its token limit before it finished the ideas. Try again.",
             ),
             (
                 "incomplete",
                 "stop",
-                "Brainstorm generation ended before the provider completed the stream.",
+                "The model stopped before it finished the ideas. Try again.",
             ),
         ]
 
@@ -5019,7 +5020,9 @@ class StoryApiTest(unittest.TestCase):
                     finishReason=finishReason,
                 )
                 events = [json.loads(line) for line in response.text.splitlines() if line]
-                self.assertEqual(events[-1], {"type": "error", "value": expectedError})
+                self.assertEqual(events[-1]["type"], "error")
+                self.assertEqual(events[-1]["value"]["kind"], "incomplete")
+                self.assertEqual(events[-1]["value"]["message"], expectedError)
 
                 graph = self.client.get(f"/api/stories/{story['id']}/brainstorm").json()
                 self.assertEqual(len(graph["nodes"]), 1)
@@ -5053,12 +5056,11 @@ class StoryApiTest(unittest.TestCase):
 
         self.assertNotIn("response_format", requestBody)
         events = [json.loads(line) for line in response.text.splitlines() if line]
+        self.assertEqual(events[-1]["type"], "error")
+        self.assertEqual(events[-1]["value"]["title"], "Wrong number of ideas")
         self.assertEqual(
-            events[-1],
-            {
-                "type": "error",
-                "value": "Brainstorm output returned 4 ideas instead of 3.",
-            },
+            events[-1]["value"]["message"],
+            "The model returned 4 ideas instead of 3. Try again.",
         )
         graph = self.client.get(f"/api/stories/{story['id']}/brainstorm").json()
         self.assertEqual(len(graph["nodes"]), 1)

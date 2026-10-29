@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import sqlite3
 import time
 import uuid
@@ -20,6 +21,7 @@ from backend.core.utils import displayModelName, formatDuration, utcNow
 from backend.lorebook.lorebookHistory import lorebookRunHistoryActions
 from backend.lorebook.runUpdate import runLorebookUpdate
 from backend.providers.base import ChatOptions
+from backend.providers.errorKinds import unexpectedError
 from backend.providers.modelStream import ModelStream
 from backend.providers.registry import providerForRow
 from backend.usage.recordUsage import recordUsage
@@ -50,6 +52,8 @@ from backend.stories.storyRows import (
     wordCount,
     wordDiffCounts,
 )
+
+logger = logging.getLogger("uvicorn.error")
 
 
 class ChapterStreamingResponse(StreamingResponse):
@@ -221,9 +225,9 @@ async def streamStoryGeneration(
                         content_started_at = time.perf_counter()
                     yield emit("content", event["value"])
 
-        if modelStream.errorMessage:
-            error_text = modelStream.errorMessage
-            yield emit("error", error_text)
+        if modelStream.error:
+            error_text = modelStream.error.message
+            yield emit("error", modelStream.error.toEvent())
             return
 
         await modelStream.fetchFinalUsage(api_key)
@@ -244,8 +248,9 @@ async def streamStoryGeneration(
             error_text = "generation_cancelled"
         raise
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Story generation failed")
         error_text = str(exc)
-        yield emit("error", f"RouterChat error: {error_text}")
+        yield emit("error", unexpectedError().toEvent())
     finally:
         content = modelStream.text
         finish_reason = modelStream.finishReason

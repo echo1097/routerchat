@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from contextlib import aclosing
 from typing import Any, AsyncIterator
@@ -39,6 +40,7 @@ from backend.core.database import getDb, nextMessageOrder
 from backend.core.streamEvents import streamEvent
 from backend.core.utils import utcNow
 from backend.providers.base import ChatOptions
+from backend.providers.errorKinds import unexpectedError
 from backend.providers.modelStream import ModelStream
 from backend.usage.recordUsage import recordUsage
 from backend.webSearch.sources import (
@@ -48,6 +50,7 @@ from backend.webSearch.sources import (
 )
 
 router = APIRouter()
+logger = logging.getLogger("uvicorn.error")
 
 
 def saveAssistantReply(
@@ -184,10 +187,9 @@ async def streamChatResponse(
                 elif event["type"] == "content":
                     yield streamEvent("content", event["value"])
 
-        if modelStream.errorMessage:
-            error_text = modelStream.errorMessage
-            assistant_text.append(error_text)
-            yield streamEvent("error", error_text)
+        if modelStream.error:
+            error_text = modelStream.error.toJson()
+            yield streamEvent("error", modelStream.error.toEvent())
             return
 
         await modelStream.fetchFinalUsage(api_key)
@@ -200,11 +202,11 @@ async def streamChatResponse(
                     **modelStream.usage,
                 },
             )
-    except Exception as exc:  # noqa: BLE001
-        error_text = str(exc)
-        fallback = f"RouterChat error: {error_text}"
-        assistant_text.append(fallback)
-        yield streamEvent("error", fallback)
+    except Exception:  # noqa: BLE001
+        logger.exception("Chat reply failed")
+        error = unexpectedError()
+        error_text = error.toJson()
+        yield streamEvent("error", error.toEvent())
     finally:
         stream_completed = modelStream.receivedDone or bool(modelStream.finishReason)
         if not (payload.regenerate_message_id and (error_text or not stream_completed)):

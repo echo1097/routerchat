@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import sqlite3
 import time
 import uuid
@@ -37,6 +38,7 @@ from backend.chats.chatModels import StreamMessageRequest
 from backend.core.database import getDb
 from backend.core.streamEvents import streamEvent
 from backend.core.utils import utcNow
+from backend.providers.errorKinds import ProviderError, appError, unexpectedError
 from backend.lorebook.lorebookQueries import listEntriesByUpdated
 from backend.providers.base import ChatOptions
 from backend.providers.modelStream import ModelStream
@@ -50,6 +52,7 @@ from backend.stories.storyQueries import (
 )
 
 router = APIRouter()
+logger = logging.getLogger("uvicorn.error")
 
 
 async def streamBrainstormGeneration(
@@ -172,27 +175,40 @@ async def streamBrainstormGeneration(
                 elif event["type"] == "contentStart":
                     yield streamEvent("working", None)
 
-        if modelStream.errorMessage:
-            saveGeneration("failed", modelStream.errorMessage)
-            yield streamEvent("error", modelStream.errorMessage)
+        if modelStream.error:
+            saveGeneration("failed", modelStream.error.message)
+            yield streamEvent("error", modelStream.error.toEvent())
             return
 
         await modelStream.fetchFinalUsage(api_key)
 
         if modelStream.finishReason == "length":
-            raise ValueError(
-                "Brainstorm generation hit the model token limit before it finished."
+            raise appError(
+                "Ideas didn't finish",
+                "The model hit its token limit before it finished the ideas. Try again.",
+                "incomplete",
             )
         if not modelStream.receivedDone:
-            raise ValueError(
-                "Brainstorm generation ended before the provider completed the stream."
+            raise appError(
+                "Ideas didn't finish",
+                "The model stopped before it finished the ideas. Try again.",
+                "incomplete",
             )
 
-        ideas = parseBrainstormIdeas(modelStream.text)
+        try:
+            ideas = parseBrainstormIdeas(modelStream.text)
+        except ValueError as exc:
+            raise appError(
+                "Ideas came back garbled",
+                f"{exc} Try again or use another model.",
+                "incomplete",
+            ) from exc
         if len(ideas) != payload.brainstorm_idea_count:
-            raise ValueError(
-                f"Brainstorm output returned {len(ideas)} ideas instead of "
-                f"{payload.brainstorm_idea_count}."
+            raise appError(
+                "Wrong number of ideas",
+                f"The model returned {len(ideas)} ideas instead of "
+                f"{payload.brainstorm_idea_count}. Try again.",
+                "incomplete",
             )
         prompt_x = float(prompt_node["position_x"])
         prompt_y = float(prompt_node["position_y"])
@@ -243,10 +259,13 @@ async def streamBrainstormGeneration(
     except asyncio.CancelledError:
         saveGeneration("cancelled", "Generation cancelled.")
         raise
+    except ProviderError as error:
+        saveGeneration("failed", error.message)
+        yield streamEvent("error", error.toEvent())
     except Exception as exc:  # noqa: BLE001
-        error = str(exc)
-        saveGeneration("failed", error)
-        yield streamEvent("error", error)
+        logger.exception("Brainstorm generation failed")
+        saveGeneration("failed", str(exc))
+        yield streamEvent("error", unexpectedError().toEvent())
     finally:
         if not saved_generation:
             saveGeneration("cancelled", "Generation cancelled.")

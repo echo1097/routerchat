@@ -94,7 +94,7 @@ When you send a prompt or attachment, that data goes to the provider you picked,
 
 ## Media
 
-> All screenshots below use mocked data.
+> All images below use mocked data.
 
 Chat Mode
 

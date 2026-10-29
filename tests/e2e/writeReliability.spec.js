@@ -1,7 +1,12 @@
 import { test, expect } from "@playwright/test";
 import { installWriteApi } from "./writeReliability.fixture.js";
 
+async function waitForCanvasReady(page) {
+  await page.locator('.chapter-editor-shell[data-ready="true"]').waitFor();
+}
+
 async function editCanvas(page, content) {
+  await waitForCanvasReady(page);
   const editor = page.getByRole("textbox", { name: "Chapter canvas" });
   await editor.fill(content);
 }
@@ -858,6 +863,7 @@ test("uses native click placement and keeps the canvas stable while editing", as
       top: node.getBoundingClientRect().top,
     };
   });
+  await waitForCanvasReady(page);
   const targetBox = await targetParagraph.boundingBox();
   await page.mouse.click(
     (targetBox?.x || 0) + (targetBox?.width || 0) - 2,
@@ -1321,6 +1327,7 @@ test("edits and reloads migrated Markdown with working undo and redo", async ({ 
 
   const editor = page.getByRole("textbox", { name: "Chapter canvas" });
   const paragraph = editor.locator("p");
+  await waitForCanvasReady(page);
   await paragraph.click();
   await page.keyboard.press("End");
   await page.keyboard.type(" Added sentence.");

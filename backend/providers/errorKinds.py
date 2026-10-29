@@ -62,14 +62,18 @@ ERROR_TEXT = {
 
 
 class ProviderError(Exception):
-    def __init__(self, kind: str, title: str, message: str) -> None:
+    def __init__(self, kind: str, title: str, message: str, provider: str | None = None) -> None:
         super().__init__(message)
         self.kind = kind
         self.title = title
         self.message = message
+        self.provider = provider
 
     def toEvent(self) -> dict[str, str]:
-        return {"kind": self.kind, "title": self.title, "message": self.message}
+        event = {"kind": self.kind, "title": self.title, "message": self.message}
+        if self.provider:
+            event["provider"] = self.provider
+        return event
 
     def toJson(self) -> str:
         return json.dumps(self.toEvent())
@@ -91,6 +95,7 @@ def providerError(kind: str, provider: str, detail: Any = None) -> ProviderError
         kind if kind in ERROR_TEXT else "unknown",
         title.format(provider=provider),
         message.format(provider=provider, detail=detailText),
+        provider,
     )
 
 

@@ -78,7 +78,7 @@ class OpenrouterErrorTest(unittest.TestCase):
 
         self.assertEqual(
             json.loads(error.toJson()),
-            {"kind": "badKey", "title": error.title, "message": error.message},
+            {"kind": "badKey", "title": error.title, "message": error.message, "provider": "OpenRouter"},
         )
 
 

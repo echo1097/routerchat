@@ -71,6 +71,8 @@ import { WriteLanding } from "./writing/WriteLanding.jsx";
 import { Composer } from "./composer/Composer.jsx";
 import { SettingsDrawer } from "./settings/SettingsDrawer.jsx";
 import { ConfirmModal } from "./components/ConfirmModal.jsx";
+import { ErrorNotice } from "./components/ErrorNotice.jsx";
+import { liveErrorNotice } from "./components/errorNotice.js";
 import { NewStoryModal } from "./writing/NewStoryModal.jsx";
 import NotificationStack from "./notifications/NotificationStack.jsx";
 import TourOverlay from "./tour/TourOverlay.jsx";
@@ -101,6 +103,8 @@ function App() {
   const [chapterContent, setChapterContent] = useState("");
   const [chapterSaveState, setChapterSaveState] = useState("");
   const [storyGenerationStatus, setStoryGenerationStatus] = useState("");
+  const [writeErrorNotice, setWriteErrorNotice] = useState(null);
+  const [brainstormErrorNotice, setBrainstormErrorNotice] = useState(null);
   //true only while a new chapter is streaming prose into the canvas, edit runs never touch it
   const [canvasStreaming, setCanvasStreaming] = useState(false);
   const [writeReasoning, setWriteReasoning] = useState({ text: "", streaming: false, durationMs: null });
@@ -154,6 +158,11 @@ function App() {
     if (!previousChatMode || previousChatMode === chatMode) return;
     setPreviousChatMode(null);
   }, [chatMode, previousChatMode]);
+
+  useEffect(() => {
+    setWriteErrorNotice(null);
+    setBrainstormErrorNotice(null);
+  }, [activeStoryId, activeChapterId]);
   const [railCollapsed, setRailCollapsed] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingMessageId, setStreamingMessageId] = useState(null);
@@ -1775,6 +1784,7 @@ function App() {
     let buffered = "";
     const smoothBuffers = { content: "", reasoning: "" };
     let smoothFrame = null;
+    let streamError = null;
 
     function applyStreamText(nextContent, nextReasoning) {
       if (!nextContent && !nextReasoning) return;
@@ -1891,6 +1901,10 @@ function App() {
             queueSmoothText("reasoning", String(event.value || ""));
             continue;
           }
+          if (event.type === "error") {
+            streamError = liveErrorNotice(event.value);
+            continue;
+          }
           clearSearching();
           clearReasoningStreaming();
           queueSmoothText("content", String(event.value || ""));
@@ -1904,7 +1918,34 @@ function App() {
       flushNow();
       clearSearching();
       clearReasoningStreaming();
+      if (streamError) {
+        showChatError(assistantId, streamError, setMessageList);
+      }
     }
+
+    return streamError;
+  }
+
+  function showChatError(assistantId, errorNotice, setMessageList = setMessages) {
+    setMessageList((current) =>
+      current.map((message) =>
+        message.id === assistantId ? { ...message, errorNotice } : message,
+      ),
+    );
+  }
+
+  function requestErrorNotice(error) {
+    if (error instanceof TypeError) {
+      return {
+        kind: "unknown",
+        title: "Couldn't reach RouterChat",
+        message: "The RouterChat backend isn't responding. Make sure it's running, then try again.",
+      };
+    }
+    if (error.status === 401) {
+      return { kind: "badKey", title: "API key missing", message: error.message };
+    }
+    return liveErrorNotice(error.message);
   }
 
   async function sendMessage(text = prompt.trim(), regenerateMessageId = null) {
@@ -1978,11 +2019,16 @@ function App() {
       });
 
       if (!response.ok || !response.body) {
-        throw new Error(await responseErrorDetail(response));
+        const requestError = new Error(await responseErrorDetail(response));
+        requestError.status = response.status;
+        throw requestError;
       }
 
       const savedAssistantId = response.headers.get("X-Assistant-Message-Id") || assistantId;
-      await readStream(response, assistantId, savedAssistantId, setMessages);
+      const streamError = await readStream(response, assistantId, savedAssistantId, setMessages);
+      if (streamError && regenerateMessageId) {
+        return;
+      }
       if (tempMode) {
         await loadChat(conversationId, { replace: true });
       } else {
@@ -2004,19 +2050,10 @@ function App() {
             await loadChat(conversationId, { replace: true });
           }
         }
+      } else if (currentAssistantId) {
+        showChatError(currentAssistantId, requestErrorNotice(error));
       } else {
         setStatus(error.message);
-        if (regenerateMessageId && conversationId) {
-          await loadChat(conversationId, { replace: true });
-        } else {
-          setMessages((current) =>
-            current.map((message) =>
-              message.id === currentAssistantId
-                ? { ...message, content: error.message }
-                : message,
-            ),
-          );
-        }
       }
     } finally {
       setIsStreaming(false);
@@ -2057,7 +2094,15 @@ function App() {
     const index = messages.findIndex((message) => message.id === assistantId);
     const previousUser = [...messages.slice(0, index)].reverse().find((message) => message.role === "user");
     if (!previousUser) return;
-    setMessages(messages.slice(0, messages.findIndex((message) => message.id === previousUser.id) + 1));
+    const previousUserIndex = messages.findIndex((message) => message.id === previousUser.id);
+
+    if (previousUser.id.startsWith("local-")) {
+      setMessages(messages.slice(0, previousUserIndex));
+      await sendMessage(previousUser.content);
+      return;
+    }
+
+    setMessages(messages.slice(0, previousUserIndex + 1));
     await sendMessage(previousUser.content, previousUser.id);
   }
 
@@ -2902,10 +2947,11 @@ function App() {
     brainstormStreamingRef.current = true;
     setIsStreaming(true);
     setStatus("");
+    setBrainstormErrorNotice(null);
     setBrainstormPrompt("");
     const abortController = new AbortController();
     abortRef.current = abortController;
-    let streamError = "";
+    let streamError = null;
     let hasGeneratedIdeas = false;
 
     try {
@@ -2992,8 +3038,7 @@ function App() {
             return;
           }
           if (event.type === "error") {
-            streamError = String(event.value || "Brainstorming failed");
-            setStatus(streamError);
+            streamError = liveErrorNotice(event.value, "Brainstorming failed. Try again.");
           }
         },
       });
@@ -3001,9 +3046,19 @@ function App() {
         setStatus("Brainstorm stopped");
         return false;
       }
-      if (streamError) return false;
+      if (streamError) {
+        setBrainstormErrorNotice({ error: streamError, nodeId: brainstormPromptNodeIdRef.current });
+        return false;
+      }
       if (!hasGeneratedIdeas) {
-        setStatus("Brainstorming ended before any ideas were received. Try again.");
+        setBrainstormErrorNotice({
+          error: {
+            kind: "incomplete",
+            title: "Ideas didn't finish",
+            message: "Brainstorming ended before any ideas were received. Try again.",
+          },
+          nodeId: brainstormPromptNodeIdRef.current,
+        });
         return false;
       }
 
@@ -3013,7 +3068,7 @@ function App() {
       if (error.name === "AbortError") {
         setStatus("Brainstorm stopped");
       } else {
-        setStatus(error.message);
+        setBrainstormErrorNotice({ error: requestErrorNotice(error), nodeId: brainstormPromptNodeIdRef.current });
       }
       return false;
     } finally {
@@ -3079,6 +3134,7 @@ function App() {
     pendingRepairRef.current = null;
     abortRef.current = abortController;
     setIsStreaming(true);
+    setWriteErrorNotice(null);
     setStoryGenerationStatus("Preparing");
     setWriteReasoning({ text: "", streaming: false, durationMs: null });
     setLorebookReasoning({ text: "", streaming: false, durationMs: null });
@@ -3280,6 +3336,11 @@ function App() {
             if (errorValue?.code === "chapter_revision_conflict") {
               setStatus("Chapter changed while generation was running.");
               terminalStatus = "conflicted";
+            } else if (errorValue?.kind) {
+              setWriteErrorNotice({
+                error: liveErrorNotice(errorValue),
+                retry: { text, attachmentIds: sentAttachmentIds },
+              });
             } else {
               setStatus(chapterGenerationErrorMessage(errorValue));
               if (chapterGenerationErrorIsRepairable(errorValue)) {
@@ -3307,7 +3368,10 @@ function App() {
         setStatus("Response stopped");
         terminalStatus = "aborted";
       } else {
-        setStatus(error.message);
+        setWriteErrorNotice({
+          error: requestErrorNotice(error),
+          retry: { text, attachmentIds: sentAttachmentIds },
+        });
         terminalStatus = "failed";
       }
     } finally {
@@ -3525,6 +3589,8 @@ function App() {
             onUpdateViewport={updateBrainstormViewport}
             onTidy={tidyBrainstorm}
             onConfirm={setConfirmDialog}
+            errorNotice={brainstormErrorNotice}
+            onDismissError={() => setBrainstormErrorNotice(null)}
           />
         ) : isWritingMode && !showLandingComposer ? (
           <StoryWorkspace
@@ -3583,6 +3649,8 @@ function App() {
               onTouchMove={markTouchMove}
               onCopy={copyMessage}
               onRegenerate={regenerate}
+              onOpenSettings={() => setSettingsOpen(true)}
+              onNewChat={() => resetChat({ mode: chatMode })}
               onEditUserMessage={editUserMessage}
               onDeleteUserMessage={deleteUserMessage}
             />
@@ -3652,6 +3720,18 @@ function App() {
             contextWindowInfo={contextWindowInfo}
             modelLocked={activeModelLocked}
             onSubmit={(text) => (isWritingMode ? generateStoryChapter(text) : sendMessage(text))}
+            notice={isWritingMode && writeErrorNotice ? (
+              <ErrorNotice
+                error={writeErrorNotice.error}
+                className="max-w-none"
+                onRetry={() => {
+                  const { text, attachmentIds } = writeErrorNotice.retry;
+                  generateStoryChapterRef.current?.(text, null, attachmentIds);
+                }}
+                onOpenSettings={() => setSettingsOpen(true)}
+                onDismiss={() => setWriteErrorNotice(null)}
+              />
+            ) : null}
             onStop={stopStream}
             onOpenSettings={() => setSettingsOpen(true)}
             onToggleThinking={toggleThinking}

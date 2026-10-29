@@ -91,6 +91,7 @@ export function Composer({
   webSearchEnabled = false,
   onToggleWebSearch = null,
   provider = DEFAULT_PROVIDER,
+  notice = null,
 }) {
   const canThink = supportsThinking(models, settings.model) || forceShowThinking;
   const canAttach = Boolean(onAttachFiles);
@@ -193,6 +194,7 @@ export function Composer({
             {openingMessage}
           </div>
         )}
+        {notice && <div className="mb-3">{notice}</div>}
         <div
           ref={composerSurfaceRef}
           className={cx(

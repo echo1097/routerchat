@@ -10,6 +10,8 @@ import AttachmentChips from "../attachments/AttachmentChips.jsx";
 import { MarkdownContent } from "./MarkdownContent.jsx";
 import SourcePills from "../websearch/SourcePills.jsx";
 import { EmptyChatState } from "./EmptyChatState.jsx";
+import { ErrorNotice } from "../components/ErrorNotice.jsx";
+import { savedErrorNotice } from "../components/errorNotice.js";
 
 function AssistantActionButton({ label, children, ...props }) {
   return (
@@ -209,12 +211,16 @@ const MessageItem = memo(function MessageItem({
   reasoningStreaming,
   reasoningDurationMs,
   searching,
+  isLast,
   onCopy,
   onRegenerate,
+  onOpenSettings,
+  onNewChat,
   onEditUserMessage,
   onDeleteUserMessage,
 }) {
   const isUser = message.role === "user";
+  const errorNotice = message.errorNotice || savedErrorNotice(message.error);
   const messageAttachments = message.attachments || [];
   const messageSources = uncitedSources(message.content, message.sources);
   const articleRef = useRef(null);
@@ -396,7 +402,7 @@ const MessageItem = memo(function MessageItem({
       <AssistantStatusLine
         reasoning={message.reasoning}
         reasoningStreaming={reasoningStreaming}
-        waiting={!message.content}
+        waiting={!message.content && !errorNotice}
         durationMs={reasoningDurationMs}
         searching={searching}
       />
@@ -410,7 +416,16 @@ const MessageItem = memo(function MessageItem({
       {message.content && !streaming && !revealing && (
         <SourcePills sources={messageSources} className="mt-4 max-w-3xl" />
       )}
-      {message.content && !streaming && !revealing && (
+      {errorNotice && !streaming && (
+        <ErrorNotice
+          error={errorNotice}
+          onRetry={isLast ? () => onRegenerate(message.id) : undefined}
+          onOpenSettings={onOpenSettings}
+          onNewChat={onNewChat}
+          className={message.content ? "mt-4" : undefined}
+        />
+      )}
+      {message.content && !errorNotice && !streaming && !revealing && (
         <div className={cx("mt-3 flex max-w-3xl justify-start gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100", FADE_MOTION)}>
           <AssistantActionButton label="Copy" onClick={() => onCopy(message)}>
             <Copy size={15} />
@@ -443,9 +458,13 @@ export function MessageList({
   onTouchMove,
   onCopy,
   onRegenerate,
+  onOpenSettings,
+  onNewChat,
   onEditUserMessage,
   onDeleteUserMessage,
 }) {
+  const lastMessageId = messages[messages.length - 1]?.id;
+
   return (
     <section
       ref={streamRef}
@@ -468,8 +487,11 @@ export function MessageList({
               reasoningStreaming={message.id === reasoningStreamingMessageId}
               reasoningDurationMs={reasoningDurations[message.id]}
               searching={message.id === searchingMessageId}
+              isLast={message.id === lastMessageId}
               onCopy={onCopy}
               onRegenerate={onRegenerate}
+              onOpenSettings={onOpenSettings}
+              onNewChat={onNewChat}
               onEditUserMessage={onEditUserMessage}
               onDeleteUserMessage={onDeleteUserMessage}
             />

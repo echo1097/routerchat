@@ -8,6 +8,7 @@ import httpx
 from fastapi import HTTPException
 
 from backend.core.reasoningEffort import ReasoningEffort
+from backend.providers.errorKinds import ProviderError
 
 DEFAULT_MAX_TOKENS = 30000
 
@@ -151,7 +152,7 @@ class Provider(ABC):
     def completionText(self, payload: dict[str, Any]) -> str | None: ...
 
     @abstractmethod
-    def errorMessage(self, statusCode: int, responseText: str) -> str: ...
+    def providerError(self, statusCode: int, responseText: str) -> ProviderError: ...
 
     async def fetchFinalUsage(self, apiKey: str, generationId: str) -> dict[str, Any] | None:
         return None

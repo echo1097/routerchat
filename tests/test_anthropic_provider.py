@@ -134,15 +134,16 @@ class StreamParserTest(unittest.TestCase):
         events = runFixture("refusal.sse")
 
         self.assertEqual(events[-1]["type"], "error")
-        self.assertIn("declined", events[-1]["message"])
-        self.assertIn("safety filter", events[-1]["message"])
+        self.assertEqual(events[-1]["error"].kind, "contentRefused")
+        self.assertIn("declined", events[-1]["error"].message)
+        self.assertIn("safety filter", events[-1]["error"].message)
         self.assertFalse(any(event["type"] == "done" for event in events))
 
     def test_mid_stream_error_is_reported_as_an_error(self):
         events = runFixture("midStreamError.sse")
 
         self.assertEqual(events[-1]["type"], "error")
-        self.assertIn("overloaded", events[-1]["message"])
+        self.assertEqual(events[-1]["error"].kind, "serverError")
         self.assertEqual(
             "".join(chunk["content"] or "" for chunk in chunksOf(events)), "Once upon"
         )
@@ -168,8 +169,10 @@ class StreamParserTest(unittest.TestCase):
             ['{"type":"error","error":{"type":"rate_limit_error","message":"Slow down"}}'], 429
         )
 
-        self.assertIn("overloaded", overloaded[0]["message"])
-        self.assertIn("rate limit", rateLimited[0]["message"])
+        self.assertEqual(overloaded[0]["error"].kind, "serverError")
+        self.assertEqual(overloaded[0]["error"].title, "Anthropic is having trouble")
+        self.assertEqual(rateLimited[0]["error"].kind, "rateLimited")
+        self.assertIn("Wait a moment", rateLimited[0]["error"].message)
 
     def test_unknown_models_have_no_cost(self):
         self.assertIsNone(costFor("claude-next-9", {"input_tokens": 10, "output_tokens": 10}))

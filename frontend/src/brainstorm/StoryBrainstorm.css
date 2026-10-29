@@ -806,6 +806,13 @@
   pointer-events: none;
 }
 
+.brainstorm-error-notice {
+  width: min(820px, 100%);
+  border-radius: 12px;
+  background: #101010;
+  pointer-events: auto;
+}
+
 .brainstorm-branch-strip {
   display: flex;
   max-width: min(820px, 100%);

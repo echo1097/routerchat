@@ -2,6 +2,7 @@ from contextlib import aclosing
 from typing import Any, AsyncIterator
 
 from backend.providers.base import ChatRequest, Provider
+from backend.providers.errorKinds import ProviderError
 from backend.providers.streaming import streamChat
 
 
@@ -16,11 +17,15 @@ class ModelStream:
         self.usage: dict[str, Any] = {}
         self.finishReason: str | None = None
         self.receivedDone = False
-        self.errorMessage: str | None = None
+        self.error: ProviderError | None = None
 
     @property
     def text(self) -> str:
         return "".join(self.textParts)
+
+    @property
+    def errorMessage(self) -> str | None:
+        return self.error.message if self.error else None
 
     async def fetchFinalUsage(self, apiKey: str) -> None:
         if not self.generationId:
@@ -36,7 +41,7 @@ class ModelStream:
             async for event in events:
                 if event["type"] == "error":
                     self.generationId = event["generationId"] or self.generationId
-                    self.errorMessage = str(event["message"])
+                    self.error = event["error"]
                     continue
                 if event["type"] == "open":
                     self.generationId = event["generationId"] or self.generationId

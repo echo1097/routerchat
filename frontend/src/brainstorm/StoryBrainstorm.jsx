@@ -13,6 +13,7 @@ import "@xyflow/react/dist/style.css";
 import "./StoryBrainstorm.css";
 import { cx } from "../uiShared.js";
 import BrainstormBar from "./BrainstormBar.jsx";
+import { ErrorNotice } from "../components/ErrorNotice.jsx";
 import IdeaNode from "./IdeaNode.jsx";
 import IdeaPane from "./IdeaPane.jsx";
 import PromptNode from "./PromptNode.jsx";
@@ -75,6 +76,8 @@ export default function StoryBrainstorm({
   onUpdateViewport,
   onTidy,
   onConfirm,
+  errorNotice,
+  onDismissError,
 }) {
   const [branchIdeaIds, setBranchIdeaIds] = useState([]);
   const [readingId, setReadingId] = useState(null);
@@ -481,6 +484,9 @@ export default function StoryBrainstorm({
 
   const zoomDuration = prefersReducedMotion() ? 0 : 200;
   const branchIdeas = branchIdeaIds.map((nodeId) => nodesById.get(nodeId)).filter(Boolean);
+  const failedPromptNode = errorNotice?.nodeId
+    ? graphNodes.find((node) => node.id === errorNotice.nodeId)
+    : null;
   let placeholder = "How could we continue the story?";
   if (branchIdeas.length === 1) placeholder = "Ask something about this idea";
   if (branchIdeas.length > 1) placeholder = "Ask something about these ideas";
@@ -538,6 +544,20 @@ export default function StoryBrainstorm({
           </div>
 
           <form className="brainstorm-composer" onSubmit={submitPrompt}>
+            {errorNotice && (
+              <div className="brainstorm-error-notice">
+                <ErrorNotice
+                  error={errorNotice.error}
+                  className="max-w-none"
+                  onRetry={failedPromptNode ? () => {
+                    onDismissError();
+                    retryPrompt(failedPromptNode);
+                  } : undefined}
+                  onOpenSettings={onOpenSettings}
+                  onDismiss={onDismissError}
+                />
+              </div>
+            )}
             {branchIdeas.length > 0 && (
               <div className="brainstorm-branch-strip">
                 <span className="brainstorm-branch-strip-label">Branching from</span>

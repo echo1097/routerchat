@@ -15,7 +15,7 @@ from backend.providers.anthropic.client import (
     ANTHROPIC_TIMEOUT,
     headersForKey,
 )
-from backend.providers.anthropic.errors import anthropicErrorMessage
+from backend.providers.anthropic.errors import anthropicError
 from backend.providers.base import (
     Capabilities,
     ChatOptions,
@@ -23,6 +23,7 @@ from backend.providers.base import (
     Provider,
     StreamParser,
 )
+from backend.providers.errorKinds import ProviderError
 
 
 class AnthropicProvider(Provider):
@@ -111,8 +112,8 @@ class AnthropicProvider(Provider):
     def completionText(self, payload: dict[str, Any]) -> str | None:
         return streamParser.completionText(payload)
 
-    def errorMessage(self, statusCode: int, responseText: str) -> str:
-        return anthropicErrorMessage(statusCode, responseText)
+    def providerError(self, statusCode: int, responseText: str) -> ProviderError:
+        return anthropicError(statusCode, responseText)
 
 
 anthropicProvider = AnthropicProvider()

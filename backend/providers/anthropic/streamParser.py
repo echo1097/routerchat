@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from backend.core.utils import intOrNone
 from backend.providers.anthropic.errors import refusalError, streamError
 from backend.providers.anthropic.pricing import costFor
 
@@ -17,6 +18,7 @@ USAGE_FIELDS = (
     "cache_read_input_tokens",
     "cache_creation_input_tokens",
     "cache_creation",
+    "output_tokens_details",
 )
 
 
@@ -46,11 +48,12 @@ def normalizeUsage(model: str | None, usage: dict[str, Any]) -> dict[str, Any]:
     cacheWrite = usage.get("cache_creation_input_tokens") or 0
     promptTokens = (usage.get("input_tokens") or 0) + cacheRead + cacheWrite
     completionTokens = usage.get("output_tokens") or 0
+    outputDetails = usage.get("output_tokens_details") or {}
 
     return {
         "prompt_tokens": promptTokens,
         "completion_tokens": completionTokens,
-        "reasoning_tokens": None,
+        "reasoning_tokens": intOrNone(outputDetails.get("thinking_tokens")),
         "cached_tokens": cacheRead,
         "total_tokens": promptTokens + completionTokens,
         "cost": costFor(model, usage),

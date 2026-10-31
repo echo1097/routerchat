@@ -190,8 +190,8 @@ export function Composer({
     >
       <div className={cx("mx-auto w-full", isEmptyVariant ? "pointer-events-auto max-w-[760px]" : !writeGenerationMode && "max-w-4xl")}>
         {isEmptyVariant && openingMessage && (
-          <div className="mb-8 text-center text-[22px] font-medium leading-tight text-neutral-200 sm:text-3xl">
-            {openingMessage}
+          <div className="mb-8 flex justify-center text-center text-[22px] font-medium leading-tight text-neutral-200 sm:text-3xl">
+            <span className="lg:whitespace-nowrap">{openingMessage}</span>
           </div>
         )}
         {notice && <div className="mb-3">{notice}</div>}

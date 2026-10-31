@@ -4,48 +4,81 @@
       "How do you like your coffee?",
       "What are we starting with?",
       "What is first on the list?",
-      "What are we making happen today?"
+      "What are we making happen today?",
+      "Anything left over from yesterday?",
+      "What needs doing before lunch?",
+      "What's the plan for today?",
+      "Where should we start?"
     ],
     "afternoon": [
       "What are we working on?",
-      "Whats next on the agenda?",
-      "What did you have for lunch?"
+      "What's next on the agenda?",
+      "What did you have for lunch?",
+      "What's got you stuck?",
+      "What's left for today?",
+      "Need a second opinion on something?",
+      "What are we figuring out?",
+      "Pick up where you left off?"
     ],
     "evening": [
       "What are we wrapping up?",
       "What still needs attention?",
-      "What should we do tonight?"
+      "What should we do tonight?",
+      "How did today go?",
+      "Anything to finish before tomorrow?",
+      "What's still on your mind?",
+      "One more thing before you log off?"
     ],
     "lateNight": [
       "Hey there, night owl!",
       "What are we doing up this late?",
       "What is the midnight mission?",
-      "What are we working on while everyone else is asleep?"
+      "What are we working on while everyone else is asleep?",
+      "Can't sleep?",
+      "Still up?",
+      "What's keeping you up?",
+      "Couldn't let it go, huh?"
     ]
   },
   "write": {
     "morning": [
-      "Lets start the day with some coffee and writing!",
-      "Whats first?",
-      "Good morning, lets write!"
+      "Let's start the day with some coffee and writing!",
+      "What's first?",
+      "Good morning, let's write!",
+      "Where did we leave off?",
+      "What happens next?",
+      "Fresh pages or yesterday's draft?",
+      "Which chapter are we in?"
     ],
     "afternoon": [
-      "Lets write for a bit.",
+      "Let's write for a bit.",
       "Which chapter needs attention?",
       "Where should we pick up?",
-      "Need help with a scene?"
+      "Need help with a scene?",
+      "Who's in this scene?",
+      "Need a better word for something?",
+      "Which character is giving you trouble?",
+      "Want to try a different angle?"
     ],
     "evening": [
       "What should we edit tonight?",
       "Which scene needs work?",
-      "Got a line you want to fix?"
+      "Got a line you want to fix?",
+      "Anything to revise tonight?",
+      "Want to read back what you wrote?",
+      "Which part isn't working yet?",
+      "Tighten up a chapter?"
     ],
     "lateNight": [
       "Late night writing?",
       "Still working on the draft?",
       "Want to write for a bit?",
       "Just one more scene?",
-      "Moonlit writing?"
+      "Moonlit writing?",
+      "Where's the story going?",
+      "A few more lines before bed?",
+      "Got an idea you don't want to lose?",
+      "Which scene can't you stop thinking about?"
     ]
   }
 }

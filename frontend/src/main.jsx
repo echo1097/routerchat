@@ -78,6 +78,7 @@ import NotificationStack from "./notifications/NotificationStack.jsx";
 import TourOverlay from "./tour/TourOverlay.jsx";
 import { checkForUpdate, clearUpdateCheck } from "./updates/updateCheck.js";
 import { TosLoadingScreen, TosUnavailableScreen, TosGateModal } from "./TosGate.jsx";
+import { markStartupReady } from "./startupReady.js";
 import { createRoot } from "react-dom/client";
 import "@fontsource-variable/inter";
 import "./styles.css";
@@ -182,12 +183,18 @@ function App() {
     activeProvider,
     providerFor,
     keyStatus,
+    keyStatusLoaded,
     loadKeyStatus,
     saveKey: saveProviderKey,
     switchProvider: switchActiveProvider,
   } = useProviders({
     onError: (error) => setStatus(error.message),
   });
+
+  useEffect(() => {
+    if (keyStatusLoaded) markStartupReady();
+  }, [keyStatusLoaded]);
+
   const { models, knownModels, fetchModels, fetchKnownModels } = useModels();
   const chatModels = useMemo(() => [...models, ...knownModels], [models, knownModels]);
   const keyedProviderIds = providers.filter((provider) => provider.hasKey).map((provider) => provider.id).join(",");
@@ -3917,6 +3924,10 @@ function Root() {
       setAcceptError(error?.message || "Could not record your acceptance. Try again.");
     }
   }, [gate.tos, loadTos]);
+
+  useEffect(() => {
+    if (gate.status === "blocked" || gate.status === "unavailable") markStartupReady();
+  }, [gate.status]);
 
   if (gate.status === "loading") {
     return <TosLoadingScreen />;

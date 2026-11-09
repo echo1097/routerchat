@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; img-src file:; style-src file:; script-src file:"
+    />
+    <link rel="stylesheet" href="splash.css" />
+    <title>RouterChat</title>
+  </head>
+  <body>
+    <main class="splash">
+      <img
+        class="logo"
+        src="../../frontend/public/favicon/source-master-transparent-large-white.png"
+        alt="RouterChat"
+      />
+
+      <div class="progressTrack">
+        <div class="progressFill" id="progressFill"></div>
+      </div>
+
+      <p class="statusLine" id="statusLine"></p>
+    </main>
+
+    <script src="splash.js"></script>
+  </body>
+</html>

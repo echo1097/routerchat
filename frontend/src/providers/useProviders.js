@@ -5,6 +5,7 @@ export function useProviders({ onError } = {}) {
   const [providers, setProviders] = useState([DEFAULT_PROVIDER]);
   const [activeProviderId, setActiveProviderId] = useState(DEFAULT_PROVIDER.id);
   const [keyStatus, setKeyStatus] = useState({ has_key: false });
+  const [keyStatusLoaded, setKeyStatusLoaded] = useState(false);
 
   const applyProviders = useCallback((payload) => {
     if (!payload.providers.length) return;
@@ -48,6 +49,8 @@ export function useProviders({ onError } = {}) {
       setKeyStatus(await providerApi.getKeyStatus());
     } catch (error) {
       onError?.(error);
+    } finally {
+      setKeyStatusLoaded(true);
     }
   }, []);
 
@@ -72,6 +75,7 @@ export function useProviders({ onError } = {}) {
     providerFor,
     capabilities: activeProvider.capabilities,
     keyStatus,
+    keyStatusLoaded,
     loadKeyStatus,
     saveKey,
     switchProvider,

@@ -374,7 +374,7 @@ export function SettingsDrawer({
   }
 
   async function exportChats() {
-    if (!cloudChatId) return;
+    if (!cloudChatId || exporting) return;
     setExporting(true);
     try {
       await onExportChats(cloudChatId, cloudChat);
@@ -1004,16 +1004,16 @@ export function SettingsDrawer({
       <div className="flex shrink-0 items-center justify-center gap-2 pt-4">
         <button
           type="button"
-          disabled={exporting || importing || !cloudChatId}
+          disabled={importing || !cloudChatId}
           onClick={exportChats}
           className={secondaryButtonClass}
         >
           <i className="fi fi-rr-download text-[13px] leading-none" aria-hidden="true" />
-          {exporting ? "Exporting" : "Export"}
+          Export
         </button>
         <button
           type="button"
-          disabled={exporting || importing}
+          disabled={importing}
           onClick={() => fileInputRef.current?.click()}
           className={secondaryButtonClass}
         >

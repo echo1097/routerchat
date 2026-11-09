@@ -9,9 +9,10 @@ For people who want to read or change the code. You get a Git clone you start fr
 3. [Starting again later](#starting-again-later)
 4. [After pulling new code](#after-pulling-new-code)
 5. [Live reload (development mode)](#live-reload-development-mode)
-6. [Running tests](#running-tests)
-7. [Developer install files](#developer-install-files)
-8. [Troubleshooting](#troubleshooting)
+6. [Desktop app (experimental)](#desktop-app-experimental)
+7. [Running tests](#running-tests)
+8. [Developer install files](#developer-install-files)
+9. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -168,6 +169,18 @@ python3 -m backend.local_access open-browser \
 ```
 
 Keep the backend on port 8000 unless you also change `vite.config.js`, which forwards API calls from 5173 to it. Press **Ctrl + C** in terminals 1 and 2 to stop.
+
+---
+
+## Desktop app (experimental)
+
+An Electron window around the same app, for development only. There is no installer for it yet. It starts the backend from `.venv` on port 8137, signs the window in by itself, and stops the backend when you close the window. It uses the same `.env` and `data` folder as the browser version.
+
+```sh
+./electron.sh
+```
+
+That checks `.venv` and the installed packages, then runs `npm run electron`, which builds the frontend first. To skip the build and reuse the last one, run `npm run electron:start`. Set `ROUTERCHAT_ELECTRON_PORT` to use a different port.
 
 ---
 

@@ -26,6 +26,8 @@ class ModelPrice:
 
 
 PRICES_BY_PREFIX: tuple[tuple[str, ModelPrice], ...] = (
+    ("claude-fable-5-2", ModelPrice(8.0, 40.0, 0.20)),
+    ("claude-mythos-5-2", ModelPrice(8.0, 40.0, 0.20)),
     ("claude-fable-5-1", ModelPrice(10.0, 50.0, 0.25)),
     ("claude-mythos-5-1", ModelPrice(10.0, 50.0, 0.25)),
     ("claude-fable-5", ModelPrice(10.0, 50.0, 1.0)),

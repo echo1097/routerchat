@@ -185,6 +185,14 @@ class StreamParserTest(unittest.TestCase):
     def test_unknown_models_have_no_cost(self):
         self.assertIsNone(costFor("claude-next-9", {"input_tokens": 10, "output_tokens": 10}))
 
+    def test_fable_5_2_uses_its_own_lower_price(self):
+        usage = {"input_tokens": 1000, "cache_read_input_tokens": 4000, "output_tokens": 200}
+
+        for modelId in ("claude-fable-5-2", "claude-mythos-5-2"):
+            with self.subTest(modelId=modelId):
+                expectedCost = (1000 * 8.0 + 4000 * 0.20 + 200 * 40.0) / 1_000_000
+                self.assertAlmostEqual(costFor(modelId, usage), expectedCost)
+
     def test_haiku_5_5_short_prompts_use_the_lower_price(self):
         cost = costFor("claude-haiku-5-5", {"input_tokens": 1000, "output_tokens": 200})
 
@@ -387,7 +395,7 @@ class RequestBuilderTest(unittest.TestCase):
                 self.assertEqual(body["output_config"]["effort"], "high")
 
     def test_always_thinking_models_use_low_effort_and_room_for_titles(self):
-        for modelId in ("claude-opus-5-5", "claude-fable-5-1"):
+        for modelId in ("claude-opus-5-5", "claude-fable-5-1", "claude-fable-5-2"):
             with self.subTest(modelId=modelId):
                 body = bodyFor(modelId, thinkingEnabled=False, maxTokens=32, stream=False)
                 self.assertEqual(body["thinking"]["type"], "adaptive")

@@ -1,13 +1,37 @@
+import { useState } from "react";
+import { CircleHelp } from "lucide-react";
+
 import { SettingGroup, SettingRow, SettingSwitch } from "../settings/SettingControls.jsx";
 import { cx, CONTROL_MOTION } from "../uiShared.js";
 import { countdownLabel, lastUsedLabel, plainAddress, spacedCode } from "./deviceLabels.js";
 import { PairingQr } from "./PairingQr.jsx";
+import { PhoneHelp } from "./PhoneHelp.jsx";
 import { usePhoneAccess } from "./usePhoneAccess.js";
 
 const buttonClass = cx(
   "flex h-9 shrink-0 items-center justify-center rounded-full bg-white/[0.06] px-4 text-[13px] font-medium text-neutral-300 hover:bg-white/[0.1] hover:text-neutral-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 disabled:cursor-not-allowed disabled:bg-white/[0.04] disabled:text-[#6b6b6b] disabled:active:scale-100",
   CONTROL_MOTION,
 );
+
+const helpButtonClass = cx(
+  "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full bg-white/[0.06] px-3 text-[12px] font-medium text-neutral-300 hover:bg-white/[0.1] hover:text-neutral-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
+  CONTROL_MOTION,
+);
+
+function HelpButton({ open, onToggle }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      aria-controls="phone-help"
+      className={helpButtonClass}
+    >
+      <CircleHelp className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+      {open ? "Hide help" : "Help"}
+    </button>
+  );
+}
 
 function restartNote(status) {
   if (!status.enabled) {
@@ -68,13 +92,18 @@ function DeviceRow({ device, busy, onRemove }) {
 export function PhoneAccessSetting({ onNotify }) {
   const phoneAccess = usePhoneAccess(onNotify);
   const { status, pairing, busy } = phoneAccess;
+  const [helpOpen, setHelpOpen] = useState(false);
 
   if (!status) return null;
 
   const ready = status.enabled && status.running;
 
   return (
-    <SettingGroup id="settings-group-phone" title="Phone access">
+    <SettingGroup
+      id="settings-group-phone"
+      title="Phone access"
+      trailing={<HelpButton open={helpOpen} onToggle={() => setHelpOpen((current) => !current)} />}
+    >
       <SettingRow
         title="Use RouterChat on a phone"
         description="Lets phones on your home Wi-Fi open RouterChat while it runs on this computer. The connection isn't encrypted, so only turn this on for a network you trust."
@@ -126,6 +155,8 @@ export function PhoneAccessSetting({ onNotify }) {
           onRemove={phoneAccess.forgetDevice}
         />
       ))}
+
+      {helpOpen && <PhoneHelp />}
 
       <div className="settings-row px-5 py-3">
         <p className="text-pretty text-[11.5px] leading-4 text-[#7a7a7a]">

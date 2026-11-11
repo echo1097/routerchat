@@ -46,7 +46,7 @@ export const SETTINGS_SEARCH_INDEX = [
   { title: "Navigation bar", page: "interface", target: "settings-group-display", keywords: "display" },
   { title: "Smooth text", page: "interface", target: "settings-group-display", keywords: "streaming display" },
   { title: "Check for updates", page: "interface", target: "settings-group-updates", keywords: "version" },
-  { title: "Phone access", page: "phone", target: "settings-group-phone", keywords: "mobile pair device wifi qr" },
+  { title: "Phone access", page: "phone", target: "settings-group-phone", keywords: "mobile pair device wifi qr help android" },
   { title: "Export or import a chat", page: "data", target: "settings-group-transfer", keywords: "backup download upload" },
   { title: "Usage", page: "usage", target: "", keywords: "cost spend tokens" },
 ];

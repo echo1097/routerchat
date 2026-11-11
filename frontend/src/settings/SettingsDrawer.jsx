@@ -152,8 +152,10 @@ export function SettingsDrawer({
   const chatPromptSaveLabel = chatPrompt.saveState.replace(/\b\w/g, (letter) => letter.toUpperCase());
 
   const visibleSettingsPages = useMemo(
-    () => SETTINGS_PAGES.filter((page) => pageVisibleInMode(page, chatMode)),
-    [chatMode],
+    () => SETTINGS_PAGES.filter(
+      (page) => pageVisibleInMode(page, chatMode) && !(onPhone && page.computerOnly),
+    ),
+    [chatMode, onPhone],
   );
   const activePageLabel = visibleSettingsPages.find((page) => page.id === activePage)?.label || "Settings";
 
@@ -187,11 +189,8 @@ export function SettingsDrawer({
     : "";
 
   const searchResults = useMemo(
-    () => searchSettings(navQuery, {
-      pages: visibleSettingsPages,
-      capabilities: { ...capabilities, phoneAccess: !onPhone },
-    }),
-    [capabilities, navQuery, onPhone, visibleSettingsPages],
+    () => searchSettings(navQuery, { pages: visibleSettingsPages, capabilities }),
+    [capabilities, navQuery, visibleSettingsPages],
   );
 
   function pageTitle(pageId) {
@@ -1133,14 +1132,18 @@ export function SettingsDrawer({
             <SettingsScrollPage pageId="7" title={pageTitle("interface")} label="Interface settings">
               <div className="settings-group-stack">
                 {displayGroup}
-                {!onPhone && <PhoneAccessSetting onNotify={onNotify} />}
                 {updatesGroup}
               </div>
             </SettingsScrollPage>
-            <SettingsFixedPage pageId="8" title={pageTitle("data")} label="Data settings">
+            <SettingsScrollPage pageId="8" title={pageTitle("phone")} label="Phone settings">
+              <div className="settings-group-stack">
+                {!onPhone && <PhoneAccessSetting onNotify={onNotify} />}
+              </div>
+            </SettingsScrollPage>
+            <SettingsFixedPage pageId="9" title={pageTitle("data")} label="Data settings">
               {chatTransferSection}
             </SettingsFixedPage>
-            <SettingsScrollPage pageId="9" title={pageTitle("usage")} label="Usage settings">
+            <SettingsScrollPage pageId="10" title={pageTitle("usage")} label="Usage settings">
               {usagePage.mounted && <UsagePanel key={usagePage.session} models={chatModels} />}
             </SettingsScrollPage>
           </div>

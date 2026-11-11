@@ -51,7 +51,7 @@ export function PairScreen({ onPaired }) {
           </h1>
 
           <p className="mt-2 text-pretty text-sm leading-6 text-muted">
-            On your computer, open RouterChat settings, go to Interface, and choose Pair a phone. Then enter the code it shows.
+            On your computer, open RouterChat settings, go to Phone, and choose Pair a phone. Then enter the code it shows.
           </p>
 
           <label className="mt-5 block text-[13px] font-medium text-neutral-300" htmlFor="pair-code">

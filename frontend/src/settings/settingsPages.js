@@ -7,6 +7,7 @@ import {
   Network,
   PenLine,
   SlidersHorizontal,
+  Smartphone,
 } from "lucide-react";
 
 export const SETTINGS_PAGES = [
@@ -17,6 +18,7 @@ export const SETTINGS_PAGES = [
   { id: "writing", label: "Writing", icon: PenLine, group: "App", mode: "write" },
   { id: "voice", label: "Dictation", icon: Mic, group: "App" },
   { id: "interface", label: "Interface", iconSrc: "/icons/interface.png", group: "App" },
+  { id: "phone", label: "Phone", icon: Smartphone, group: "App", computerOnly: true },
   { id: "data", label: "Data", icon: Database, group: "Data" },
   { id: "usage", label: "Usage", icon: Activity, group: "Data" },
 ];
@@ -43,8 +45,8 @@ export const SETTINGS_SEARCH_INDEX = [
   { title: "Dictation model", page: "voice", target: "", keywords: "transcription voice typing" },
   { title: "Navigation bar", page: "interface", target: "settings-group-display", keywords: "display" },
   { title: "Smooth text", page: "interface", target: "settings-group-display", keywords: "streaming display" },
-  { title: "Phone access", page: "interface", target: "settings-group-phone", keywords: "mobile pair device wifi qr", requires: "phoneAccess" },
   { title: "Check for updates", page: "interface", target: "settings-group-updates", keywords: "version" },
+  { title: "Phone access", page: "phone", target: "settings-group-phone", keywords: "mobile pair device wifi qr" },
   { title: "Export or import a chat", page: "data", target: "settings-group-transfer", keywords: "backup download upload" },
   { title: "Usage", page: "usage", target: "", keywords: "cost spend tokens" },
 ];

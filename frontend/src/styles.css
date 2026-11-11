@@ -3274,3 +3274,61 @@ typography exactly or the swap at the end of a generation shows a seam */
     font-size: max(16px, 1em) !important;
   }
 }
+
+.chat-reply table {
+  display: block;
+  max-width: 100%;
+  margin: 0.75rem 0;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.chat-reply th,
+.chat-reply td {
+  padding: 0.5rem 0.875rem 0.5rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: left;
+  vertical-align: top;
+}
+
+.chat-reply th {
+  color: #f5f5f5;
+  font-weight: 600;
+}
+
+.chat-reply tr:last-child td {
+  border-bottom: 0;
+}
+
+.app-height {
+  height: 100vh;
+  height: 100dvh;
+}
+
+@media (hover: none) {
+  .touch-visible {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 479px) {
+  .response-actions {
+    position: relative;
+  }
+
+  .response-actions .response-info {
+    position: static;
+  }
+
+  .response-actions .response-info-popover {
+    width: min(320px, calc(100vw - 32px));
+  }
+}
+
+@media (max-width: 1023px) {
+  .write-canvas-header {
+    padding-top: 1rem;
+  }
+}

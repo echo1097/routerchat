@@ -3469,7 +3469,7 @@ function App() {
   });
 
   return (
-    <div className="flex h-screen h-dvh overflow-hidden bg-[#080808] text-ink">
+    <div className="app-height flex overflow-hidden bg-[#080808] text-ink">
       {isWritingMode ? (
         <StoryRail
           stories={writingStories}
@@ -3534,7 +3534,7 @@ function App() {
         <header className="pointer-events-none absolute left-0 right-0 top-0 z-20 flex items-center gap-3 bg-transparent px-4 py-4 sm:px-8 lg:px-10">
           <IconButton
             label="Open chats"
-            className="pointer-events-auto lg:hidden"
+            className="pointer-events-auto max-lg:bg-[#101010]/90 max-lg:backdrop-blur-md lg:hidden"
             onClick={() => setRailOpen(true)}
           >
             <Menu size={18} />

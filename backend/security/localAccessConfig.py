@@ -7,20 +7,23 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
+from backend.devices.lanAddress import validatePhoneOrigin
 from backend.local_access import readSecretFile, validateBaseUrl
 
 API_SECRET_FILE_ENV_VAR = "ROUTERCHAT_API_SECRET_FILE"
 BASE_URL_ENV_VAR = "ROUTERCHAT_BASE_URL"
 TRUSTED_ORIGINS_ENV_VAR = "ROUTERCHAT_TRUSTED_ORIGINS"
+PHONE_ORIGIN_ENV_VAR = "ROUTERCHAT_PHONE_ORIGIN"
 DEFAULT_BASE_URL = "http://127.0.0.1:8000"
 
 
 @dataclass(frozen=True)
 class LocalAccessConfig:
     baseUrl: str
-    allowedHost: str
+    allowedHosts: frozenset[str]
     trustedOrigins: frozenset[str]
     secret: str
+    phoneOrigin: str | None
 
 
 def loadLocalAccessConfig(
@@ -28,7 +31,7 @@ def loadLocalAccessConfig(
 ) -> LocalAccessConfig:
     environment = os.environ if environment is None else environment
     baseUrl = validateBaseUrl(environment.get(BASE_URL_ENV_VAR, DEFAULT_BASE_URL))
-    allowedHost = baseUrl.removeprefix("http://")
+    allowedHosts = frozenset({baseUrl.removeprefix("http://")})
 
     secretFileValue = environment.get(API_SECRET_FILE_ENV_VAR, "").strip()
     if not secretFileValue:
@@ -44,11 +47,19 @@ def loadLocalAccessConfig(
     if not trustedOrigins:
         raise RuntimeError(f"{TRUSTED_ORIGINS_ENV_VAR} cannot be empty.")
 
+    phoneOrigin = None
+    phoneValue = environment.get(PHONE_ORIGIN_ENV_VAR, "").strip()
+    if phoneValue:
+        phoneOrigin = validatePhoneOrigin(phoneValue)
+        allowedHosts = allowedHosts | {phoneOrigin.removeprefix("http://")}
+        trustedOrigins = trustedOrigins | {phoneOrigin}
+
     return LocalAccessConfig(
         baseUrl=baseUrl,
-        allowedHost=allowedHost,
+        allowedHosts=allowedHosts,
         trustedOrigins=trustedOrigins,
         secret=secret,
+        phoneOrigin=phoneOrigin,
     )
 
 

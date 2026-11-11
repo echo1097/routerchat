@@ -17,6 +17,7 @@ from backend.core import paths
 from backend.core.paths import APP_VERSION
 from backend.startup.initDatabase import initDb
 from backend.core.startupCleanup import deleteTemporaryItems, resetStaleBrainstormGenerations
+from backend.devices import deviceRoutes
 from backend.frontend.staticFiles import configureStaticFiles
 from backend.lorebook import (
     generateEntry,
@@ -44,6 +45,7 @@ app.middleware("http")(enforceLocalApiSecurity)
 
 featureRouters = [
     bootstrapRoutes.router,
+    deviceRoutes.router,
     tosRoutes.router,
     settingsRoutes.router,
     providerRoutes.router,

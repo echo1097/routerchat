@@ -5,6 +5,7 @@ import html
 import os
 import re
 import secrets
+import socket
 import stat
 import time
 import webbrowser
@@ -164,10 +165,29 @@ def openBootstrapPage(
         server.server_close()
 
 
+def openPhoneSockets(phone_address: str | None, port: int) -> list[socket.socket]:
+    if not phone_address:
+        return []
+
+    from backend.devices.phoneServer import openListenSocket
+
+    localSocket = openListenSocket("127.0.0.1", port)
+    if localSocket is None:
+        return []
+
+    phoneSocket = openListenSocket(phone_address, port)
+    if phoneSocket is None:
+        localSocket.close()
+        return []
+
+    return [localSocket, phoneSocket]
+
+
 def serveLocalApp(
     secret_path: Path,
     base_url: str,
     trusted_origins: Sequence[str],
+    phone_address: str | None = None,
 ) -> None:
     baseUrl = validateBaseUrl(base_url)
     origins = [validateBaseUrl(origin) for origin in trusted_origins]
@@ -184,15 +204,29 @@ def serveLocalApp(
     if port is None:
         raise RuntimeError("RouterChat base URL must include a port.")
 
-    try:
-        import uvicorn
+    phoneSockets = openPhoneSockets(phone_address, port)
+    if phoneSockets:
+        os.environ["ROUTERCHAT_PHONE_ORIGIN"] = f"http://{phone_address}:{port}"
+    else:
+        os.environ.pop("ROUTERCHAT_PHONE_ORIGIN", None)
 
-        uvicorn.run(
-            "backend.main:app",
-            host="127.0.0.1",
-            port=port,
-        )
+    try:
+        if phoneSockets:
+            from backend.devices.phoneServer import serveOnSockets
+
+            serveOnSockets(phoneSockets, port)
+        else:
+            import uvicorn
+
+            uvicorn.run(
+                "backend.main:app",
+                host="127.0.0.1",
+                port=port,
+            )
     finally:
+        for phoneSocket in phoneSockets:
+            phoneSocket.close()
+
         try:
             secretPath.unlink()
         except FileNotFoundError:
@@ -225,7 +259,14 @@ def main(arguments: Sequence[str] | None = None) -> None:
         return
 
     if args.command == "serve":
-        serveLocalApp(args.secret_file, args.base_url, args.trusted_origin)
+        from backend.devices.phoneAccess import phoneListenAddress
+
+        serveLocalApp(
+            args.secret_file,
+            args.base_url,
+            args.trusted_origin,
+            phoneListenAddress(),
+        )
         return
 
     openBootstrapPage(

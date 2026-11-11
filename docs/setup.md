@@ -169,6 +169,7 @@ API keys can only be changed on the computer, and voice input isn't available on
 | **Models won't load** | The key for the selected provider is missing or invalid. Check which provider is selected on the Provider page and re-save its key. |
 | **Web search or the microphone is missing** | Web search only works with OpenRouter. Voice input needs a saved OpenRouter key, even if you chat with Anthropic. |
 | **The phone can't open RouterChat** | Check that RouterChat is running on the computer and the phone is on the same Wi-Fi. If your computer's network address changed, the old bookmark stops working, so pair again from the **Phone** page to get the new address. |
+| **Chrome on Android says "This site can't be reached"** | Newer Android versions block apps from reaching devices on your Wi-Fi until you allow it. On the phone, open Settings, Apps, Chrome, Permissions, and allow **Nearby devices** (on some phones it is called **Local network**). Then reload the page. |
 | **The phone says it isn't paired** | It was removed, or went 30 days without use. Pair it again from the **Phone** page on the computer. |
 | **Your chats vanished** | Packaged installs store them in `user-data/routerchat.sqlite3`, developer installs in `data/routerchat.sqlite3`. Don't delete or share that file. |
 | **Everything is broken** | Rerun the installer to repair. If that fails, follow [SUPPORT.md](../SUPPORT.md) and share only sanitized logs. |

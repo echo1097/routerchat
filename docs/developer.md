@@ -177,7 +177,7 @@ Keep the backend on port 8000 unless you also change `vite.config.js`, which for
 An Electron window around the same app, for development only. There is no installer for it yet. It starts the backend from `.venv` on port 8137, signs the window in by itself, and stops the backend when you close the window. It uses the same `.env` and `data` folder as the browser version.
 
 ```sh
-./electron.sh
+./dev2.sh
 ```
 
 That checks `.venv` and the installed packages, then runs `npm run electron`, which builds the frontend first. To skip the build and reuse the last one, run `npm run electron:start`. Set `ROUTERCHAT_ELECTRON_PORT` to use a different port.

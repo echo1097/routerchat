@@ -78,6 +78,8 @@ import NotificationStack from "./notifications/NotificationStack.jsx";
 import TourOverlay from "./tour/TourOverlay.jsx";
 import { checkForUpdate, clearUpdateCheck } from "./updates/updateCheck.js";
 import { TosLoadingScreen, TosUnavailableScreen, TosGateModal } from "./TosGate.jsx";
+import { PairScreen } from "./devices/PairScreen.jsx";
+import { isPhoneBrowser } from "./devices/phoneBrowser.js";
 import { createRoot } from "react-dom/client";
 import "@fontsource-variable/inter";
 import "./styles.css";
@@ -3920,6 +3922,10 @@ function Root() {
 
   if (gate.status === "loading") {
     return <TosLoadingScreen />;
+  }
+
+  if (gate.status === "unavailable" && gate.reason === "auth" && isPhoneBrowser()) {
+    return <PairScreen onPaired={loadTos} />;
   }
 
   if (gate.status === "unavailable") {

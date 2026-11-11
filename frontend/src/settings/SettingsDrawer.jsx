@@ -25,6 +25,8 @@ import { SettingsNav, SettingsNavToggle } from "./SettingsNav.jsx";
 import { SETTINGS_PAGES, pageVisibleInMode, searchSettings } from "./settingsPages.js";
 import { SettingsScrollPage, SettingsFixedPage } from "./SettingsScrollPage.jsx";
 import { ScrollEdgeBlur, useScrollEdges } from "../components/ScrollEdgeBlur.jsx";
+import { PhoneAccessSetting } from "../devices/PhoneAccessSetting.jsx";
+import { isPhoneBrowser } from "../devices/phoneBrowser.js";
 
 const REASONING_EFFORTS = [
   { value: "low", label: "Low" },
@@ -135,6 +137,7 @@ export function SettingsDrawer({
   const providerName = provider.name;
   const keyPlaceholder = provider.keyPlaceholder;
   const capabilities = provider.capabilities || DEFAULT_PROVIDER.capabilities;
+  const onPhone = isPhoneBrowser();
   const activePageIndex = SETTINGS_PAGES.findIndex((page) => page.id === activePage) + 1;
   const selectedCloudChat = chats.find((chat) => chat.id === selectedCloudChatId);
   const activeCloudChat = chats.find((chat) => chat.id === activeChatId);
@@ -184,8 +187,11 @@ export function SettingsDrawer({
     : "";
 
   const searchResults = useMemo(
-    () => searchSettings(navQuery, { pages: visibleSettingsPages, capabilities }),
-    [capabilities, navQuery, visibleSettingsPages],
+    () => searchSettings(navQuery, {
+      pages: visibleSettingsPages,
+      capabilities: { ...capabilities, phoneAccess: !onPhone },
+    }),
+    [capabilities, navQuery, onPhone, visibleSettingsPages],
   );
 
   function pageTitle(pageId) {
@@ -455,6 +461,12 @@ export function SettingsDrawer({
           className="provider-tabs settings-inner-tabs flex w-full"
         />
       </SettingRow>
+      {onPhone ? (
+        <SettingRow
+          title={`${providerName} key`}
+          description="Keys can only be changed on the computer running RouterChat"
+        />
+      ) : (
       <div className="settings-row space-y-3 px-5 py-4">
         <h3 className="text-balance text-[14.5px] font-medium text-neutral-50">{providerName} key</h3>
         <form
@@ -481,6 +493,7 @@ export function SettingsDrawer({
           </button>
         </form>
       </div>
+      )}
     </SettingGroup>
   );
 
@@ -1120,6 +1133,7 @@ export function SettingsDrawer({
             <SettingsScrollPage pageId="7" title={pageTitle("interface")} label="Interface settings">
               <div className="settings-group-stack">
                 {displayGroup}
+                {!onPhone && <PhoneAccessSetting onNotify={onNotify} />}
                 {updatesGroup}
               </div>
             </SettingsScrollPage>

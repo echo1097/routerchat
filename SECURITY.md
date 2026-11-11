@@ -19,7 +19,8 @@ Reports are reviewed on a best effort basis, with no guaranteed response times, 
 In scope:
 
 - exposure of an API key or the database
-- anything off-machine reaching the local backend
+- anything off-machine reaching the local backend, other than a phone the user paired through phone access
+- an unpaired device getting past phone access pairing, or a paired phone reaching computer-only actions such as changing API keys
 - unintended code or command execution, or file access, through untrusted input
 - third parties altering what the installers and updater run, including checksum bypass and rollback attacks
 
@@ -30,6 +31,7 @@ Out of scope:
 - OpenRouter, Anthropic, or third-party model behavior and output
 - issues that require arbitrary read or write access as the OS user running RouterChat
 - the backend being reachable from your own machine
+- phone access traffic being readable on the local network, since it is unencrypted by design and off by default
 - scanner output with no proof of concept
 - social engineering, physical access, and denial of service
 

@@ -64,6 +64,16 @@ These connections reveal your IP address and basic browser details, the same way
 
 RouterChat listens only on `127.0.0.1`, which means only your own computer can reach it, and it requires a credential that the launcher hands to your browser.
 
+### Phone access
+
+Phone access is off unless you turn it on in settings. While it is on, RouterChat also listens on your computer's home network address, so a phone on the same Wi-Fi can open it.
+
+* A phone has to be paired first with a one-time code shown on your computer. The code lasts two minutes and works once.
+* Each paired phone gets its own credential. RouterChat stores only a scrambled copy of it, and you can remove a phone in settings at any time. A phone that goes 30 days without being used is removed automatically.
+* A paired phone can read and change your chats and stories. It cannot change your API keys or pair other devices.
+* The connection between the phone and your computer is not encrypted. Anyone else on the same network could watch it, so only turn phone access on for a Wi-Fi network you trust, and never on public Wi-Fi.
+* Nothing is sent to any outside service to make this work. The phone talks directly to your computer.
+
 If you change the address it listens on, forward the port, put it behind a proxy, or run it on a machine other people can reach, your chats and API key become reachable by them. Securing that kind of setup is up to you.
 
 ## Links you open

@@ -526,6 +526,7 @@ export default function StoryBrainstorm({
               })}
               onMoveEnd={(_, nextViewport) => onUpdateViewport(nextViewport)}
               elementsSelectable={false}
+              nodeClickDistance={6}
               panOnScroll
               minZoom={0.25}
               maxZoom={1.8}

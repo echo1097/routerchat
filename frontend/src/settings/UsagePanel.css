@@ -668,7 +668,10 @@
 }
 
 @container (max-width: 520px) {
-  .usage-summary,
+  .usage-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .usage-metric {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 42%;

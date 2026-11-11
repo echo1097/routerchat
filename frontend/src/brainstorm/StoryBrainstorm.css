@@ -103,6 +103,10 @@
   cursor: pointer;
 }
 
+.brainstorm-bar-pill-icon {
+  display: none;
+}
+
 .brainstorm-bar-pill:hover:not(:disabled) {
   color: #f5f5f5;
   background: rgba(255, 255, 255, 0.1);
@@ -1261,6 +1265,10 @@
 
   .brainstorm-bar-pill span {
     display: none;
+  }
+
+  .brainstorm-bar-pill-icon {
+    display: block;
   }
 
   .brainstorm-bar-pill {

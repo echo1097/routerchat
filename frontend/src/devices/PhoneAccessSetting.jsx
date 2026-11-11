@@ -74,11 +74,7 @@ export function PhoneAccessSetting({ onNotify }) {
   const ready = status.enabled && status.running;
 
   return (
-    <SettingGroup
-      id="settings-group-phone"
-      title="Phone access"
-      note="Phones stay paired until they go 30 days without being used. API keys can only be changed on this computer."
-    >
+    <SettingGroup id="settings-group-phone" title="Phone access">
       <SettingRow
         title="Use RouterChat on a phone"
         description="Lets phones on your home Wi-Fi open RouterChat while it runs on this computer. The connection isn't encrypted, so only turn this on for a network you trust."
@@ -130,6 +126,12 @@ export function PhoneAccessSetting({ onNotify }) {
           onRemove={phoneAccess.forgetDevice}
         />
       ))}
+
+      <div className="settings-row px-5 py-3">
+        <p className="text-pretty text-[11.5px] leading-4 text-[#7a7a7a]">
+          Phones stay paired until they go 30 days without being used. API keys can only be changed on this computer.
+        </p>
+      </div>
     </SettingGroup>
   );
 }

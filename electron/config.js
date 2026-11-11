@@ -7,6 +7,7 @@ export const electronDir = dirname(fileURLToPath(import.meta.url));
 export const projectDir = resolve(electronDir, "..");
 export const frontendBuildFile = join(projectDir, "dist", "index.html");
 export const windowIcon = join(electronDir, "assets", "icon.png");
+export const preloadFile = join(electronDir, "window", "preload.cjs");
 
 export const pythonBin = process.platform === "win32"
   ? join(projectDir, ".venv", "Scripts", "python.exe")

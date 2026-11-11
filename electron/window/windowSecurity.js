@@ -5,7 +5,7 @@ import { backendUrl } from "../config.js";
 const allowedPermissions = new Set(["media", "clipboard-sanitized-write"]);
 const externalProtocols = new Set(["http:", "https:", "mailto:"]);
 
-function isAppUrl(targetUrl) {
+export function isAppUrl(targetUrl) {
   try {
     return new URL(targetUrl).origin === backendUrl;
   } catch {

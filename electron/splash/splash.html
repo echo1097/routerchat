@@ -11,19 +11,30 @@
   </head>
   <body>
     <main class="splash">
-      <img
-        class="logo"
-        src="../../frontend/public/favicon/source-master-transparent-large-white.png"
-        alt="RouterChat"
-      />
-
-      <div class="progressTrack">
-        <div class="progressFill" id="progressFill"></div>
+      <div class="stage">
+        <img
+          class="logo"
+          src="../../frontend/public/favicon/source-master-transparent-large-white.png"
+          alt="RouterChat"
+        />
       </div>
 
-      <p class="statusLine" id="statusLine"></p>
+      <div class="loading">
+        <div class="progressTrack">
+          <div class="progressFill" id="progressFill"></div>
+        </div>
+
+        <p class="statusLine" id="statusLine"></p>
+      </div>
     </main>
 
+    <script src="sound/audioClock.js"></script>
+    <script src="sound/lofiEngine.js"></script>
+    <script src="sound/keys.js"></script>
+    <script src="sound/thump.js"></script>
+    <script src="sound/crackle.js"></script>
+    <script src="sound/startupSounds.js"></script>
+    <script src="intro.js"></script>
     <script src="splash.js"></script>
   </body>
 </html>

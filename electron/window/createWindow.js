@@ -1,7 +1,7 @@
 import { BrowserWindow } from "electron";
 
 import { readSecret } from "../backend/apiSecret.js";
-import { backendUrl, windowIcon } from "../config.js";
+import { backendUrl, preloadFile, windowIcon } from "../config.js";
 import { attachContextMenu } from "./contextMenu.js";
 import { hideUntilRevealed } from "./revealApp.js";
 import { secureWindow } from "./windowSecurity.js";
@@ -29,6 +29,7 @@ export function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      preload: preloadFile,
     },
   });
 

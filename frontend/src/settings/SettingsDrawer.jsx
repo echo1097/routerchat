@@ -21,6 +21,7 @@ import { useLingeringPage } from "./useLingeringPage.js";
 import { DEFAULT_PROVIDER } from "../providers/providerApi.js";
 import { PROVIDER_OPTIONS } from "../providers/providerOptions.js";
 import { SettingSwitch, SettingRow, SettingGroup, SettingChip } from "./SettingControls.jsx";
+import { StartupSoundSetting } from "./StartupSoundSetting.jsx";
 import { SettingsNav, SettingsNavToggle } from "./SettingsNav.jsx";
 import { SETTINGS_PAGES, pageVisibleInMode, searchSettings } from "./settingsPages.js";
 import { SettingsScrollPage, SettingsFixedPage } from "./SettingsScrollPage.jsx";
@@ -925,6 +926,12 @@ export function SettingsDrawer({
     </SettingGroup>
   );
 
+  const audioGroup = window.routerchatDesktop ? (
+    <SettingGroup id="settings-group-audio" title="Audio">
+      <StartupSoundSetting />
+    </SettingGroup>
+  ) : null;
+
   const updatesGroup = (
     <SettingGroup id="settings-group-updates" title="Updates">
       <SettingRow
@@ -1120,6 +1127,7 @@ export function SettingsDrawer({
             <SettingsScrollPage pageId="7" title={pageTitle("interface")} label="Interface settings">
               <div className="settings-group-stack">
                 {displayGroup}
+                {audioGroup}
                 {updatesGroup}
               </div>
             </SettingsScrollPage>

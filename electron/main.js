@@ -4,12 +4,13 @@ import { app, dialog } from "electron";
 
 import { killBackendNow, startBackend, stopBackend } from "./backend/backendProcess.js";
 import { windowIcon } from "./config.js";
+import { isStartupSoundMuted, registerSettingsBridge } from "./settings/settingsBridge.js";
 import { readLogStatus } from "./splash/logStatus.js";
 import { hideSplash, setSplashStatus, showSplash } from "./splash/splashScreen.js";
 import { createWindow, loadApp } from "./window/createWindow.js";
 import { revealApp, waitForStartupReady } from "./window/revealApp.js";
 
-const minimumSplashTime = 900;
+const minimumSplashTime = 1500;
 
 let appWindow = null;
 let backendStopped = false;
@@ -54,8 +55,9 @@ async function launch() {
   }
 
   try {
+    registerSettingsBridge();
     appWindow = createWindow();
-    await showSplash(appWindow);
+    await showSplash(appWindow, isStartupSoundMuted());
 
     const splashShown = sleep(minimumSplashTime);
     setSplashStatus("Starting RouterChat", 12);

@@ -6,7 +6,8 @@ import { WebContentsView } from "electron";
 import { electronDir } from "../config.js";
 
 const splashFile = join(electronDir, "splash", "splash.html");
-const leaveTime = 240;
+const leaveTime = 380;
+const soundTailTime = 1600;
 
 let splashView = null;
 
@@ -24,7 +25,15 @@ function runInSplash(script) {
   return splashView.webContents.executeJavaScript(script).catch(() => {});
 }
 
-export async function showSplash(appWindow) {
+function closeAfterSound(finishedView) {
+  setTimeout(() => {
+    if (!finishedView.webContents.isDestroyed()) {
+      finishedView.webContents.close();
+    }
+  }, soundTailTime);
+}
+
+export async function showSplash(appWindow, soundMuted) {
   splashView = new WebContentsView({
     webPreferences: {
       contextIsolation: true,
@@ -41,7 +50,9 @@ export async function showSplash(appWindow) {
     if (splashView) fitSplash(appWindow);
   });
 
-  await splashView.webContents.loadFile(splashFile);
+  await splashView.webContents.loadFile(splashFile, {
+    query: { sound: soundMuted ? "off" : "on" },
+  });
 }
 
 export function setSplashStatus(text, progress = null) {
@@ -60,6 +71,6 @@ export async function hideSplash(appWindow) {
     appWindow.contentView.removeChildView(splashView);
   }
 
-  splashView.webContents.close();
+  closeAfterSound(splashView);
   splashView = null;
 }

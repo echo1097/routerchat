@@ -323,6 +323,7 @@ export function SettingsDrawer({
 
   const voicePage = useLingeringPage(open, activePage === "voice");
   const usagePage = useLingeringPage(open, activePage === "usage");
+  const phonePage = useLingeringPage(open, activePage === "phone");
 
   useEffect(() => {
     if (!open) return undefined;
@@ -1137,7 +1138,9 @@ export function SettingsDrawer({
             </SettingsScrollPage>
             <SettingsScrollPage pageId="8" title={pageTitle("phone")} label="Phone settings">
               <div className="settings-group-stack">
-                {!onPhone && <PhoneAccessSetting onNotify={onNotify} />}
+                {!onPhone && phonePage.mounted && (
+                  <PhoneAccessSetting key={phonePage.session} onNotify={onNotify} />
+                )}
               </div>
             </SettingsScrollPage>
             <SettingsFixedPage pageId="9" title={pageTitle("data")} label="Data settings">

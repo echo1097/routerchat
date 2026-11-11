@@ -3266,3 +3266,11 @@ typography exactly or the swap at the end of a generation shows a seam */
 .chat-code .hljs-deletion {
   color: #fca5a5;
 }
+
+@media (pointer: coarse) {
+  input,
+  textarea,
+  select {
+    font-size: max(16px, 1em) !important;
+  }
+}

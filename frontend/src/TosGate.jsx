@@ -149,7 +149,7 @@ function versionLabel(date, hash) {
 
 function FullScreen({ children }) {
   return (
-    <div className="grid h-screen w-screen place-items-center overflow-hidden bg-[#080808] px-4 py-6 text-ink">
+    <div className="grid h-screen h-dvh w-screen place-items-center overflow-hidden bg-[#080808] px-4 py-6 text-ink">
       {children}
     </div>
   );

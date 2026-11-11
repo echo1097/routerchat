@@ -3469,7 +3469,7 @@ function App() {
   });
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#080808] text-ink">
+    <div className="flex h-screen h-dvh overflow-hidden bg-[#080808] text-ink">
       {isWritingMode ? (
         <StoryRail
           stories={writingStories}

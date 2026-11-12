@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { copyText } from "../browserFallbacks.js";
 import { cx } from "../uiShared.js";
 
 export function brainstormDurationLabel(node) {
@@ -24,7 +25,7 @@ export function useCopyAction(getText) {
 
   async function copy() {
     try {
-      await navigator.clipboard.writeText(getText());
+      await copyText(getText());
     } catch {
       return;
     }

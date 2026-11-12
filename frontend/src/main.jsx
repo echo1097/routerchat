@@ -80,6 +80,7 @@ import { checkForUpdate, clearUpdateCheck } from "./updates/updateCheck.js";
 import { TosLoadingScreen, TosUnavailableScreen, TosGateModal } from "./TosGate.jsx";
 import { PairScreen } from "./devices/PairScreen.jsx";
 import { isPhoneBrowser } from "./devices/phoneBrowser.js";
+import { copyText, newId } from "./browserFallbacks.js";
 import { createRoot } from "react-dom/client";
 import "@fontsource-variable/inter";
 import "./styles.css";
@@ -1972,7 +1973,7 @@ function App() {
       }
       const shouldAddUser = !regenerateMessageId;
       const userMessage = {
-        id: `local-user-${crypto.randomUUID()}`,
+        id: `local-user-${newId()}`,
         chat_id: conversationId,
         role: "user",
         content: text,
@@ -1980,7 +1981,7 @@ function App() {
         created_at: new Date().toISOString(),
       };
 
-      const assistantId = `local-assistant-${crypto.randomUUID()}`;
+      const assistantId = `local-assistant-${newId()}`;
       currentAssistantId = assistantId;
       const assistantMessage = {
         id: assistantId,
@@ -2109,7 +2110,7 @@ function App() {
   }
 
   async function copyMessage(message) {
-    await navigator.clipboard.writeText(message.content || "");
+    await copyText(message.content || "");
     setStatus("Copied");
   }
 
@@ -3122,7 +3123,7 @@ function App() {
     const selectedGenerationMode = repairContext ? "edit" : writeGenerationMode;
     const abortController = new AbortController();
     const run = {
-      runId: crypto.randomUUID(),
+      runId: newId(),
       storyId: activeStoryId,
       chapterId: activeChapterId,
       baseRevision: 0,
@@ -3193,7 +3194,7 @@ function App() {
       run.status = "streaming";
       setStoryGenerationStatus(repairContext ? "Fixing the edit" : "Working");
       abortController.signal.throwIfAborted();
-      run.generationId = crypto.randomUUID();
+      run.generationId = newId();
       await storyApi.generateChapter({
         storyId: run.storyId,
         chapterId: targetChapterId,

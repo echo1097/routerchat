@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { newId } from "../browserFallbacks.js";
 import {
   ArrowLeft,
   Eye,
@@ -73,7 +74,7 @@ function normalizeEntry(entry) {
   const updatedAt = entry.updated_at || entry.updatedAt || new Date().toISOString();
 
   return {
-    id: entry.id || crypto.randomUUID(),
+    id: entry.id || newId(),
     name: String(entry.name || "Untitled entry"),
     category: normalizeCategory(entry.category),
     description: String(entry.description || entry.content || ""),
@@ -118,7 +119,7 @@ function entryFromDraft(draft, existingEntry) {
       : {};
 
   return {
-    id: existingEntry?.id || crypto.randomUUID(),
+    id: existingEntry?.id || newId(),
     story_id: existingEntry?.story_id,
     name: draft.name.trim() || "Untitled entry",
     category,
@@ -647,7 +648,7 @@ export default function StoryLorebook({
 
     const nextDescription = normalizeTimelineText(description);
     const nextEntry = {
-      id: timelineEntry?.id || crypto.randomUUID(),
+      id: timelineEntry?.id || newId(),
       story_id: timelineEntry?.story_id,
       name: "Timeline",
       category: "timeline",

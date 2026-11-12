@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { copyText } from "../browserFallbacks.js";
 import {
   historyRunGroups,
   historyCostTotal,
@@ -536,7 +537,7 @@ function WriteHistoryCopyButton({ text, copyName }) {
     setCopyState("copying");
 
     try {
-      await navigator.clipboard.writeText(text);
+      await copyText(text);
       setCopyState("copied");
     } catch {
       setCopyState("failed");

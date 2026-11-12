@@ -18,10 +18,19 @@ export const phoneHelpTopics = [
     ],
   },
   {
+    title: "The routerchat.local address won't open",
+    steps: [
+      "Some older Android phones can't open addresses that end in .local.",
+      "Choose Open on a phone to see the number address and use that instead.",
+      "A phone is paired to the address it used, so pair it again after switching.",
+    ],
+  },
+  {
     title: "It worked before and now it doesn't",
     steps: [
-      "Your computer's address on the Wi-Fi can change, which breaks the old bookmark.",
-      "Choose Pair a phone again to see the current address and scan a new code.",
+      "A number address can change when your computer rejoins the Wi-Fi, which breaks the old bookmark.",
+      "Choose Open on a phone and scan the code to get the current address.",
+      "The routerchat.local address stays the same, so use it when the phone can.",
     ],
   },
   {

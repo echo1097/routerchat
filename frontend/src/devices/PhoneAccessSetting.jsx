@@ -69,6 +69,32 @@ function PairingPanel({ pairing, secondsLeft, address, onCancel }) {
   );
 }
 
+function OpenPanel({ address, backupAddress, onDone }) {
+  return (
+    <div className="settings-row flex flex-col items-center gap-4 px-5 py-5 text-center">
+      <PairingQr link={address} label="QR code to open RouterChat on a phone" />
+
+      <div>
+        <p className="text-[14.5px] font-medium text-neutral-50">Scan this with a paired phone's camera</p>
+        <p className="mt-1 text-pretty text-[13px] leading-5 text-[#8a8a8a]">
+          Or open <span className="font-mono text-neutral-300">{plainAddress(address)}</span> in the phone's browser
+        </p>
+        {backupAddress && (
+          <p className="mt-1 text-pretty text-[13px] leading-5 text-[#8a8a8a]">
+            If that doesn't load, try <span className="font-mono text-neutral-300">{plainAddress(backupAddress)}</span>
+          </p>
+        )}
+      </div>
+
+      <div className="flex items-center justify-center">
+        <button type="button" onClick={onDone} className={buttonClass}>
+          Done
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function DeviceRow({ device, busy, onRemove }) {
   return (
     <div className="settings-row flex items-center justify-between gap-4 px-5 py-3">
@@ -93,6 +119,7 @@ export function PhoneAccessSetting({ onNotify }) {
   const phoneAccess = usePhoneAccess(onNotify);
   const { status, pairing, busy } = phoneAccess;
   const [helpOpen, setHelpOpen] = useState(false);
+  const [openShown, setOpenShown] = useState(false);
 
   if (!status) return null;
 
@@ -144,6 +171,25 @@ export function PhoneAccessSetting({ onNotify }) {
           secondsLeft={phoneAccess.secondsLeft}
           address={status.address}
           onCancel={phoneAccess.stopPairing}
+        />
+      )}
+
+      {ready && !pairing && !openShown && (
+        <SettingRow
+          title="Open on a phone"
+          description="Shows a QR code that takes a paired phone straight to RouterChat"
+        >
+          <button type="button" onClick={() => setOpenShown(true)} className={buttonClass}>
+            Show QR code
+          </button>
+        </SettingRow>
+      )}
+
+      {ready && !pairing && openShown && (
+        <OpenPanel
+          address={status.address}
+          backupAddress={status.backupAddress}
+          onDone={() => setOpenShown(false)}
         />
       )}
 

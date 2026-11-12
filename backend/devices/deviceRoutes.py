@@ -47,7 +47,13 @@ class PairRequest(BaseModel):
 
 
 def phoneOrigin(request: Request) -> str | None:
-    return localAccessConfig(request.app).phoneOrigin
+    config = localAccessConfig(request.app)
+    return config.phoneNameOrigin or config.phoneOrigin
+
+
+def backupPhoneOrigin(request: Request) -> str | None:
+    config = localAccessConfig(request.app)
+    return config.phoneOrigin if config.phoneNameOrigin else None
 
 
 def phoneAccessRunning(request: Request) -> bool:
@@ -62,6 +68,7 @@ def devicesPayload(request: Request) -> dict[str, Any]:
         "enabled": enabled,
         "running": address is not None,
         "address": address,
+        "backupAddress": backupPhoneOrigin(request),
         "restartNeeded": enabled != (address is not None),
         "pairingActive": pairingCodeActive(),
         "devices": listDevices(),

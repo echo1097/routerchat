@@ -371,17 +371,98 @@ class PhoneAccessTest(unittest.TestCase):
             observed["hosts"] = [listenSocket.host for listenSocket in listenSockets]
             observed["port"] = port
             observed["phoneOrigin"] = os.environ.get("ROUTERCHAT_PHONE_ORIGIN")
+            observed["phoneNameOrigin"] = os.environ.get("ROUTERCHAT_PHONE_NAME_ORIGIN")
 
         with patch("backend.devices.phoneServer.openListenSocket", openSocket), patch(
             "backend.devices.phoneServer.serveOnSockets", serve
-        ):
+        ), patch("backend.devices.localName.announceLocalName", return_value=None):
             serveLocalApp(secretPath, self.baseUrl, [self.baseUrl], "192.168.1.20")
 
         self.assertEqual(observed["hosts"], ["127.0.0.1", "192.168.1.20"])
         self.assertEqual(observed["port"], 8000)
         self.assertEqual(observed["phoneOrigin"], "http://192.168.1.20:8000")
+        self.assertIsNone(observed["phoneNameOrigin"])
         self.assertTrue(all(listenSocket.closed for listenSocket in opened))
         self.assertFalse(secretPath.exists())
+
+    def test_launcher_announces_the_fixed_name_and_stops_when_it_exits(self):
+        secretPath = Path(self.tempDir.name) / "run" / "api-secret"
+        observed = {}
+
+        class FakeSocket:
+            def close(self):
+                pass
+
+        class FakeAnnouncer:
+            def unregister_all_services(self):
+                observed["unregistered"] = True
+
+            def close(self):
+                observed["closed"] = True
+
+        def announce(address, port):
+            observed["announced"] = (address, port)
+            return FakeAnnouncer()
+
+        def serve(listenSockets, port):
+            observed["phoneNameOrigin"] = os.environ.get("ROUTERCHAT_PHONE_NAME_ORIGIN")
+
+        with patch(
+            "backend.devices.phoneServer.openListenSocket", lambda host, port: FakeSocket()
+        ), patch("backend.devices.phoneServer.serveOnSockets", serve), patch(
+            "backend.devices.localName.announceLocalName", announce
+        ):
+            serveLocalApp(secretPath, self.baseUrl, [self.baseUrl], "192.168.1.20")
+
+        self.assertEqual(observed["announced"], ("192.168.1.20", 8000))
+        self.assertEqual(observed["phoneNameOrigin"], "http://routerchat.local:8000")
+        self.assertTrue(observed["unregistered"])
+        self.assertTrue(observed["closed"])
+
+    def test_fixed_name_becomes_the_phone_address_and_keeps_the_number_as_backup(self):
+        nameUrl = "http://routerchat.local:8000"
+        os.environ["ROUTERCHAT_PHONE_NAME_ORIGIN"] = nameUrl
+        main.resetLocalAccessConfig()
+
+        status = self.computer.get("/api/devices").json()
+        self.assertEqual(status["address"], nameUrl)
+        self.assertEqual(status["backupAddress"], self.phoneUrl)
+
+        pairing = self.newCode()
+        self.assertEqual(pairing["link"], f"{nameUrl}/#pair={pairing['code']}")
+
+        namedPhone = self.makeClient(nameUrl)
+        try:
+            self.assertEqual(self.pair(pairing["code"], client=namedPhone).status_code, 200)
+            self.assertEqual(namedPhone.get("/api/chats").status_code, 200)
+        finally:
+            namedPhone.close()
+
+        self.assertEqual(self.phone.get("/api/health").status_code, 200)
+
+    def test_only_the_exact_fixed_name_is_allowed(self):
+        self.assertIsNone(self.computer.get("/api/devices").json()["backupAddress"])
+        self.assertEqual(
+            self.phone.get("/api/health", headers={"Host": "routerchat.local:8000"}).status_code,
+            400,
+        )
+
+        for origin in (
+            "http://routerchat.local:9000",
+            "http://routerchat.local",
+            "http://evil.local:8000",
+            "https://routerchat.local:8000",
+            "http://routerchat.local:8000/path",
+        ):
+            with self.subTest(origin=origin):
+                with self.assertRaises(RuntimeError):
+                    loadLocalAccessConfig({**os.environ, "ROUTERCHAT_PHONE_NAME_ORIGIN": origin})
+
+        nameOnly = {**os.environ, "ROUTERCHAT_PHONE_NAME_ORIGIN": "http://routerchat.local:8000"}
+        del nameOnly["ROUTERCHAT_PHONE_ORIGIN"]
+        config = loadLocalAccessConfig(nameOnly)
+        self.assertIsNone(config.phoneNameOrigin)
+        self.assertNotIn("routerchat.local:8000", config.allowedHosts)
 
     def test_launcher_falls_back_to_local_only_when_the_phone_address_is_unavailable(self):
         secretPath = Path(self.tempDir.name) / "run" / "api-secret"

@@ -205,10 +205,18 @@ def serveLocalApp(
         raise RuntimeError("RouterChat base URL must include a port.")
 
     phoneSockets = openPhoneSockets(phone_address, port)
+    nameAnnouncer = None
+    os.environ.pop("ROUTERCHAT_PHONE_ORIGIN", None)
+    os.environ.pop("ROUTERCHAT_PHONE_NAME_ORIGIN", None)
+
     if phoneSockets:
+        from backend.devices.localName import announceLocalName, phoneNameOrigin
+
         os.environ["ROUTERCHAT_PHONE_ORIGIN"] = f"http://{phone_address}:{port}"
-    else:
-        os.environ.pop("ROUTERCHAT_PHONE_ORIGIN", None)
+        nameAnnouncer = announceLocalName(phone_address, port)
+
+        if nameAnnouncer is not None:
+            os.environ["ROUTERCHAT_PHONE_NAME_ORIGIN"] = phoneNameOrigin(port)
 
     try:
         if phoneSockets:
@@ -224,6 +232,11 @@ def serveLocalApp(
                 port=port,
             )
     finally:
+        if nameAnnouncer is not None:
+            from backend.devices.localName import stopAnnouncing
+
+            stopAnnouncing(nameAnnouncer)
+
         for phoneSocket in phoneSockets:
             phoneSocket.close()
 

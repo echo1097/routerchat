@@ -8,7 +8,9 @@
   color: #a3a3a3;
 }
 
-.voice-mic:hover { background: #ffffff14; }
+@media (hover: hover) {
+  .voice-mic:hover { background: #ffffff14; }
+}
 .voice-mic:disabled { opacity: 0.4; }
 .voice-mic:focus-visible, .voice-round:focus-visible { outline: 2px solid #a3a3a3; outline-offset: 3px; }
 
@@ -38,7 +40,9 @@
   color: #ddd;
 }
 
-.voice-round:hover { background: #ffffff0d; }
+@media (hover: hover) {
+  .voice-round:hover { background: #ffffff0d; }
+}
 .voice-round:disabled { opacity: 0.4; cursor: default; }
 .voice-send, .voice-send:hover { background: #fff; color: #111; border-color: #fff; }
 .voice-waveform { position: relative; flex: 1; min-width: 0; height: 64px; }

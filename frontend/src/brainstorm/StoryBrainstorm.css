@@ -48,9 +48,11 @@
   cursor: pointer;
 }
 
-.brainstorm-round-button:hover {
-  color: #f5f5f5;
-  background: rgba(255, 255, 255, 0.075);
+@media (hover: hover) {
+  .brainstorm-round-button:hover {
+    color: #f5f5f5;
+    background: rgba(255, 255, 255, 0.075);
+  }
 }
 
 .brainstorm-bar-title {
@@ -107,9 +109,11 @@
   display: none;
 }
 
-.brainstorm-bar-pill:hover:not(:disabled) {
-  color: #f5f5f5;
-  background: rgba(255, 255, 255, 0.1);
+@media (hover: hover) {
+  .brainstorm-bar-pill:hover:not(:disabled) {
+    color: #f5f5f5;
+    background: rgba(255, 255, 255, 0.1);
+  }
 }
 
 .brainstorm-bar-pill:disabled {
@@ -143,9 +147,11 @@
   transition-timing-function: ease-out;
 }
 
-.brainstorm-zoom button:hover {
-  color: #f5f5f5;
-  background: rgba(255, 255, 255, 0.06);
+@media (hover: hover) {
+  .brainstorm-zoom button:hover {
+    color: #f5f5f5;
+    background: rgba(255, 255, 255, 0.06);
+  }
 }
 
 .brainstorm-zoom button:active {
@@ -381,14 +387,18 @@
   transition-timing-function: ease-out;
 }
 
-.brainstorm-node-actions button:hover:not(:disabled) {
-  color: #f5f5f5;
-  background: rgba(255, 255, 255, 0.06);
+@media (hover: hover) {
+  .brainstorm-node-actions button:hover:not(:disabled) {
+    color: #f5f5f5;
+    background: rgba(255, 255, 255, 0.06);
+  }
 }
 
-.brainstorm-node-actions button.is-danger:hover:not(:disabled) {
-  color: #fca5a5;
-  background: rgba(239, 68, 68, 0.16);
+@media (hover: hover) {
+  .brainstorm-node-actions button.is-danger:hover:not(:disabled) {
+    color: #fca5a5;
+    background: rgba(239, 68, 68, 0.16);
+  }
 }
 
 .brainstorm-node-actions button:active:not(:disabled) {
@@ -628,9 +638,11 @@
   cursor: pointer;
 }
 
-.brainstorm-pane-icon:hover:not(:disabled) {
-  color: #f5f5f5;
-  background: rgba(255, 255, 255, 0.06);
+@media (hover: hover) {
+  .brainstorm-pane-icon:hover:not(:disabled) {
+    color: #f5f5f5;
+    background: rgba(255, 255, 255, 0.06);
+  }
 }
 
 .brainstorm-pane-icon:disabled {
@@ -764,9 +776,11 @@
   cursor: pointer;
 }
 
-.brainstorm-pill:hover:not(:disabled) {
-  color: #f5f5f5;
-  background: rgba(255, 255, 255, 0.1);
+@media (hover: hover) {
+  .brainstorm-pill:hover:not(:disabled) {
+    color: #f5f5f5;
+    background: rgba(255, 255, 255, 0.1);
+  }
 }
 
 .brainstorm-pill:disabled {
@@ -781,14 +795,18 @@
   background: #f5f5f5;
 }
 
-.brainstorm-pill.is-primary:hover:not(:disabled) {
-  color: #0a0a0a;
-  background: #ffffff;
+@media (hover: hover) {
+  .brainstorm-pill.is-primary:hover:not(:disabled) {
+    color: #0a0a0a;
+    background: #ffffff;
+  }
 }
 
-.brainstorm-pill.is-danger:hover:not(:disabled) {
-  color: #fecaca;
-  background: rgba(239, 68, 68, 0.16);
+@media (hover: hover) {
+  .brainstorm-pill.is-danger:hover:not(:disabled) {
+    color: #fecaca;
+    background: rgba(239, 68, 68, 0.16);
+  }
 }
 
 .brainstorm-pill.is-wide {
@@ -873,9 +891,11 @@
   color: #8a8a8a;
 }
 
-.brainstorm-branch-chip:hover {
-  color: #f5f5f5;
-  background: #242424;
+@media (hover: hover) {
+  .brainstorm-branch-chip:hover {
+    color: #f5f5f5;
+    background: #242424;
+  }
 }
 
 .brainstorm-branch-chip:active {
@@ -967,9 +987,11 @@
   transition-timing-function: ease-out;
 }
 
-.brainstorm-branch-trigger:hover,
-.brainstorm-model-button:hover {
-  background: rgba(255, 255, 255, 0.08);
+@media (hover: hover) {
+  .brainstorm-branch-trigger:hover,
+  .brainstorm-model-button:hover {
+    background: rgba(255, 255, 255, 0.08);
+  }
 }
 
 .brainstorm-branch-trigger:active,
@@ -1156,9 +1178,11 @@
   transition-duration: 150ms;
 }
 
-.brainstorm-model-menu button:hover {
-  color: #f5f5f5;
-  background: rgba(255, 255, 255, 0.08);
+@media (hover: hover) {
+  .brainstorm-model-menu button:hover {
+    color: #f5f5f5;
+    background: rgba(255, 255, 255, 0.08);
+  }
 }
 
 .brainstorm-model-menu button:active {
@@ -1206,8 +1230,10 @@
   transition-timing-function: ease-out;
 }
 
-.brainstorm-send-button:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.08);
+@media (hover: hover) {
+  .brainstorm-send-button:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.08);
+  }
 }
 
 .brainstorm-send-button:disabled {

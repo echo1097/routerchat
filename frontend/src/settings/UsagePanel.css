@@ -586,8 +586,10 @@
   transition: background-color 150ms ease-out, transform 120ms ease-out;
 }
 
-.usage-state button:hover {
-  background: rgba(255, 255, 255, 0.11);
+@media (hover: hover) {
+  .usage-state button:hover {
+    background: rgba(255, 255, 255, 0.11);
+  }
 }
 
 .usage-state button:active {

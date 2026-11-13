@@ -400,8 +400,10 @@ textarea::placeholder {
   transition: color 150ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.sidebar-version-update:hover {
-  color: #d4d4d4;
+@media (hover: hover) {
+  .sidebar-version-update:hover {
+    color: #d4d4d4;
+  }
 }
 
 .sidebar-version-dot {
@@ -564,8 +566,10 @@ textarea::placeholder {
   background: #0e0e0e;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
-.settings-page .settings-floating-toggle:hover {
-  background: #181818;
+@media (hover: hover) {
+  .settings-page .settings-floating-toggle:hover {
+    background: #181818;
+  }
 }
 .settings-nav-backdrop {
   position: absolute;
@@ -654,8 +658,10 @@ textarea::placeholder {
 .model-picker-row {
   transition: background-color 150ms ease-out;
 }
-.model-picker-row:hover {
-  background: rgba(255, 255, 255, 0.035);
+@media (hover: hover) {
+  .model-picker-row:hover {
+    background: rgba(255, 255, 255, 0.035);
+  }
 }
 .model-picker-row.is-selected {
   background: rgba(255, 255, 255, 0.065);
@@ -705,8 +711,10 @@ textarea::placeholder {
   transform: none;
   filter: none;
 }
-.model-search-clear:hover {
-  color: #f5f5f5;
+@media (hover: hover) {
+  .model-search-clear:hover {
+    color: #f5f5f5;
+  }
 }
 .model-search-clear.is-visible:active {
   transform: scale(0.9);
@@ -813,14 +821,18 @@ textarea::placeholder {
 .settings-switch.is-small {
   --toggle-travel: 16px;
 }
-.settings-switch:not(:disabled):hover {
-  background: rgba(255, 255, 255, 0.13);
+@media (hover: hover) {
+  .settings-switch:not(:disabled):hover {
+    background: rgba(255, 255, 255, 0.13);
+  }
 }
 .settings-switch[data-on="true"] {
   background: #f5f5f5;
 }
-.settings-switch[data-on="true"]:not(:disabled):hover {
-  background: #ffffff;
+@media (hover: hover) {
+  .settings-switch[data-on="true"]:not(:disabled):hover {
+    background: #ffffff;
+  }
 }
 .settings-switch-thumb {
   background: #a3a3a3;
@@ -1040,9 +1052,13 @@ textarea::placeholder {
   z-index: 1;
   transition: color var(--tabs-dur) var(--tabs-ease);
 }
-.t-tab:not([aria-selected="true"]):hover,
 .t-tab[aria-selected="true"] {
   color: var(--tabs-text-active);
+}
+@media (hover: hover) {
+  .t-tab:not([aria-selected="true"]):hover {
+    color: var(--tabs-text-active);
+  }
 }
 .t-tabs.is-disabled {
   opacity: 0.55;
@@ -1050,16 +1066,20 @@ textarea::placeholder {
 .t-tabs.is-disabled .t-tab {
   cursor: not-allowed;
 }
-.t-tabs.is-disabled .t-tab:not([aria-selected="true"]):hover {
-  color: var(--tabs-text-muted);
+@media (hover: hover) {
+  .t-tabs.is-disabled .t-tab:not([aria-selected="true"]):hover {
+    color: var(--tabs-text-muted);
+  }
 }
 .t-tab.is-option-disabled {
   cursor: not-allowed;
   color: var(--tabs-text-muted);
   opacity: 0.38;
 }
-.t-tab.is-option-disabled:not([aria-selected="true"]):hover {
-  color: var(--tabs-text-muted);
+@media (hover: hover) {
+  .t-tab.is-option-disabled:not([aria-selected="true"]):hover {
+    color: var(--tabs-text-muted);
+  }
 }
 .t-tabs-pill {
   position: absolute;
@@ -1867,14 +1887,18 @@ textarea::placeholder {
   cursor: default;
 }
 
-.write-operation-thinking-toggle.is-static:hover {
-  color: #a3a3a3;
+@media (hover: hover) {
+  .write-operation-thinking-toggle.is-static:hover {
+    color: #a3a3a3;
+  }
 }
 
-.write-operation-thinking-toggle:hover {
-  background: transparent;
-  color: #f5f5f5;
-  box-shadow: none;
+@media (hover: hover) {
+  .write-operation-thinking-toggle:hover {
+    background: transparent;
+    color: #f5f5f5;
+    box-shadow: none;
+  }
 }
 
 .write-operation-thinking-toggle:focus-visible {
@@ -2432,10 +2456,12 @@ sticky header veil and reads as clipping through the blur */
   background-clip: content-box;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: transparent;
-  border: 3px solid transparent;
-  background-clip: content-box;
+@media (hover: hover) {
+  ::-webkit-scrollbar-thumb:hover {
+    background: transparent;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
 }
 
 .chat-rail-scrollbar {
@@ -2908,8 +2934,10 @@ typography exactly or the swap at the end of a generation shows a seam */
   transition: background-color 180ms cubic-bezier(0.2, 0, 0, 1);
 }
 
-.attachment-chip:hover {
-  background-color: rgba(255, 255, 255, 0.09);
+@media (hover: hover) {
+  .attachment-chip:hover {
+    background-color: rgba(255, 255, 255, 0.09);
+  }
 }
 
 .attachment-chip img {
@@ -3167,9 +3195,11 @@ typography exactly or the swap at the end of a generation shows a seam */
   border: 3px solid #181818;
   border-radius: 999px;
 }
-.tos-scroll::-webkit-scrollbar-thumb:hover,
-.tos-rail::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.22);
+@media (hover: hover) {
+  .tos-scroll::-webkit-scrollbar-thumb:hover,
+  .tos-rail::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.22);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

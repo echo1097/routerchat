@@ -57,7 +57,7 @@ export function AttachmentChip({ attachment, onRemove, compact = false }) {
           title={`Remove ${attachment.filename}`}
           className={cx(
             "absolute -right-1.5 -top-1.5 grid h-[18px] w-[18px] place-items-center rounded-full bg-neutral-700 text-neutral-200",
-            "opacity-0 group-hover/chip:opacity-100 focus:opacity-100 focus:outline-none",
+            "touch-visible opacity-0 group-hover/chip:opacity-100 focus:opacity-100 focus:outline-none",
             "hover:bg-neutral-600 hover:text-white",
             CONTROL_MOTION,
           )}

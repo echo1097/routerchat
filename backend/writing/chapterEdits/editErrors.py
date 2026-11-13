@@ -9,7 +9,6 @@ CHAPTER_EDIT_OPERATIONS = {
 }
 CHAPTER_EDIT_INVALID_JSON = "chapter_edit_invalid_json"
 CHAPTER_EDIT_INVALID_OPERATION = "chapter_edit_invalid_operation"
-CHAPTER_EDIT_REVISION_MISMATCH = "chapter_edit_revision_mismatch"
 CHAPTER_EDIT_TARGET_MISMATCH = "chapter_edit_target_mismatch"
 CHAPTER_EDIT_CONFLICTING_EDITS = "chapter_edit_conflicting_edits"
 CHAPTER_EDIT_TRUNCATED = "chapter_edit_truncated"

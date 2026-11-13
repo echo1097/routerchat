@@ -3491,8 +3491,7 @@ class StoryApiTest(unittest.TestCase):
                 },
                 {
                     "operation": "replaceBlock",
-                    "blockId": "p_002",
-                    "anchorText": "a line that is nowhere in this chapter",
+                    "blockId": "p_999",
                     "newText": "never lands",
                 },
             ],
@@ -4110,29 +4109,16 @@ class StoryApiTest(unittest.TestCase):
             ).fetchone()
         self.assertTrue(generation["error"].startswith("chapter_edit_truncated"))
 
-    def test_edit_revision_and_target_conflicts_fail_closed(self):
+    def test_edit_target_conflicts_fail_closed(self):
         story = self.client.post("/api/stories", json={"title": "Edit Conflicts"}).json()["story"]
         chapter = self.client.post(
             f"/api/stories/{story['id']}/chapters",
             json={"title": "Opening", "content": "unchanged"},
         ).json()["chapter"]
-        staleRevision = json.dumps({
-            "operation": "appendToChapter",
-            "chapterRevision": 9,
-            "newText": "must not apply",
-        })
-        response, _ = self.streamChapterGeneration(story, chapter, staleRevision)
-        staleEvents = [json.loads(line) for line in response.text.splitlines() if line]
-        self.assertEqual(
-            [event["value"]["code"] for event in staleEvents if event["type"] == "error"],
-            ["chapter_edit_revision_mismatch"],
-        )
-
         changedTarget = json.dumps({
             "operation": "replaceBlock",
             "chapterRevision": chapter["revision"],
-            "blockId": "p_001",
-            "anchorText": "a totally different paragraph",
+            "blockId": "p_999",
             "newText": "must not apply",
         })
         response, _ = self.streamChapterGeneration(story, chapter, changedTarget)
@@ -4870,7 +4856,8 @@ class StoryApiTest(unittest.TestCase):
             blocks=chapterBlocks(chapterRow["content"]),
         )
         editContext = storyContext(editMessages)
-        self.assertIn("chapter revision: 0", editContext)
+        self.assertNotIn("chapter revision", editContext)
+        self.assertIn('"startsWith": "the bells stop"', editContext)
         self.assertNotIn("startChar", editContext)
         self.assertNotIn("endChar", editContext)
         self.assertNotIn("replaceBlocks", editMessages[-2]["content"])

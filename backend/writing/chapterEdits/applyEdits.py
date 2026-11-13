@@ -4,7 +4,6 @@ from backend.writing.chapterEdits.anchors import chapterBlocks
 from backend.writing.chapterEdits.editErrors import (
     CHAPTER_EDIT_CONFLICTING_EDITS,
     CHAPTER_EDIT_INVALID_OPERATION,
-    CHAPTER_EDIT_REVISION_MISMATCH,
     CHAPTER_EDIT_TARGET_MISMATCH,
     ChapterEditError,
 )
@@ -27,13 +26,8 @@ def insertWithSpacing(content: str, position: int, text: str, placement: str) ->
     return f"{content[:position].rstrip()}\n\n{insert_text}\n\n{content[position:].lstrip()}"
 
 
-def applyChapterOperation(
-    content: str,
-    operation: dict[str, Any],
-    baseRevision: int | None = None,
-) -> dict[str, Any]:
-    batch = {"chapterRevision": operation.get("chapterRevision"), "edits": [operation]}
-    result = applyChapterEdits(content, batch, baseRevision)
+def applyChapterOperation(content: str, operation: dict[str, Any]) -> dict[str, Any]:
+    result = applyChapterEdits(content, {"edits": [operation]})
     #single edit shape kept intact so the old callers and tests still read the same keys
     return {"content": result["content"], **result["edits"][0]}
 
@@ -89,7 +83,6 @@ def applySingleEdit(content: str, operation: dict[str, Any], footprint: dict[str
 
 def validateChapterEditBatch(
     batch: dict[str, Any],
-    baseRevision: int | None = None,
     blocks: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     edits = batch.get("edits")
@@ -99,27 +92,13 @@ def validateChapterEditBatch(
             "edits array must contain at least one edit",
         )
 
-    chapterRevision = batch.get("chapterRevision")
-    if type(chapterRevision) is not int or chapterRevision < 0:
-        raise ChapterEditError(
-            CHAPTER_EDIT_INVALID_OPERATION,
-            "chapterRevision must be a non-negative integer",
-        )
-    if baseRevision is not None and chapterRevision != baseRevision:
-        raise ChapterEditError(
-            CHAPTER_EDIT_REVISION_MISMATCH,
-            "chapterRevision does not match the generation base revision",
-        )
 
-    validated = [
-        validateChapterOperation(edit, None, blocks, requireRevision=False) for edit in edits
-    ]
-    return {"chapterRevision": chapterRevision, "edits": validated}
+    validated = [validateChapterOperation(edit, blocks) for edit in edits]
+    return {"edits": validated}
 
 
 def validateChapterEditBatchPartial(
     batch: dict[str, Any],
-    baseRevision: int | None = None,
     blocks: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     #same checks as the strict version, except one bad edit only costs that edit. envelope problems are still fatal because they are about the batch not one edit
@@ -130,27 +109,16 @@ def validateChapterEditBatchPartial(
             "edits array must contain at least one edit",
         )
 
-    chapterRevision = batch.get("chapterRevision")
-    if type(chapterRevision) is not int or chapterRevision < 0:
-        raise ChapterEditError(
-            CHAPTER_EDIT_INVALID_OPERATION,
-            "chapterRevision must be a non-negative integer",
-        )
-    if baseRevision is not None and chapterRevision != baseRevision:
-        raise ChapterEditError(
-            CHAPTER_EDIT_REVISION_MISMATCH,
-            "chapterRevision does not match the generation base revision",
-        )
 
     validated: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
     for index, edit in enumerate(edits):
         try:
-            validated.append(validateChapterOperation(edit, None, blocks, requireRevision=False))
+            validated.append(validateChapterOperation(edit, blocks))
         except ChapterEditError as exc:
             rejected.append(rejectedEdit(index, exc.code, exc.message, edit))
 
-    return {"chapterRevision": chapterRevision, "edits": validated, "rejected": rejected}
+    return {"edits": validated, "rejected": rejected}
 
 
 def formatEditCount(count: int) -> str:
@@ -170,16 +138,15 @@ def rejectedEdit(index: int, code: str, message: str, operation: Any) -> dict[st
 def applyChapterEdits(
     content: str,
     batch: dict[str, Any],
-    baseRevision: int | None = None,
     partial: bool = False,
 ) -> dict[str, Any]:
     blocks = chapterBlocks(content)
     blocksById = {block["blockId"]: block for block in blocks}
 
     if partial:
-        batch = validateChapterEditBatchPartial(batch, baseRevision, blocks)
+        batch = validateChapterEditBatchPartial(batch, blocks)
     else:
-        batch = validateChapterEditBatch(batch, baseRevision, blocks)
+        batch = validateChapterEditBatch(batch, blocks)
     rejected: list[dict[str, Any]] = list(batch.get("rejected") or [])
 
     keptEdits: list[dict[str, Any]] = []

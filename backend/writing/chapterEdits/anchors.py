@@ -1,4 +1,3 @@
-import difflib
 import re
 from typing import Any
 
@@ -10,37 +9,11 @@ def isSceneBreak(value: str) -> bool:
     return bool(re.fullmatch(r"[*_\-]{3,}", text))
 
 
-#a model that retypes a quote instead of copying it will hand back straight quotes and single spaces, so both sides get flattened the same way
-ANCHOR_CHARACTER_FOLDS = {
-    "‘": "'",
-    "’": "'",
-    "‚": "'",
-    "“": '"',
-    "”": '"',
-    "„": '"',
-    "–": "-",
-    "—": "-",
-    "…": "...",
-    " ": " ",
-}
-
-#long enough that it cannot match every paragraph by accident, short enough to stay copyable
 ANCHOR_MINIMUM_LENGTH = 24
-
-#what we hand the model in the block map, generous enough to clear the minimum even after it trims a word. every extra character here is paid on every block of every edit request, and is one more character the model can retype wrong
 ANCHOR_PROMPT_LENGTH = 40
-
-#a reworded quote still scores far above this against the block it came from, a quote belonging to a different paragraph lands far below it
-ANCHOR_SIMILARITY_THRESHOLD = 0.6
-
-
-def normalizeAnchor(value: str) -> str:
-    folded = "".join(ANCHOR_CHARACTER_FOLDS.get(character, character) for character in str(value or ""))
-    return re.sub(r"\s+", " ", folded).strip()
 
 
 def anchorForBlock(text: str) -> str:
-    #cut on a word boundary so the anchor we advertise is never half a word the model has to guess how to finish
     if len(text) <= ANCHOR_PROMPT_LENGTH:
         return text
 
@@ -49,37 +22,6 @@ def anchorForBlock(text: str) -> str:
     if lastSpace >= ANCHOR_MINIMUM_LENGTH:
         head = head[:lastSpace]
     return head.strip()
-
-
-def anchorResemblesBlock(normalizedAnchor: str, blockText: str) -> bool:
-    #models retype the quote from memory instead of copying it, so a few reworded words are sloppiness rather than the wrong paragraph
-    if not normalizedAnchor:
-        return False
-
-    normalizedBlock = normalizeAnchor(blockText)
-    window = normalizedBlock[:max(len(normalizedAnchor) + ANCHOR_MINIMUM_LENGTH, ANCHOR_MINIMUM_LENGTH)]
-    similarity = difflib.SequenceMatcher(None, normalizedAnchor, window).ratio()
-    return similarity >= ANCHOR_SIMILARITY_THRESHOLD
-
-
-def resolveBlockByAnchor(
-    blocks: list[dict[str, Any]],
-    normalizedAnchor: str,
-) -> dict[str, Any] | None:
-    #only an unambiguous hit counts, two candidates means we have no idea which one the model meant and guessing would rewrite the wrong paragraph
-    matches = [
-        block
-        for block in blocks
-        if normalizedAnchor and normalizedAnchor in normalizeAnchor(block["text"])
-    ]
-    if len(matches) != 1:
-        return None
-
-    #still has to be a real quote rather than a couple of words that happened to land once
-    block = matches[0]
-    if len(normalizedAnchor) < min(ANCHOR_MINIMUM_LENGTH, len(normalizeAnchor(block["text"]))):
-        return None
-    return block
 
 
 def chapterBlocks(content: str) -> list[dict[str, Any]]:
@@ -120,13 +62,12 @@ def chapterBlocks(content: str) -> list[dict[str, Any]]:
 
 
 def blockMapForPrompt(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    #same key the operation has to send back, so copying the value straight across is always a valid answer
     return [
         {
             "blockId": block["blockId"],
             "type": block["type"],
             "index": block["index"],
-            "anchorText": block["anchorText"],
+            "startsWith": block["anchorText"],
         }
         for block in blocks
     ]

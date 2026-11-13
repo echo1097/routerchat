@@ -562,15 +562,6 @@ textarea::placeholder {
   background: rgba(255, 255, 255, 0.08);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
 }
-.settings-page .settings-floating-toggle {
-  background: #0e0e0e;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
-}
-@media (hover: hover) {
-  .settings-page .settings-floating-toggle:hover {
-    background: #181818;
-  }
-}
 .settings-nav-backdrop {
   position: absolute;
   inset: 0;

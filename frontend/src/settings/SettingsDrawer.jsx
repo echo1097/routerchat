@@ -1088,7 +1088,6 @@ export function SettingsDrawer({
             <SettingsNavToggle
               label="Open settings menu"
               onClick={() => setNavOpenMobile(true)}
-              className="settings-floating-toggle"
             />
           </div>
 

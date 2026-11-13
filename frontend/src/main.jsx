@@ -56,7 +56,7 @@ import { useFileDrop } from "./attachments/useFileDrop.js";
 import { StoryRail } from "./sidebar/StoryRail.jsx";
 import { ConversationRail } from "./sidebar/ConversationRail.jsx";
 import { SidebarRevealButton } from "./sidebar/SidebarRevealButton.jsx";
-import { IconButton } from "./components/IconButton.jsx";
+import { cx, CONTROL_MOTION } from "./uiShared.js";
 import { Menu } from "lucide-react";
 import HelpTourButton from "./HelpTourButton.jsx";
 import { TemporaryChatButton, TemporaryChatMarker } from "./chat/TemporaryChatButton.jsx";
@@ -3533,13 +3533,18 @@ function App() {
 
       <main className="relative grid min-w-0 flex-1 grid-rows-[minmax(0,1fr)_auto]">
         <header className="pointer-events-none absolute left-0 right-0 top-0 z-20 flex items-center gap-3 bg-transparent px-4 py-4 sm:px-8 lg:px-10">
-          <IconButton
-            label="Open chats"
-            className="pointer-events-auto max-lg:bg-[#101010]/90 max-lg:backdrop-blur-md lg:hidden"
+          <button
+            type="button"
+            aria-label="Open chats"
+            title="Open chats"
             onClick={() => setRailOpen(true)}
+            className={cx(
+              "pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-full text-neutral-400 hover:text-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 lg:hidden",
+              CONTROL_MOTION,
+            )}
           >
             <Menu size={18} />
-          </IconButton>
+          </button>
           {showLandingComposer && !isWritingMode && (
             <div className="ml-auto flex items-center gap-2">
               <HelpTourButton onClick={tour.start} />

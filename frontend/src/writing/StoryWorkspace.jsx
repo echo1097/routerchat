@@ -5,7 +5,6 @@ import { WriteOperationStatus } from "./WriteOperationStatus.jsx";
 import ChapterStreamingCanvas from "./ChapterStreamingCanvas.jsx";
 import { cx, CONTROL_MOTION } from "../uiShared.js";
 import { ArrowLeft, Menu } from "lucide-react";
-import { IconButton } from "../components/IconButton.jsx";
 
 const ChapterCanvasEditor = lazy(() => import("./ChapterCanvasEditor.jsx"));
 
@@ -153,9 +152,18 @@ export function StoryWorkspace({
           <div className="write-canvas-header mb-4 space-y-3">
             <div className="flex items-center justify-between gap-3 lg:items-start">
               <div className="flex min-w-0 items-center gap-3">
-                <IconButton label="Open stories" className="shrink-0 lg:hidden" onClick={onOpenRail}>
+                <button
+                  type="button"
+                  aria-label="Open stories"
+                  title="Open stories"
+                  onClick={onOpenRail}
+                  className={cx(
+                    "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-neutral-400 hover:text-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 lg:hidden",
+                    CONTROL_MOTION,
+                  )}
+                >
                   <Menu size={18} />
-                </IconButton>
+                </button>
                 <h1 className="m-0 block min-w-0 truncate text-left text-2xl font-semibold leading-none text-neutral-100" title={activeChapter.title}>
                   {activeChapter.title}
                 </h1>

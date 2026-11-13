@@ -5,8 +5,9 @@ This page describes what RouterChat stores on your computer and what it sends ov
 ## TLDR
 
 * RouterChat runs on your computer. The author runs no server, has no account system, and never receives your chats, settings, or API keys.
-* RouterChat contains no analytics and no usage tracking.
+* RouterChat contains no analytics.
 * Your prompts, chats, and API key are sent only to the provider you select, OpenRouter or Anthropic.
+* If you turn on phone access, your chats and stories also travel over your home Wi-Fi to the phones you pair. This is off by default and the connection is not encrypted.
 * A few other connections happen so the app can load icons and check for updates. They carry none of your content.
 
 ## What stays on your computer
@@ -62,7 +63,7 @@ These connections reveal your IP address and basic browser details, the same way
 
 ## Local access
 
-RouterChat listens only on `127.0.0.1`, which means only your own computer can reach it, and it requires a credential that the launcher hands to your browser.
+By default RouterChat listens only on `127.0.0.1`, which means only your own computer can reach it, and it requires a credential that the launcher hands to your browser. The one exception is phone access, described below, which you have to turn on yourself.
 
 ### Phone access
 

@@ -38,6 +38,13 @@
     - Lorebook entries for characters, locations, items, events, notes, chapter summaries, and a timeline
     - Write entries yourself or let the model generate them, with automatic or manual lorebook updates
     - Repair tools for the lorebook and timeline
+- Phone access
+    - Use RouterChat from a phone on the same home Wi-Fi while it runs on your computer, off by default
+    - Pair a phone with a QR code or a typed code that works once and lasts 2 minutes
+    - See paired phones on the Phone settings page and remove any of them
+    - Phones are signed out after 30 days without use, and can't change API keys
+    - Layout fixes for small screens in Chat, Write, Brainstorm, and settings
+    - Help button with fixes for common connection problems
 - Voice input
     - Record and transcribe speech in Chat, Write, and Brainstorm
     - Choose which transcription model to use, with each model's price shown

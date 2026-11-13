@@ -1,6 +1,6 @@
 # RouterChat Terms of Service
 
-**Last updated: October 8, 2026**
+**Last updated: November 11, 2026**
 
 RouterChat is self-hosted software under the Apache License 2.0. "The Software" means RouterChat and its installer, updater, and uninstaller. "The author" means the project maintainer.
 
@@ -26,6 +26,8 @@ This does not limit liability for fraud, willful injury, violation of law, or gr
 
 RouterChat runs on your computer with no analytics or tracking. Your prompts, chats, settings, and API keys go only to the provider you select, OpenRouter or Anthropic. With OpenRouter, your requests also reach the upstream provider serving the model you pick. Voice input and web search work with OpenRouter only, and they send your recording or search terms to OpenRouter and the provider it uses for that feature.
 
+If you turn on phone access, your chats, stories, and settings are also sent over your local network to the phones you pair. Phone access is off by default. That connection is not encrypted. Your API keys themselves are not sent to a phone, but a paired phone can send requests that use them.
+
 A few other connections carry none of your content:
 
 * **GitHub**, to check for new releases.
@@ -44,6 +46,7 @@ You are solely responsible for:
 * **Eligibility.** Being old enough to agree to these terms and to use the providers you choose.
 * **Credentials.** Your API keys and account security. Keys are stored locally and the author never has access to them.
 * **Network exposure.** If you change RouterChat's bind address, forward its port, put it behind a proxy, or run it on a machine others can reach, you are exposing your chats and API keys, and you are solely responsible for securing that deployment.
+* **Phone access.** If you turn on phone access, you are exposing your chats, stories, and settings to the phones you pair and to the local network you use it on. That traffic is not encrypted and can be read by others on the same network. Requests sent from a paired phone use your API keys and are charged to your provider account. You are solely responsible for which devices you pair, who can use them, and which networks you use it on.
 * **Costs.** All charges, limits, and account actions from any provider.
 * **Provider compliance.** Following the terms and policies of every provider you use.
 * **Content.** Everything you submit and everything you do with the output.

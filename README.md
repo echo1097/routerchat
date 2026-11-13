@@ -63,7 +63,8 @@ irm https://echo1097.github.io/get-routerchat/install.ps1 | iex
 - **Writing Mode:** Write stories chapter by chapter, brainstorm ideas on a canvas, and keep a lorebook that remembers your characters and world.
 - **Voice input:** Talk instead of typing in Chat, Write, and Brainstorm.
 - **Usage tracking:** See what you spend, per model and over time.
-- **Local and private:** No account, no analytics, no tracking. Your chats and keys never leave your computer except to reach your provider.
+- **Phone access:** Open RouterChat on a phone that is on the same home Wi-Fi while it runs on your computer. Off by default, and phones pair with a QR code.
+- **Local and private:** No account, no analytics, no tracking. Your chats and keys never leave your computer except to reach your provider, or a phone you chose to pair.
 
 See the [Media](#media) section for screenshots of everything above.
 
@@ -88,7 +89,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for how to report bugs, send feedback, an
 
 ## Local data
 
-Your chats, settings, and API keys stay on your computer, and the project author never receives them. Packaged installs keep your keys and database outside the app folder, so updates don't replace them. Git clone installs keep using `.env` and `data/routerchat.sqlite3` inside the repository.
+Your chats, settings, and API keys stay on your computer, and the project author never receives them. If you turn on phone access, your chats and stories are also sent over your home Wi-Fi to the phones you pair, without encryption. Packaged installs keep your keys and database outside the app folder, so updates don't replace them. Git clone installs keep using `.env` and `data/routerchat.sqlite3` inside the repository.
 
 When you send a prompt or attachment, that data goes to the provider you picked, OpenRouter or Anthropic, so it can handle the request. Voice recordings always go to OpenRouter. See the [privacy page](docs/privacy.md) for the full list of connections.
 

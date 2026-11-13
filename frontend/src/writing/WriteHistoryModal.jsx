@@ -529,7 +529,7 @@ function WriteHistoryCopyButton({ text, copyName }) {
     [],
   );
 
-  async function copyText() {
+  async function handleCopy() {
     if (!text || copyingRef.current) return;
 
     copyingRef.current = true;
@@ -559,7 +559,7 @@ function WriteHistoryCopyButton({ text, copyName }) {
     <div className="inline-flex shrink-0 items-center">
       <button
         type="button"
-        onClick={copyText}
+        onClick={handleCopy}
         disabled={copyState === "copying"}
         aria-label={`Copy ${copyName}`}
         className={cx(

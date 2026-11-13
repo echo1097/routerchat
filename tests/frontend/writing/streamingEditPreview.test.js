@@ -116,11 +116,20 @@ describe("parseStreamingEditPreview", () => {
     expect(parseStreamingEditPreview(replaceBlockBatch).completedCount).toBe(2);
   });
 
+  it("reports both ends of a flat range edit before the prose starts", () => {
+    const flat = '{"edits":[{"operation":"replaceBlock","blockId":"p_002","endBlockId":"p_004","newText":["A rewritten';
+    const frame = parseStreamingEditPreview(flat);
+    expect(frame.current.operation).toBe("replaceBlock");
+    expect(frame.current.anchor).toBe("p_002");
+    expect(frame.current.endAnchor).toBe("p_004");
+    expect(frame.current.newText).toBe("A rewritten");
+  });
+
   it("keeps working when the model emits compact json", () => {
     const compact = '{"chapterRevision":1,"edits":[{"operation":"replaceBlock","blockId":"p_1","anchorText":"a","newText":"hello wor';
     const frame = parseStreamingEditPreview(compact);
     expect(frame.current.operation).toBe("replaceBlock");
-    expect(frame.current.anchor).toBe("a");
+    expect(frame.current.anchor).toBe("p_1");
     expect(frame.current.newText).toBe("hello wor");
   });
 

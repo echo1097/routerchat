@@ -7,17 +7,26 @@ import ThinkingContent from "../ThinkingContent.jsx";
 import { ThinkingStatus } from "../thinkingStates.jsx";
 import { ChevronDown } from "lucide-react";
 
-function editPreviewPhrase(operation, anchor) {
-  const snippet = anchor ? `“${anchor.length > 60 ? `${anchor.slice(0, 60)}…` : anchor}”` : "";
+function paragraphNumber(blockId) {
+  const match = /^p_?0*(\d+)$/i.exec(String(blockId || "").trim());
+  return match ? Number(match[1]) : null;
+}
+
+function editPreviewPhrase(operation, anchor, endAnchor) {
+  const startNumber = paragraphNumber(anchor);
+  const endNumber = paragraphNumber(endAnchor);
+
   switch (operation) {
     case "replaceBlock":
-      return snippet ? `Rewriting near ${snippet}` : "Rewriting a paragraph";
-    case "insertBeforeBlock":
-      return snippet ? `Inserting before ${snippet}` : "Inserting a paragraph";
-    case "insertAfterBlock":
-      return snippet ? `Inserting after ${snippet}` : "Inserting a paragraph";
     case "replaceBlockRange":
-      return "Replacing a range";
+      if (startNumber && endNumber && endNumber > startNumber) {
+        return `Rewriting paragraphs ${startNumber} to ${endNumber}`;
+      }
+      return startNumber ? `Rewriting paragraph ${startNumber}` : "Rewriting a paragraph";
+    case "insertBeforeBlock":
+      return startNumber ? `Inserting before paragraph ${startNumber}` : "Inserting a paragraph";
+    case "insertAfterBlock":
+      return startNumber ? `Inserting after paragraph ${startNumber}` : "Inserting a paragraph";
     case "appendToChapter":
       return "Appending to the chapter";
     default:
@@ -81,7 +90,7 @@ export function WriteOperationStatus({
 
   const hasEditPreview = Boolean(editPreview && (editPreview.newText || editPreview.operation));
   const editLabel = editPreview ? `Edit ${editPreview.editIndex + 1}` : "";
-  const editPhrase = editPreview ? editPreviewPhrase(editPreview.operation, editPreview.anchor) : "";
+  const editPhrase = editPreview ? editPreviewPhrase(editPreview.operation, editPreview.anchor, editPreview.endAnchor) : "";
   const editStreaming = Boolean(editPreview && !editPreview.newTextComplete);
 
   const hasDetails = hasReasoning || hasEditPreview;

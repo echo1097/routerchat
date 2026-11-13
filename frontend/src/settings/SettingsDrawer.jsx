@@ -25,6 +25,8 @@ import { SettingsNav, SettingsNavToggle } from "./SettingsNav.jsx";
 import { SETTINGS_PAGES, pageVisibleInMode, searchSettings } from "./settingsPages.js";
 import { SettingsScrollPage, SettingsFixedPage } from "./SettingsScrollPage.jsx";
 import { ScrollEdgeBlur, useScrollEdges } from "../components/ScrollEdgeBlur.jsx";
+import { PhoneAccessSetting } from "../devices/PhoneAccessSetting.jsx";
+import { isPhoneBrowser } from "../devices/phoneBrowser.js";
 
 const REASONING_EFFORTS = [
   { value: "low", label: "Low" },
@@ -135,6 +137,7 @@ export function SettingsDrawer({
   const providerName = provider.name;
   const keyPlaceholder = provider.keyPlaceholder;
   const capabilities = provider.capabilities || DEFAULT_PROVIDER.capabilities;
+  const onPhone = isPhoneBrowser();
   const activePageIndex = SETTINGS_PAGES.findIndex((page) => page.id === activePage) + 1;
   const selectedCloudChat = chats.find((chat) => chat.id === selectedCloudChatId);
   const activeCloudChat = chats.find((chat) => chat.id === activeChatId);
@@ -149,8 +152,10 @@ export function SettingsDrawer({
   const chatPromptSaveLabel = chatPrompt.saveState.replace(/\b\w/g, (letter) => letter.toUpperCase());
 
   const visibleSettingsPages = useMemo(
-    () => SETTINGS_PAGES.filter((page) => pageVisibleInMode(page, chatMode)),
-    [chatMode],
+    () => SETTINGS_PAGES.filter(
+      (page) => pageVisibleInMode(page, chatMode) && !(onPhone && page.computerOnly),
+    ),
+    [chatMode, onPhone],
   );
   const activePageLabel = visibleSettingsPages.find((page) => page.id === activePage)?.label || "Settings";
 
@@ -318,6 +323,7 @@ export function SettingsDrawer({
 
   const voicePage = useLingeringPage(open, activePage === "voice");
   const usagePage = useLingeringPage(open, activePage === "usage");
+  const phonePage = useLingeringPage(open, activePage === "phone");
 
   useEffect(() => {
     if (!open) return undefined;
@@ -455,6 +461,12 @@ export function SettingsDrawer({
           className="provider-tabs settings-inner-tabs flex w-full"
         />
       </SettingRow>
+      {onPhone ? (
+        <SettingRow
+          title={`${providerName} key`}
+          description="Keys can only be changed on the computer running RouterChat"
+        />
+      ) : (
       <div className="settings-row space-y-3 px-5 py-4">
         <h3 className="text-balance text-[14.5px] font-medium text-neutral-50">{providerName} key</h3>
         <form
@@ -481,6 +493,7 @@ export function SettingsDrawer({
           </button>
         </form>
       </div>
+      )}
     </SettingGroup>
   );
 
@@ -1075,7 +1088,6 @@ export function SettingsDrawer({
             <SettingsNavToggle
               label="Open settings menu"
               onClick={() => setNavOpenMobile(true)}
-              className="settings-floating-toggle"
             />
           </div>
 
@@ -1123,10 +1135,17 @@ export function SettingsDrawer({
                 {updatesGroup}
               </div>
             </SettingsScrollPage>
-            <SettingsFixedPage pageId="8" title={pageTitle("data")} label="Data settings">
+            <SettingsScrollPage pageId="8" title={pageTitle("phone")} label="Phone settings">
+              <div className="settings-group-stack">
+                {!onPhone && phonePage.mounted && (
+                  <PhoneAccessSetting key={phonePage.session} onNotify={onNotify} />
+                )}
+              </div>
+            </SettingsScrollPage>
+            <SettingsFixedPage pageId="9" title={pageTitle("data")} label="Data settings">
               {chatTransferSection}
             </SettingsFixedPage>
-            <SettingsScrollPage pageId="9" title={pageTitle("usage")} label="Usage settings">
+            <SettingsScrollPage pageId="10" title={pageTitle("usage")} label="Usage settings">
               {usagePage.mounted && <UsagePanel key={usagePage.session} models={chatModels} />}
             </SettingsScrollPage>
           </div>

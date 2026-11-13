@@ -119,7 +119,7 @@ export function Composer({
   const isNarrowPhone = useMediaQuery("(max-width: 380px)");
 
   function composerPlaceholder() {
-    if (isEmptyVariant) return "Ask anything";
+    if (isEmptyVariant) return isNarrowPhone ? "Ask…" : "Ask anything";
     if (isNarrowPhone) return writeGenerationMode ? "Write…" : "Ask…";
     if (isPhone) return writeGenerationMode ? "Write anything" : "Ask anything";
 

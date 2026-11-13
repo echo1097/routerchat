@@ -118,7 +118,7 @@ export function OverflowActions({
       className={cx(
         "chat-history-actions relative flex",
 
-        forceVisible ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
+        forceVisible ? "opacity-100" : "touch-visible opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
       )}
     >
       <button

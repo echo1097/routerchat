@@ -56,7 +56,7 @@ import { useFileDrop } from "./attachments/useFileDrop.js";
 import { StoryRail } from "./sidebar/StoryRail.jsx";
 import { ConversationRail } from "./sidebar/ConversationRail.jsx";
 import { SidebarRevealButton } from "./sidebar/SidebarRevealButton.jsx";
-import { IconButton } from "./components/IconButton.jsx";
+import { cx, CONTROL_MOTION } from "./uiShared.js";
 import { Menu } from "lucide-react";
 import HelpTourButton from "./HelpTourButton.jsx";
 import { TemporaryChatButton, TemporaryChatMarker } from "./chat/TemporaryChatButton.jsx";
@@ -78,6 +78,9 @@ import NotificationStack from "./notifications/NotificationStack.jsx";
 import TourOverlay from "./tour/TourOverlay.jsx";
 import { checkForUpdate, clearUpdateCheck } from "./updates/updateCheck.js";
 import { TosLoadingScreen, TosUnavailableScreen, TosGateModal } from "./TosGate.jsx";
+import { PairScreen } from "./devices/PairScreen.jsx";
+import { isPhoneBrowser } from "./devices/phoneBrowser.js";
+import { copyText, newId } from "./browserFallbacks.js";
 import { createRoot } from "react-dom/client";
 import "@fontsource-variable/inter";
 import "./styles.css";
@@ -1970,7 +1973,7 @@ function App() {
       }
       const shouldAddUser = !regenerateMessageId;
       const userMessage = {
-        id: `local-user-${crypto.randomUUID()}`,
+        id: `local-user-${newId()}`,
         chat_id: conversationId,
         role: "user",
         content: text,
@@ -1978,7 +1981,7 @@ function App() {
         created_at: new Date().toISOString(),
       };
 
-      const assistantId = `local-assistant-${crypto.randomUUID()}`;
+      const assistantId = `local-assistant-${newId()}`;
       currentAssistantId = assistantId;
       const assistantMessage = {
         id: assistantId,
@@ -2107,7 +2110,7 @@ function App() {
   }
 
   async function copyMessage(message) {
-    await navigator.clipboard.writeText(message.content || "");
+    await copyText(message.content || "");
     setStatus("Copied");
   }
 
@@ -3120,7 +3123,7 @@ function App() {
     const selectedGenerationMode = repairContext ? "edit" : writeGenerationMode;
     const abortController = new AbortController();
     const run = {
-      runId: crypto.randomUUID(),
+      runId: newId(),
       storyId: activeStoryId,
       chapterId: activeChapterId,
       baseRevision: 0,
@@ -3191,7 +3194,7 @@ function App() {
       run.status = "streaming";
       setStoryGenerationStatus(repairContext ? "Fixing the edit" : "Working");
       abortController.signal.throwIfAborted();
-      run.generationId = crypto.randomUUID();
+      run.generationId = newId();
       await storyApi.generateChapter({
         storyId: run.storyId,
         chapterId: targetChapterId,
@@ -3467,7 +3470,7 @@ function App() {
   });
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#080808] text-ink">
+    <div className="app-height flex overflow-hidden bg-[#080808] text-ink">
       {isWritingMode ? (
         <StoryRail
           stories={writingStories}
@@ -3530,13 +3533,18 @@ function App() {
 
       <main className="relative grid min-w-0 flex-1 grid-rows-[minmax(0,1fr)_auto]">
         <header className="pointer-events-none absolute left-0 right-0 top-0 z-20 flex items-center gap-3 bg-transparent px-4 py-4 sm:px-8 lg:px-10">
-          <IconButton
-            label="Open chats"
-            className="pointer-events-auto lg:hidden"
+          <button
+            type="button"
+            aria-label="Open chats"
+            title="Open chats"
             onClick={() => setRailOpen(true)}
+            className={cx(
+              "pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-full text-neutral-400 hover:text-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 lg:hidden",
+              CONTROL_MOTION,
+            )}
           >
             <Menu size={18} />
-          </IconButton>
+          </button>
           {showLandingComposer && !isWritingMode && (
             <div className="ml-auto flex items-center gap-2">
               <HelpTourButton onClick={tour.start} />
@@ -3920,6 +3928,10 @@ function Root() {
 
   if (gate.status === "loading") {
     return <TosLoadingScreen />;
+  }
+
+  if (gate.status === "unavailable" && gate.reason === "auth" && isPhoneBrowser()) {
+    return <PairScreen onPaired={loadTos} />;
   }
 
   if (gate.status === "unavailable") {

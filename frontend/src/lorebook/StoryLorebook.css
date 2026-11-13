@@ -58,9 +58,11 @@
   cursor: pointer;
 }
 
-.lorebook-back-button:hover {
-  background: var(--lb-fill-active);
-  color: var(--lb-text);
+@media (hover: hover) {
+  .lorebook-back-button:hover {
+    background: var(--lb-fill-active);
+    color: var(--lb-text);
+  }
 }
 
 .lorebook-title-block {
@@ -141,8 +143,10 @@
   color: #0a0a0a;
 }
 
-.lorebook-primary-button:hover {
-  background: #ffffff;
+@media (hover: hover) {
+  .lorebook-primary-button:hover {
+    background: #ffffff;
+  }
 }
 
 .lorebook-secondary-button {
@@ -150,9 +154,11 @@
   color: var(--lb-text-soft);
 }
 
-.lorebook-secondary-button:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--lb-text);
+@media (hover: hover) {
+  .lorebook-secondary-button:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--lb-text);
+  }
 }
 
 .lorebook-danger-button {
@@ -160,9 +166,11 @@
   color: #fecaca;
 }
 
-.lorebook-danger-button:hover {
-  background: rgba(239, 68, 68, 0.24);
-  color: #fee2e2;
+@media (hover: hover) {
+  .lorebook-danger-button:hover {
+    background: rgba(239, 68, 68, 0.24);
+    color: #fee2e2;
+  }
 }
 
 .lorebook-primary-button:disabled,
@@ -225,8 +233,10 @@
   transition: color 150ms ease-out;
 }
 
-.lorebook-tab.t-tab:not([aria-selected="true"]):hover {
-  color: var(--lb-text-soft);
+@media (hover: hover) {
+  .lorebook-tab.t-tab:not([aria-selected="true"]):hover {
+    color: var(--lb-text-soft);
+  }
 }
 
 .lorebook-tab.t-tab[aria-selected="true"] {
@@ -293,8 +303,10 @@
     color 150ms ease-out;
 }
 
-.lorebook-search:hover {
-  background: var(--lb-fill-hover);
+@media (hover: hover) {
+  .lorebook-search:hover {
+    background: var(--lb-fill-hover);
+  }
 }
 
 .lorebook-search:focus-within {
@@ -347,8 +359,10 @@
   transition: background-color 150ms ease-out;
 }
 
-.lorebook-row:hover {
-  background: var(--lb-fill);
+@media (hover: hover) {
+  .lorebook-row:hover {
+    background: var(--lb-fill);
+  }
 }
 
 .lorebook-row.is-selected {
@@ -438,9 +452,11 @@
   opacity: 1;
 }
 
-.lorebook-context-button:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--lb-text);
+@media (hover: hover) {
+  .lorebook-context-button:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--lb-text);
+  }
 }
 
 .lorebook-context-button.is-disabled {
@@ -590,9 +606,11 @@
   cursor: pointer;
 }
 
-.lorebook-page-back:hover {
-  background: var(--lb-fill);
-  color: var(--lb-text);
+@media (hover: hover) {
+  .lorebook-page-back:hover {
+    background: var(--lb-fill);
+    color: var(--lb-text);
+  }
 }
 
 .lorebook-entry-heading {
@@ -648,9 +666,11 @@
   cursor: pointer;
 }
 
-.lorebook-context-chip:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--lb-text);
+@media (hover: hover) {
+  .lorebook-context-chip:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--lb-text);
+  }
 }
 
 .lorebook-context-chip.is-disabled {
@@ -794,9 +814,11 @@
   overflow: hidden;
 }
 
-.lorebook-field input:hover:not(:disabled),
-.lorebook-field textarea:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.04);
+@media (hover: hover) {
+  .lorebook-field input:hover:not(:disabled),
+  .lorebook-field textarea:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.04);
+  }
 }
 
 .lorebook-field input:focus,
@@ -887,9 +909,11 @@
   cursor: pointer;
 }
 
-.lorebook-delete-button:hover:not(:disabled) {
-  background: rgba(239, 68, 68, 0.12);
-  color: #fecaca;
+@media (hover: hover) {
+  .lorebook-delete-button:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.12);
+    color: #fecaca;
+  }
 }
 
 .lorebook-delete-button:disabled {
@@ -1111,9 +1135,11 @@
   cursor: pointer;
 }
 
-.lorebook-icon-button:hover {
-  background: rgba(255, 255, 255, 0.07);
-  color: #ffffff;
+@media (hover: hover) {
+  .lorebook-icon-button:hover {
+    background: rgba(255, 255, 255, 0.07);
+    color: #ffffff;
+  }
 }
 
 .lorebook-repair-modal-body {

@@ -4,6 +4,7 @@ from contextlib import closing
 
 from backend.core.database import getDb
 from backend.core.schema import initCoreTables
+from backend.devices.deviceTable import ensurePairedDevicesTable
 from backend.lorebook.lorebookUsage import ensureLorebookUsageTable
 from backend.transcription.transcriptionUsage import ensureTranscriptionUsageTable
 from backend.usage.migrateLegacyUsage import migrateLegacyUsage
@@ -17,6 +18,7 @@ def initDb() -> None:
 
     with getDb() as conn:
         ensureLorebookUsageTable(conn)
+        ensurePairedDevicesTable(conn)
         ensureTranscriptionUsageTable(conn)
 
     with closing(getDb()) as mainConn, closing(getUsageDb()) as usageConn:

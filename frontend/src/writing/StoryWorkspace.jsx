@@ -4,7 +4,8 @@ import StoryLorebook from "../lorebook/StoryLorebook.jsx";
 import { WriteOperationStatus } from "./WriteOperationStatus.jsx";
 import ChapterStreamingCanvas from "./ChapterStreamingCanvas.jsx";
 import { cx, CONTROL_MOTION } from "../uiShared.js";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Menu } from "lucide-react";
+import { IconButton } from "../components/IconButton.jsx";
 
 const ChapterCanvasEditor = lazy(() => import("./ChapterCanvasEditor.jsx"));
 
@@ -150,10 +151,15 @@ export function StoryWorkspace({
       <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col">
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="write-canvas-header mb-4 space-y-3">
-            <div className="flex items-start justify-between gap-3">
-              <h1 className="m-0 block min-w-0 truncate text-left text-2xl font-semibold leading-none text-neutral-100" title={activeChapter.title}>
-                {activeChapter.title}
-              </h1>
+            <div className="flex items-center justify-between gap-3 lg:items-start">
+              <div className="flex min-w-0 items-center gap-3">
+                <IconButton label="Open stories" className="shrink-0 lg:hidden" onClick={onOpenRail}>
+                  <Menu size={18} />
+                </IconButton>
+                <h1 className="m-0 block min-w-0 truncate text-left text-2xl font-semibold leading-none text-neutral-100" title={activeChapter.title}>
+                  {activeChapter.title}
+                </h1>
+              </div>
               <div className="flex shrink-0 items-center gap-3 text-xs text-neutral-500">
                 {writeStatus ? (
                   <WriteOperationStatus

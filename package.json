@@ -22,6 +22,7 @@
     "@xyflow/react": "^12.11.2",
     "lexical": "^0.47.0",
     "lucide-react": "^0.468.0",
+    "qrcode-generator": "^2.0.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^9.0.1",

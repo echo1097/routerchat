@@ -42,11 +42,34 @@ describe("searchSettings", () => {
 });
 
 
+describe("phone access", () => {
+  it("has its own page that is marked as computer only", () => {
+    const page = SETTINGS_PAGES.find((entry) => entry.id === "phone");
+
+    expect(page.label).toBe("Phone");
+    expect(page.computerOnly).toBe(true);
+  });
+
+  it("is found by search and points at the phone page", () => {
+    const results = searchSettings("pair", { pages: chatPages });
+
+    expect(results.map((result) => result.title)).toEqual(["Phone access"]);
+    expect(results[0].pageLabel).toBe("Phone");
+  });
+
+  it("is not found once the phone page is hidden", () => {
+    const pages = chatPages.filter((page) => !page.computerOnly);
+
+    expect(searchSettings("pair", { pages })).toEqual([]);
+  });
+});
+
+
 describe("groupPages", () => {
   it("keeps pages in order under their group labels", () => {
     const groups = groupPages(chatPages);
 
     expect(groups.map((group) => group.label)).toEqual(["Models", "App", "Data"]);
-    expect(groups[1].pages.map((page) => page.id)).toEqual(["chat", "voice", "interface"]);
+    expect(groups[1].pages.map((page) => page.id)).toEqual(["chat", "voice", "interface", "phone"]);
   });
 });

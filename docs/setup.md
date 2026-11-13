@@ -130,7 +130,7 @@ Click the model name next to the prompt box, then **Settings**. Settings opens a
 The pages are grouped like this:
 
 - **Models:** Provider, Models, Generation
-- **App:** Chat (Chat mode only) or Writing (Write mode only), Dictation, Interface
+- **App:** Chat (Chat mode only) or Writing (Write mode only), Dictation, Interface, Phone
 - **Data:** Data, Usage
 
 | Page | What it does |
@@ -142,8 +142,22 @@ The pages are grouped like this:
 | **Writing** | Retrying skipped lorebook edits, and the model used for a story's lorebook work (Write only) |
 | **Dictation** | The OpenRouter model used for voice input. Each model shows its price, usually per hour of audio |
 | **Interface** | Navigation bar, smooth text, and the check for new releases. When a newer version is out, a dot appears next to the version number in the sidebar. Nothing is installed automatically |
+| **Phone** | Turn on phone access, pair a phone with a QR code, and remove paired phones. This page only shows on the computer |
 | **Data** | Export or import chats as files |
 | **Usage** | Last 7 days of spending, requests, and tokens, plus lifetime totals per model, with tabs for all providers, OpenRouter, and Anthropic |
+
+### Using RouterChat on a phone
+
+RouterChat can be opened from a phone while it runs on your computer, as long as both are on the same home Wi-Fi. There is no phone app to install.
+
+1. On the computer, open settings, go to **Phone**, and turn on **Use RouterChat on a phone**.
+2. Close RouterChat and start it again. If your computer asks whether to allow incoming connections, allow it.
+3. Back on the **Phone** page, click **Pair a phone**. A QR code appears.
+4. Scan it with the phone's camera and open the link, then tap **Pair**. You can also type the address and code shown under the QR code.
+
+After that, open the same address on the phone whenever RouterChat is running. Save it as a bookmark or add it to the home screen. Paired phones are listed on the **Phone** page, where you can remove them. A phone that isn't used for 30 days has to be paired again.
+
+API keys can only be changed on the computer, and voice input isn't available on the phone. The connection isn't encrypted, so only use this on a Wi-Fi network you trust.
 
 ---
 
@@ -154,6 +168,9 @@ The pages are grouped like this:
 | **"Port 8000 is used by another program"** | Another program, often another RouterChat, is using it. Close it and start again. |
 | **Models won't load** | The key for the selected provider is missing or invalid. Check which provider is selected on the Provider page and re-save its key. |
 | **Web search or the microphone is missing** | Web search only works with OpenRouter. Voice input needs a saved OpenRouter key, even if you chat with Anthropic. |
+| **The phone can't open RouterChat** | Check that RouterChat is running on the computer and the phone is on the same Wi-Fi. If your computer's network address changed, the old bookmark stops working, so pair again from the **Phone** page to get the new address. |
+| **Chrome on Android says "This site can't be reached"** | Newer Android versions block apps from reaching devices on your Wi-Fi until you allow it. On the phone, open Settings, Apps, Chrome, Permissions, and allow **Nearby devices** (on some phones it is called **Local network**). Then reload the page. |
+| **The phone says it isn't paired** | It was removed, or went 30 days without use. Pair it again from the **Phone** page on the computer. |
 | **Your chats vanished** | Packaged installs store them in `user-data/routerchat.sqlite3`, developer installs in `data/routerchat.sqlite3`. Don't delete or share that file. |
 | **Everything is broken** | Rerun the installer to repair. If that fails, follow [SUPPORT.md](../SUPPORT.md) and share only sanitized logs. |
 

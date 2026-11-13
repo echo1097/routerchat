@@ -1,4 +1,4 @@
-import { ArrowLeft, Maximize, Minus, Plus } from "lucide-react";
+import { ArrowLeft, LayoutGrid, Maximize, Minus, Plus } from "lucide-react";
 import { CONTROL_MOTION, cx } from "../uiShared.js";
 
 export default function BrainstormBar({
@@ -33,9 +33,11 @@ export default function BrainstormBar({
           onClick={onTidy}
           disabled={tidyDisabled}
           className={cx("brainstorm-bar-pill", CONTROL_MOTION)}
+          aria-label="Tidy up"
           title="Lay out every prompt and idea so nothing overlaps"
         >
-          Tidy up
+          <LayoutGrid className="brainstorm-bar-pill-icon" size={15} aria-hidden="true" />
+          <span>Tidy up</span>
         </button>
         <div className="brainstorm-zoom">
           <button type="button" onClick={onZoomOut} aria-label="Zoom out" title="Zoom out">

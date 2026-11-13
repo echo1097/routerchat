@@ -117,7 +117,7 @@ export function SidebarShell({
     <>
       <div
         className={cx(
-          "fixed inset-0 z-30 bg-black/55 opacity-0 backdrop-blur-sm transition-[opacity,backdrop-filter] duration-200 ease-out lg:hidden",
+          "fixed inset-0 z-[35] bg-black/55 opacity-0 backdrop-blur-sm transition-[opacity,backdrop-filter] duration-200 ease-out lg:hidden",
           mobileOpen ? "pointer-events-auto opacity-100" : "pointer-events-none",
         )}
         onClick={onCloseMobile}
@@ -186,7 +186,7 @@ export function SidebarShell({
                 aria-label={searchLabel}
                 title={searchLabel}
                 onClick={onSearch}
-                className={cx(headerButtonClass, "hidden lg:inline-flex")}
+                className={cx(headerButtonClass, "inline-flex")}
               >
                 <MaskIcon src="/icons/search.png" size={17} />
               </button>

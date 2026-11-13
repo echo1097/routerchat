@@ -6,13 +6,16 @@ from typing import Any
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 
-from backend.security.localAccessConfig import localAccessConfig
+from backend.devices.deviceSession import deviceSessionActive
+from backend.security.computerOnly import isComputerOnly
+from backend.security.localAccessConfig import LocalAccessConfig, localAccessConfig
 from backend.tos.loadTos import loadTos
 from backend.tos.tosAcceptance import latestTosAcceptance
 
 SESSION_COOKIE_NAME = "routerchat_session"
 BOOTSTRAP_PATH = "/api/bootstrap"
 HEALTH_PATH = "/api/health"
+PAIR_PATH = "/api/devices/pair"
 TOS_EXEMPT_PATHS = {HEALTH_PATH, BOOTSTRAP_PATH, "/api/tos", "/api/tos/accept"}
 MUTATION_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 API_AUTH_REQUIRED_DETAIL = {
@@ -26,6 +29,10 @@ INVALID_REQUEST_HOST_DETAIL = {
 INVALID_REQUEST_ORIGIN_DETAIL = {
     "code": "invalid_request_origin",
     "message": "The request origin is not allowed.",
+}
+COMPUTER_ONLY_DETAIL = {
+    "code": "computer_only",
+    "message": "This can only be done on the computer running RouterChat.",
 }
 TOS_MISSING_DETAIL = {
     "code": "tos_missing",
@@ -61,30 +68,54 @@ def isApiPath(path: str) -> bool:
     return path == "/api" or path.startswith("/api/")
 
 
+def requestOriginAllowed(request: Request, config: LocalAccessConfig) -> bool:
+    originValues = requestHeaderValues(request, b"origin")
+    if len(originValues) != 1 or originValues[0] not in config.trustedOrigins:
+        return False
+
+    fetchSiteValues = requestHeaderValues(request, b"sec-fetch-site")
+    if len(fetchSiteValues) > 1:
+        return False
+
+    return not fetchSiteValues or fetchSiteValues[0].lower() == "same-origin"
+
+
+def readSessionKind(request: Request, config: LocalAccessConfig) -> str | None:
+    sessionSecret = request.cookies.get(SESSION_COOKIE_NAME, "")
+    if hmac.compare_digest(sessionSecret, config.secret):
+        return "computer"
+
+    if deviceSessionActive(request, config):
+        return "device"
+
+    return None
+
+
 async def enforceLocalApiSecurity(request: Request, call_next: Any) -> Response:
     config = localAccessConfig(request.app)
     hostValues = requestHeaderValues(request, b"host")
-    if len(hostValues) != 1 or hostValues[0] != config.allowedHost:
+    if len(hostValues) != 1 or hostValues[0] not in config.allowedHosts:
         return securityError(400, INVALID_REQUEST_HOST_DETAIL)
 
     path = request.url.path
     if not isApiPath(path) or path in {HEALTH_PATH, BOOTSTRAP_PATH}:
         return await call_next(request)
 
-    sessionSecret = request.cookies.get(SESSION_COOKIE_NAME, "")
-    if not hmac.compare_digest(sessionSecret, config.secret):
+    if path == PAIR_PATH:
+        if not requestOriginAllowed(request, config):
+            return securityError(403, INVALID_REQUEST_ORIGIN_DETAIL)
+        return await call_next(request)
+
+    sessionKind = readSessionKind(request, config)
+    if sessionKind is None:
         return securityError(401, API_AUTH_REQUIRED_DETAIL)
+    request.state.sessionKind = sessionKind
 
-    if request.method in MUTATION_METHODS:
-        originValues = requestHeaderValues(request, b"origin")
-        if len(originValues) != 1 or originValues[0] not in config.trustedOrigins:
-            return securityError(403, INVALID_REQUEST_ORIGIN_DETAIL)
+    if request.method in MUTATION_METHODS and not requestOriginAllowed(request, config):
+        return securityError(403, INVALID_REQUEST_ORIGIN_DETAIL)
 
-        fetchSiteValues = requestHeaderValues(request, b"sec-fetch-site")
-        if len(fetchSiteValues) > 1 or (
-            fetchSiteValues and fetchSiteValues[0].lower() != "same-origin"
-        ):
-            return securityError(403, INVALID_REQUEST_ORIGIN_DETAIL)
+    if sessionKind == "device" and isComputerOnly(request.method, path):
+        return securityError(403, COMPUTER_ONLY_DETAIL)
 
     #guard every api route rather than the handful that talk to openrouter, so a new endpoint cant quietly skip the gate
     if path in TOS_EXEMPT_PATHS:

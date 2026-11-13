@@ -223,6 +223,8 @@ export function VoiceInput({ value, setValue, onSubmit, disabled, contextKey }) 
     }
   }
 
+  if (!navigator.mediaDevices?.getUserMedia) return null;
+
   return (
     <>
       <button ref={micRef} type="button" className="voice-mic" aria-label="Record prompt" title="Record prompt" disabled={disabled || active} onClick={startRecording}>

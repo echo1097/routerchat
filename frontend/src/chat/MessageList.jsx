@@ -367,7 +367,7 @@ const MessageItem = memo(function MessageItem({
             )}
           </div>
           {!editing && (
-            <div className={cx("flex justify-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100", FADE_MOTION)}>
+            <div className={cx("touch-visible flex justify-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100", FADE_MOTION)}>
               <AssistantActionButton
                 label="Copy prompt"
                 onClick={() => onCopy(message)}
@@ -406,7 +406,7 @@ const MessageItem = memo(function MessageItem({
         durationMs={reasoningDurationMs}
         searching={searching}
       />
-      <div ref={bodyRef} className="max-w-3xl text-[15px] leading-7 text-neutral-100">
+      <div ref={bodyRef} className="chat-reply max-w-3xl text-[15px] leading-7 text-neutral-100">
         {message.content ? (
           <MarkdownContent streaming={revealing} settledRef={settledRef}>
             {visibleContent}
@@ -426,7 +426,7 @@ const MessageItem = memo(function MessageItem({
         />
       )}
       {message.content && !errorNotice && !streaming && !revealing && (
-        <div className={cx("mt-3 flex max-w-3xl justify-start gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100", FADE_MOTION)}>
+        <div className={cx("response-actions touch-visible mt-3 flex max-w-3xl justify-start gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100", FADE_MOTION)}>
           <AssistantActionButton label="Copy" onClick={() => onCopy(message)}>
             <Copy size={15} />
           </AssistantActionButton>

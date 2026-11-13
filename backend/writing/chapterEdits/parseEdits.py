@@ -162,11 +162,9 @@ def salvagePartialEdit(fragment: str) -> dict[str, Any] | None:
         return None
 
     edit: dict[str, Any] = {"operation": operation, "newText": paragraphs}
-    #the anchors are written before the prose, so a run that got this far already has them
-    for field in ("blockId", "anchorText"):
-        value = closedJsonField(fragment, field)
-        if value:
-            edit[field] = value
+    blockId = closedJsonField(fragment, "blockId")
+    if blockId:
+        edit["blockId"] = blockId
     return edit
 
 
@@ -178,11 +176,6 @@ def salvageTruncatedBatch(partial: str) -> dict[str, Any] | None:
     arrayStart = partial.find("[", editsKey)
     if arrayStart == -1:
         return None
-
-    revision: Any = None
-    revisionMatch = re.search(r'"chapterRevision"\s*:\s*(\d+)', partial)
-    if revisionMatch:
-        revision = int(revisionMatch.group(1))
 
     edits: list[Any] = []
     depth = 0
@@ -227,7 +220,7 @@ def salvageTruncatedBatch(partial: str) -> dict[str, Any] | None:
 
     if not edits:
         return None
-    return {"chapterRevision": revision, "edits": edits, "truncated": True}
+    return {"edits": edits, "truncated": True}
 
 
 def parseChapterEditBatch(raw_output: str) -> dict[str, Any]:
@@ -276,9 +269,7 @@ def parseChapterEditBatch(raw_output: str) -> dict[str, Any]:
 
     #a bare single operation is still the shape plenty of models reach for, so wrap it rather than reject it
     if "edits" not in parsed and "operation" in parsed:
-        revision = parsed.get("chapterRevision")
-        edit = {key: value for key, value in parsed.items() if key != "chapterRevision"}
-        return {"chapterRevision": revision, "edits": [edit], "truncated": False}
+        return {"edits": [parsed], "truncated": False}
 
     edits = parsed.get("edits")
     if not isinstance(edits, list):
@@ -292,7 +283,7 @@ def parseChapterEditBatch(raw_output: str) -> dict[str, Any]:
             "edits array must contain at least one edit",
         )
 
-    return {"chapterRevision": parsed.get("chapterRevision"), "edits": edits, "truncated": False}
+    return {"edits": edits, "truncated": False}
 
 
 def parseChapterOperation(raw_output: str) -> dict[str, Any]:
@@ -303,6 +294,4 @@ def parseChapterOperation(raw_output: str) -> dict[str, Any]:
             CHAPTER_EDIT_INVALID_OPERATION,
             "expected exactly one chapter edit operation",
         )
-    operation = dict(batch["edits"][0])
-    operation["chapterRevision"] = batch["chapterRevision"]
-    return validateChapterOperation(operation)
+    return validateChapterOperation(batch["edits"][0])

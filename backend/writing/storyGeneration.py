@@ -313,7 +313,6 @@ async def streamStoryGeneration(
                         operation_result = applyChapterEdits(
                             current_content,
                             edit_batch,
-                            baseRevision=base_revision,
                             partial=True,
                         )
                         nextContent = operation_result["content"]

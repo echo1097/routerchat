@@ -3,8 +3,8 @@ import unittest
 
 from backend.writing.chapterEdits.anchors import blockMapForPrompt, chapterBlocks
 from backend.writing.chapterEdits.applyEdits import applyChapterEdits, applyChapterOperation
-from backend.writing.chapterEdits.editErrors import CHAPTER_EDIT_CONFLICTING_EDITS, CHAPTER_EDIT_INVALID_JSON, CHAPTER_EDIT_INVALID_OPERATION, CHAPTER_EDIT_REVISION_MISMATCH, CHAPTER_EDIT_TARGET_MISMATCH, CHAPTER_EDIT_TRUNCATED, ChapterEditError
-from backend.writing.chapterEdits.editSchema import chapterEditOperationSchema
+from backend.writing.chapterEdits.editErrors import CHAPTER_EDIT_CONFLICTING_EDITS, CHAPTER_EDIT_INVALID_JSON, CHAPTER_EDIT_INVALID_OPERATION, CHAPTER_EDIT_TARGET_MISMATCH, CHAPTER_EDIT_TRUNCATED, ChapterEditError
+from backend.writing.chapterEdits.editSchema import chapterEditBatchSchema, chapterEditOperationSchema
 from backend.writing.chapterEdits.parseEdits import parseChapterEditBatch, parseChapterOperation
 from backend.writing.chapterEdits.validateEdits import validateChapterOperation
 from backend.stories.storyRows import wordDiffCounts
@@ -76,7 +76,6 @@ class ChapterEditBatchTest(unittest.TestCase):
         result = applyChapterEdits(
             self.content,
             self.batch(self.edit(0, "one EDITED"), self.edit(3, "four EDITED")),
-            baseRevision=7,
         )
         self.assertEqual(
             result["content"],
@@ -87,12 +86,10 @@ class ChapterEditBatchTest(unittest.TestCase):
         forwards = applyChapterEdits(
             self.content,
             self.batch(self.edit(0, "A"), self.edit(2, "B"), self.edit(3, "C")),
-            baseRevision=7,
         )
         backwards = applyChapterEdits(
             self.content,
             self.batch(self.edit(3, "C"), self.edit(2, "B"), self.edit(0, "A")),
-            baseRevision=7,
         )
         self.assertEqual(forwards["content"], backwards["content"])
         self.assertEqual(forwards["content"], "A\n\ntwo bravo\n\nB\n\nC")
@@ -105,7 +102,7 @@ class ChapterEditBatchTest(unittest.TestCase):
             "newText": "inserted line",
         }
         result = applyChapterEdits(
-            self.content, self.batch(insert, self.edit(3, "four EDITED")), baseRevision=7
+            self.content, self.batch(insert, self.edit(3, "four EDITED"))
         )
         self.assertEqual(
             result["content"],
@@ -116,7 +113,6 @@ class ChapterEditBatchTest(unittest.TestCase):
         result = applyChapterEdits(
             self.content,
             self.batch(self.edit(1, "first new paragraph\nsecond new paragraph")),
-            baseRevision=7,
         )
 
         self.assertIn(
@@ -132,7 +128,6 @@ class ChapterEditBatchTest(unittest.TestCase):
         result = applyChapterEdits(
             self.content,
             self.batch(self.edit(1, "first paragraph  \r\n\r\n\r\nsecond paragraph")),
-            baseRevision=7,
         )
 
         self.assertIn("first paragraph\n\nsecond paragraph", result["content"])
@@ -141,7 +136,6 @@ class ChapterEditBatchTest(unittest.TestCase):
         result = applyChapterEdits(
             self.content,
             self.batch(self.edit(1, "- first item\n- second item")),
-            baseRevision=7,
         )
 
         self.assertIn("- first item\n- second item", result["content"])
@@ -151,7 +145,6 @@ class ChapterEditBatchTest(unittest.TestCase):
         result = applyChapterEdits(
             self.content,
             self.batch(self.edit(1, code)),
-            baseRevision=7,
         )
 
         self.assertIn(code, result["content"])
@@ -160,7 +153,6 @@ class ChapterEditBatchTest(unittest.TestCase):
         result = applyChapterEdits(
             self.content,
             self.batch(self.edit(1, ["first new paragraph", "second new paragraph"])),
-            baseRevision=7,
         )
 
         self.assertEqual(
@@ -172,7 +164,6 @@ class ChapterEditBatchTest(unittest.TestCase):
         result = applyChapterEdits(
             self.content,
             self.batch(self.edit(1, ["kept paragraph", "   ", "", "second kept"])),
-            baseRevision=7,
         )
 
         self.assertEqual(result["edits"][0]["appliedText"], "kept paragraph\n\nsecond kept")
@@ -182,7 +173,6 @@ class ChapterEditBatchTest(unittest.TestCase):
             lambda: applyChapterEdits(
                 self.content,
                 self.batch(self.edit(1, ["", "  "])),
-                baseRevision=7,
             ),
             CHAPTER_EDIT_INVALID_OPERATION,
         )
@@ -191,7 +181,6 @@ class ChapterEditBatchTest(unittest.TestCase):
         result = applyChapterEdits(
             self.content,
             self.batch(self.edit(1, ["The door closed.She heard the lock turn."])),
-            baseRevision=7,
         )
 
         self.assertEqual(
@@ -204,7 +193,6 @@ class ChapterEditBatchTest(unittest.TestCase):
         result = applyChapterEdits(
             self.content,
             self.batch(self.edit(1, [prose])),
-            baseRevision=7,
         )
 
         self.assertEqual(result["edits"][0]["appliedText"], prose)
@@ -213,7 +201,6 @@ class ChapterEditBatchTest(unittest.TestCase):
         result = applyChapterEdits(
             self.content,
             self.batch(self.edit(1, ["It cost effort.'You made a mistake.'She said nothing."])),
-            baseRevision=7,
         )
 
         self.assertEqual(
@@ -225,7 +212,6 @@ class ChapterEditBatchTest(unittest.TestCase):
         result = applyChapterEdits(
             self.content,
             self.batch(self.edit(1, ["He drove a BMW.She walked."])),
-            baseRevision=7,
         )
 
         self.assertEqual(result["edits"][0]["appliedText"], "He drove a BMW. She walked.")
@@ -238,7 +224,6 @@ class ChapterEditBatchTest(unittest.TestCase):
         result = applyChapterEdits(
             self.content,
             self.batch(self.edit(1, " ".join(sentences))),
-            baseRevision=7,
         )
 
         appliedText = result["edits"][0]["appliedText"]
@@ -250,7 +235,6 @@ class ChapterEditBatchTest(unittest.TestCase):
         result = applyChapterEdits(
             self.content,
             self.batch(self.edit(1, prose)),
-            baseRevision=7,
         )
 
         self.assertEqual(result["edits"][0]["appliedText"], prose)
@@ -262,7 +246,6 @@ class ChapterEditBatchTest(unittest.TestCase):
                 self.edit(0, ["one rewritten"]),
                 self.edit(2, ["This broke.Then it got worse."]),
             ),
-            baseRevision=7,
             partial=True,
         )
 
@@ -277,7 +260,6 @@ class ChapterEditBatchTest(unittest.TestCase):
             lambda: applyChapterEdits(
                 self.content,
                 self.batch(self.edit(1, "first"), self.edit(1, "second")),
-                baseRevision=7,
             ),
             CHAPTER_EDIT_CONFLICTING_EDITS,
         )
@@ -293,7 +275,7 @@ class ChapterEditBatchTest(unittest.TestCase):
         }
         self.assertErrorCode(
             lambda: applyChapterEdits(
-                self.content, self.batch(spanning, self.edit(1, "clash")), baseRevision=7
+                self.content, self.batch(spanning, self.edit(1, "clash"))
             ),
             CHAPTER_EDIT_CONFLICTING_EDITS,
         )
@@ -302,7 +284,7 @@ class ChapterEditBatchTest(unittest.TestCase):
         append = {"operation": "appendToChapter", "newText": "tail"}
         self.assertErrorCode(
             lambda: applyChapterEdits(
-                self.content, self.batch(append, dict(append)), baseRevision=7
+                self.content, self.batch(append, dict(append))
             ),
             CHAPTER_EDIT_CONFLICTING_EDITS,
         )
@@ -320,7 +302,6 @@ class ChapterEditBatchTest(unittest.TestCase):
         result = applyChapterEdits(
             self.content,
             self.batch(self.edit(0, "one EDITED"), self.badAnchorEdit(), self.edit(3, "four EDITED")),
-            baseRevision=7,
             partial=True,
         )
 
@@ -338,7 +319,6 @@ class ChapterEditBatchTest(unittest.TestCase):
             lambda: applyChapterEdits(
                 self.content,
                 self.batch(self.badAnchorEdit(), self.badAnchorEdit("also orphan")),
-                baseRevision=7,
                 partial=True,
             ),
             CHAPTER_EDIT_TARGET_MISMATCH,
@@ -348,7 +328,6 @@ class ChapterEditBatchTest(unittest.TestCase):
         result = applyChapterEdits(
             self.content,
             self.batch(self.edit(1, "first"), self.edit(1, "second")),
-            baseRevision=7,
             partial=True,
         )
 
@@ -361,7 +340,6 @@ class ChapterEditBatchTest(unittest.TestCase):
         result = applyChapterEdits(
             self.content,
             self.batch(append, {"operation": "appendToChapter", "newText": "second tail"}),
-            baseRevision=7,
             partial=True,
         )
 
@@ -372,28 +350,25 @@ class ChapterEditBatchTest(unittest.TestCase):
         result = applyChapterEdits(
             self.content,
             self.batch(self.edit(0, "one EDITED")),
-            baseRevision=7,
             partial=True,
         )
         self.assertEqual(result["rejected"], [])
 
     def test_an_empty_edits_array_is_rejected(self):
         self.assertErrorCode(
-            lambda: applyChapterEdits(self.content, self.batch(), baseRevision=7),
+            lambda: applyChapterEdits(self.content, self.batch()),
             CHAPTER_EDIT_INVALID_OPERATION,
         )
 
-    def test_envelope_revision_must_match(self):
-        self.assertErrorCode(
-            lambda: applyChapterEdits(
-                self.content, self.batch(self.edit(0, "x"), revision=6), baseRevision=7
-            ),
-            CHAPTER_EDIT_REVISION_MISMATCH,
+    def test_a_revision_number_from_the_model_is_ignored(self):
+        result = applyChapterEdits(
+            self.content, self.batch(self.edit(0, "x"), revision=6)
         )
+        self.assertTrue(result["content"].startswith("x\n\ntwo bravo"))
 
     def test_a_leftover_revision_on_an_edit_is_tolerated(self):
         noisy = {**self.edit(0, "one EDITED"), "chapterRevision": 7}
-        result = applyChapterEdits(self.content, self.batch(noisy), baseRevision=7)
+        result = applyChapterEdits(self.content, self.batch(noisy))
         self.assertTrue(result["content"].startswith("one EDITED"))
 
     def test_a_bare_single_operation_still_parses(self):
@@ -405,9 +380,8 @@ class ChapterEditBatchTest(unittest.TestCase):
             "newText": "one EDITED",
         })
         batch = parseChapterEditBatch(raw)
-        self.assertEqual(batch["chapterRevision"], 7)
         self.assertEqual(len(batch["edits"]), 1)
-        result = applyChapterEdits(self.content, batch, baseRevision=7)
+        result = applyChapterEdits(self.content, batch)
         self.assertTrue(result["content"].startswith("one EDITED"))
 
     def test_the_envelope_shape_parses(self):
@@ -415,7 +389,7 @@ class ChapterEditBatchTest(unittest.TestCase):
             "chapterRevision": 7,
             "edits": [self.edit(0, "one EDITED"), self.edit(3, "four EDITED")],
         })
-        result = applyChapterEdits(self.content, parseChapterEditBatch(raw), baseRevision=7)
+        result = applyChapterEdits(self.content, parseChapterEditBatch(raw))
         self.assertEqual(
             result["content"],
             "one EDITED\n\ntwo bravo\n\nthree charlie\n\nfour EDITED",
@@ -431,10 +405,9 @@ class ChapterEditBatchTest(unittest.TestCase):
 
         batch = parseChapterEditBatch(truncated)
         self.assertTrue(batch["truncated"])
-        self.assertEqual(batch["chapterRevision"], 7)
         self.assertEqual(len(batch["edits"]), 1)
 
-        result = applyChapterEdits(self.content, batch, baseRevision=7, partial=True)
+        result = applyChapterEdits(self.content, batch, partial=True)
         self.assertTrue(result["content"].startswith("one EDITED"))
 
     def test_a_batch_cut_off_before_any_edit_closed_is_still_an_error(self):
@@ -458,7 +431,7 @@ class ChapterEditBatchTest(unittest.TestCase):
             ["First finished paragraph.", "Second finished paragraph."],
         )
 
-        result = applyChapterEdits(self.content, batch, baseRevision=7, partial=True)
+        result = applyChapterEdits(self.content, batch, partial=True)
         self.assertTrue(result["content"].endswith("First finished paragraph.\n\nSecond finished paragraph."))
 
     def test_an_append_cut_off_mid_string_is_trimmed_to_the_last_finished_sentence(self):
@@ -481,7 +454,7 @@ class ChapterEditBatchTest(unittest.TestCase):
             '"newText": ["A whole new paragraph.", "And half of anot'
         )
         batch = parseChapterEditBatch(raw)
-        result = applyChapterEdits(self.content, batch, baseRevision=7, partial=True)
+        result = applyChapterEdits(self.content, batch, partial=True)
 
         self.assertEqual(
             result["content"],
@@ -512,7 +485,7 @@ class ChapterEditBatchTest(unittest.TestCase):
             + ', {"operation": "appendToChapter", "newText": ["A finished paragraph.", "still writ'
         )
         batch = parseChapterEditBatch(raw)
-        result = applyChapterEdits(self.content, batch, baseRevision=7, partial=True)
+        result = applyChapterEdits(self.content, batch, partial=True)
 
         self.assertEqual(len(batch["edits"]), 2)
         self.assertEqual(
@@ -534,16 +507,64 @@ class ChapterEditBatchTest(unittest.TestCase):
             ["She closed the door. The hall was dark."],
         )
 
-    def test_a_wrong_block_id_is_recovered_from_the_anchor(self):
-        #the quoted prose is the stronger signal, the model only got its own bookkeeping wrong
+    def test_the_block_id_decides_the_target_and_a_quote_is_ignored(self):
         misfiled = {**self.edit(2, "three EDITED"), "blockId": "p_001"}
-        result = applyChapterEdits(self.content, self.batch(misfiled), baseRevision=7, partial=True)
+        result = applyChapterEdits(self.content, self.batch(misfiled), partial=True)
 
         self.assertEqual(result["rejected"], [])
         self.assertEqual(
             result["content"],
-            "one alpha\n\ntwo bravo\n\nthree EDITED\n\nfour delta",
+            "three EDITED\n\ntwo bravo\n\nthree charlie\n\nfour delta",
         )
+
+    def test_a_replace_with_an_end_block_rewrites_the_whole_range(self):
+        flatRange = {
+            "operation": "replaceBlock",
+            "blockId": "p_002",
+            "endBlockId": "p_003",
+            "newText": ["middle rewritten"],
+        }
+        result = applyChapterEdits(self.content, {"edits": [flatRange]})
+
+        self.assertEqual(result["content"], "one alpha\n\nmiddle rewritten\n\nfour delta")
+        self.assertEqual(result["edits"][0]["operation"], "replaceBlockRange")
+        self.assertEqual(result["edits"][0]["deletedBlockIds"], ["p_002", "p_003"])
+
+    def test_an_end_block_that_repeats_the_block_is_a_single_edit(self):
+        cases = [
+            ("replaceBlock", "one alpha\n\nNEW\n\nthree charlie\n\nfour delta"),
+            ("insertAfterBlock", "one alpha\n\ntwo bravo\n\nNEW\n\nthree charlie\n\nfour delta"),
+            ("insertBeforeBlock", "one alpha\n\nNEW\n\ntwo bravo\n\nthree charlie\n\nfour delta"),
+        ]
+        for operationType, expected in cases:
+            edit = {
+                "operation": operationType,
+                "blockId": "p_002",
+                "endBlockId": "p_002",
+                "newText": ["NEW"],
+            }
+            result = applyChapterEdits(self.content, {"edits": [edit]})
+            self.assertEqual(result["content"], expected, operationType)
+
+    def test_an_append_ignores_whatever_block_ids_came_with_it(self):
+        append = {
+            "operation": "appendToChapter",
+            "blockId": "p_004",
+            "endBlockId": "p_004",
+            "newText": ["tail"],
+        }
+        result = applyChapterEdits(self.content, {"edits": [append]})
+        self.assertTrue(result["content"].endswith("four delta\n\ntail"))
+
+    def test_loosely_written_block_ids_still_find_their_paragraph(self):
+        for looseId in ["3", 3, "p_3", "P_003", " p_003 ", "p3"]:
+            edit = {"operation": "replaceBlock", "blockId": looseId, "newText": ["three EDITED"]}
+            result = applyChapterEdits(self.content, {"edits": [edit]})
+            self.assertEqual(
+                result["content"],
+                "one alpha\n\ntwo bravo\n\nthree EDITED\n\nfour delta",
+                looseId,
+            )
 
     def test_an_anchor_that_could_be_two_blocks_is_not_guessed_at(self):
         content = "the same line here\n\nsomething else entirely\n\nthe same line here"
@@ -556,27 +577,25 @@ class ChapterEditBatchTest(unittest.TestCase):
         }
         self.assertErrorCode(
             lambda: applyChapterEdits(
-                content, self.batch(ambiguous), baseRevision=7, partial=True
+                content, self.batch(ambiguous), partial=True
             ),
             CHAPTER_EDIT_TARGET_MISMATCH,
         )
 
-    def test_the_schema_no_longer_advertises_fields_the_validator_refuses(self):
-        variants = {
-            variant["properties"]["operation"]["const"]: set(variant["properties"])
-            for variant in chapterEditOperationSchema()["oneOf"]
-        }
-        self.assertEqual(variants["appendToChapter"], {"operation", "newText"})
-        self.assertNotIn("blockId", variants["replaceBlockRange"])
-        for name, properties in variants.items():
-            self.assertEqual(
-                properties,
-                set(next(
-                    variant["required"]
-                    for variant in chapterEditOperationSchema()["oneOf"]
-                    if variant["properties"]["operation"]["const"] == name
-                )),
-            )
+    def test_the_schema_is_one_flat_shape_for_every_edit(self):
+        schema = chapterEditOperationSchema()
+        self.assertNotIn("oneOf", schema)
+        self.assertNotIn("anyOf", schema)
+        self.assertEqual(
+            set(schema["properties"]),
+            {"operation", "blockId", "endBlockId", "newText"},
+        )
+        self.assertEqual(set(schema["required"]), set(schema["properties"]))
+        self.assertEqual(
+            schema["properties"]["operation"]["enum"],
+            ["replaceBlock", "insertBeforeBlock", "insertAfterBlock", "appendToChapter"],
+        )
+        self.assertEqual(set(chapterEditBatchSchema()["properties"]), {"edits"})
 
 
 class SingleNewlineBlockGranularityTest(unittest.TestCase):
@@ -608,7 +627,7 @@ class SingleNewlineBlockGranularityTest(unittest.TestCase):
             "newText": "second paragraph line EDITED",
         }
         result = applyChapterEdits(
-            content, {"chapterRevision": 3, "edits": [edit]}, baseRevision=3
+            content, {"chapterRevision": 3, "edits": [edit]}
         )
         self.assertEqual(
             result["content"],
@@ -651,12 +670,11 @@ class ChapterOperationTest(unittest.TestCase):
         )
         self.assertEqual(self.firstBlock["anchorText"], "first paragraph")
         promptBlock = blockMapForPrompt(self.blocks)[0]
-        #the map has to advertise the same field name the operation must send back
         self.assertEqual(
             set(promptBlock),
-            {"blockId", "type", "index", "anchorText"},
+            {"blockId", "type", "index", "startsWith"},
         )
-        self.assertEqual(promptBlock["anchorText"], self.firstBlock["anchorText"])
+        self.assertEqual(promptBlock["startsWith"], self.firstBlock["anchorText"])
 
     def test_a_long_block_gets_a_word_trimmed_anchor(self):
         #the advertised anchor has to be copyable, so it never ends halfway through a word
@@ -673,7 +691,7 @@ class ChapterOperationTest(unittest.TestCase):
             newText="rewritten",
         )
         self.assertEqual(
-            applyChapterOperation(content, operation, baseRevision=7)["content"],
+            applyChapterOperation(content, operation)["content"],
             "rewritten",
         )
 
@@ -686,7 +704,7 @@ class ChapterOperationTest(unittest.TestCase):
             "anchor": self.firstBlock["anchorText"],
             "newText": "rewritten paragraph",
         }
-        result = applyChapterOperation(self.content, operation, baseRevision=7)
+        result = applyChapterOperation(self.content, operation)
         self.assertEqual(result["content"], "rewritten paragraph\n\n***\n\nlast paragraph")
 
     def test_range_anchor_nicknames_are_accepted(self):
@@ -701,11 +719,10 @@ class ChapterOperationTest(unittest.TestCase):
             "endAnchor": blocks[2]["anchorText"],
             "newText": "merged",
         }
-        result = applyChapterOperation(content, operation, baseRevision=7)
+        result = applyChapterOperation(content, operation)
         self.assertEqual(result["content"], "before\n\nmerged")
 
-    def test_a_wrong_anchor_still_fails_under_the_nickname(self):
-        #tolerating the nickname must not tolerate a bad value
+    def test_a_quote_that_matches_nothing_no_longer_blocks_the_edit(self):
         operation = {
             "operation": "replaceBlock",
             "chapterRevision": 7,
@@ -713,10 +730,8 @@ class ChapterOperationTest(unittest.TestCase):
             "anchor": "something else entirely, from a different chapter",
             "newText": "rewritten paragraph",
         }
-        self.assertErrorCode(
-            lambda: applyChapterOperation(self.content, operation, baseRevision=7),
-            CHAPTER_EDIT_TARGET_MISMATCH,
-        )
+        result = applyChapterOperation(self.content, operation)
+        self.assertTrue(result["content"].startswith("rewritten paragraph\n\n***"))
 
     def test_the_real_field_name_wins_when_both_are_sent(self):
         operation = {
@@ -727,7 +742,7 @@ class ChapterOperationTest(unittest.TestCase):
             "anchor": "stale nonsense from an older draft entirely",
             "newText": "rewritten paragraph",
         }
-        result = applyChapterOperation(self.content, operation, baseRevision=7)
+        result = applyChapterOperation(self.content, operation)
         self.assertEqual(result["content"], "rewritten paragraph\n\n***\n\nlast paragraph")
 
     def test_a_leftover_hash_field_is_ignored_rather_than_fatal(self):
@@ -740,7 +755,7 @@ class ChapterOperationTest(unittest.TestCase):
             "expectedTextHash": "0" * 64,
             "newText": "rewritten paragraph",
         }
-        result = applyChapterOperation(self.content, operation, baseRevision=7)
+        result = applyChapterOperation(self.content, operation)
         self.assertEqual(result["content"], "rewritten paragraph\n\n***\n\nlast paragraph")
 
     def test_a_retyped_anchor_still_matches(self):
@@ -753,7 +768,7 @@ class ChapterOperationTest(unittest.TestCase):
             anchorText='she said  "not tonight"  and turned away-slowly',
             newText="rewritten",
         )
-        result = applyChapterOperation(content, operation, baseRevision=7)
+        result = applyChapterOperation(content, operation)
         self.assertEqual(result["content"], "rewritten\n\nlast paragraph")
 
     def test_a_short_anchor_on_the_block_it_names_is_good_enough(self):
@@ -766,23 +781,8 @@ class ChapterOperationTest(unittest.TestCase):
             anchorText="the long",
             newText="rewritten",
         )
-        result = applyChapterOperation(content, operation, baseRevision=7)
+        result = applyChapterOperation(content, operation)
         self.assertEqual(result["content"], "rewritten\n\nlast paragraph")
-
-    def test_a_short_anchor_that_is_nowhere_in_the_block_it_names_is_rejected(self):
-        #this is the miscount the anchor exists to catch, and it still gets caught
-        content = "the long opening paragraph that goes on for a while\n\nlast paragraph"
-        blocks = chapterBlocks(content)
-        operation = self.operation(
-            "replaceBlock",
-            blockId=blocks[1]["blockId"],
-            anchorText="the long",
-            newText="rewritten",
-        )
-        self.assertErrorCode(
-            lambda: applyChapterOperation(content, operation, baseRevision=7),
-            CHAPTER_EDIT_TARGET_MISMATCH,
-        )
 
     def test_a_reworded_anchor_still_finds_the_block_its_id_names(self):
         #a real run died on this: the model got the block id right and retyped the sentence from memory with three words added
@@ -798,12 +798,11 @@ class ChapterOperationTest(unittest.TestCase):
             anchorText="Outside the confines of the sterile chambers, a world unfolded",
             newText="rewritten",
         )
-        result = applyChapterOperation(content, operation, baseRevision=7)
+        result = applyChapterOperation(content, operation)
         self.assertTrue(result["content"].startswith("rewritten"))
         self.assertIn("Alex stepped through the doorway", result["content"])
 
-    def test_an_anchor_belonging_to_a_different_paragraph_is_still_rejected(self):
-        #rewording is forgiven, quoting the wrong paragraph entirely is not
+    def test_a_quote_from_another_paragraph_does_not_move_the_edit(self):
         content = (
             "Outside the sterile chambers, a world unfolded, an expanse of rolling hills "
             "drenched in violet twilight.\n\nAlex stepped through the doorway, the key "
@@ -816,28 +815,10 @@ class ChapterOperationTest(unittest.TestCase):
             anchorText="a world unfolded, an expanse of rolling hills drenched in violet",
             newText="rewritten",
         )
-        #the quote is an exact hit on the other block, so it retargets there rather than trusting the id
-        result = applyChapterOperation(content, operation, baseRevision=7)
-        self.assertTrue(result["content"].startswith("rewritten"))
-        self.assertIn("Alex stepped through the doorway", result["content"])
-
-    def test_a_hallucinated_anchor_is_thrown_away(self):
-        content = (
-            "Outside the sterile chambers, a world unfolded, an expanse of rolling hills "
-            "drenched in violet twilight.\n\nAlex stepped through the doorway, the key "
-            "clinking against his pocket."
-        )
-        blocks = chapterBlocks(content)
-        operation = self.operation(
-            "replaceBlock",
-            blockId=blocks[0]["blockId"],
-            anchorText="The dragon roared across the burning plain and the sky went white",
-            newText="rewritten",
-        )
-        self.assertErrorCode(
-            lambda: applyChapterOperation(content, operation, baseRevision=7),
-            CHAPTER_EDIT_TARGET_MISMATCH,
-        )
+        result = applyChapterOperation(content, operation)
+        self.assertTrue(result["content"].startswith("Outside the sterile chambers"))
+        self.assertTrue(result["content"].endswith("rewritten"))
+        self.assertNotIn("Alex stepped through the doorway", result["content"])
 
     def test_replace_block(self):
         operation = self.operation(
@@ -846,7 +827,7 @@ class ChapterOperationTest(unittest.TestCase):
             anchorText=self.firstBlock["anchorText"],
             newText="rewritten paragraph",
         )
-        result = applyChapterOperation(self.content, operation, baseRevision=7)
+        result = applyChapterOperation(self.content, operation)
         self.assertEqual(result["content"], "rewritten paragraph\n\n***\n\nlast paragraph")
         self.assertEqual(result["deletedBlockIds"], ["p_001"])
         self.assertEqual(result["insertedBlockIds"], ["p_001"])
@@ -863,7 +844,7 @@ class ChapterOperationTest(unittest.TestCase):
             newText="rewritten middle",
         )
 
-        result = applyChapterOperation(content, operation, baseRevision=7)
+        result = applyChapterOperation(content, operation)
 
         self.assertEqual(result["content"], "before\n\nrewritten middle\n\nafter")
         self.assertEqual(result["deletedBlockIds"], ["p_002", "s_001", "p_003"])
@@ -880,7 +861,7 @@ class ChapterOperationTest(unittest.TestCase):
             newText="new ending",
         )
 
-        result = applyChapterOperation(content, operation, baseRevision=7)
+        result = applyChapterOperation(content, operation)
 
         self.assertEqual(result["content"], "keep this\n\nnew ending")
 
@@ -898,15 +879,15 @@ class ChapterOperationTest(unittest.TestCase):
         unknownBlock = {**reversedRange, "startBlockId": "p_999"}
 
         self.assertErrorCode(
-            lambda: applyChapterOperation(self.content, reversedRange, baseRevision=7),
+            lambda: applyChapterOperation(self.content, reversedRange),
             CHAPTER_EDIT_TARGET_MISMATCH,
         )
         self.assertErrorCode(
-            lambda: applyChapterOperation(self.content, changedAnchor, baseRevision=7),
+            lambda: applyChapterOperation(self.content, changedAnchor),
             CHAPTER_EDIT_TARGET_MISMATCH,
         )
         self.assertErrorCode(
-            lambda: applyChapterOperation(self.content, unknownBlock, baseRevision=7),
+            lambda: applyChapterOperation(self.content, unknownBlock),
             CHAPTER_EDIT_TARGET_MISMATCH,
         )
 
@@ -944,7 +925,7 @@ class ChapterOperationTest(unittest.TestCase):
             anchorText=self.sceneBlock["anchorText"],
             newText="a quiet turn",
         )
-        result = applyChapterOperation(self.content, operation, baseRevision=7)
+        result = applyChapterOperation(self.content, operation)
         self.assertIn("first paragraph\n\na quiet turn\n\nlast paragraph", result["content"])
 
     def test_insert_operations_use_target_anchor(self):
@@ -963,14 +944,10 @@ class ChapterOperationTest(unittest.TestCase):
         self.assertIn("second setup\n\nlast paragraph", applyChapterOperation(self.content, before)["content"])
         self.assertIn("first paragraph\n\nnew follow-up\n\n***", applyChapterOperation(self.content, after)["content"])
 
-    def test_append_is_revision_bound(self):
+    def test_append_lands_at_the_end(self):
         operation = self.operation("appendToChapter", newText="final paragraph")
-        result = applyChapterOperation(self.content, operation, baseRevision=7)
+        result = applyChapterOperation(self.content, operation)
         self.assertTrue(result["content"].endswith("last paragraph\n\nfinal paragraph"))
-        self.assertErrorCode(
-            lambda: applyChapterOperation(self.content, operation, baseRevision=8),
-            CHAPTER_EDIT_REVISION_MISMATCH,
-        )
 
     def test_parser_digs_the_json_out_of_whatever_the_model_wrapped_it_in(self):
         raw = (
@@ -979,7 +956,6 @@ class ChapterOperationTest(unittest.TestCase):
         )
         expected = {
             "operation": "appendToChapter",
-            "chapterRevision": 7,
             "newText": "continue",
         }
         self.assertEqual(parseChapterOperation(raw), expected)
@@ -997,7 +973,6 @@ class ChapterOperationTest(unittest.TestCase):
             {"type": "appendToChapter", "chapterRevision": 7, "newText": "x"},
             {"operation": "replaceBlocks", "chapterRevision": 7, "newText": "x"},
             {"operation": "appendToChapter", "chapterRevision": 7, "newText": ""},
-            {"operation": "appendToChapter", "chapterRevision": True, "newText": "x"},
         ]
         for operation in cases:
             self.assertErrorCode(
@@ -1015,34 +990,32 @@ class ChapterOperationTest(unittest.TestCase):
             "extra": True,
         }
         validated = validateChapterOperation(parseChapterOperation(json.dumps(operation)))
-        self.assertEqual(set(validated), {"operation", "chapterRevision", "newText"})
+        self.assertEqual(set(validated), {"operation", "newText"})
 
-    def test_target_validation_rejects_missing_and_changed_targets(self):
-        missingAnchor = self.operation(
+    def test_target_validation_rejects_missing_and_unknown_targets(self):
+        missingBlock = self.operation(
             "replaceBlock",
-            blockId=self.firstBlock["blockId"],
-            anchorText="",
-            newText="replacement",
-        )
-        changedAnchor = self.operation(
-            "replaceBlock",
-            blockId=self.firstBlock["blockId"],
-            anchorText="a different paragraph altogether",
+            blockId="",
             newText="replacement",
         )
         unknownBlock = self.operation(
             "replaceBlock",
             blockId="p_999",
-            anchorText="a different paragraph altogether",
             newText="replacement",
         )
-        self.assertErrorCode(lambda: parseChapterOperation(json.dumps(missingAnchor)), CHAPTER_EDIT_INVALID_OPERATION)
+        unknownRangeEnd = self.operation(
+            "replaceBlock",
+            blockId=self.firstBlock["blockId"],
+            endBlockId="p_999",
+            newText="replacement",
+        )
+        self.assertErrorCode(lambda: parseChapterOperation(json.dumps(missingBlock)), CHAPTER_EDIT_INVALID_OPERATION)
         self.assertErrorCode(
-            lambda: applyChapterOperation(self.content, changedAnchor, baseRevision=7),
+            lambda: applyChapterOperation(self.content, unknownBlock),
             CHAPTER_EDIT_TARGET_MISMATCH,
         )
         self.assertErrorCode(
-            lambda: applyChapterOperation(self.content, unknownBlock, baseRevision=7),
+            lambda: applyChapterOperation(self.content, unknownRangeEnd),
             CHAPTER_EDIT_TARGET_MISMATCH,
         )
 

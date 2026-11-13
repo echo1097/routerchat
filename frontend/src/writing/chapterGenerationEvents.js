@@ -124,7 +124,7 @@ function decodePartialJsonString(rawValue, complete) {
   }
 }
 
-//edit mode streams one json object of {chapterRevision, edits:[...]} so the prose the model is writing is
+//edit mode streams one json object of {edits:[...]} so the prose the model is writing is
 //buried in newText, this walks the growing buffer the same brace and string aware way salvage_truncated_batch
 //does on the backend but also reports the still open edit rather than only the finished ones
 function parseStreamingEditPreview(rawText) {
@@ -172,13 +172,14 @@ function parseStreamingEditPreview(rawText) {
   const fragment = text.slice(elementStart);
 
   const operation = decodeClosedJsonString(fragment, "operation") || "";
-  const anchor = ["anchorText", "blockId", "startAnchorText", "startBlockId"]
+  const anchor = ["blockId", "startBlockId"]
     .map((field) => decodeClosedJsonString(fragment, field))
     .find((value) => value) || "";
+  const endAnchor = decodeClosedJsonString(fragment, "endBlockId") || "";
 
   const newTextKey = fragment.match(/"newText"\s*:\s*(\[)?/);
   if (!newTextKey) {
-    return { completedCount, current: { operation, anchor, newText: "", newTextComplete: false } };
+    return { completedCount, current: { operation, anchor, endAnchor, newText: "", newTextComplete: false } };
   }
 
   const isArray = Boolean(newTextKey[1]);
@@ -192,6 +193,7 @@ function parseStreamingEditPreview(rawText) {
     current: {
       operation,
       anchor,
+      endAnchor,
       newText: preview.text,
       newTextComplete: preview.complete,
     },
@@ -262,6 +264,7 @@ function nextEditPreview(current, parsed) {
     editIndex: parsed.completedCount,
     operation: next.operation,
     anchor: next.anchor,
+    endAnchor: next.endAnchor,
     newText: next.newText,
     newTextComplete: next.newTextComplete,
   };

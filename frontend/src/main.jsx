@@ -6,6 +6,7 @@ import {
   clearLocalChatFolders,
   writeLocalAppSettings,
 } from "./localStorage.js";
+import { readPromptDraft, savePromptDraft } from "./promptDraft.js";
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { newSettings, DEFAULT_MODEL } from "./settings/settingsDefaults.js";
 import { parseRoute, storyRoute, routePath, chatRoute } from "./routing.js";
@@ -145,7 +146,12 @@ function App() {
   const [showPromptNavigationRail, setShowPromptNavigationRail] = useState(
     localAppSettings.show_prompt_navigation_rail !== false,
   );
-  const [prompt, setPrompt] = useState("");
+  const [prompt, setPrompt] = useState(readPromptDraft);
+
+  useEffect(() => {
+    savePromptDraft(prompt);
+  }, [prompt]);
+
   const [openingMessage] = useState(() => pickOpeningMessage());
   const [writingOpeningMessage] = useState(() => pickOpeningMessage("write"));
   const [settingsOpen, setSettingsOpen] = useState(false);

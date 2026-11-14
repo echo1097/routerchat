@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { copyText } from "../browserFallbacks.js";
+import ThinkingContent from "../ThinkingContent.jsx";
 import {
   historyRunGroups,
   historyCostTotal,
@@ -423,12 +424,13 @@ function WriteHistoryLoreGroup({ group, changes }) {
   );
 }
 
-function WriteHistoryStep({ step }) {
+export function WriteHistoryStep({ step }) {
   const [open, setOpen] = useState(false);
   const Icon = STEP_ICONS[step.kind] ?? Dot;
   const failed = step.kind === "write_failed";
   const expandable = step.kind === "thinking" || step.kind === "prompt";
   const copyName = step.kind === "prompt" ? "prompt" : "thinking";
+  const formatted = step.kind === "thinking" && Boolean(step.detail);
 
   const iconNode = (
     <Icon
@@ -461,11 +463,16 @@ function WriteHistoryStep({ step }) {
             <div className="flex items-start gap-1 pb-3.5 pl-[44px] pr-3.5">
               <div
                 className={cx(
-                  "max-h-[320px] min-w-0 flex-1 overflow-y-auto whitespace-pre-wrap break-words text-pretty text-[13px] leading-[21px]",
+                  "max-h-[320px] min-w-0 flex-1 overflow-y-auto break-words text-pretty text-[13px] leading-[21px]",
+                  !formatted && "whitespace-pre-wrap",
                   step.detail ? "cursor-text select-text text-neutral-400" : "text-neutral-600",
                 )}
               >
-                {step.detail || `No ${copyName} saved`}
+                {formatted ? (
+                  <ThinkingContent>{step.detail}</ThinkingContent>
+                ) : (
+                  step.detail || `No ${copyName} saved`
+                )}
               </div>
               {step.detail && <WriteHistoryCopyButton text={step.detail} copyName={copyName} />}
             </div>

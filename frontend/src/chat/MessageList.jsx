@@ -218,6 +218,7 @@ const MessageItem = memo(function MessageItem({
   onNewChat,
   onEditUserMessage,
   onDeleteUserMessage,
+  onReloadChat,
 }) {
   const isUser = message.role === "user";
   const errorNotice = message.errorNotice || savedErrorNotice(message.error);
@@ -407,6 +408,9 @@ const MessageItem = memo(function MessageItem({
         searching={searching}
       />
       <div ref={bodyRef} className="chat-reply max-w-3xl text-[15px] leading-7 text-neutral-100">
+        {errorNotice?.kind === "chatConflict" && message.content && (
+          <p className="mb-2 text-sm text-muted">Unsaved reply</p>
+        )}
         {message.content ? (
           <MarkdownContent streaming={revealing} settledRef={settledRef}>
             {visibleContent}
@@ -422,6 +426,8 @@ const MessageItem = memo(function MessageItem({
           onRetry={isLast ? () => onRegenerate(message.id) : undefined}
           onOpenSettings={onOpenSettings}
           onNewChat={onNewChat}
+          onCopyReply={message.content ? () => onCopy(message) : undefined}
+          onReloadChat={() => onReloadChat(message.chat_id)}
           className={message.content ? "mt-4" : undefined}
         />
       )}
@@ -462,6 +468,7 @@ export function MessageList({
   onNewChat,
   onEditUserMessage,
   onDeleteUserMessage,
+  onReloadChat,
 }) {
   const lastMessageId = messages[messages.length - 1]?.id;
 
@@ -494,6 +501,7 @@ export function MessageList({
               onNewChat={onNewChat}
               onEditUserMessage={onEditUserMessage}
               onDeleteUserMessage={onDeleteUserMessage}
+              onReloadChat={onReloadChat}
             />
           ))
         )}

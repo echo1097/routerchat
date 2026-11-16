@@ -1,5 +1,6 @@
 import {
   CircleAlert,
+  Copy,
   Clock,
   CreditCard,
   ExternalLink,
@@ -35,7 +36,7 @@ const SECONDARY_BUTTON = cx(
   CONTROL_MOTION,
 );
 
-function noticeActions(error, { onRetry, onOpenSettings, onNewChat }) {
+function noticeActions(error, { onRetry, onOpenSettings, onNewChat, onCopyReply, onReloadChat }) {
   const actions = [];
   const creditLink = billingLink(error.provider);
 
@@ -48,7 +49,10 @@ function noticeActions(error, { onRetry, onOpenSettings, onNewChat }) {
   if ((error.kind === "modelUnavailable" || error.kind === "contextTooLong") && onNewChat) {
     actions.push({ label: "New chat", icon: MessageSquarePlus, onClick: onNewChat });
   }
-  if (error.kind !== "badKey" && onRetry) {
+  if (error.kind === "chatConflict") {
+    if (onCopyReply) actions.push({ label: "Copy reply", icon: Copy, onClick: onCopyReply });
+    if (onReloadChat) actions.push({ label: "Reload chat", icon: RefreshCw, onClick: onReloadChat });
+  } else if (error.kind !== "badKey" && onRetry) {
     actions.push({ label: "Retry", icon: RefreshCw, onClick: onRetry });
   }
 
@@ -82,11 +86,11 @@ function NoticeButton({ action, primary }) {
   );
 }
 
-export function ErrorNotice({ error, onRetry, onOpenSettings, onNewChat, onDismiss, className }) {
+export function ErrorNotice({ error, onRetry, onOpenSettings, onNewChat, onCopyReply, onReloadChat, onDismiss, className }) {
   if (!error) return null;
 
   const Icon = ICONS[error.kind] || CircleAlert;
-  const actions = noticeActions(error, { onRetry, onOpenSettings, onNewChat });
+  const actions = noticeActions(error, { onRetry, onOpenSettings, onNewChat, onCopyReply, onReloadChat });
 
   return (
     <div
@@ -101,7 +105,7 @@ export function ErrorNotice({ error, onRetry, onOpenSettings, onNewChat, onDismi
         <p className="text-[13px] font-medium leading-5 text-red-200">{error.title}</p>
         <p className="mt-0.5 text-pretty text-[13px] leading-5 text-neutral-300">{error.message}</p>
         {actions.length > 0 && (
-          <div className="mt-2.5 flex flex-wrap gap-2">
+          <div className={cx("mt-2.5 flex flex-wrap gap-2", error.kind === "chatConflict" && "justify-center")}>
             {actions.map((action, index) => (
               <NoticeButton key={action.label} action={action} primary={index === 0} />
             ))}

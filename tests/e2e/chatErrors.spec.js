@@ -13,6 +13,7 @@ const CHAT = {
   model: "test/model",
   created_at: "2026-01-01T00:00:00Z",
   updated_at: "2026-01-01T00:00:00Z",
+  message_revision: 2,
 };
 
 const NO_CREDIT = {
@@ -42,7 +43,7 @@ async function installChatApi(page, serverMessages) {
 
       const stream = new ReadableStream({
         start(controller) {
-          window.__chatStream = { controller };
+          window.__chatStream = { controller, payload: JSON.parse(init.body) };
         },
       });
       return new Response(stream, {
@@ -144,4 +145,91 @@ test("leaves old replies with error text inside them alone", async ({ page }) =>
   const assistant = page.locator('[data-message-role="assistant"]').last();
   await expect(assistant).toContainText("OpenRouter error 402");
   await expect(assistant.getByRole("alert")).toHaveCount(0);
+});
+
+test("keeps a conflicting regeneration as a copyable unsaved reply until reload", async ({ page }) => {
+  const serverMessages = [
+    message("user-1", "user", "original prompt"),
+    message("assistant-1", "assistant", "original answer"),
+  ];
+  await installChatApi(page, serverMessages);
+  await page.addInitScript(() => {
+    window.auditCopiedText = "";
+    Object.defineProperty(navigator, "clipboard", { value: {
+      writeText: async (text) => { window.auditCopiedText = text; },
+    } });
+  });
+  await page.goto("/chat/chat-1");
+  const originalReply = page.locator('[data-message-role="assistant"]').last();
+  await originalReply.hover();
+  await originalReply.getByRole("button", { name: "Regenerate", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => Boolean(window.__chatStream))).toBe(true);
+
+  serverMessages.push(
+    message("user-2", "user", "new phone message"),
+    message("assistant-2", "assistant", "new phone answer"),
+  );
+  await pushEvent(page, { type: "content", value: "unsaved replacement answer" });
+  await pushEvent(page, { type: "error", value: {
+    code: "chat_revision_conflict",
+    kind: "chatConflict",
+    title: "Chat changed on another device",
+    message: "This reply wasn't saved because the chat changed. Copy any text you want to keep, then reload the chat before trying again.",
+  } });
+  await closeStream(page);
+
+  const preview = page.locator('[data-message-role="assistant"]').last();
+  await expect(preview).toContainText("unsaved replacement answer");
+  await expect(preview).toContainText("Unsaved reply");
+  await expect(preview.getByRole("alert")).toContainText("Chat changed on another device");
+  await expect(preview.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
+  await preview.getByRole("button", { name: "Copy reply", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.auditCopiedText)).toBe("unsaved replacement answer");
+  const composer = page.getByPlaceholder(/Ask Test model/);
+  await composer.fill("a draft to send after reloading");
+  await expect(page.getByRole("button", { name: "Send", exact: true })).toBeDisabled();
+  await composer.press("Enter");
+  await expect(composer).toHaveValue("a draft to send after reloading");
+  await expect(preview).toContainText("unsaved replacement answer");
+
+  await preview.getByRole("button", { name: "Reload chat", exact: true }).click();
+  await expect(page.locator('[data-message-role="assistant"]').last()).toContainText("new phone answer");
+  await expect(page.getByText("original answer", { exact: true })).toBeVisible();
+  await expect(page.getByText("Unsaved reply", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+});
+
+test("rejects a stale regeneration before streaming and offers to reload", async ({ page }) => {
+  const serverMessages = [
+    message("user-1", "user", "original prompt"),
+    message("assistant-1", "assistant", "original answer"),
+  ];
+  await installChatApi(page, serverMessages);
+  await page.goto("/chat/chat-1");
+  const originalReply = page.locator('[data-message-role="assistant"]').last();
+  await expect(originalReply).toContainText("original answer");
+  await page.evaluate(() => {
+    const previousFetch = window.fetch;
+    window.fetch = async (input, init = {}) => {
+      if (String(input).endsWith("/messages/stream")) {
+        window.auditRegenerationPayload = JSON.parse(init.body);
+        return new Response(JSON.stringify({ detail: {
+          code: "chat_revision_conflict",
+          kind: "chatConflict",
+          title: "Chat changed on another device",
+          message: "Reload this chat before trying again.",
+        } }), { status: 409, headers: { "Content-Type": "application/json" } });
+      }
+      return previousFetch(input, init);
+    };
+  });
+  await originalReply.hover();
+  await originalReply.getByRole("button", { name: "Regenerate", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("Chat changed on another device");
+  expect(await page.evaluate(() => window.auditRegenerationPayload.chat_revision)).toBe(2);
+  await expect(page.getByRole("button", { name: "Copy reply", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Reload chat", exact: true }).click();
+  await expect(page.locator('[data-message-role="assistant"]').last()).toContainText("original answer");
+  await expect(page.getByPlaceholder(/Ask Test model/)).toBeEnabled();
 });

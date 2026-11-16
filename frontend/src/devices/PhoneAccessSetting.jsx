@@ -3,6 +3,7 @@ import { CircleHelp } from "lucide-react";
 
 import { SettingGroup, SettingRow, SettingSwitch } from "../settings/SettingControls.jsx";
 import { cx, CONTROL_MOTION } from "../uiShared.js";
+import { BetaPill } from "./BetaPill.jsx";
 import { countdownLabel, lastUsedLabel, plainAddress, spacedCode } from "./deviceLabels.js";
 import { PairingQr } from "./PairingQr.jsx";
 import { PhoneHelp } from "./PhoneHelp.jsx";
@@ -129,6 +130,7 @@ export function PhoneAccessSetting({ onNotify }) {
     <SettingGroup
       id="settings-group-phone"
       title="Phone access"
+      badge={<BetaPill />}
       trailing={<HelpButton open={helpOpen} onToggle={() => setHelpOpen((current) => !current)} />}
     >
       <SettingRow

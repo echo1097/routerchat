@@ -53,7 +53,7 @@ export function SettingRow({ title, description, children, stacked = false, comp
   );
 }
 
-export function SettingGroup({ id, title, trailing, note, evenSpacing = false, className, bodyClassName, children }) {
+export function SettingGroup({ id, title, badge, trailing, note, evenSpacing = false, className, bodyClassName, children }) {
   const titleId = `${id}-title`;
 
   return (
@@ -64,9 +64,12 @@ export function SettingGroup({ id, title, trailing, note, evenSpacing = false, c
       className={cx("settings-group", className)}
     >
       <div className={cx("flex min-h-6 items-center justify-between gap-3", evenSpacing ? "mb-4" : "mb-3")}>
-        <h2 id={titleId} className="text-[16px] font-semibold tracking-[-0.01em] text-neutral-100">
-          {title}
-        </h2>
+        <div className="flex min-w-0 items-center gap-2">
+          <h2 id={titleId} className="text-[16px] font-semibold tracking-[-0.01em] text-neutral-100">
+            {title}
+          </h2>
+          {badge}
+        </div>
         {trailing}
       </div>
       <div className={cx("settings-group-body", bodyClassName)}>

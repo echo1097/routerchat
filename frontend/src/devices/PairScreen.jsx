@@ -15,9 +15,27 @@ export function PairScreen({ onPaired }) {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (window.location.hash) {
-      window.history.replaceState(null, "", window.location.pathname);
+    function clearHash() {
+      if (window.location.hash) {
+        window.history.replaceState(null, "", window.location.pathname);
+      }
     }
+
+    function useFreshLink() {
+      const freshCode = readPairingCode();
+
+      if (freshCode) {
+        setCode(freshCode);
+        setError("");
+      }
+
+      clearHash();
+    }
+
+    clearHash();
+    window.addEventListener("hashchange", useFreshLink);
+
+    return () => window.removeEventListener("hashchange", useFreshLink);
   }, []);
 
   async function submit(event) {

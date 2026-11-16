@@ -46,7 +46,7 @@ import {
   isBatchModel,
   promptModelName,
 } from "./modelFormatting.js";
-import { api, responseErrorDetail } from "./api.js";
+import { api, responseError, responseErrorDetail } from "./api.js";
 import { useProviders } from "./providers/useProviders.js";
 import { useModels } from "./providers/useModels.js";
 import { exportFileName, shortTitle, storyExportFileName } from "./textFormatting.js";
@@ -81,6 +81,7 @@ import { checkForUpdate, clearUpdateCheck } from "./updates/updateCheck.js";
 import { TosLoadingScreen, TosUnavailableScreen, TosGateModal } from "./TosGate.jsx";
 import { PairScreen } from "./devices/PairScreen.jsx";
 import { isPhoneBrowser } from "./devices/phoneBrowser.js";
+import { isAuthRequired, onAuthLost } from "./devices/authLost.js";
 import { copyText, newId } from "./browserFallbacks.js";
 import { createRoot } from "react-dom/client";
 import "@fontsource-variable/inter";
@@ -1951,6 +1952,9 @@ function App() {
         message: "The RouterChat backend isn't responding. Make sure it's running, then try again.",
       };
     }
+    if (isAuthRequired(error.code)) {
+      return { kind: "unknown", title: "This device isn't authorized", message: error.message };
+    }
     if (error.status === 401) {
       return { kind: "badKey", title: "API key missing", message: error.message };
     }
@@ -2028,9 +2032,7 @@ function App() {
       });
 
       if (!response.ok || !response.body) {
-        const requestError = new Error(await responseErrorDetail(response));
-        requestError.status = response.status;
-        throw requestError;
+        throw await responseError(response);
       }
 
       const savedAssistantId = response.headers.get("X-Assistant-Message-Id") || assistantId;
@@ -3896,7 +3898,7 @@ function Root() {
         status: "unavailable",
         tos: null,
         reason:
-          error?.code === "api_auth_required"
+          isAuthRequired(error?.code)
             ? "auth"
             : error?.code === "tos_missing"
               ? "missing"
@@ -3910,6 +3912,12 @@ function Root() {
   useEffect(() => {
     loadTos();
   }, [loadTos]);
+
+  useEffect(() => {
+    return onAuthLost(() => {
+      setGate({ status: "unavailable", tos: null, reason: "auth", retrying: false, failedAt: null });
+    });
+  }, []);
 
   const acceptTos = useCallback(async () => {
     setAcceptError("");

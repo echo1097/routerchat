@@ -1,3 +1,5 @@
+import { reportAuthLost } from "../devices/authLost.js";
+
 export const MAX_FILES_PER_MESSAGE = 5;
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 export const MAX_PDF_BYTES = 10 * 1024 * 1024;
@@ -144,6 +146,8 @@ export async function uploadAttachments(files, signal) {
     } catch {
       detail = null;
     }
+
+    reportAuthLost(detail?.code);
 
     const message = typeof detail === "string"
       ? detail

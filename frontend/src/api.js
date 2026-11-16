@@ -1,3 +1,5 @@
+import { reportAuthLost } from "./devices/authLost.js";
+
 export async function api(path, options = {}) {
   const response = await fetch(path, {
     cache: "no-store",
@@ -35,6 +37,8 @@ export async function responseError(response) {
   error.payload = payload;
   error.code = detail?.code || payload?.error?.code || payload?.code || null;
   error.chapter = detail?.chapter || payload?.chapter || null;
+
+  reportAuthLost(error.code);
   return error;
 }
 

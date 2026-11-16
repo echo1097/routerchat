@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import HTTPException
 
 from backend.core.database import messageOrderClause
+from backend.chats.chatRevision import bumpChatRevision
 
 
 def getChat(conn: sqlite3.Connection, chatId: str) -> sqlite3.Row | None:
@@ -184,30 +185,36 @@ def listMessageIds(conn: sqlite3.Connection) -> list[sqlite3.Row]:
 
 
 def updateMessageContent(conn: sqlite3.Connection, chatId: str, messageId: str, content: str) -> None:
-    conn.execute(
+    result = conn.execute(
         "UPDATE messages SET content = ? WHERE id = ? AND chat_id = ?",
         (content, messageId, chatId),
     )
+    if result.rowcount:
+        bumpChatRevision(conn, chatId)
 
 
 def deleteMessagesFrom(conn: sqlite3.Connection, chatId: str, messageOrder: int) -> None:
-    conn.execute(
+    result = conn.execute(
         """
         DELETE FROM messages
         WHERE chat_id = ? AND message_order >= ?
         """,
         (chatId, messageOrder),
     )
+    if result.rowcount:
+        bumpChatRevision(conn, chatId)
 
 
 def deleteMessagesAfter(conn: sqlite3.Connection, chatId: str, messageOrder: int) -> None:
-    conn.execute(
+    result = conn.execute(
         """
         DELETE FROM messages
         WHERE chat_id = ? AND message_order > ?
         """,
         (chatId, messageOrder),
     )
+    if result.rowcount:
+        bumpChatRevision(conn, chatId)
 
 
 def insertUserMessage(conn: sqlite3.Connection, values: tuple[Any, ...]) -> None:
@@ -221,6 +228,7 @@ def insertUserMessage(conn: sqlite3.Connection, values: tuple[Any, ...]) -> None
         """,
         values,
     )
+    bumpChatRevision(conn, values[1])
 
 
 def insertAssistantMessage(conn: sqlite3.Connection, values: tuple[Any, ...]) -> None:
@@ -236,6 +244,7 @@ def insertAssistantMessage(conn: sqlite3.Connection, values: tuple[Any, ...]) ->
         """,
         values,
     )
+    bumpChatRevision(conn, values[1])
 
 
 def insertImportedMessage(conn: sqlite3.Connection, values: tuple[Any, ...]) -> None:
@@ -251,6 +260,7 @@ def insertImportedMessage(conn: sqlite3.Connection, values: tuple[Any, ...]) -> 
         """,
         values,
     )
+    bumpChatRevision(conn, values[1])
 
 
 def getFolder(conn: sqlite3.Connection, folderId: str) -> sqlite3.Row | None:

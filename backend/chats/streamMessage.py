@@ -19,10 +19,12 @@ from backend.attachments.attachmentContent import (
 )
 from backend.chats.buildMessages import buildMessages
 from backend.chats.chatModels import StreamMessageRequest
+from backend.chats.chatRevision import chatConflictDetail
 from backend.chats.chatQueries import (
     deleteMessagesAfter,
     getFirstUserMessage,
     getUserMessage,
+    getChat,
     insertAssistantMessage,
     insertUserMessage,
     requireChat,
@@ -64,13 +66,31 @@ def saveAssistantReply(
     error_text: str | None,
     generation_id: str | None,
     usage: dict[str, Any] | None,
-) -> None:
+    baseRevision: int | None = None,
+    providerId: str | None = None,
+) -> dict[str, str] | None:
     content = "".join(assistant_text)
+    createdAt = utcNow()
     with getDb() as conn:
+        recordUsage(
+            "message",
+            assistant_message_id,
+            payload.model,
+            usage,
+            createdAt,
+            generation_id,
+            providerId or chatProvider(conn, chat_id).id,
+        )
+        conn.execute("BEGIN IMMEDIATE")
+        chat = getChat(conn, chat_id)
+        if chat is None:
+            return chatConflictDetail()
         if payload.regenerate_message_id:
+            if baseRevision is None or chat["message_revision"] != baseRevision:
+                return chatConflictDetail()
             regenerate_message = getUserMessage(conn, chat_id, payload.regenerate_message_id)
             if not regenerate_message:
-                return
+                return chatConflictDetail()
             previous_first_user = getFirstUserMessage(conn, chat_id)
             previous_first_user_content = (
                 previous_first_user["content"] if previous_first_user else None
@@ -84,7 +104,6 @@ def saveAssistantReply(
                 conn, chat_id, previous_first_user_content
             )
 
-        createdAt = utcNow()
         insertAssistantMessage(
             conn,
             (
@@ -110,22 +129,15 @@ def saveAssistantReply(
                 createdAt,
             ),
         )
-        recordUsage(
-            "message",
-            assistant_message_id,
-            payload.model,
-            usage,
-            createdAt,
-            generation_id,
-            chatProvider(conn, chat_id).id,
-        )
         touchChat(conn, chat_id, utcNow())
+    return None
 
 
 async def streamChatResponse(
     chat_id: str,
     payload: StreamMessageRequest,
     assistant_message_id: str,
+    baseRevision: int | None = None,
 ) -> AsyncIterator[bytes]:
     with getDb() as conn:
         provider = chatProvider(conn, chat_id)
@@ -173,6 +185,7 @@ async def streamChatResponse(
     assistant_text = modelStream.textParts
     sources: list[dict[str, str]] = []
     error_text: str | None = None
+    conflictDetail = None
 
     try:
         async with aclosing(modelStream.events()) as events:
@@ -210,7 +223,7 @@ async def streamChatResponse(
     finally:
         stream_completed = modelStream.receivedDone or bool(modelStream.finishReason)
         if not (payload.regenerate_message_id and (error_text or not stream_completed)):
-            saveAssistantReply(
+            conflictDetail = saveAssistantReply(
                 chat_id,
                 payload,
                 assistant_message_id,
@@ -221,7 +234,12 @@ async def streamChatResponse(
                 error_text,
                 modelStream.generationId,
                 modelStream.usage or None,
+                baseRevision,
+                provider.id,
             )
+
+    if conflictDetail:
+        yield streamEvent("error", conflictDetail)
 
 
 @router.post("/api/chats/{chat_id}/messages/stream")
@@ -242,6 +260,13 @@ async def streamMessage(
 
     with getDb() as conn:
         chat = requireChat(conn, chat_id)
+        baseRevision = chat["message_revision"]
+        if (
+            payload.regenerate_message_id
+            and payload.chat_revision is not None
+            and payload.chat_revision != baseRevision
+        ):
+            raise HTTPException(status_code=409, detail=chatConflictDetail())
         checkAttachmentLimits(
             conn,
             attachmentIds,
@@ -312,7 +337,7 @@ async def streamMessage(
         )
 
     return StreamingResponse(
-        streamChatResponse(chat_id, payload, assistant_message_id),
+        streamChatResponse(chat_id, payload, assistant_message_id, baseRevision),
         media_type="application/x-ndjson; charset=utf-8",
         headers={
             "X-User-Message-Id": user_message_id,

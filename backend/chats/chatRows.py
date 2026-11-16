@@ -28,6 +28,7 @@ def rowToChat(row: sqlite3.Row) -> dict[str, Any]:
         "folder_id": row["folder_id"] if "folder_id" in row.keys() else None,
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
+        "message_revision": row["message_revision"],
     }
 
 

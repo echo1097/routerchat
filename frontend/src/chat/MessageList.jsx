@@ -37,6 +37,7 @@ function ResponseInfoButton({ message }) {
   const popoverId = `response-info-${message.id}`;
 
   const rows = [
+    ["Status", message.finish_reason === "stop" ? "finish" : message.finish_reason || "Unavailable"],
     ["Total input tokens", formatInteger(message.prompt_tokens)],
     ["Total output tokens", formatInteger(message.completion_tokens)],
     ["Total tokens", formatInteger(message.total_tokens)],

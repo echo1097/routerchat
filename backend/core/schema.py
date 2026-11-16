@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from backend.core.database import getDb
+from backend.chats.chatRevision import ensureChatRevisionColumn
 from backend.core.migrations import (
     cleanLorebookCategories,
     ensureAttachmentPageCountColumn,
@@ -299,6 +300,7 @@ def initCoreTables() -> None:
         )
         ensureChatFolderColumn(conn)
         ensureMessageOrderColumn(conn)
+        ensureChatRevisionColumn(conn)
         ensureMessageUsageColumns(conn)
         ensureChatSettingsColumns(conn)
         ensureStorySettingsColumns(conn)

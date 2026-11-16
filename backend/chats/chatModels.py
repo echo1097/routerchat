@@ -68,6 +68,7 @@ class StreamMessageRequest(BaseModel):
     web_search_enabled: bool = False
     nitro_mode: bool = False
     regenerate_message_id: str | None = None
+    chat_revision: int | None = Field(default=None, ge=0)
     write_generation_mode: str | None = None
     chapter_revision: int | None = Field(default=None, ge=0)
     generation_run_id: str | None = Field(default=None, min_length=1)

@@ -92,6 +92,8 @@ function App() {
   const [chats, setChats] = useState([]);
   const [folders, setFolders] = useState([]);
   const [messages, setMessages] = useState([]);
+  const chatRevisionRef = useRef(null);
+  const chatHasConflict = messages.some((message) => message.errorNotice?.kind === "chatConflict");
   const [stories, setStories] = useState([]);
   const [storiesLoaded, setStoriesLoaded] = useState(false);
   const [chapters, setChapters] = useState([]);
@@ -1021,6 +1023,7 @@ function App() {
   }, [activeStoryId, isWritingMode, stories]);
 
   function applyChat(chat, nextMessages) {
+    chatRevisionRef.current = chat.message_revision ?? null;
     const isTemporary = Boolean(chat.temporary);
     setTemporaryChat(isTemporary);
     setTempChatId(isTemporary ? chat.id : null);
@@ -1175,6 +1178,7 @@ function App() {
     setTemporaryChat(false);
     setTempChatId(null);
     setMessages([]);
+    chatRevisionRef.current = null;
     setActiveStoryId(null);
     setActiveChapterId(null);
     activeStoryIdRef.current = null;
@@ -1945,6 +1949,9 @@ function App() {
   }
 
   function requestErrorNotice(error) {
+    if (error.code === "chat_revision_conflict") {
+      return liveErrorNotice(error.payload?.detail);
+    }
     if (error instanceof TypeError) {
       return {
         kind: "unknown",
@@ -1964,7 +1971,7 @@ function App() {
   async function sendMessage(text = prompt.trim(), regenerateMessageId = null) {
     const sentAttachmentIds = regenerateMessageId ? [] : promptAttachments.attachmentIds();
     const sentAttachments = regenerateMessageId ? [] : promptAttachments.attachments;
-    if (isStreaming || (!text && sentAttachmentIds.length === 0)) return;
+    if (isStreaming || chatHasConflict || (!text && sentAttachmentIds.length === 0)) return;
     setIsStreaming(true);
     setStatus("");
     abortRef.current = new AbortController();
@@ -2027,6 +2034,7 @@ function App() {
           chat_system_prompt: chatSystemPrompt,
           message: text,
           regenerate_message_id: regenerateMessageId,
+          chat_revision: regenerateMessageId ? chatRevisionRef.current : undefined,
           attachment_ids: sentAttachmentIds,
         }),
       });
@@ -2037,7 +2045,7 @@ function App() {
 
       const savedAssistantId = response.headers.get("X-Assistant-Message-Id") || assistantId;
       const streamError = await readStream(response, assistantId, savedAssistantId, setMessages);
-      if (streamError && regenerateMessageId) {
+      if (streamError && (regenerateMessageId || streamError.kind === "chatConflict")) {
         return;
       }
       if (tempMode) {
@@ -2102,6 +2110,7 @@ function App() {
   }
 
   async function regenerate(assistantId) {
+    if (isStreaming || chatHasConflict) return;
     const index = messages.findIndex((message) => message.id === assistantId);
     const previousUser = [...messages.slice(0, index)].reverse().find((message) => message.role === "user");
     if (!previousUser) return;
@@ -2123,7 +2132,7 @@ function App() {
   }
 
   async function editUserMessage(message, content) {
-    if (!activeChatId || isStreaming) return;
+    if (!activeChatId || isStreaming || chatHasConflict) return;
     try {
       setStatus("Prompt updated. Regenerating...");
       setMessages((current) => {
@@ -2142,7 +2151,7 @@ function App() {
   }
 
   async function deleteUserMessage(message) {
-    if (!activeChatId || isStreaming) return;
+    if (!activeChatId || isStreaming || chatHasConflict) return;
     setConfirmDialog({
       title: "Delete prompt?",
       body: "Delete this prompt and the replies after it? This cannot be undone.",
@@ -3669,6 +3678,7 @@ function App() {
               onNewChat={() => resetChat({ mode: chatMode })}
               onEditUserMessage={editUserMessage}
               onDeleteUserMessage={deleteUserMessage}
+              onReloadChat={(chatId) => loadChat(chatId, { replace: true })}
             />
 
             <PromptNavigationRail
@@ -3700,7 +3710,7 @@ function App() {
               contextKey={`${activeChatId}:${activeStoryId}:${activeChapterId}`}
               value={prompt}
               setValue={setPrompt}
-              disabled={!currentProviderHasKey}
+              disabled={!currentProviderHasKey || chatHasConflict}
               isStreaming={isStreaming}
               settings={settings}
               models={models}
@@ -3729,7 +3739,7 @@ function App() {
               contextKey={`${activeChatId}:${activeStoryId}:${activeChapterId}`}
             value={prompt}
             setValue={setPrompt}
-            disabled={!currentProviderHasKey}
+            disabled={!currentProviderHasKey || (!isWritingMode && chatHasConflict)}
             isStreaming={isStreaming}
             settings={settings}
             models={models}

@@ -1,4 +1,4 @@
-const betaNote = "Phone access is a beta feature and might have bugs. If something goes wrong, please report it on GitHub issues.";
+const betaNote = "Phone access is a beta feature and might have bugs. If something goes wrong, please report it on GitHub.";
 
 export function BetaPill() {
   return (

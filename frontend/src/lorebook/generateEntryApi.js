@@ -1,3 +1,5 @@
+import { reportAuthLost } from "../devices/authLost.js";
+
 const FALLBACK_ERROR = "Could not generate the entry.";
 
 async function streamError(response) {
@@ -20,6 +22,8 @@ async function streamError(response) {
   const error = new Error(message);
   error.name = "ApiError";
   error.status = response.status;
+
+  reportAuthLost(detail?.code);
   return error;
 }
 

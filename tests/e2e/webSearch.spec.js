@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { json } from "./routeResponse.js";
 
 import { installWriteApi } from "./writeReliability.fixture.js";
 
@@ -18,14 +19,6 @@ function newChat() {
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
   };
-}
-
-function json(route, body, status = 200) {
-  return route.fulfill({
-    status,
-    contentType: "application/json",
-    body: JSON.stringify(body),
-  });
 }
 
 const PNG_PIXEL = Buffer.from(

@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { json } from "./routeResponse.js";
 
 //the streamed reply is split into word spans and resolved in order, scrollback stays plain text
 
@@ -8,14 +9,6 @@ const MODEL = {
   context_length: 128000,
   pricing: { prompt: "0", completion: "0" },
 };
-
-function json(route, body, status = 200) {
-  return route.fulfill({
-    status,
-    contentType: "application/json",
-    body: JSON.stringify(body),
-  });
-}
 
 async function installChatApi(page, serverMessages) {
   await page.addInitScript(() => {

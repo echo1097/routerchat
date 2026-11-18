@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { json } from "./routeResponse.js";
 
 const MODEL = {
   id: "test/model",
@@ -21,14 +22,6 @@ const AUTH_REQUIRED = {
     message: "Open RouterChat through its launcher to authorize this browser.",
   },
 };
-
-function json(route, body, status = 200) {
-  return route.fulfill({
-    status,
-    contentType: "application/json",
-    body: JSON.stringify(body),
-  });
-}
 
 async function installApi(page, streamReply) {
   await page.route("**/api/**", async (route) => {

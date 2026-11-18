@@ -1,13 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createNavigationCoordinator } from "../../../frontend/src/writing/navigationCoordinator.js";
-
-function deferred() {
-  let resolvePromise;
-  const promise = new Promise((resolve) => {
-    resolvePromise = resolve;
-  });
-  return { promise, resolve: resolvePromise };
-}
+import { deferred } from "./deferred.js";
 
 describe("navigation coordinator", () => {
   it("waits for the save barrier before loading and committing a selection", async () => {

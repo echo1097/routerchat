@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { json } from "./routeResponse.js";
 
 const MODEL = {
   id: "test/model",
@@ -22,14 +23,6 @@ const NO_CREDIT = {
   message: "Your OpenRouter account doesn't have enough credit for this model. Add credit, then try again.",
   provider: "OpenRouter",
 };
-
-function json(route, body, status = 200) {
-  return route.fulfill({
-    status,
-    contentType: "application/json",
-    body: JSON.stringify(body),
-  });
-}
 
 async function installChatApi(page, serverMessages) {
   await page.addInitScript(() => {

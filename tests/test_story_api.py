@@ -4,6 +4,7 @@ import os
 import sqlite3
 import unittest
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -84,6 +85,45 @@ def fakeLorebookStream(
                 yield "data: [DONE]"
 
     return FakeLorebookStreamResponse()
+
+
+@contextmanager
+def successfulLorebookStream(rawOutput):
+    requestBody = {}
+
+    class FakeResponse:
+        status_code = 200
+        headers = {}
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return False
+
+        async def aiter_lines(self):
+            chunk = {"choices": [{"delta": {"content": rawOutput}, "finish_reason": "stop"}]}
+            yield f"data: {json.dumps(chunk)}"
+            yield "data: [DONE]"
+
+    class FakeClient:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return False
+
+        def stream(self, *_args, **kwargs):
+            requestBody.update(kwargs.get("json") or {})
+            return FakeResponse()
+
+    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
+        "backend.providers.streaming.httpx.AsyncClient", FakeClient
+    ):
+        yield requestBody
 
 
 class StoryApiTest(LocalApiHarness, unittest.TestCase):
@@ -499,40 +539,7 @@ class StoryApiTest(LocalApiHarness, unittest.TestCase):
         return response, requestBody
 
     def callLorebookGenerate(self, story, payload, rawOutput):
-        requestBody = {}
-
-        class FakeResponse:
-            status_code = 200
-            headers = {}
-
-            async def __aenter__(self):
-                return self
-
-            async def __aexit__(self, *_):
-                return False
-
-            async def aiter_lines(self):
-                chunk = {"choices": [{"delta": {"content": rawOutput}, "finish_reason": "stop"}]}
-                yield f"data: {json.dumps(chunk)}"
-                yield "data: [DONE]"
-
-        class FakeClient:
-            def __init__(self, *_args, **_kwargs):
-                pass
-
-            async def __aenter__(self):
-                return self
-
-            async def __aexit__(self, *_):
-                return False
-
-            def stream(self, *_args, **kwargs):
-                requestBody.update(kwargs.get("json") or {})
-                return FakeResponse()
-
-        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.providers.streaming.httpx.AsyncClient", FakeClient
-        ):
+        with successfulLorebookStream(rawOutput) as requestBody:
             response = self.client.post(
                 f"/api/stories/{story['id']}/lorebook/generate/stream",
                 json=payload,
@@ -540,40 +547,7 @@ class StoryApiTest(LocalApiHarness, unittest.TestCase):
         return response, requestBody
 
     def callLorebookRepair(self, story, rawOutput):
-        requestBody = {}
-
-        class FakeResponse:
-            status_code = 200
-            headers = {}
-
-            async def __aenter__(self):
-                return self
-
-            async def __aexit__(self, *_):
-                return False
-
-            async def aiter_lines(self):
-                chunk = {"choices": [{"delta": {"content": rawOutput}, "finish_reason": "stop"}]}
-                yield f"data: {json.dumps(chunk)}"
-                yield "data: [DONE]"
-
-        class FakeClient:
-            def __init__(self, *_args, **_kwargs):
-                pass
-
-            async def __aenter__(self):
-                return self
-
-            async def __aexit__(self, *_):
-                return False
-
-            def stream(self, *_args, **kwargs):
-                requestBody.update(kwargs.get("json") or {})
-                return FakeResponse()
-
-        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), patch(
-            "backend.providers.streaming.httpx.AsyncClient", FakeClient
-        ):
+        with successfulLorebookStream(rawOutput) as requestBody:
             response = self.client.post(
                 f"/api/stories/{story['id']}/lorebook/repair/stream"
             )

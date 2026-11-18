@@ -1,19 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSaveCoordinator } from "../../../frontend/src/writing/saveCoordinator.js";
-
-function deferred() {
-  let resolvePromise;
-  let rejectPromise;
-  const promise = new Promise((resolve, reject) => {
-    resolvePromise = resolve;
-    rejectPromise = reject;
-  });
-  return {
-    promise,
-    resolve: resolvePromise,
-    reject: rejectPromise,
-  };
-}
+import { deferred } from "./deferred.js";
 
 function chapter(content, revision, storyId = "story", chapterId = "chapter") {
   return {

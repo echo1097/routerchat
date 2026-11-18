@@ -87,105 +87,6 @@ def fakeLorebookStream(
 
 
 class StoryApiTest(LocalApiHarness, unittest.TestCase):
-    def test_history_column_migration_upgrades_an_old_table_and_is_idempotent(self):
-        conn = sqlite3.connect(":memory:")
-        conn.row_factory = sqlite3.Row
-        #the shape this table had before diff stats and cost existed
-        conn.execute(
-            """
-            CREATE TABLE chapter_history_entries (
-              id TEXT PRIMARY KEY,
-              story_id TEXT NOT NULL,
-              chapter_id TEXT NOT NULL,
-              run_id TEXT NOT NULL,
-              label TEXT NOT NULL,
-              detail TEXT NOT NULL DEFAULT '',
-              entry_order INTEGER NOT NULL,
-              created_at TEXT NOT NULL
-            )
-            """
-        )
-        conn.execute(
-            "INSERT INTO chapter_history_entries VALUES ('e1','s1','c1','r1','User prompt','hi',0,'now')"
-        )
-
-        migrations.ensureChapterHistoryColumns(conn)
-        migrations.ensureChapterHistoryColumns(conn) #running twice must not blow up or duplicate anything
-
-        columns = [row["name"] for row in conn.execute("PRAGMA table_info(chapter_history_entries)")]
-        self.assertEqual(columns.count("words_added"), 1)
-        self.assertEqual(columns.count("words_removed"), 1)
-        self.assertEqual(columns.count("cost"), 1)
-
-        #history written before the upgrade stays readable and reads as unknown, not as zero
-        row = conn.execute("SELECT * FROM chapter_history_entries WHERE id = 'e1'").fetchone()
-        self.assertIsNone(row["words_added"])
-        self.assertIsNone(row["cost"])
-        conn.close()
-
-    def test_history_kind_migration_backfills_old_rows_and_is_idempotent(self):
-        conn = sqlite3.connect(":memory:")
-        conn.row_factory = sqlite3.Row
-        #the shape this table had before kind existed
-        conn.execute(
-            """
-            CREATE TABLE chapter_history_entries (
-              id TEXT PRIMARY KEY,
-              story_id TEXT NOT NULL,
-              chapter_id TEXT NOT NULL,
-              run_id TEXT NOT NULL,
-              label TEXT NOT NULL,
-              detail TEXT NOT NULL DEFAULT '',
-              entry_order INTEGER NOT NULL,
-              created_at TEXT NOT NULL
-            )
-            """
-        )
-        oldLabels = [
-            "User prompt",
-            "Glm 5.2 thought for 8 seconds",
-            "Glm 5.2 wrote for 24 seconds",
-            "Glm 5.2 could not apply the edit",
-            "Glm 5.2 added Pip to Lorebook",
-            "Glm 5.2 updated Pip in Lorebook",
-            "Glm 5.2 updated Timeline",
-            "Glm 5.2 removed Mara from Lorebook",
-            "Glm 5.2 finished editing Lorebook after 4 seconds",
-            "Glm 5.2 found no Lorebook changes after 2 seconds",
-        ]
-        for index, label in enumerate(oldLabels):
-            conn.execute(
-                "INSERT INTO chapter_history_entries VALUES (?,'s1','c1','r1',?,'',?,'now')",
-                (f"e{index}", label, index),
-            )
-
-        migrations.ensureChapterHistoryColumns(conn)
-        migrations.ensureChapterHistoryColumns(conn) #twice, must not blow up or double apply
-
-        columns = [row["name"] for row in conn.execute("PRAGMA table_info(chapter_history_entries)")]
-        self.assertEqual(columns.count("kind"), 1)
-
-        kinds = [
-            row["kind"]
-            for row in conn.execute("SELECT kind FROM chapter_history_entries ORDER BY entry_order")
-        ]
-        self.assertEqual(
-            kinds,
-            [
-                "prompt",
-                "thinking",
-                "write",
-                "write_failed",
-                "lore_create",
-                "lore_update",
-                "lore_update",
-                "lore_hide",
-                "lore_summary",
-                "lore_summary",
-            ],
-        )
-        conn.close()
-
     def brainstormRound(self, promptId, promptX, promptY, ideaCount):
         prompt = {
             "id": promptId,
@@ -3019,23 +2920,6 @@ class StoryApiTest(LocalApiHarness, unittest.TestCase):
         self.assertEqual(stale.json()["detail"]["code"], "lorebook_revision_conflict")
         self.assertEqual(stale.json()["detail"]["entry"]["description"], "new fact")
 
-    def test_lorebook_revision_migration_is_idempotent(self):
-        conn = sqlite3.connect(":memory:")
-        conn.row_factory = sqlite3.Row
-        conn.execute(
-            """
-            CREATE TABLE lorebook_entries (
-              id TEXT PRIMARY KEY,
-              name TEXT NOT NULL
-            )
-            """
-        )
-        migrations.ensureLorebookRevisionColumn(conn)
-        migrations.ensureLorebookRevisionColumn(conn)
-        columns = [row["name"] for row in conn.execute("PRAGMA table_info(lorebook_entries)")]
-        self.assertEqual(columns.count("revision"), 1)
-        conn.close()
-
     def test_content_save_requires_a_revision_and_updates_the_story_timestamp(self):
         story = self.client.post("/api/stories", json={"title": "Save Contract"}).json()["story"]
         chapter = self.client.post(
@@ -5503,6 +5387,124 @@ class StoryApiTest(LocalApiHarness, unittest.TestCase):
 
         after = len(self.client.get("/api/stories").json()["stories"])
         self.assertEqual(after, before)
+
+
+class StoryMigrationTest(unittest.TestCase):
+    def test_history_column_migration_upgrades_an_old_table_and_is_idempotent(self):
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        #the shape this table had before diff stats and cost existed
+        conn.execute(
+            """
+            CREATE TABLE chapter_history_entries (
+              id TEXT PRIMARY KEY,
+              story_id TEXT NOT NULL,
+              chapter_id TEXT NOT NULL,
+              run_id TEXT NOT NULL,
+              label TEXT NOT NULL,
+              detail TEXT NOT NULL DEFAULT '',
+              entry_order INTEGER NOT NULL,
+              created_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO chapter_history_entries VALUES ('e1','s1','c1','r1','User prompt','hi',0,'now')"
+        )
+
+        migrations.ensureChapterHistoryColumns(conn)
+        migrations.ensureChapterHistoryColumns(conn) #running twice must not blow up or duplicate anything
+
+        columns = [row["name"] for row in conn.execute("PRAGMA table_info(chapter_history_entries)")]
+        self.assertEqual(columns.count("words_added"), 1)
+        self.assertEqual(columns.count("words_removed"), 1)
+        self.assertEqual(columns.count("cost"), 1)
+
+        #history written before the upgrade stays readable and reads as unknown, not as zero
+        row = conn.execute("SELECT * FROM chapter_history_entries WHERE id = 'e1'").fetchone()
+        self.assertIsNone(row["words_added"])
+        self.assertIsNone(row["cost"])
+        conn.close()
+
+    def test_history_kind_migration_backfills_old_rows_and_is_idempotent(self):
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        #the shape this table had before kind existed
+        conn.execute(
+            """
+            CREATE TABLE chapter_history_entries (
+              id TEXT PRIMARY KEY,
+              story_id TEXT NOT NULL,
+              chapter_id TEXT NOT NULL,
+              run_id TEXT NOT NULL,
+              label TEXT NOT NULL,
+              detail TEXT NOT NULL DEFAULT '',
+              entry_order INTEGER NOT NULL,
+              created_at TEXT NOT NULL
+            )
+            """
+        )
+        oldLabels = [
+            "User prompt",
+            "Glm 5.2 thought for 8 seconds",
+            "Glm 5.2 wrote for 24 seconds",
+            "Glm 5.2 could not apply the edit",
+            "Glm 5.2 added Pip to Lorebook",
+            "Glm 5.2 updated Pip in Lorebook",
+            "Glm 5.2 updated Timeline",
+            "Glm 5.2 removed Mara from Lorebook",
+            "Glm 5.2 finished editing Lorebook after 4 seconds",
+            "Glm 5.2 found no Lorebook changes after 2 seconds",
+        ]
+        for index, label in enumerate(oldLabels):
+            conn.execute(
+                "INSERT INTO chapter_history_entries VALUES (?,'s1','c1','r1',?,'',?,'now')",
+                (f"e{index}", label, index),
+            )
+
+        migrations.ensureChapterHistoryColumns(conn)
+        migrations.ensureChapterHistoryColumns(conn) #twice, must not blow up or double apply
+
+        columns = [row["name"] for row in conn.execute("PRAGMA table_info(chapter_history_entries)")]
+        self.assertEqual(columns.count("kind"), 1)
+
+        kinds = [
+            row["kind"]
+            for row in conn.execute("SELECT kind FROM chapter_history_entries ORDER BY entry_order")
+        ]
+        self.assertEqual(
+            kinds,
+            [
+                "prompt",
+                "thinking",
+                "write",
+                "write_failed",
+                "lore_create",
+                "lore_update",
+                "lore_update",
+                "lore_hide",
+                "lore_summary",
+                "lore_summary",
+            ],
+        )
+        conn.close()
+
+    def test_lorebook_revision_migration_is_idempotent(self):
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            """
+            CREATE TABLE lorebook_entries (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL
+            )
+            """
+        )
+        migrations.ensureLorebookRevisionColumn(conn)
+        migrations.ensureLorebookRevisionColumn(conn)
+        columns = [row["name"] for row in conn.execute("PRAGMA table_info(lorebook_entries)")]
+        self.assertEqual(columns.count("revision"), 1)
+        conn.close()
 
 
 if __name__ == "__main__":

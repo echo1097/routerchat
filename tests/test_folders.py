@@ -75,6 +75,8 @@ class FolderApiTest(LocalApiHarness, unittest.TestCase):
             404,
         )
 
+
+class FolderMigrationTest(unittest.TestCase):
     def test_folder_column_migration_upgrades_an_old_chats_table(self):
         conn = sqlite3.connect(":memory:")
         conn.row_factory = sqlite3.Row

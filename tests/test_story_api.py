@@ -2,7 +2,6 @@ import asyncio
 import json
 import os
 import sqlite3
-import tempfile
 import unittest
 import uuid
 from pathlib import Path
@@ -18,8 +17,6 @@ import backend.core.database as database
 import backend.core.utils as utils
 import backend.providers.openrouter.client as openrouterClient
 import backend.core.reasoningEffort as reasoningEffort
-import backend.tos.loadTos as loadTos
-import backend.tos.tosAcceptance as tosAcceptance
 import backend.providers.openrouter.models as models
 import backend.providers.openrouter.requestOptions as requestOptions
 from backend.providers.errorKinds import appError
@@ -39,10 +36,10 @@ from backend.lorebook.lorebookHistory import lorebookHistoryLabel
 from backend.lorebook.runUpdate import runLorebookUpdate
 from backend.lorebook.timeline import normalizeTimelineDescription
 from backend.lorebook.updateSchema import lorebookUpdateResponseFormat
-from backend.local_access import createSecretFile
 from backend.writing.chapterEdits.anchors import chapterBlocks
 from backend.writing.chapterEdits.editSchema import chapterEditResponseFormat
 from backend.writing.storyMessages import buildStoryMessages, effectiveGenerationMode
+from tests.localApiHarness import LocalApiHarness
 
 
 def messageText(message):
@@ -89,61 +86,7 @@ def fakeLorebookStream(
     return FakeLorebookStreamResponse()
 
 
-def acceptCurrentTos():
-    #every /api route is behind the tos gate now, so a fresh test db needs an acceptance row or everything 403s
-    tos = loadTos.loadTos()
-    if not tos:
-        raise RuntimeError("TOS.md is missing, restore it before running the tests")
-    tosAcceptance.recordTosAcceptance(tos["hash"], tos["date"])
-
-
-class StoryApiTest(unittest.TestCase):
-    def setUp(self):
-        modelLookup = patch("backend.providers.openrouter.models.lookUpMissingModel", return_value=None)
-        modelLookup.start()
-        self.addCleanup(modelLookup.stop)
-        self.tempDir = tempfile.TemporaryDirectory()
-        self.originalDataDir = paths.DATA_DIR
-        self.originalDbPath = paths.DB_PATH
-        paths.DATA_DIR = Path(self.tempDir.name)
-        paths.DB_PATH = paths.DATA_DIR / "routerchat-test.sqlite3"
-        self.baseUrl = "http://127.0.0.1:8000"
-        self.apiSecretPath = paths.DATA_DIR / "run" / "api-secret"
-        self.apiSecret = createSecretFile(self.apiSecretPath)
-        self.localAccessEnvironment = patch.dict(
-            os.environ,
-            {
-                "ROUTERCHAT_API_SECRET_FILE": str(self.apiSecretPath),
-                "ROUTERCHAT_BASE_URL": self.baseUrl,
-                "ROUTERCHAT_TRUSTED_ORIGINS": self.baseUrl,
-            },
-        )
-        self.localAccessEnvironment.start()
-        main.resetLocalAccessConfig()
-        main.initDb()
-        acceptCurrentTos()
-        self.client = TestClient(
-            main.app,
-            base_url=self.baseUrl,
-            headers={"Origin": self.baseUrl, "Sec-Fetch-Site": "same-origin"},
-        )
-        bootstrapResponse = self.client.post(
-            "/api/bootstrap",
-            data={"secret": self.apiSecret},
-            headers={"Origin": "null", "Sec-Fetch-Site": "cross-site"},
-            follow_redirects=False,
-        )
-        if bootstrapResponse.status_code != 303:
-            raise RuntimeError("test client could not bootstrap local API access")
-
-    def tearDown(self):
-        self.client.close()
-        main.resetLocalAccessConfig()
-        self.localAccessEnvironment.stop()
-        paths.DATA_DIR = self.originalDataDir
-        paths.DB_PATH = self.originalDbPath
-        self.tempDir.cleanup()
-
+class StoryApiTest(LocalApiHarness, unittest.TestCase):
     def test_history_column_migration_upgrades_an_old_table_and_is_idempotent(self):
         conn = sqlite3.connect(":memory:")
         conn.row_factory = sqlite3.Row

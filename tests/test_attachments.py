@@ -1,13 +1,10 @@
-import os
 import re
-import tempfile
 import zlib
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from fastapi import HTTPException
-from fastapi.testclient import TestClient
 from starlette.datastructures import UploadFile
 
 import backend.attachments.attachmentCleanup as attachmentCleanup
@@ -19,21 +16,11 @@ from backend.providers.anthropic.client import (
     ANTHROPIC_MAX_IMAGE_BYTES,
     ANTHROPIC_MAX_REQUEST_ATTACHMENT_BYTES,
 )
-import backend.main as main
 import backend.core.database as database
 import backend.core.utils as utils
 import backend.chats.buildMessages as buildMessages
-import backend.tos.loadTos as loadTos
-import backend.tos.tosAcceptance as tosAcceptance
 import backend.core.paths as paths
-from backend.local_access import createSecretFile
-
-
-def acceptCurrentTos():
-    tos = loadTos.loadTos()
-    if not tos:
-        raise RuntimeError("TOS.md is missing, restore it before running the tests")
-    tosAcceptance.recordTosAcceptance(tos["hash"], tos["date"])
+from tests.localApiHarness import LocalApiHarness
 
 
 PNG_BYTES = bytes.fromhex(
@@ -94,53 +81,7 @@ class PdfPageCountTest(unittest.TestCase):
         self.assertIsNone(countPdfPages(pdfBytes(3) + b"<< /Encrypt 9 0 R >>"))
 
 
-class AttachmentApiTest(unittest.TestCase):
-    def setUp(self):
-        modelLookup = patch("backend.providers.openrouter.models.lookUpMissingModel", return_value=None)
-        modelLookup.start()
-        self.addCleanup(modelLookup.stop)
-        self.tempDir = tempfile.TemporaryDirectory()
-        self.originalDataDir = paths.DATA_DIR
-        self.originalDbPath = paths.DB_PATH
-        paths.DATA_DIR = Path(self.tempDir.name)
-        paths.DB_PATH = paths.DATA_DIR / "routerchat-test.sqlite3"
-        self.baseUrl = "http://127.0.0.1:8000"
-        self.apiSecretPath = paths.DATA_DIR / "run" / "api-secret"
-        self.apiSecret = createSecretFile(self.apiSecretPath)
-        self.localAccessEnvironment = patch.dict(
-            os.environ,
-            {
-                "ROUTERCHAT_API_SECRET_FILE": str(self.apiSecretPath),
-                "ROUTERCHAT_BASE_URL": self.baseUrl,
-                "ROUTERCHAT_TRUSTED_ORIGINS": self.baseUrl,
-            },
-        )
-        self.localAccessEnvironment.start()
-        main.resetLocalAccessConfig()
-        main.initDb()
-        acceptCurrentTos()
-        self.client = TestClient(
-            main.app,
-            base_url=self.baseUrl,
-            headers={"Origin": self.baseUrl, "Sec-Fetch-Site": "same-origin"},
-        )
-        bootstrapResponse = self.client.post(
-            "/api/bootstrap",
-            data={"secret": self.apiSecret},
-            headers={"Origin": "null", "Sec-Fetch-Site": "cross-site"},
-            follow_redirects=False,
-        )
-        if bootstrapResponse.status_code != 303:
-            raise RuntimeError("test client could not bootstrap local API access")
-
-    def tearDown(self):
-        self.client.close()
-        main.resetLocalAccessConfig()
-        self.localAccessEnvironment.stop()
-        paths.DATA_DIR = self.originalDataDir
-        paths.DB_PATH = self.originalDbPath
-        self.tempDir.cleanup()
-
+class AttachmentApiTest(LocalApiHarness, unittest.TestCase):
     def upload(self, files):
         return self.client.post("/api/attachments", files=files)
 

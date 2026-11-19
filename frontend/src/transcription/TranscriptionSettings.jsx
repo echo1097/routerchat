@@ -1,5 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
+import { CurrentModelGroup } from "../settings/CurrentModelGroup.jsx";
+import { SettingChip } from "../settings/SettingControls.jsx";
+import { modelDisplayName } from "../modelFormatting.js";
 import { ModelPicker } from "../settings/ModelPicker.jsx";
 import { searchModels } from "../settings/modelSearch.js";
 import { transcriptionPrice } from "./transcriptionPrice.js";
@@ -10,7 +13,8 @@ export function TranscriptionSettings() {
   const [selectedModel, setSelectedModel] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const savedModel = useRef("");
+  const saveQueue = useRef(Promise.resolve());
 
   useEffect(() => {
     const controller = new AbortController();
@@ -19,7 +23,8 @@ export function TranscriptionSettings() {
       api("/api/settings", { signal: controller.signal }),
     ]).then(([catalog, settings]) => {
       setModels(catalog.models);
-      setSelectedModel(settings.transcription_model || "openai/whisper-1");
+      savedModel.current = settings.transcription_model || "openai/whisper-1";
+      setSelectedModel(savedModel.current);
     }).catch((error) => {
       if (!controller.signal.aborted) setError(error.message);
     }).finally(() => {
@@ -28,33 +33,44 @@ export function TranscriptionSettings() {
     return () => controller.abort();
   }, []);
 
-  async function selectModel(modelId) {
-    setSaving(true);
+  function selectModel(modelId) {
+    if (modelId === selectedModel) return;
+    setSelectedModel(modelId);
     setError("");
-    try {
-      const settings = await api("/api/settings", {
-        method: "PATCH",
-        body: JSON.stringify({ transcription_model: modelId }),
-      });
-      setSelectedModel(settings.transcription_model);
-    } catch (error) {
-      setError(error.message);
-    } finally {
-      setSaving(false);
-    }
+
+    const save = saveQueue.current.then(async () => {
+      try {
+        const settings = await api("/api/settings", {
+          method: "PATCH",
+          body: JSON.stringify({ transcription_model: modelId }),
+        });
+        savedModel.current = settings.transcription_model;
+      } catch (error) {
+        if (saveQueue.current === save) {
+          setSelectedModel(savedModel.current);
+          setError(error.message);
+        }
+      }
+    });
+    saveQueue.current = save;
   }
 
   const filteredModels = searchModels(models, query);
-  const selectedName = models.find((model) => model.id === selectedModel)?.name || selectedModel;
+  const currentModel = models.find((model) => model.id === selectedModel);
+  const currentPrice = currentModel && transcriptionPrice(currentModel);
+  const selectedName = currentModel ? modelDisplayName(currentModel) : selectedModel;
 
   return (
     <section className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-4 min-w-0">
-        <h2 className="text-[13px] font-semibold text-neutral-400">Dictation model</h2>
-        <p className="mt-1.5 truncate text-sm font-medium text-neutral-100">{selectedName || "Loading models…"}</p>
-      </div>
+      <CurrentModelGroup
+        id="settings-group-dictation-model"
+        name={loading ? "Loading models…" : selectedName || "No model selected"}
+      >
+        {currentPrice && <SettingChip>{currentPrice.label}</SettingChip>}
+        {selectedModel && !currentModel && <SettingChip>Unavailable</SettingChip>}
+      </CurrentModelGroup>
       <ModelPicker
-        priceHeader="Price"
+        framed
         renderPrice={(model) => {
           const price = transcriptionPrice(model);
           if (price) return <span title={price.title}>{price.label}</span>;
@@ -76,12 +92,11 @@ export function TranscriptionSettings() {
         onQueryChange={setQuery}
         selectedId={selectedModel}
         onSelect={selectModel}
-        disabled={loading || saving}
+        disabled={loading}
         loading={loading}
         activePage="transcription"
         emptyMessage={loading ? "Loading models…" : models.length ? "No matching models." : "No transcription models available."}
       />
-      {saving && <p role="status" className="mt-2 text-xs text-neutral-400">Saving…</p>}
       {error && <p role="alert" className="mt-2 text-xs text-red-300">{error}</p>}
     </section>
   );

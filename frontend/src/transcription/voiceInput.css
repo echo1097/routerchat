@@ -1,18 +1,4 @@
-.voice-mic {
-  display: grid;
-  width: 32px;
-  height: 32px;
-  flex-shrink: 0;
-  place-items: center;
-  border-radius: 50%;
-  color: #a3a3a3;
-}
-
-@media (hover: hover) {
-  .voice-mic:hover { background: #ffffff14; }
-}
-.voice-mic:disabled { opacity: 0.4; }
-.voice-mic:focus-visible, .voice-round:focus-visible { outline: 2px solid #a3a3a3; outline-offset: 3px; }
+.voice-round:focus-visible { outline: 2px solid #a3a3a3; outline-offset: 3px; }
 
 .voice-recording {
   position: absolute;

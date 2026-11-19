@@ -112,7 +112,20 @@ test("transcription model selection is saved independently", async ({ page }) =>
   await expect(transcriptionSettings.getByRole("link", { name: "View pricing for Hourly transcription model" })).toHaveCount(0);
   await transcriptionSettings.getByPlaceholder("Search models").fill("other");
   await expect(transcriptionSettings.getByRole("button", { name: "Whisper" })).toHaveCount(0);
-  await transcriptionSettings.getByRole("button", { name: "Other transcription model test", exact: true }).click();
+  const saveGate = Promise.withResolvers();
+  await page.route("**/api/settings", async (route) => {
+    if (route.request().method() === "PATCH") await saveGate.promise;
+    await route.fallback();
+  });
+  const choice = transcriptionSettings.getByRole("button", { name: "Other transcription model test", exact: true });
+  try {
+    await choice.click();
+    await expect(choice).toHaveAttribute("aria-pressed", "true");
+    await expect(choice).toBeEnabled();
+    await expect(transcriptionSettings.getByText("Saving…", { exact: true })).toHaveCount(0);
+  } finally {
+    saveGate.resolve();
+  }
   await expect.poll(() => state.settings.transcription_model).toBe("test/stt");
   expect(state.settings.default_model).toBe("test/model");
 });

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
 import { CurrentModelGroup } from "../settings/CurrentModelGroup.jsx";
 import { SettingChip } from "../settings/SettingControls.jsx";
@@ -13,7 +13,8 @@ export function TranscriptionSettings() {
   const [selectedModel, setSelectedModel] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const savedModel = useRef("");
+  const saveQueue = useRef(Promise.resolve());
 
   useEffect(() => {
     const controller = new AbortController();
@@ -22,7 +23,8 @@ export function TranscriptionSettings() {
       api("/api/settings", { signal: controller.signal }),
     ]).then(([catalog, settings]) => {
       setModels(catalog.models);
-      setSelectedModel(settings.transcription_model || "openai/whisper-1");
+      savedModel.current = settings.transcription_model || "openai/whisper-1";
+      setSelectedModel(savedModel.current);
     }).catch((error) => {
       if (!controller.signal.aborted) setError(error.message);
     }).finally(() => {
@@ -31,20 +33,26 @@ export function TranscriptionSettings() {
     return () => controller.abort();
   }, []);
 
-  async function selectModel(modelId) {
-    setSaving(true);
+  function selectModel(modelId) {
+    if (modelId === selectedModel) return;
+    setSelectedModel(modelId);
     setError("");
-    try {
-      const settings = await api("/api/settings", {
-        method: "PATCH",
-        body: JSON.stringify({ transcription_model: modelId }),
-      });
-      setSelectedModel(settings.transcription_model);
-    } catch (error) {
-      setError(error.message);
-    } finally {
-      setSaving(false);
-    }
+
+    const save = saveQueue.current.then(async () => {
+      try {
+        const settings = await api("/api/settings", {
+          method: "PATCH",
+          body: JSON.stringify({ transcription_model: modelId }),
+        });
+        savedModel.current = settings.transcription_model;
+      } catch (error) {
+        if (saveQueue.current === save) {
+          setSelectedModel(savedModel.current);
+          setError(error.message);
+        }
+      }
+    });
+    saveQueue.current = save;
   }
 
   const filteredModels = searchModels(models, query);
@@ -84,12 +92,11 @@ export function TranscriptionSettings() {
         onQueryChange={setQuery}
         selectedId={selectedModel}
         onSelect={selectModel}
-        disabled={loading || saving}
+        disabled={loading}
         loading={loading}
         activePage="transcription"
         emptyMessage={loading ? "Loading models…" : models.length ? "No matching models." : "No transcription models available."}
       />
-      {saving && <p role="status" className="mt-2 text-xs text-neutral-400">Saving…</p>}
       {error && <p role="alert" className="mt-2 text-xs text-red-300">{error}</p>}
     </section>
   );

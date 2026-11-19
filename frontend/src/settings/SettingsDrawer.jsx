@@ -1,3 +1,4 @@
+import { CurrentModelGroup } from "./CurrentModelGroup.jsx";
 import { TranscriptionSettings } from "../transcription/TranscriptionSettings.jsx";
 import { X, Check } from "lucide-react";
 import { useState, useRef, useMemo, useEffect } from "react";
@@ -607,33 +608,27 @@ export function SettingsDrawer({
 
   const modelsSection = (
     <section className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-4 shrink-0">
-        <SettingGroup id="settings-group-current-model" title="Current model" evenSpacing>
-          <div className="settings-row flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-5 py-4">
-            <h3 className="min-w-0 truncate text-[15px] font-semibold tracking-[-0.01em] text-neutral-50">
-              {selectedModel ? modelDisplayName(selectedModel) : settings.model || "No model selected"}
-            </h3>
-            <div className="flex flex-wrap items-center justify-end gap-1.5">
-              {modelLocked && <SettingChip className="text-neutral-500">Model locked</SettingChip>}
-              {selectedModelPrice && <SettingChip>{selectedModelPrice}</SettingChip>}
-              {selectedModelContext && <SettingChip>{selectedModelContext}</SettingChip>}
-              <button
-                type="button"
-                disabled={providerDiffers || !settings.model || settings.model === defaultModel}
-                onClick={setSelectedModelAsDefault}
-                className={cx(
-                  smallPillButtonClass,
-                  settings.model === defaultModel
-                    ? "bg-white/[0.045] text-neutral-500"
-                    : "bg-white/[0.08] text-neutral-200 hover:bg-white/[0.12] hover:text-neutral-50",
-                )}
-              >
-                {settings.model === defaultModel ? "Default" : "Set as default"}
-              </button>
-            </div>
-          </div>
-        </SettingGroup>
-      </div>
+      <CurrentModelGroup
+        id="settings-group-current-model"
+        name={selectedModel ? modelDisplayName(selectedModel) : settings.model || "No model selected"}
+      >
+        {modelLocked && <SettingChip className="text-neutral-500">Model locked</SettingChip>}
+        {selectedModelPrice && <SettingChip>{selectedModelPrice}</SettingChip>}
+        {selectedModelContext && <SettingChip>{selectedModelContext}</SettingChip>}
+        <button
+          type="button"
+          disabled={providerDiffers || !settings.model || settings.model === defaultModel}
+          onClick={setSelectedModelAsDefault}
+          className={cx(
+            smallPillButtonClass,
+            settings.model === defaultModel
+              ? "bg-white/[0.045] text-neutral-500"
+              : "bg-white/[0.08] text-neutral-200 hover:bg-white/[0.12] hover:text-neutral-50",
+          )}
+        >
+          {settings.model === defaultModel ? "Default" : "Set as default"}
+        </button>
+      </CurrentModelGroup>
 
       {providerDiffers && (
         <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl bg-[#fde68a]/[0.08] px-4 py-3">
@@ -1121,7 +1116,7 @@ export function SettingsDrawer({
             <SettingsFixedPage pageId="5" title={pageTitle("writing")} label="Lorebook settings">
               {lorebookSection}
             </SettingsFixedPage>
-            <SettingsFixedPage pageId="6" title={pageTitle("voice")} label="Transcription settings">
+            <SettingsFixedPage pageId="6" title={pageTitle("voice")} label="Transcription settings" evenSpacing>
               {!provider.capabilities?.transcription && (
                 <p className="mb-4 rounded-2xl bg-white/[0.04] px-4 py-3 text-pretty text-[12.5px] leading-5 text-neutral-400">
                   {provider.name} has no voice typing of its own. Voice input uses OpenRouter, so it needs an OpenRouter key saved under Provider.

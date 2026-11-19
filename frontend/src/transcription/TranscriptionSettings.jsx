@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
+import { CurrentModelGroup } from "../settings/CurrentModelGroup.jsx";
+import { SettingChip } from "../settings/SettingControls.jsx";
+import { modelDisplayName } from "../modelFormatting.js";
 import { ModelPicker } from "../settings/ModelPicker.jsx";
 import { searchModels } from "../settings/modelSearch.js";
 import { transcriptionPrice } from "./transcriptionPrice.js";
@@ -45,16 +48,21 @@ export function TranscriptionSettings() {
   }
 
   const filteredModels = searchModels(models, query);
-  const selectedName = models.find((model) => model.id === selectedModel)?.name || selectedModel;
+  const currentModel = models.find((model) => model.id === selectedModel);
+  const currentPrice = currentModel && transcriptionPrice(currentModel);
+  const selectedName = currentModel ? modelDisplayName(currentModel) : selectedModel;
 
   return (
     <section className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-4 min-w-0">
-        <h2 className="text-[13px] font-semibold text-neutral-400">Dictation model</h2>
-        <p className="mt-1.5 truncate text-sm font-medium text-neutral-100">{selectedName || "Loading models…"}</p>
-      </div>
+      <CurrentModelGroup
+        id="settings-group-dictation-model"
+        name={loading ? "Loading models…" : selectedName || "No model selected"}
+      >
+        {currentPrice && <SettingChip>{currentPrice.label}</SettingChip>}
+        {selectedModel && !currentModel && <SettingChip>Unavailable</SettingChip>}
+      </CurrentModelGroup>
       <ModelPicker
-        priceHeader="Price"
+        framed
         renderPrice={(model) => {
           const price = transcriptionPrice(model);
           if (price) return <span title={price.title}>{price.label}</span>;

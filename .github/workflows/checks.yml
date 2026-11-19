@@ -82,7 +82,7 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run browser tests
-        run: npm run test:e2e
+        run: npm run test:e2e -- --workers=2
 
       - name: Upload failure details
         if: failure()

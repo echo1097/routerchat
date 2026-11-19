@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, Square, X } from "lucide-react";
+import { ArrowUp, AudioLines, Square, X } from "lucide-react";
 import { api } from "../api.js";
-import { MaskIcon } from "../components/IconButton.jsx";
+import { cx, PROMPT_BAR_CONTROL_MOTION } from "../uiShared.js";
 import "./voiceInput.css";
 
 function releaseRecording(session) {
@@ -227,8 +227,21 @@ export function VoiceInput({ value, setValue, onSubmit, disabled, contextKey }) 
 
   return (
     <>
-      <button ref={micRef} type="button" className="voice-mic" aria-label="Record prompt" title="Record prompt" disabled={disabled || active} onClick={startRecording}>
-        <MaskIcon src="/icons/microphone.png" size={13} />
+      <button
+        ref={micRef}
+        type="button"
+        aria-label="Record prompt"
+        title="Record prompt"
+        disabled={disabled || active}
+        onClick={startRecording}
+        className={cx(
+          "grid h-8 w-8 shrink-0 place-items-center rounded-full text-neutral-400",
+          "hover:bg-white/[0.08] hover:text-neutral-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-400 focus-visible:[outline-style:solid]",
+          "disabled:cursor-not-allowed disabled:text-neutral-600 disabled:hover:bg-transparent disabled:active:scale-100",
+          PROMPT_BAR_CONTROL_MOTION,
+        )}
+      >
+        <AudioLines size={18} strokeWidth={2.25} aria-hidden="true" />
       </button>
       {active && (
         <div className="voice-recording" role="dialog" aria-label="Record a prompt" aria-modal="true" onKeyDown={(event) => {

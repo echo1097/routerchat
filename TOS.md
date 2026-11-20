@@ -28,7 +28,7 @@ RouterChat runs on your computer with no analytics or tracking. RouterChat sends
 
 If you turn on phone access, your chats, stories, and settings are also sent over your local network to the phones you pair. Anyone using a paired phone can read and edit your chats and stories. Phone access is off by default. That connection is not encrypted. Your API keys themselves are not sent to a phone, but a paired phone can send requests that use them.
 
-A few other connections carry none of your content:
+RouterChat also connects to the services listed below. These requests reveal your IP address but do not include your prompts, chats, attachments, or API keys.
 
 * **GitHub**, to check for new releases.
 * **Flaticon**, to load icons.

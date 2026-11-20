@@ -33,7 +33,7 @@ RouterChat also connects to the services listed below. These requests reveal you
 * **GitHub**, to check for updates, display release notes, and download files when you install or update RouterChat.
 * **Flaticon**, to load icons.
 * **PyPI (the Python Package Index)**, when the installer or updater installs dependencies.
-* **Websites linked as sources in responses**, to fetch their icons.
+* **Websites linked as sources in responses**, to fetch their icons. An icon may load from another domain.
 
 Some features send requests to your provider without you pressing send, such as automatic chat naming, automatic lorebook updates, web search, and voice input. These requests can cost money.
 
@@ -46,8 +46,8 @@ You are solely responsible for:
 * **Eligibility.** Being old enough to agree to these terms and to use the providers you choose.
 * **Credentials.** Your API keys and account security. Keys are stored locally and the author never has access to them.
 * **Network exposure.** If you change RouterChat's bind address, forward its port, put it behind a proxy, or run it on a machine others can reach, you are exposing your chats and API keys, and you are solely responsible for securing that deployment.
-* **Phone access.** If you turn on phone access, you are exposing your chats, stories, and settings to the phones you pair and to the local network you use it on. That traffic is not encrypted and can be read by others on the same network. Requests sent from a paired phone use your API keys and are charged to your provider account. You are solely responsible for which devices you pair, who can use them, and which networks you use it on.
-* **Costs.** All charges, limits, and account actions from any provider.
+* **Phone access.** If you turn on phone access, you are exposing your chats, stories, and settings to the phones you pair and to the local network you use it on. That traffic is not encrypted and can be read by others on the same network. Requests sent from a paired phone use your API keys and are charged to your provider account. You are solely responsible for which devices you pair, who can use them, and which networks you use it on. You can revoke a paired device’s access at any time in Settings.
+* **Costs.** You are responsible for provider charges and for staying within your account limits. Costs shown in RouterChat may be estimates. Your provider’s billing records determine what you owe, including when RouterChat shows no cost figure.
 * **Provider compliance.** Following the terms and policies of every provider you use.
 * **Content.** Everything you submit and everything you do with the output.
 * **Your data.** Your chats, stories, lorebooks, settings, and attachments. Backups made during updates and uninstalls are best effort, so keep your own copy.

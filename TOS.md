@@ -26,7 +26,7 @@ This does not limit liability for fraud, willful injury, violation of law, or gr
 
 RouterChat runs on your computer with no analytics or tracking. RouterChat sends each API key only to the provider it belongs to. Depending on the feature you use, your request can include prompts, chat history, attachments, story text, lorebook entries, and relevant settings. When you use OpenRouter, it forwards the content needed to answer your request to a provider serving the model you choose. Voice input and web search work with OpenRouter only, and they send your recording or search terms to OpenRouter and the provider it uses for that feature.
 
-If you turn on phone access, your chats, stories, and settings are also sent over your local network to the phones you pair. Phone access is off by default. That connection is not encrypted. Your API keys themselves are not sent to a phone, but a paired phone can send requests that use them.
+If you turn on phone access, your chats, stories, and settings are also sent over your local network to the phones you pair. Anyone using a paired phone can read and edit your chats and stories. Phone access is off by default. That connection is not encrypted. Your API keys themselves are not sent to a phone, but a paired phone can send requests that use them.
 
 A few other connections carry none of your content:
 

@@ -30,7 +30,7 @@ If you turn on phone access, your chats, stories, and settings are also sent ove
 
 RouterChat also connects to the services listed below. These requests reveal your IP address but do not include your prompts, chats, attachments, or API keys.
 
-* **GitHub**, to check for new releases.
+* **GitHub**, to check for updates, display release notes, and download files when you install or update RouterChat.
 * **Flaticon**, to load icons.
 * **PyPI (the Python Package Index)**, when the installer or updater installs dependencies.
 * **Websites linked as sources in responses**, to fetch their icons.

@@ -71,29 +71,22 @@ This section does not restrict the rights granted under the Apache License 2.0. 
 
 ## 7. Name and Branding
 
-The Apache License 2.0 grants no trademark rights. If you modify RouterChat or distribute a modified version, including as a hosted service or installer, you may not present it under the RouterChat name:
+If you distribute a modified version of RouterChat or offer it to others as a hosted service, give it a distinct name and branding. Use your own application name and referrer in requests to providers so they can identify your version.
 
-* Give it its own name and branding, and do not suggest it is official or endorsed by the author.
-* Do not identify it to providers as RouterChat. Change the application name and referrer headers it sends.
-
-You must still keep the attribution notices the Apache License 2.0 requires.
+You may describe your version as “based on RouterChat.” Do not imply that it is an official release or that the author endorses it. Keep the notices required by the Apache License 2.0.
 
 ## 8. Affiliation
 
 RouterChat is independent and is not affiliated with or endorsed by OpenRouter, Anthropic, or any model provider. All trademarks belong to their owners.
 
-## 9. Indemnification
-
-To the extent permitted by law, you agree to indemnify and hold harmless the author from any claim or expense, including reasonable attorneys' fees, arising from your violation of law or of any third party's terms, your use of RouterChat for anything listed in Section 6, or your modification, deployment, or redistribution of RouterChat.
-
-## 10. Severability
+## 9. Severability
 
 If any provision is unenforceable, it is narrowed as little as needed or removed, and the rest stays in effect.
 
-## 11. Governing Law
+## 10. Governing Law
 
 California law governs these terms, without regard to its conflict of law rules. To the extent permitted by law, disputes must be brought exclusively in the state or federal courts located in California, and you consent to the jurisdiction of those courts. If you are a consumer outside the United States, you keep the mandatory consumer protections of your country.
 
-## 12. Changes
+## 11. Changes
 
 The terms that apply to you are the ones included with the copy of RouterChat you are running. These terms may change. A new version reaches you only when you install or update, and RouterChat asks you to accept again before it applies to you.

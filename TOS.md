@@ -1,12 +1,12 @@
 # RouterChat Terms of Service
 
-**Last updated: November 11, 2026**
+**Last updated: November 19, 2026**
 
-RouterChat is self-hosted software under the Apache License 2.0. "The Software" means RouterChat and its installer, updater, and uninstaller. "The author" means the project maintainer.
+RouterChat is self-hosted software. "The Software" means RouterChat and its installer, updater, and uninstaller. "The author" means the project maintainer.
 
-The author operates no hosted service, receives no user data, and controls no third-party deployment. These terms cover your use of the Software. They are separate from the Apache License 2.0 and do not restrict the rights it grants you.
+The author operates no hosted service, receives no user data, and controls no third-party deployment.
 
-RouterChat asks you to accept these terms before you use it. By accepting them, or by installing, running, modifying, or distributing the Software, you agree to them. If you do not agree, do not install RouterChat, or stop using it and uninstall it.
+RouterChat is licensed under the Apache License 2.0. You may use, copy, modify, and distribute it as that license permits. These terms cover your use of the RouterChat app, whether you install an official release or run it from source. You agree to these terms when you select **Accept** in the app. Your rights under the Apache License 2.0 do not depend on accepting these terms.
 
 What RouterChat stores and sends over the network is described in the [privacy page](https://github.com/echo1097/routerchat/blob/main/docs/privacy.md). That page is for your information and is not part of these terms.
 

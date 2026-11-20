@@ -1,12 +1,12 @@
 # RouterChat Terms of Service
 
-**Last updated: November 11, 2026**
+**Last updated: November 19, 2026**
 
-RouterChat is self-hosted software under the Apache License 2.0. "The Software" means RouterChat and its installer, updater, and uninstaller. "The author" means the project maintainer.
+RouterChat is self-hosted software. "The Software" means RouterChat and its installer, updater, and uninstaller. "The author" means the project maintainer.
 
-The author operates no hosted service, receives no user data, and controls no third-party deployment. These terms cover your use of the Software. They are separate from the Apache License 2.0 and do not restrict the rights it grants you.
+The author does not host RouterChat for users or control third-party deployments. RouterChat does not send user data to the author.
 
-RouterChat asks you to accept these terms before you use it. By accepting them, or by installing, running, modifying, or distributing the Software, you agree to them. If you do not agree, do not install RouterChat, or stop using it and uninstall it.
+RouterChat is licensed under the Apache License 2.0. You may use, copy, modify, and distribute it as that license permits. These terms cover your use of the RouterChat app, whether you install an official release or run it from source. If you set up RouterChat, you agree to these terms when you select **Accept**. You choose which devices may use your installation. Your rights under the Apache License 2.0 do not depend on accepting these terms.
 
 What RouterChat stores and sends over the network is described in the [privacy page](https://github.com/echo1097/routerchat/blob/main/docs/privacy.md). That page is for your information and is not part of these terms.
 
@@ -24,16 +24,16 @@ This does not limit liability for fraud, willful injury, violation of law, or gr
 
 ## 3. What RouterChat Connects To
 
-RouterChat runs on your computer with no analytics or tracking. Your prompts, chats, settings, and API keys go only to the provider you select, OpenRouter or Anthropic. With OpenRouter, your requests also reach the upstream provider serving the model you pick. Voice input and web search work with OpenRouter only, and they send your recording or search terms to OpenRouter and the provider it uses for that feature.
+RouterChat runs on your computer with no analytics or tracking. RouterChat sends each API key only to the provider it belongs to. Depending on the feature you use, your request can include prompts, chat history, attachments, story text, lorebook entries, and relevant settings. When you use OpenRouter, it forwards the content needed to answer your request to a provider serving the model you choose. Voice input and web search work with OpenRouter only, and they send your recording or search terms to OpenRouter and the provider it uses for that feature.
 
-If you turn on phone access, your chats, stories, and settings are also sent over your local network to the phones you pair. Phone access is off by default. That connection is not encrypted. Your API keys themselves are not sent to a phone, but a paired phone can send requests that use them.
+If you turn on phone access, your chats, stories, and settings are also sent over your local network to the phones you pair. Anyone using a paired phone can read and edit your chats and stories. Phone access is off by default. That connection is not encrypted. Your API keys themselves are not sent to a phone, but a paired phone can send requests that use them.
 
-A few other connections carry none of your content:
+RouterChat also connects to the services listed below. These requests reveal your IP address but do not include your prompts, chats, attachments, or API keys.
 
-* **GitHub**, to check for new releases.
+* **GitHub**, to check for updates, display release notes, and download files when you install or update RouterChat.
 * **Flaticon**, to load icons.
 * **PyPI (the Python Package Index)**, when the installer or updater installs dependencies.
-* **Websites linked as sources in responses**, to fetch their icons.
+* **Websites linked as sources in responses**, to fetch their icons. An icon may load from another domain.
 
 Some features send requests to your provider without you pressing send, such as automatic chat naming, automatic lorebook updates, web search, and voice input. These requests can cost money.
 
@@ -46,8 +46,8 @@ You are solely responsible for:
 * **Eligibility.** Being old enough to agree to these terms and to use the providers you choose.
 * **Credentials.** Your API keys and account security. Keys are stored locally and the author never has access to them.
 * **Network exposure.** If you change RouterChat's bind address, forward its port, put it behind a proxy, or run it on a machine others can reach, you are exposing your chats and API keys, and you are solely responsible for securing that deployment.
-* **Phone access.** If you turn on phone access, you are exposing your chats, stories, and settings to the phones you pair and to the local network you use it on. That traffic is not encrypted and can be read by others on the same network. Requests sent from a paired phone use your API keys and are charged to your provider account. You are solely responsible for which devices you pair, who can use them, and which networks you use it on.
-* **Costs.** All charges, limits, and account actions from any provider.
+* **Phone access.** If you turn on phone access, you are exposing your chats, stories, and settings to the phones you pair and to the local network you use it on. That traffic is not encrypted and can be read by others on the same network. Requests sent from a paired phone use your API keys and are charged to your provider account. You are solely responsible for which devices you pair, who can use them, and which networks you use it on. You can revoke a paired device’s access at any time in Settings.
+* **Costs.** You are responsible for provider charges and for staying within your account limits. Costs shown in RouterChat may be estimates. Your provider’s billing records determine what you owe, including when RouterChat shows no cost figure.
 * **Provider compliance.** Following the terms and policies of every provider you use.
 * **Content.** Everything you submit and everything you do with the output.
 * **Your data.** Your chats, stories, lorebooks, settings, and attachments. Backups made during updates and uninstalls are best effort, so keep your own copy.
@@ -71,29 +71,22 @@ This section does not restrict the rights granted under the Apache License 2.0. 
 
 ## 7. Name and Branding
 
-The Apache License 2.0 grants no trademark rights. If you modify RouterChat or distribute a modified version, including as a hosted service or installer, you may not present it under the RouterChat name:
+If you distribute a modified version of RouterChat or offer it to others as a hosted service, give it a distinct name and branding. Use your own application name and referrer in requests to providers so they can identify your version.
 
-* Give it its own name and branding, and do not suggest it is official or endorsed by the author.
-* Do not identify it to providers as RouterChat. Change the application name and referrer headers it sends.
-
-You must still keep the attribution notices the Apache License 2.0 requires.
+You may describe your version as “based on RouterChat.” Do not imply that it is an official release or that the author endorses it. Keep the notices required by the Apache License 2.0.
 
 ## 8. Affiliation
 
 RouterChat is independent and is not affiliated with or endorsed by OpenRouter, Anthropic, or any model provider. All trademarks belong to their owners.
 
-## 9. Indemnification
-
-To the extent permitted by law, you agree to indemnify and hold harmless the author from any claim or expense, including reasonable attorneys' fees, arising from your violation of law or of any third party's terms, your use of RouterChat for anything listed in Section 6, or your modification, deployment, or redistribution of RouterChat.
-
-## 10. Severability
+## 9. Severability
 
 If any provision is unenforceable, it is narrowed as little as needed or removed, and the rest stays in effect.
 
-## 11. Governing Law
+## 10. Governing Law
 
 California law governs these terms, without regard to its conflict of law rules. To the extent permitted by law, disputes must be brought exclusively in the state or federal courts located in California, and you consent to the jurisdiction of those courts. If you are a consumer outside the United States, you keep the mandatory consumer protections of your country.
 
-## 12. Changes
+## 11. Changes
 
 The terms that apply to you are the ones included with the copy of RouterChat you are running. These terms may change. A new version reaches you only when you install or update, and RouterChat asks you to accept again before it applies to you.

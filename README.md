@@ -24,7 +24,7 @@ Bring your own key. Available for macOS and Windows.
 
 ## Disclaimer
 
-By using RouterChat you agree to the [terms of service](TOS.md).
+If you set up RouterChat, you’ll be asked to read the [terms of service](TOS.md) and select **Accept** in the app.
 
 RouterChat is licensed under the [Apache License 2.0](LICENSE) as of August 3, 2026.<br>
 <small>Releases up to and including 0.3.5 remain available under the MIT License.</small>

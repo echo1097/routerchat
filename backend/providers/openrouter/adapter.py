@@ -127,8 +127,11 @@ class OpenRouterProvider(Provider):
         return headers.get("X-Generation-Id")
 
     def parseStreamChunk(self, chunk: dict[str, Any]) -> dict[str, Any]:
-        if isinstance(chunk.get("error"), dict):
-            return {"event": "error", "error": streamError(chunk["error"])}
+        chunkError = chunk.get("error")
+        if isinstance(chunkError, dict):
+            return {"event": "error", "error": streamError(chunkError)}
+        if chunkError:
+            return {"event": "error", "error": streamError({"message": str(chunkError)})}
 
         parsed: dict[str, Any] = {
             "id": chunk.get("id"),
@@ -145,13 +148,23 @@ class OpenRouterProvider(Provider):
             return parsed
 
         choice = choices[0]
+        finishReason = choice.get("finish_reason")
+        if finishReason == "error":
+            choiceError = choice.get("error")
+            errorPayload = (
+                choiceError
+                if isinstance(choiceError, dict)
+                else {"message": str(choiceError or "")}
+            )
+            return {"event": "error", "error": streamError(errorPayload)}
+
         delta = choice.get("delta") or {}
         message = choice.get("message") or {}
         reasoning = delta.get("reasoning") or delta.get("reasoning_content")
         content = delta.get("content")
 
         parsed["hasChoice"] = True
-        parsed["finishReason"] = choice.get("finish_reason")
+        parsed["finishReason"] = finishReason
         parsed["reasoning"] = str(reasoning) if reasoning else None
         parsed["content"] = str(content) if content else None
         parsed["sources"] = normalizeSources(

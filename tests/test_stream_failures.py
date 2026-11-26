@@ -7,6 +7,7 @@ import httpx
 import backend.providers.streaming as streaming
 from backend.providers.anthropic.adapter import anthropicProvider
 from backend.providers.base import ChatRequest
+from backend.providers.openrouter.adapter import openRouterProvider
 
 
 def failingClient(lines, failure, failAfterLines=None):
@@ -27,7 +28,8 @@ def failingClient(lines, failure, failAfterLines=None):
                 if index == failAfterLines:
                     raise failure
                 yield line
-            raise failure
+            if failure is not None:
+                raise failure
 
     class FakeClient:
         def __init__(self, *_args, **_kwargs):
@@ -45,11 +47,11 @@ def failingClient(lines, failure, failAfterLines=None):
     return FakeClient
 
 
-def runFailingStream(failure, lines=(), failAfterLines=None):
+def runFailingStream(failure, lines=(), failAfterLines=None, provider=anthropicProvider):
     request = ChatRequest(url="https://example.invalid", headers={}, body={})
 
     async def collect():
-        return [event async for event in streaming.streamChat(anthropicProvider, request)]
+        return [event async for event in streaming.streamChat(provider, request)]
 
     client = failingClient(list(lines), failure, failAfterLines)
     with patch.object(streaming.httpx, "AsyncClient", client):
@@ -100,6 +102,31 @@ class StreamFailureTest(unittest.TestCase):
 
         self.assertEqual(content, "Once upon a time")
         self.assertEqual(events[-1]["error"].kind, "network")
+
+    def test_raw_json_error_on_200_stream_becomes_error_event(self):
+        lines = [
+            ": OPENROUTER PROCESSING",
+            "",
+            '{"error":{"message":"Provider returned error","code":502}}',
+        ]
+        events = runFailingStream(None, lines, failAfterLines=99, provider=openRouterProvider)
+
+        self.assertEqual(events[-1]["type"], "error")
+        self.assertEqual(events[-1]["error"].kind, "serverError")
+
+    def test_multiline_raw_json_error_on_200_stream_becomes_error_event(self):
+        lines = [
+            "{",
+            '  "error": {',
+            '    "message": "Rate limit exceeded",',
+            '    "code": 429',
+            "  }",
+            "}",
+        ]
+        events = runFailingStream(None, lines, failAfterLines=99, provider=openRouterProvider)
+
+        self.assertEqual(events[-1]["type"], "error")
+        self.assertEqual(events[-1]["error"].kind, "rateLimited")
 
 
 if __name__ == "__main__":

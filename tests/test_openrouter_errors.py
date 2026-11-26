@@ -70,6 +70,22 @@ class OpenrouterErrorTest(unittest.TestCase):
         self.assertEqual(parsed["event"], "error")
         self.assertEqual(parsed["error"].kind, "serverError")
 
+    def test_string_stream_errors_become_error_events(self):
+        parsed = openRouterProvider.parseStreamChunk(
+            {"id": "gen-1", "error": "Upstream died"}
+        )
+
+        self.assertEqual(parsed["event"], "error")
+        self.assertEqual(parsed["error"].kind, "serverError")
+
+    def test_finish_reason_error_becomes_an_error_event(self):
+        parsed = openRouterProvider.parseStreamChunk(
+            {"id": "gen-1", "choices": [{"delta": {}, "finish_reason": "error"}]}
+        )
+
+        self.assertEqual(parsed["event"], "error")
+        self.assertEqual(parsed["error"].kind, "serverError")
+
     def test_numeric_stream_error_codes_are_used(self):
         self.assertEqual(streamError({"code": 429, "message": "slow down"}).kind, "rateLimited")
 

@@ -9,6 +9,13 @@ from backend.providers.base import ChatRequest, Provider
 from backend.providers.errorKinds import providerError
 
 
+SSE_CONTROL_PREFIXES = (":", "event:", "id:", "retry:")
+
+
+def isSseControlLine(line: str) -> bool:
+    return not line or line.startswith(SSE_CONTROL_PREFIXES)
+
+
 async def streamChat(provider: Provider, request: ChatRequest) -> AsyncGenerator[dict[str, Any], None]:
     generationId: str | None = None
 
@@ -33,9 +40,30 @@ async def streamChat(provider: Provider, request: ChatRequest) -> AsyncGenerator
 
                 yield {"type": "open", "generationId": generationId}
                 parser = provider.createStreamParser()
+                nonSseLines: list[str] = []
 
                 async for line in response.aiter_lines():
                     if not line.startswith("data:"):
+                        stripped = line.strip()
+                        if isSseControlLine(stripped):
+                            continue
+                        nonSseLines.append(line)
+                        try:
+                            rawPayload = json.loads("\n".join(nonSseLines))
+                        except json.JSONDecodeError:
+                            continue
+                        nonSseLines.clear()
+                        if not isinstance(rawPayload, dict):
+                            continue
+                        for parsed in parser.parse(rawPayload):
+                            eventKind = parsed.pop("event", "chunk")
+                            if eventKind == "error":
+                                yield {
+                                    "type": "error",
+                                    "error": parsed["error"],
+                                    "generationId": generationId,
+                                }
+                                return
                         continue
                     data = line.removeprefix("data:").strip()
                     if data == "[DONE]":

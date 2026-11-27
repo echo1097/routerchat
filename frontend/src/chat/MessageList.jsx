@@ -404,7 +404,7 @@ const MessageItem = memo(function MessageItem({
       <AssistantStatusLine
         reasoning={message.reasoning}
         reasoningStreaming={reasoningStreaming}
-        waiting={!message.content && !errorNotice}
+        waiting={streaming && !message.content && !errorNotice}
         durationMs={reasoningDurationMs}
         searching={searching}
       />

@@ -105,6 +105,26 @@ class ChatErrorTest(LocalApiHarness, unittest.TestCase):
         self.assertNotIn("secret internal detail", json.dumps(events))
         self.assertNotIn("secret internal detail", saved["content"])
 
+    def test_an_incomplete_empty_stream_emits_and_saves_an_error(self):
+        events, saved = self.sendWith(fakeClient(lines=[": OPENROUTER PROCESSING"]))
+
+        self.assertEqual(events[-1]["type"], "error")
+        self.assertEqual(events[-1]["value"]["kind"], "incomplete")
+        self.assertEqual(saved["content"], "")
+        self.assertEqual(json.loads(saved["error"])["kind"], "incomplete")
+
+    def test_a_raw_json_error_on_200_stream_emits_and_saves_the_provider_error(self):
+        lines = [
+            ": OPENROUTER PROCESSING",
+            json.dumps({"error": {"code": 502, "message": "Provider returned error"}}),
+        ]
+        events, saved = self.sendWith(fakeClient(lines=lines))
+
+        self.assertEqual(events[-1]["type"], "error")
+        self.assertEqual(events[-1]["value"]["kind"], "serverError")
+        self.assertEqual(saved["content"], "")
+        self.assertEqual(json.loads(saved["error"])["kind"], "serverError")
+
 
 if __name__ == "__main__":
     unittest.main()

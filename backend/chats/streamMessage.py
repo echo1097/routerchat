@@ -42,7 +42,7 @@ from backend.core.database import getDb, nextMessageOrder
 from backend.core.streamEvents import streamEvent
 from backend.core.utils import utcNow
 from backend.providers.base import ChatOptions
-from backend.providers.errorKinds import unexpectedError
+from backend.providers.errorKinds import providerError, unexpectedError
 from backend.providers.modelStream import ModelStream
 from backend.usage.recordUsage import recordUsage
 from backend.webSearch.sources import (
@@ -203,6 +203,12 @@ async def streamChatResponse(
         if modelStream.error:
             error_text = modelStream.error.toJson()
             yield streamEvent("error", modelStream.error.toEvent())
+            return
+
+        if not (modelStream.receivedDone or modelStream.finishReason):
+            incompleteError = providerError("incomplete", provider.name)
+            error_text = incompleteError.toJson()
+            yield streamEvent("error", incompleteError.toEvent())
             return
 
         await modelStream.fetchFinalUsage(api_key)

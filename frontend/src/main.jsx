@@ -2054,7 +2054,7 @@ function App() {
         await loadChats();
         await loadChat(conversationId, { replace: true });
       }
-      if (shouldName) {
+      if (shouldName && !streamError) {
         await nameChat(conversationId, tempMode);
       }
     } catch (error) {

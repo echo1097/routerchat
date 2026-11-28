@@ -1,6 +1,6 @@
 # Privacy and Network Connections
 
-This page describes what RouterChat stores on your computer and what it sends over the network. It is here to inform you and is not part of the [terms of service](../TOS.md). If it ever disagrees with what the app actually does, that is a documentation bug, so please report it.
+This page describes what RouterChat stores on your computer and what it sends over the network. It is here to inform you and is not part of the [terms of service](../TOS.md).
 
 ## TLDR
 

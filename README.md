@@ -14,13 +14,15 @@ Bring your own key. Available for macOS and Windows.
   <a href="docs/setup.md">Setup</a> ·
   <a href="docs/privacy.md">Privacy</a> ·
   <a href="TOS.md">Terms</a> ·
-  <a href="SUPPORT.md">Support</a> ·
-  <a href="CONTRIBUTING.md">Contributing</a>
+  <a href="SUPPORT.md">Support</a>
 </p>
 
 <img width="1000" alt="RouterChat landing page" src="media/landing%20page.png" />
 
 </div>
+
+> [!NOTE]
+> RouterChat is no longer actively maintained. Existing releases and installers remain available as-is, and no further updates, bug fixes, or security patches are planned. You are welcome to fork the project under the [Apache License 2.0](LICENSE).
 
 ## Disclaimer
 
@@ -68,13 +70,6 @@ irm https://echo1097.github.io/get-routerchat/install.ps1 | iex
 
 See the [Media](#media) section for screenshots of everything above.
 
-## Roadmap
-
-The top priority right now is support for more API providers. Anthropic is added, and these are next:
-
-- **OpenAI:** Use OAI models with your OpenAI key.
-- **Local models:** Use models on your own computer through apps like Ollama and LM Studio.
-
 ## Features added
 
 See [features.md](docs/features.md) for the full list of what has been added so far.
@@ -83,9 +78,9 @@ See [features.md](docs/features.md) for the full list of what has been added so 
 
 AI helped with development and documentation for this project. I reviewed all code and documentation before publishing it.
 
-## Bug reporting, feedback, and contributing
+## Maintenance and contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for how to report bugs, send feedback, and open pull requests.
+RouterChat is no longer actively maintained and is not accepting issues, feedback, or pull requests. See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 ## Local data
 
